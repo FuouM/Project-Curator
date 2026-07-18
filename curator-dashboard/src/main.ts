@@ -1,4 +1,5 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import "bootstrap-icons/font/bootstrap-icons.css";
 
 function logJS(msg: string) {
   console.log(msg);
@@ -442,11 +443,11 @@ function renderFeaturedDay(featured: ImageDetails) {
     <div style="display: flex; gap: 16px; align-items: flex-start; height: 100%;">
       <div class="image-preview" style="width: 110px; height: 110px; flex-shrink: 0; position: relative;">
         <img src="${srcUrl}" alt="Featured Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
-        <span style="display: none;">🖼️</span>
+        <span style="display: none;"><i class="bi bi-image"></i></span>
       </div>
       <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
         <div>
-          <span style="font-weight: bold; color: #0078d7; font-size: 13px;">★ Image Selection of the Day</span>
+          <span style="font-weight: bold; color: #0078d7; font-size: 13px;"><i class="bi bi-star-fill"></i> Image Selection of the Day</span>
           <div class="image-path" title="${featured.current_filepath}" style="margin-top: 4px; font-size: 11px; height: auto; -webkit-line-clamp: 3; word-break: break-all;">
             ${featured.current_filepath}
           </div>
@@ -459,10 +460,10 @@ function renderFeaturedDay(featured: ImageDetails) {
         </div>
         <div style="margin-top: 8px; display: flex; gap: 8px;">
           <button class="win-button" style="font-size: 11px;" onclick="window.openTags(${featured.id}, '${featured.current_filepath.replace(/\\/g, '\\\\')}')">
-            🏷️ Manage Tags
+            <i class="bi bi-tag"></i> Manage Tags
           </button>
           <button class="win-button" style="font-size: 11px;" id="featured-search-btn">
-            🔍 Find Similar
+            <i class="bi bi-search"></i> Find Similar
           </button>
         </div>
       </div>
@@ -582,7 +583,7 @@ function renderImages(images: ImageDetails[], gridId: string) {
     card.innerHTML = `
       <div class="image-preview">
         <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
-        <span style="display: none;">🖼️</span>
+        <span style="display: none;"><i class="bi bi-image"></i></span>
         <div class="vector-badge ${badgeClass}">${img.vector_state}</div>
       </div>
       <div class="image-info">
@@ -591,7 +592,7 @@ function renderImages(images: ImageDetails[], gridId: string) {
           ${img.tags.map(t => `<span class="tag-pill">${t}</span>`).join("")}
         </div>
         <button class="win-button" style="font-size: 11px; margin-top: auto;" onclick="window.openTags(${img.id}, '${img.current_filepath.replace(/\\/g, '\\\\')}')">
-          🏷️ Manage Tags
+          <i class="bi bi-tag"></i> Manage Tags
         </button>
       </div>
     `;
@@ -617,7 +618,7 @@ function renderSearchResults(matches: SearchMatch[]) {
     card.innerHTML = `
       <div class="image-preview">
         <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
-        <span style="display: none;">🖼️</span>
+        <span style="display: none;"><i class="bi bi-image"></i></span>
         <div class="vector-badge badge-ready" style="background-color: #dff6dd; border: 1px solid #107c41; color: #107c41;">Score: ${m.score.toFixed(4)}</div>
       </div>
       <div class="image-info">
@@ -626,7 +627,7 @@ function renderSearchResults(matches: SearchMatch[]) {
           ${m.tags.map(t => `<span class="tag-pill">${t}</span>`).join("")}
         </div>
         <button class="win-button" style="font-size: 11px; margin-top: auto;" onclick="window.openTags(${m.id}, '${m.filepath.replace(/\\/g, '\\\\')}')">
-          🏷️ Manage Tags
+          <i class="bi bi-tag"></i> Manage Tags
         </button>
       </div>
     `;
