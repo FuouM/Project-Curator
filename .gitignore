@@ -1,3 +1,9 @@
+test_images
+.curator/
+.curator_test/
+.rust/
+onnxruntime.dll
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

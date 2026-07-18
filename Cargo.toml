@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "curator-core",
+    "curator-service",
+    "curator-cli",
+    "curator-dashboard/src-tauri",
+]
+resolver = "2"
