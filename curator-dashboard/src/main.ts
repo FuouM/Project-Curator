@@ -408,14 +408,15 @@ async function refreshDashboard() {
     const daySeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
     const featuredOffset = daySeed % image_count;
 
-    // 3. Fetch only 6 images starting at the daily offset — tiny response
-    const featuredResp = await callService({ ListImages: { limit: 6, offset: featuredOffset } });
+    // 3. Fetch featured and latest in parallel — both independent after offset is known
+    const [featuredResp, latestResp] = await Promise.all([
+      callService({ ListImages: { limit: 6, offset: featuredOffset } }),
+      callService({ ListImages: { limit: 8, offset: 0 } }),
+    ]);
+
     if ("ListResult" in featuredResp && featuredResp.ListResult.images.length > 0) {
       renderFeaturedDay(featuredResp.ListResult.images[0]);
     }
-
-    // 4. Load latest imports separately (small batch)
-    const latestResp = await callService({ ListImages: { limit: 8, offset: 0 } });
     if ("ListResult" in latestResp) {
       renderImages(latestResp.ListResult.images, "latest-imports-grid");
     }
