@@ -1,5 +1,10 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 
+function logJS(msg: string) {
+  console.log(msg);
+  invoke("log_frontend", { message: msg }).catch(() => {});
+}
+
 // Define Request/Response payloads to match curator-core::ipc
 type RequestPayload =
   | { Ping: null }
@@ -65,27 +70,32 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
     formattedReq = { ValidatePlugin: request.ValidatePlugin };
   }
 
-  const jsonStr = JSON.stringify(formattedReq);
-  const respStr: string = await invoke("send_to_service", { requestJson: jsonStr });
-  
-  // Parse response
-  const parsed = JSON.parse(respStr);
-  
-  // Normalize Serde enum structure
-  if (typeof parsed === "string") {
-    if (parsed === "Pong") return { Pong: null };
-    if (parsed === "Success") return { Success: null };
-  }
-  
-  if (parsed.Error) return { Error: parsed.Error };
-  if (parsed.ImportResult) return { ImportResult: parsed.ImportResult };
-  if (parsed.SearchResult) return { SearchResult: parsed.SearchResult };
-  if (parsed.StatusResult) return { StatusResult: parsed.StatusResult };
-  if (parsed.ImageResult) return { ImageResult: parsed.ImageResult };
-  if (parsed.ListResult) return { ListResult: parsed.ListResult };
-  if (parsed.ValidationResult) return { ValidationResult: parsed.ValidationResult };
+  try {
+    const jsonStr = JSON.stringify(formattedReq);
+    const respStr: string = await invoke("send_to_service", { requestJson: jsonStr });
+    
+    // Parse response
+    const parsed = JSON.parse(respStr);
+    
+    // Normalize Serde enum structure
+    if (typeof parsed === "string") {
+      if (parsed === "Pong") return { Pong: null };
+      if (parsed === "Success") return { Success: null };
+    }
+    
+    if (parsed.Error) return { Error: parsed.Error };
+    if (parsed.ImportResult) return { ImportResult: parsed.ImportResult };
+    if (parsed.SearchResult) return { SearchResult: parsed.SearchResult };
+    if (parsed.StatusResult) return { StatusResult: parsed.StatusResult };
+    if (parsed.ImageResult) return { ImageResult: parsed.ImageResult };
+    if (parsed.ListResult) return { ListResult: parsed.ListResult };
+    if (parsed.ValidationResult) return { ValidationResult: parsed.ValidationResult };
 
-  throw new Error("Unknown response format: " + respStr);
+    throw new Error("Unknown response format: " + respStr);
+  } catch (err: any) {
+    logJS("callService exception: " + (err.message || err));
+    throw err;
+  }
 }
 
 
@@ -116,6 +126,7 @@ function setupNavigation() {
     import: { title: "Import Images", sub: "Register and index new images locally." },
     search: { title: "Semantic Search", sub: "Perform neural and tag-based image retrieval." },
     plugins: { title: "Plugins", sub: "Verify and manage sandboxed plugin modules." },
+    logs: { title: "System Diagnostic Logs", sub: "View active traces and stderr/stdout logs from the local engine." }
   };
 
   navItems.forEach((item) => {
@@ -141,6 +152,8 @@ function setupNavigation() {
         refreshDashboard();
       } else if (view === "gallery") {
         refreshGallery();
+      } else if (view === "logs") {
+        refreshLogs();
       }
     });
   });
@@ -157,6 +170,10 @@ function setupNavigation() {
     galleryPage++;
     refreshGallery();
   });
+
+  // Logs buttons setup
+  document.getElementById("refresh-logs-btn")?.addEventListener("click", refreshLogs);
+  document.getElementById("clear-logs-btn")?.addEventListener("click", clearLogsData);
 
   // Modal setup
   document.getElementById("close-modal")?.addEventListener("click", () => {
@@ -186,8 +203,17 @@ function startStatusPolling() {
         if (imgEl) imgEl.textContent = image_count.toString();
         if (vecEl) vecEl.textContent = vector_count.toString();
         if (pendEl) pendEl.textContent = pending_jobs.toString();
+      } else if ("Error" in resp) {
+        logJS("startStatusPolling returned Error response: " + resp.Error.message);
+        if (dot && text) {
+          dot.classList.add("offline");
+          text.textContent = "Service Error";
+        }
+      } else {
+        logJS("startStatusPolling unexpected response: " + JSON.stringify(resp));
       }
-    } catch (e) {
+    } catch (e: any) {
+      logJS("startStatusPolling exception: " + (e.message || e));
       if (dot && text) {
         dot.classList.add("offline");
         text.textContent = "Service Offline";
@@ -330,18 +356,18 @@ function setupForms() {
         const { name, version, valid, error } = resp.ValidationResult;
         if (valid) {
           pluginResult.innerHTML = `
-            <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 1.25rem;">
-              <h3 style="color: #34d399; margin-bottom: 0.5rem;">Validation Success!</h3>
+            <div style="background-color: #dff6dd; border: 1px solid #107c41; padding: 8px; margin-top: 8px;">
+              <h3 style="color: #107c41; margin-bottom: 4px; font-weight: bold;">Validation Success!</h3>
               <p><strong>Name:</strong> ${name}</p>
               <p><strong>Version:</strong> ${version}</p>
-              <p style="color: #64748b; font-size: 0.85rem; margin-top: 0.5rem;">Signature validated locally with master key.</p>
+              <p style="color: #555555; font-size: 11px; margin-top: 4px;">Signature validated locally with master key.</p>
             </div>
           `;
         } else {
           pluginResult.innerHTML = `
-            <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 12px; padding: 1.25rem;">
-              <h3 style="color: #f87171; margin-bottom: 0.5rem;">Validation Failed</h3>
-              <p style="color: #fca5a5;">${error}</p>
+            <div style="background-color: #fde7e9; border: 1px solid #a80000; padding: 8px; margin-top: 8px;">
+              <h3 style="color: #a80000; margin-bottom: 4px; font-weight: bold;">Validation Failed</h3>
+              <p style="color: #a80000;">${error}</p>
             </div>
           `;
         }
@@ -354,15 +380,116 @@ function setupForms() {
 
 // Refresh Image Grids
 async function refreshDashboard() {
+  const featuredContainer = document.getElementById("featured-day-content");
+
   try {
-    const resp = await callService({ ListImages: { limit: 20, offset: 0 } });
-    if ("ListResult" in resp) {
-      renderImages(resp.ListResult.images, "latest-imports-grid");
+    // 1. Get total image count via status (already polled — lightweight)
+    const statusResp = await callService({ GetStatus: null });
+    if (!("StatusResult" in statusResp)) {
+      throw new Error("Could not reach service");
     }
-  } catch (e) {
+    const { image_count } = statusResp.StatusResult;
+
+    if (image_count === 0) {
+      if (featuredContainer) {
+        featuredContainer.innerHTML = `
+          <div style="text-align: center; color: #777; padding: 20px;">
+            <p style="font-size: 13px;">No images imported yet.</p>
+            <p style="margin-top: 4px; font-size: 11px;">Use <strong>Import</strong> to add images to your library.</p>
+          </div>`;
+      }
+      renderImages([], "latest-imports-grid");
+      return;
+    }
+
+    // 2. Compute a daily-seeded offset so featured changes each day but is stable within a session
+    const today = new Date();
+    const daySeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+    const featuredOffset = daySeed % image_count;
+
+    // 3. Fetch only 6 images starting at the daily offset — tiny response
+    const featuredResp = await callService({ ListImages: { limit: 6, offset: featuredOffset } });
+    if ("ListResult" in featuredResp && featuredResp.ListResult.images.length > 0) {
+      renderFeaturedDay(featuredResp.ListResult.images[0]);
+    }
+
+    // 4. Load latest imports separately (small batch)
+    const latestResp = await callService({ ListImages: { limit: 8, offset: 0 } });
+    if ("ListResult" in latestResp) {
+      renderImages(latestResp.ListResult.images, "latest-imports-grid");
+    }
+
+  } catch (e: any) {
     console.error("Failed to refresh dashboard: ", e);
+    if (featuredContainer) {
+      featuredContainer.innerHTML = `
+        <div style="text-align: center; color: #555555; padding: 20px;">
+          <p style="font-weight: bold; color: #a80000; font-size: 13px;">Service Offline</p>
+          <p style="margin-top: 6px;">Start the backend service to load featured content.</p>
+        </div>
+      `;
+    }
   }
 }
+
+function renderFeaturedDay(featured: ImageDetails) {
+  const container = document.getElementById("featured-day-content");
+  if (!container) return;
+  
+  const srcUrl = convertFileSrc(featured.current_filepath);
+  
+  container.innerHTML = `
+    <div style="display: flex; gap: 16px; align-items: flex-start; height: 100%;">
+      <div class="image-preview" style="width: 110px; height: 110px; flex-shrink: 0; position: relative;">
+        <img src="${srcUrl}" alt="Featured Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+        <span style="display: none;">🖼️</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
+        <div>
+          <span style="font-weight: bold; color: #0078d7; font-size: 13px;">★ Image Selection of the Day</span>
+          <div class="image-path" title="${featured.current_filepath}" style="margin-top: 4px; font-size: 11px; height: auto; -webkit-line-clamp: 3; word-break: break-all;">
+            ${featured.current_filepath}
+          </div>
+        </div>
+        <div>
+          <span style="color: #666666; font-size: 10px;">Assigned Tags:</span>
+          <div class="tag-list" style="margin-top: 2px;">
+            ${featured.tags.length > 0 ? featured.tags.map(t => `<span class="tag-pill">${t}</span>`).join("") : '<span style="color: #999999; font-style: italic; font-size: 11px;">None</span>'}
+          </div>
+        </div>
+        <div style="margin-top: 8px; display: flex; gap: 8px;">
+          <button class="win-button" style="font-size: 11px;" onclick="window.openTags(${featured.id}, '${featured.current_filepath.replace(/\\/g, '\\\\')}')">
+            🏷️ Manage Tags
+          </button>
+          <button class="win-button" style="font-size: 11px;" id="featured-search-btn">
+            🔍 Find Similar
+          </button>
+        </div>
+      </div>
+    </div>
+    <div style="background-color: #fff8e1; border: 1px solid #ffe082; padding: 8px; margin-top: 8px; border-radius: 2px; color: #827717; font-size: 11px;">
+      <strong>Tip of the Day:</strong> Double click on tag pills in search tags to filter by them, or click "Find Similar" above to run a semantic vector search based on this image's content!
+    </div>
+  `;
+
+  // Bind the "Find Similar" button to search using the filepath as search query or similar concept
+  document.getElementById("featured-search-btn")?.addEventListener("click", async () => {
+    // Navigate to Search view
+    const searchNavItem = document.querySelector('.nav-item[data-view="search"]') as HTMLElement;
+    if (searchNavItem) {
+      searchNavItem.click();
+      
+      // Let's populate the query text input with the filepath or tags of this image to trigger a search
+      const queryInput = document.getElementById("search-text-input") as HTMLInputElement;
+      if (queryInput) {
+        queryInput.value = featured.tags.length > 0 ? featured.tags[0] : "image matching featured characteristics";
+        // Submit the search
+        document.getElementById("search-form")?.dispatchEvent(new Event("submit"));
+      }
+    }
+  });
+}
+
 
 let galleryPage = 0;
 const IMAGES_PER_PAGE = 12;
@@ -463,7 +590,7 @@ function renderImages(images: ImageDetails[], gridId: string) {
         <div class="tag-list">
           ${img.tags.map(t => `<span class="tag-pill">${t}</span>`).join("")}
         </div>
-        <button class="btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; margin-top: auto;" onclick="window.openTags(${img.id}, '${img.current_filepath.replace(/\\/g, '\\\\')}')">
+        <button class="win-button" style="font-size: 11px; margin-top: auto;" onclick="window.openTags(${img.id}, '${img.current_filepath.replace(/\\/g, '\\\\')}')">
           🏷️ Manage Tags
         </button>
       </div>
@@ -491,14 +618,14 @@ function renderSearchResults(matches: SearchMatch[]) {
       <div class="image-preview">
         <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
         <span style="display: none;">🖼️</span>
-        <div class="vector-badge badge-ready" style="background: rgba(6, 182, 212, 0.2); border-color: rgba(6, 182, 212, 0.4); color: var(--accent-cyan);">Score: ${m.score.toFixed(4)}</div>
+        <div class="vector-badge badge-ready" style="background-color: #dff6dd; border: 1px solid #107c41; color: #107c41;">Score: ${m.score.toFixed(4)}</div>
       </div>
       <div class="image-info">
         <div class="image-path" title="${m.filepath}">${m.filepath}</div>
         <div class="tag-list">
           ${m.tags.map(t => `<span class="tag-pill">${t}</span>`).join("")}
         </div>
-        <button class="btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; margin-top: auto;" onclick="window.openTags(${m.id}, '${m.filepath.replace(/\\/g, '\\\\')}')">
+        <button class="win-button" style="font-size: 11px; margin-top: auto;" onclick="window.openTags(${m.id}, '${m.filepath.replace(/\\/g, '\\\\')}')">
           🏷️ Manage Tags
         </button>
       </div>
@@ -511,3 +638,26 @@ function renderSearchResults(matches: SearchMatch[]) {
 (window as any).openTags = (imgId: number, path: string) => {
   openTagModal(imgId, path);
 };
+
+async function refreshLogs() {
+  const textarea = document.getElementById("log-textarea") as HTMLTextAreaElement;
+  if (!textarea) return;
+  
+  try {
+    const logs = await invoke("read_logs") as string;
+    textarea.value = logs;
+    textarea.scrollTop = textarea.scrollHeight;
+  } catch (e) {
+    textarea.value = "Failed to load logs: " + e;
+  }
+}
+
+async function clearLogsData() {
+  const textarea = document.getElementById("log-textarea") as HTMLTextAreaElement;
+  try {
+    await invoke("clear_logs");
+    if (textarea) textarea.value = "";
+  } catch (e) {
+    alert("Failed to clear logs: " + e);
+  }
+}

@@ -9,36 +9,59 @@
   </head>
 
   <body>
+    <!-- Top Menu Strip -->
+    <nav class="menu-strip">
+      <div class="menu-item"><span>F</span>ile</div>
+      <div class="menu-item"><span>E</span>dit</div>
+      <div class="menu-item"><span>V</span>iew</div>
+      <div class="menu-item"><span>T</span>ools</div>
+      <div class="menu-item"><span>H</span>elp</div>
+    </nav>
+
+    <!-- App Main Workspace -->
     <div class="app-container">
-      <!-- Sidebar Navigation -->
+      <!-- Sidebar TreeView Navigation -->
       <aside class="sidebar">
-        <div>
-          <div class="brand">
-            <div class="brand-logo">C</div>
-            <div class="brand-name">Curator</div>
-          </div>
-          <ul class="nav-links">
-            <li class="nav-item active" data-view="dashboard">
-              <span>📊</span> Dashboard
-            </li>
-            <li class="nav-item" data-view="gallery">
-              <span>🖼️</span> Gallery
-            </li>
-            <li class="nav-item" data-view="import">
-              <span>📥</span> Import Images
-            </li>
-            <li class="nav-item" data-view="search">
-              <span>🔍</span> Semantic Search
-            </li>
-            <li class="nav-item" data-view="plugins">
-              <span>🔌</span> Plugins
-            </li>
-          </ul>
-        </div>
-        <div class="service-status">
-          <div class="status-dot" id="service-dot"></div>
-          <div class="status-text" id="service-status-text">Connecting...</div>
-        </div>
+        <ul class="tree-view">
+          <li class="tree-node">
+            <div class="tree-node-title">📁 Project Workspace</div>
+            <ul class="tree-leaf-list">
+              <li class="nav-item active" data-view="dashboard">
+                <span>📊</span> Dashboard
+              </li>
+              <li class="nav-item" data-view="gallery">
+                <span>🖼️</span> Gallery
+              </li>
+            </ul>
+          </li>
+          <li class="tree-node" style="margin-top: 10px;">
+            <div class="tree-node-title">📁 Operations</div>
+            <ul class="tree-leaf-list">
+              <li class="nav-item" data-view="import">
+                <span>📥</span> Import Images
+              </li>
+              <li class="nav-item" data-view="search">
+                <span>🔍</span> Semantic Search
+              </li>
+            </ul>
+          </li>
+          <li class="tree-node" style="margin-top: 10px;">
+            <div class="tree-node-title">📁 Extensions</div>
+            <ul class="tree-leaf-list">
+              <li class="nav-item" data-view="plugins">
+                <span>🔌</span> Plugins
+              </li>
+            </ul>
+          </li>
+          <li class="tree-node" style="margin-top: 10px;">
+            <div class="tree-node-title">📁 System Diagnostics</div>
+            <ul class="tree-leaf-list">
+              <li class="nav-item" data-view="logs">
+                <span>📝</span> Application Logs
+              </li>
+            </ul>
+          </li>
+        </ul>
       </aside>
 
       <!-- Main Dashboard Panel -->
@@ -68,24 +91,33 @@
             </div>
           </div>
           
-          <div class="glass-card" style="margin-top: 2rem;">
-            <div class="card-title">Latest Imports</div>
-            <div class="image-grid" id="latest-imports-grid">
-              <!-- Dynamically populated -->
+          <div style="display: flex; gap: 16px; margin-top: 1.5rem; flex-wrap: wrap;">
+            <!-- Feature of the Day Panel -->
+            <div class="group-box" style="flex: 1; min-width: 300px;">
+              <div class="group-box-title">Feature of the Day</div>
+              <div id="featured-day-content" style="display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 250px; justify-content: center;">
+                <p style="color: #666666; font-style: italic; text-align: center;">Loading featured content...</p>
+              </div>
+            </div>
+
+            <!-- Latest Imports Panel -->
+            <div class="group-box" style="flex: 1.5; min-width: 350px;">
+              <div class="group-box-title">Latest Imports</div>
+              <div class="image-grid" id="latest-imports-grid" style="grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));">
+                <!-- Dynamically populated -->
+              </div>
             </div>
           </div>
         </section>
 
         <!-- GALLERY VIEW -->
         <section class="view-section" id="view-gallery">
-          <div class="glass-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-              <div class="card-title" style="margin-bottom: 0;">All Images</div>
-              <div class="pagination-controls" style="display: flex; gap: 0.5rem; align-items: center;">
-                <button class="btn-secondary" id="gallery-prev-btn" style="padding: 0.4rem 0.8rem;" disabled>◀ Prev</button>
-                <span id="gallery-page-indicator" style="font-size: 0.9rem; color: #94a3b8;">Page 1</span>
-                <button class="btn-secondary" id="gallery-next-btn" style="padding: 0.4rem 0.8rem;">Next ▶</button>
-              </div>
+          <div class="group-box">
+            <div class="group-box-title">All Images</div>
+            <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 1rem; gap: 10px;">
+              <span id="gallery-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
+              <button class="win-button" id="gallery-prev-btn" disabled>◀ Prev</button>
+              <button class="win-button" id="gallery-next-btn">Next ▶</button>
             </div>
             <div class="image-grid" id="gallery-grid">
               <!-- Dynamically populated -->
@@ -95,74 +127,105 @@
 
         <!-- IMPORT VIEW -->
         <section class="view-section" id="view-import">
-          <div class="glass-card">
-            <div class="card-title">Register Image Path</div>
+          <div class="group-box">
+            <div class="group-box-title">Register Image Path</div>
             <form id="import-form">
-              <div class="form-group" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <div class="form-group">
                 <input class="input-field" id="import-path-input" placeholder="Enter path or choose file/folder..." style="flex: 1; min-width: 250px;" required />
-                <button type="button" class="btn-secondary" id="browse-file-btn" style="white-space: nowrap;">📄 File</button>
-                <button type="button" class="btn-secondary" id="browse-folder-btn" style="white-space: nowrap;">📁 Folder</button>
-                <button type="submit" class="btn-primary" style="white-space: nowrap;">Import</button>
+                <button type="button" class="win-button" id="browse-file-btn">📄 File...</button>
+                <button type="button" class="win-button" id="browse-folder-btn">📁 Folder...</button>
+                <button type="submit" class="win-button">Import</button>
               </div>
             </form>
-            <p style="font-size: 0.85rem; color: #64748b;" id="import-status-msg"></p>
+            <p style="font-size: 11px; color: #555555; margin-top: 8px;" id="import-status-msg"></p>
           </div>
         </section>
 
         <!-- SEARCH VIEW -->
         <section class="view-section" id="view-search">
-          <div class="glass-card">
-            <div class="card-title">AI Semantic & Tag Search</div>
+          <div class="group-box">
+            <div class="group-box-title">AI Semantic & Tag Search</div>
             <form id="search-form">
               <div class="form-group">
-                <input class="input-field" id="search-text-input" placeholder="Type natural language query (e.g. 'a cute dog sleeping')..." />
-                <input class="input-field" id="search-tag-input" placeholder="Filter by tag name (optional)..." style="max-width: 200px;" />
-                <button type="submit" class="btn-primary">Search</button>
+                <input class="input-field" id="search-text-input" placeholder="Type natural language query (e.g. 'a cute dog sleeping')..." style="flex: 1;" />
+                <input class="input-field" id="search-tag-input" placeholder="Filter by tag name (optional)..." style="width: 200px;" />
+                <button type="submit" class="win-button">Search</button>
               </div>
             </form>
           </div>
           
-          <div class="image-grid" id="search-results-grid" style="margin-top: 2rem;">
-            <!-- Results dynamically populated -->
+          <div class="group-box" style="margin-top: 1.5rem;">
+            <div class="group-box-title">Search Results</div>
+            <div class="image-grid" id="search-results-grid">
+              <!-- Results dynamically populated -->
+            </div>
           </div>
         </section>
 
         <!-- PLUGINS VIEW -->
         <section class="view-section" id="view-plugins">
-          <div class="glass-card">
-            <div class="card-title">Verify Plugin manifest.json</div>
+          <div class="group-box">
+            <div class="group-box-title">Verify Plugin manifest.json</div>
             <form id="plugin-form">
               <div class="form-group">
-                <input class="input-field" id="plugin-path-input" placeholder="Enter absolute path to manifest.json file..." required />
-                <button type="submit" class="btn-primary">Validate Signature</button>
+                <input class="input-field" id="plugin-path-input" placeholder="Enter absolute path to manifest.json file..." style="flex: 1;" required />
+                <button type="submit" class="win-button">Validate Signature</button>
               </div>
             </form>
-            <div id="plugin-validation-result" style="margin-top: 1rem; font-size: 0.95rem;">
+            <div id="plugin-validation-result" style="margin-top: 12px; font-size: 11px;">
               <!-- Result details -->
             </div>
+          </div>
+        </section>
+
+        <!-- LOGS VIEW -->
+        <section class="view-section" id="view-logs">
+          <div class="group-box" style="display: flex; flex-direction: column; height: calc(100vh - 120px);">
+            <div class="group-box-title">Application Logs</div>
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+              <button class="win-button" id="refresh-logs-btn">🔄 Refresh Logs</button>
+              <button class="win-button" id="clear-logs-btn">❌ Clear Logs</button>
+            </div>
+            <textarea id="log-textarea" readonly style="flex: 1; font-family: 'Consolas', monospace; font-size: 11px; background-color: #ffffff; color: #000000; border: 1px solid #7a7a7a; padding: 8px; resize: none; overflow-y: scroll; outline: none;"></textarea>
           </div>
         </section>
       </main>
     </div>
 
-    <!-- Add Tag Modal -->
+    <!-- Status Strip -->
+    <footer class="status-strip">
+      <div class="status-cell">
+        <div class="status-dot" id="service-dot"></div>
+        <span id="service-status-text">Connecting...</span>
+      </div>
+      <div class="status-cell">
+        <span>Ready</span>
+      </div>
+    </footer>
+
+    <!-- Add Tag Modal Dialog -->
     <div class="modal" id="add-tag-modal">
       <div class="modal-content">
         <div class="modal-header">
-          <h2 style="font-size: 1.25rem; font-weight: 600; color: white;">Manage Image Tags</h2>
+          <span class="modal-title">Manage Image Tags</span>
           <span class="modal-close" id="close-modal">&times;</span>
         </div>
         <form id="tag-form">
-          <input type="hidden" id="tag-image-id" />
-          <div style="margin-bottom: 1.5rem;">
-            <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 0.5rem;" id="tag-image-path-preview"></p>
-            <div id="modal-tag-list" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 1rem;">
-              <!-- Active tags list -->
+          <div class="modal-body">
+            <input type="hidden" id="tag-image-id" />
+            <p style="font-size: 11px; color: #555555; word-break: break-all;" id="tag-image-path-preview"></p>
+            
+            <div class="group-box" style="margin: 4px 0;">
+              <div class="group-box-title">Active Tags</div>
+              <div id="modal-tag-list" style="display: flex; flex-wrap: wrap; gap: 4px; min-height: 24px;">
+                <!-- Active tags list -->
+              </div>
             </div>
-          </div>
-          <div class="form-group">
-            <input class="input-field" id="tag-name-input" placeholder="Enter tag name (e.g. meme)..." required />
-            <button type="submit" class="btn-primary">Add Tag</button>
+
+            <div class="form-group" style="margin-top: 8px;">
+              <input class="input-field" id="tag-name-input" placeholder="Enter tag name (e.g. meme)..." style="flex: 1;" required />
+              <button type="submit" class="win-button">Add Tag</button>
+            </div>
           </div>
         </form>
       </div>

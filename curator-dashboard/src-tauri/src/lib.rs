@@ -94,6 +94,52 @@ fn get_spawn_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+/// Returns true when `s` appears to contain a complete JSON value
+/// (balanced braces/brackets), accounting for strings and escapes.
+fn is_json_complete(s: &str) -> bool {
+    let s = s.trim();
+    if s.is_empty() {
+        return false;
+    }
+    // Simple string "..." or bare number/bool/null
+    let first = s.chars().next().unwrap();
+    if first != '{' && first != '[' {
+        // Strings, numbers, true/false/null — complete if non-empty
+        return true;
+    }
+    let mut depth: i64 = 0;
+    let mut in_string = false;
+    let mut escape = false;
+    for c in s.chars() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        if c == '\\' && in_string {
+            escape = true;
+            continue;
+        }
+        if c == '"' {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
+        match c {
+            '{' | '[' => depth += 1,
+            '}' | ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 #[tauri::command]
 async fn send_to_service(request_json: String) -> Result<String, String> {
     let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
@@ -183,17 +229,35 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
             err_msg
         })?;
 
-    // 5. Read response JSON
-    let mut response_buffer = vec![0; 131072]; // 128KB buffer for large lists
-    let n = client.read(&mut response_buffer).await
-        .map_err(|e| {
-            let err_msg = format!("Response read failed: {:?}", e);
-            log_dashboard_event(&err_msg);
-            err_msg
-        })?;
+    // 5. Read response JSON — loop until we have a complete JSON value
+    // Windows named pipes can split large responses across multiple reads.
+    let mut accumulated = Vec::new();
+    let mut chunk = vec![0u8; 65536];
+    loop {
+        let n = client.read(&mut chunk).await
+            .map_err(|e| {
+                let err_msg = format!("Response read failed: {:?}", e);
+                log_dashboard_event(&err_msg);
+                err_msg
+            })?;
+        if n == 0 {
+            break; // EOF / pipe closed
+        }
+        accumulated.extend_from_slice(&chunk[..n]);
 
-    let response_str = String::from_utf8_lossy(&response_buffer[..n]).to_string();
-    log_dashboard_event("Successfully received response from service.");
+        // Check if the accumulated bytes form a complete JSON value.
+        // We detect this by counting open/close braces/brackets and
+        // ensuring they're balanced with at least one char read.
+        if let Ok(s) = std::str::from_utf8(&accumulated) {
+            let s = s.trim();
+            if !s.is_empty() && is_json_complete(s) {
+                break;
+            }
+        }
+    }
+
+    let response_str = String::from_utf8_lossy(&accumulated).to_string();
+    log_dashboard_event(&format!("Successfully received response from service ({} bytes).", response_str.len()));
     Ok(response_str)
 }
 #[tauri::command]
@@ -208,11 +272,50 @@ async fn select_path(is_directory: bool) -> Result<Option<String>, String> {
     }
 }
 
+#[tauri::command]
+async fn read_logs() -> Result<String, String> {
+    let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
+    let log_file = data_dir.join("dashboard.log");
+    match fs::read_to_string(&log_file) {
+        Ok(content) => Ok(content),
+        Err(e) => Err(format!("Failed to read log file: {:?}", e))
+    }
+}
+
+#[tauri::command]
+async fn clear_logs() -> Result<(), String> {
+    let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
+    let log_file = data_dir.join("dashboard.log");
+    fs::write(&log_file, "")
+        .map_err(|e| format!("Failed to clear logs: {:?}", e))
+}
+
+#[tauri::command]
+fn log_frontend(message: String) {
+    log_dashboard_event(&format!("[JS] {}", message));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![send_to_service, select_path])
+        .setup(|_app| {
+            let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
+            let _ = fs::create_dir_all(&data_dir);
+            let log_file = data_dir.join("dashboard.log");
+            let stdout_log = data_dir.join("service_stdout.log");
+            let _ = fs::write(&log_file, "");
+            let _ = fs::write(&stdout_log, "");
+            log_dashboard_event("Dashboard started. Cleaned log files.");
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            send_to_service,
+            select_path,
+            read_logs,
+            clear_logs,
+            log_frontend
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
