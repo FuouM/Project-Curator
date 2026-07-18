@@ -341,9 +341,6 @@ body {
   margin-top: 4px;
 }
 .tag-pill {
-  background-color: #e1dfdd;
-  border: 1px solid #adadad;
-  color: #323130;
   font-size: 11px;
   padding: 1px 6px;
   display: inline-flex;
@@ -351,10 +348,42 @@ body {
   gap: 4px;
   border-radius: 2px;
 }
+/* User added tags: Gold/Orange */
+.tag-pill.tag-user {
+  background-color: #fff3cd;
+  border: 1px solid #ffeeba;
+  color: #856404;
+  font-weight: 500;
+}
+/* Character tags: Light Blue/Cyan */
+.tag-pill.tag-character {
+  background-color: #d1ecf1;
+  border: 1px solid #bee5eb;
+  color: #0c5460;
+}
+/* Copyright series tags: Light Purple */
+.tag-pill.tag-copyright {
+  background-color: #ebdcf9;
+  border: 1px solid #dcbdf5;
+  color: #511c74;
+}
+/* Meta layout tags: Dark Gray */
+.tag-pill.tag-meta {
+  background-color: #e2e3e5;
+  border: 1px solid #d6d8db;
+  color: #383d41;
+}
+/* Rank 3 tags: White/Light Gray */
+.tag-pill.tag-rank-3 {
+  background-color: #ffffff;
+  border: 1px solid #e0e0e0;
+  color: #4a4a4a;
+}
 .tag-remove-btn {
   cursor: pointer;
   font-weight: bold;
   color: #a80000;
+  margin-left: 2px;
 }
 .tag-remove-btn:hover {
   color: #e81123;
@@ -435,7 +464,8 @@ body {
   background-color: var(--sys-control-bg);
   border: 1px solid #7a7a7a;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  width: 400px;
+  width: 420px;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
 }
@@ -446,6 +476,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 .modal-title {
   font-weight: bold;
@@ -460,4 +491,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+#modal-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+  padding: 4px;
+  background-color: var(--sys-window-bg);
+  border: 1px solid var(--sys-border-dark);
 }

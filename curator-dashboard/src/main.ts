@@ -16,13 +16,16 @@ type RequestPayload =
   | { Search: { query_text: string | null; tag_filter: string | null; limit: number } }
   | { ListImages: { limit: number; offset: number } }
   | { GetImage: { image_id: number } }
-  | { ValidatePlugin: { manifest_path: string } };
+  | { ValidatePlugin: { manifest_path: string } }
+  | { TagImage: { image_id: number; threshold: number | null; force: boolean | null } }
+  | { TagImageBatch: { image_ids: number[]; threshold: number | null; force: boolean | null } }
+  | { GetTaggerStatus: null };
 
 interface SearchMatch {
   id: number;
   filepath: string;
   score: number;
-  tags: string[];
+  tags: TagSummary[];
 }
 
 interface ImageDetails {
@@ -31,8 +34,14 @@ interface ImageDetails {
   current_filepath: string;
   mtime: number;
   created_at: string;
-  tags: string[];
+  tags: TagSummary[];
   vector_state: string;
+}
+
+interface TagSummary {
+  tag: string;
+  category: string;
+  confidence: number;
 }
 
 type ResponsePayload =
@@ -44,12 +53,13 @@ type ResponsePayload =
   | { StatusResult: { image_count: number; vector_count: number; pending_jobs: number } }
   | { ImageResult: { image: ImageDetails } }
   | { ListResult: { images: ImageDetails[] } }
-  | { ValidationResult: { name: string; version: string; valid: boolean; error: string | null } };
+  | { ValidationResult: { name: string; version: string; valid: boolean; error: string | null } }
+  | { TagImageResult: { image_id: number; tags_applied: number; skipped: boolean; tags: TagSummary[] } }
+  | { BatchTagResult: { processed: number; failed: number; skipped: number } }
+  | { TaggerStatusResult: { loaded: boolean; model_path: string; total_tags: number } };
 
 // Helpers for invoking the service through Rust Named Pipe bridge
 async function callService(request: RequestPayload): Promise<ResponsePayload> {
-  // Translate RequestPayload enum to Rust Serde structure representation
-  // Rust expects Request::Ping, Request::ImportImage { path: ... }, etc.
   let formattedReq: any;
   if ("Ping" in request) {
     formattedReq = "Ping";
@@ -69,6 +79,12 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
     formattedReq = { GetImage: request.GetImage };
   } else if ("ValidatePlugin" in request) {
     formattedReq = { ValidatePlugin: request.ValidatePlugin };
+  } else if ("TagImage" in request) {
+    formattedReq = { TagImage: request.TagImage };
+  } else if ("TagImageBatch" in request) {
+    formattedReq = { TagImageBatch: request.TagImageBatch };
+  } else if ("GetTaggerStatus" in request) {
+    formattedReq = "GetTaggerStatus";
   }
 
   try {
@@ -91,6 +107,9 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
     if (parsed.ImageResult) return { ImageResult: parsed.ImageResult };
     if (parsed.ListResult) return { ListResult: parsed.ListResult };
     if (parsed.ValidationResult) return { ValidationResult: parsed.ValidationResult };
+    if (parsed.TagImageResult) return { TagImageResult: parsed.TagImageResult };
+    if (parsed.BatchTagResult) return { BatchTagResult: parsed.BatchTagResult };
+    if (parsed.TaggerStatusResult) return { TaggerStatusResult: parsed.TaggerStatusResult };
 
     throw new Error("Unknown response format: " + respStr);
   } catch (err: any) {
@@ -99,13 +118,12 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
   }
 }
 
-
-
 function init() {
   setupNavigation();
   setupForms();
   startStatusPolling();
   refreshDashboard();
+  setupTaggerCard();
 }
 
 if (document.readyState === "loading") {
@@ -204,6 +222,16 @@ function startStatusPolling() {
         if (imgEl) imgEl.textContent = image_count.toString();
         if (vecEl) vecEl.textContent = vector_count.toString();
         if (pendEl) pendEl.textContent = pending_jobs.toString();
+
+        // Also refresh tagger status card value
+        try {
+          const tStatus = await callService({ GetTaggerStatus: null });
+          const taggerEl = document.getElementById("stat-tagger");
+          if (taggerEl && "TaggerStatusResult" in tStatus) {
+            taggerEl.textContent = tStatus.TaggerStatusResult.loaded ? "Loaded" : "Ready";
+          }
+        } catch (te) {}
+
       } else if ("Error" in resp) {
         logJS("startStatusPolling returned Error response: " + resp.Error.message);
         if (dot && text) {
@@ -358,7 +386,7 @@ function setupForms() {
         if (valid) {
           pluginResult.innerHTML = `
             <div style="background-color: #dff6dd; border: 1px solid #107c41; padding: 8px; margin-top: 8px;">
-              <h3 style="color: #107c41; margin-bottom: 4px; font-weight: bold;">Validation Success!</h3>
+               <h3 style="color: #107c41; margin-bottom: 4px; font-weight: bold;">Validation Success!</h3>
               <p><strong>Name:</strong> ${name}</p>
               <p><strong>Version:</strong> ${version}</p>
               <p style="color: #555555; font-size: 11px; margin-top: 4px;">Signature validated locally with master key.</p>
@@ -377,6 +405,9 @@ function setupForms() {
       pluginResult.innerHTML = `<p style="color: #f87171;">IPC error: ${e}</p>`;
     }
   });
+
+  // Auto-tag modal button
+  document.getElementById("auto-tag-modal-btn")?.addEventListener("click", handleModalAutoTag);
 }
 
 // Refresh Image Grids
@@ -384,7 +415,7 @@ async function refreshDashboard() {
   const featuredContainer = document.getElementById("featured-day-content");
 
   try {
-    // 1. Get total image count via status (already polled — lightweight)
+    // 1. Get total image count via status
     const statusResp = await callService({ GetStatus: null });
     if (!("StatusResult" in statusResp)) {
       throw new Error("Could not reach service");
@@ -403,12 +434,12 @@ async function refreshDashboard() {
       return;
     }
 
-    // 2. Compute a daily-seeded offset so featured changes each day but is stable within a session
+    // 2. Compute stable daily-seeded offset
     const today = new Date();
     const daySeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
     const featuredOffset = daySeed % image_count;
 
-    // 3. Fetch featured and latest in parallel — both independent after offset is known
+    // 3. Fetch featured and latest in parallel
     const [featuredResp, latestResp] = await Promise.all([
       callService({ ListImages: { limit: 6, offset: featuredOffset } }),
       callService({ ListImages: { limit: 8, offset: 0 } }),
@@ -456,7 +487,7 @@ function renderFeaturedDay(featured: ImageDetails) {
         <div>
           <span style="color: #666666; font-size: 10px;">Assigned Tags:</span>
           <div class="tag-list" style="margin-top: 2px;">
-            ${featured.tags.length > 0 ? featured.tags.map(t => `<span class="tag-pill">${t}</span>`).join("") : '<span style="color: #999999; font-style: italic; font-size: 11px;">None</span>'}
+            ${featured.tags.length > 0 ? featured.tags.map(t => getTagPillHtml(t)).join("") : '<span style="color: #999999; font-style: italic; font-size: 11px;">None</span>'}
           </div>
         </div>
         <div style="margin-top: 8px; display: flex; gap: 8px;">
@@ -474,24 +505,19 @@ function renderFeaturedDay(featured: ImageDetails) {
     </div>
   `;
 
-  // Bind the "Find Similar" button to search using the filepath as search query or similar concept
   document.getElementById("featured-search-btn")?.addEventListener("click", async () => {
-    // Navigate to Search view
     const searchNavItem = document.querySelector('.nav-item[data-view="search"]') as HTMLElement;
     if (searchNavItem) {
       searchNavItem.click();
       
-      // Let's populate the query text input with the filepath or tags of this image to trigger a search
       const queryInput = document.getElementById("search-text-input") as HTMLInputElement;
       if (queryInput) {
         queryInput.value = featured.tags.length > 0 ? featured.tags[0] : "image matching featured characteristics";
-        // Submit the search
         document.getElementById("search-form")?.dispatchEvent(new Event("submit"));
       }
     }
   });
 }
-
 
 let galleryPage = 0;
 const IMAGES_PER_PAGE = 12;
@@ -523,17 +549,54 @@ async function refreshGallery() {
   }
 }
 
+// Track double-click confirmation states for auto-tag overwrite
+let overwriteTargetId: number | null = null;
+
 // Open tag modal
 async function openTagModal(imgId: number, path: string) {
   const modal = document.getElementById("add-tag-modal");
   const idInput = document.getElementById("tag-image-id") as HTMLInputElement;
   const pathPreview = document.getElementById("tag-image-path-preview");
+  const statusArea = document.getElementById("auto-tag-modal-status");
+  const autoTagBtn = document.getElementById("auto-tag-modal-btn");
 
   if (idInput) idInput.value = imgId.toString();
   if (pathPreview) pathPreview.textContent = path;
+  if (statusArea) statusArea.textContent = ""; 
+  if (autoTagBtn) {
+    autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
+    autoTagBtn.style.backgroundColor = "";
+  }
+  overwriteTargetId = null; // Reset overwrite state
 
   await refreshModalTags(imgId);
   modal?.classList.add("active");
+}
+
+// Helper to generate a styled tag pill HTML based on category
+function getTagPillHtml(t: TagSummary, isDeletable = false, imageId = 0): string {
+  let styleClass = "tag-rank-3"; // Default general / rank 3 (white)
+  
+  switch (t.category) {
+    case "user":
+      styleClass = "tag-user";
+      break;
+    case "character":
+      styleClass = "tag-character";
+      break;
+    case "copyright":
+      styleClass = "tag-copyright";
+      break;
+    case "meta":
+      styleClass = "tag-meta";
+      break;
+  }
+
+  const deleteBtn = isDeletable && t.category === "user"
+    ? ` <span class="tag-remove-btn" title="Remove user tag" onclick="window.removeTag(${imageId}, '${t.tag}')">&times;</span>`
+    : "";
+
+  return `<span class="tag-pill ${styleClass}">${t.tag}${deleteBtn}</span>`;
 }
 
 async function refreshModalTags(imgId: number) {
@@ -546,14 +609,13 @@ async function refreshModalTags(imgId: number) {
     if ("ImageResult" in resp) {
       const img = resp.ImageResult.image;
       img.tags.forEach((tag) => {
-        const pill = document.createElement("span");
-        pill.className = "tag-pill";
-        // To simplify, let's query the database tags. For deletion, we need tag_id. 
-        // In this MVP front-end we can list tags.
-        pill.innerHTML = `
-          ${tag}
-        `;
-        container.appendChild(pill);
+        const pillHtml = getTagPillHtml(tag, true, imgId);
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = pillHtml;
+        const pillNode = tempDiv.firstChild;
+        if (pillNode) {
+          container.appendChild(pillNode);
+        }
       });
     }
   } catch (e) {
@@ -576,11 +638,14 @@ function renderImages(images: ImageDetails[], gridId: string) {
     const card = document.createElement("div");
     card.className = "image-card";
     
-    // We map vector state to badge colors
     const badgeClass = img.vector_state === "ready" ? "badge-ready" : "badge-pending";
     const srcUrl = convertFileSrc(img.current_filepath);
     
-    // We render actual image and fallback to placeholder icon if error
+    const displayTags = img.tags.slice(0, 10);
+    const extraCount = img.tags.length - 10;
+    const tagHtml = displayTags.map(t => getTagPillHtml(t)).join("") + 
+                    (extraCount > 0 ? `<span class="tag-pill" style="background-color: #f0f0f0; color: #555555; font-style: italic;">+${extraCount} more</span>` : "");
+    
     card.innerHTML = `
       <div class="image-preview">
         <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
@@ -590,7 +655,7 @@ function renderImages(images: ImageDetails[], gridId: string) {
       <div class="image-info">
         <div class="image-path" title="${img.current_filepath}">${img.current_filepath}</div>
         <div class="tag-list">
-          ${img.tags.map(t => `<span class="tag-pill">${t}</span>`).join("")}
+          ${tagHtml}
         </div>
         <button class="win-button" style="font-size: 11px; margin-top: auto;" onclick="window.openTags(${img.id}, '${img.current_filepath.replace(/\\/g, '\\\\')}')">
           <i class="bi bi-tag"></i> Manage Tags
@@ -599,6 +664,87 @@ function renderImages(images: ImageDetails[], gridId: string) {
     `;
     grid.appendChild(card);
   });
+}
+
+// Click listener to trigger info details alert from card
+function setupTaggerCard() {
+  document.getElementById("tagger-stat-card")?.addEventListener("click", async () => {
+    try {
+      const resp = await callService({ GetTaggerStatus: null });
+      if ("TaggerStatusResult" in resp) {
+        const { loaded, model_path, total_tags } = resp.TaggerStatusResult;
+        alert(
+          `Camie Tagger v2 Status:\n\n` +
+          `- Model Loaded: ${loaded ? "Yes (active in RAM)" : "No (ready to load)"}\n` +
+          `- Model File: ${model_path}\n` +
+          `- Supported Tags: ${total_tags > 0 ? total_tags : "N/A"}`
+        );
+      }
+    } catch (e: any) {
+      alert("Failed to query tagger status: " + e.message);
+    }
+  });
+}
+
+// Action for Modal Auto-Tag
+async function handleModalAutoTag() {
+  const idInput = document.getElementById("tag-image-id") as HTMLInputElement;
+  const thresholdSelect = document.getElementById("tagger-threshold-select") as HTMLSelectElement;
+  const statusArea = document.getElementById("auto-tag-modal-status");
+  const autoTagBtn = document.getElementById("auto-tag-modal-btn");
+
+  if (!idInput || !statusArea || !thresholdSelect || !autoTagBtn) return;
+
+  const imageId = parseInt(idInput.value);
+  const threshold = parseFloat(thresholdSelect.value);
+
+  // Check if we are in confirm overwrite phase for this specific image
+  const force = (overwriteTargetId === imageId);
+
+  statusArea.textContent = "AI Running inference (lazy loading model if first run)...";
+  statusArea.style.color = "#fbbf24";
+
+  try {
+    const resp = await callService({ TagImage: { image_id: imageId, threshold, force } });
+    if ("TagImageResult" in resp) {
+      const { tags_applied, skipped, tags } = resp.TagImageResult;
+      if (skipped) {
+        // AI tags already exist, trigger overwrite confirmation flow
+        overwriteTargetId = imageId;
+        statusArea.textContent = "Tags already exist. Click Auto-Tag again to overwrite.";
+        statusArea.style.color = "#b7791f";
+        autoTagBtn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Confirm Overwrite?';
+        autoTagBtn.style.backgroundColor = "#ffeb3b";
+      } else {
+        // Success
+        statusArea.textContent = `Applied ${tags_applied} tags successfully!`;
+        statusArea.style.color = "#10b981";
+        autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
+        autoTagBtn.style.backgroundColor = "";
+        overwriteTargetId = null; // Reset
+
+        // Refresh active list in modal
+        await refreshModalTags(imageId);
+        // Refresh grids in background
+        refreshDashboard();
+        if (document.getElementById("view-gallery")?.classList.contains("active")) {
+          refreshGallery();
+        }
+      }
+    } else if ("Error" in resp) {
+      statusArea.textContent = `Failed: ${resp.Error.message}`;
+      statusArea.style.color = "#ef4444";
+      autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
+      autoTagBtn.style.backgroundColor = "";
+      overwriteTargetId = null;
+    }
+  } catch (e: any) {
+    statusArea.textContent = `Error: ${e.message || e}`;
+    statusArea.style.color = "#ef4444";
+    autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
+    autoTagBtn.style.backgroundColor = "";
+    overwriteTargetId = null;
+  }
 }
 
 function renderSearchResults(matches: SearchMatch[]) {
@@ -616,6 +762,11 @@ function renderSearchResults(matches: SearchMatch[]) {
     card.className = "image-card";
     const srcUrl = convertFileSrc(m.filepath);
     
+    const displayTags = m.tags.slice(0, 10);
+    const extraCount = m.tags.length - 10;
+    const tagHtml = displayTags.map(t => getTagPillHtml(t)).join("") + 
+                    (extraCount > 0 ? `<span class="tag-pill" style="background-color: #f0f0f0; color: #555555; font-style: italic;">+${extraCount} more</span>` : "");
+    
     card.innerHTML = `
       <div class="image-preview">
         <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
@@ -625,7 +776,7 @@ function renderSearchResults(matches: SearchMatch[]) {
       <div class="image-info">
         <div class="image-path" title="${m.filepath}">${m.filepath}</div>
         <div class="tag-list">
-          ${m.tags.map(t => `<span class="tag-pill">${t}</span>`).join("")}
+          ${tagHtml}
         </div>
         <button class="win-button" style="font-size: 11px; margin-top: auto;" onclick="window.openTags(${m.id}, '${m.filepath.replace(/\\/g, '\\\\')}')">
           <i class="bi bi-tag"></i> Manage Tags
@@ -639,6 +790,24 @@ function renderSearchResults(matches: SearchMatch[]) {
 // Expose tag management globally for inline onclick handlers
 (window as any).openTags = (imgId: number, path: string) => {
   openTagModal(imgId, path);
+};
+
+(window as any).removeTag = async (imgId: number, tagName: string) => {
+  if (!confirm(`Are you sure you want to remove the tag "${tagName}"?`)) return;
+  try {
+    const resp = await callService({ RemoveTag: { image_id: imgId, tag: tagName } });
+    if ("Success" in resp) {
+      await refreshModalTags(imgId);
+      refreshDashboard();
+      if (document.getElementById("view-gallery")?.classList.contains("active")) {
+        refreshGallery();
+      }
+    } else if ("Error" in resp) {
+      alert("Failed to remove tag: " + resp.Error.message);
+    }
+  } catch (e: any) {
+    alert("Error calling tag removal: " + e.message);
+  }
 };
 
 async function refreshLogs() {

@@ -22,9 +22,9 @@ enum Commands {
     Ping,
     /// Get database and worker queue status
     Status,
-    /// Import an image file
+    /// Import an image file or directory
     Import {
-        /// Absolute path to the image file
+        /// Absolute path to the image file or folder
         path: String,
     },
     /// Manage tags on images
@@ -61,6 +61,35 @@ enum Commands {
     ValidatePlugin {
         manifest_path: String,
     },
+    /// Auto-tag a single image with Camie Tagger v2
+    TagAuto {
+        /// ID of the image to tag
+        image_id: i64,
+
+        /// Confidence threshold (0.0–1.0).
+        /// 0.50 = balanced (default), 0.65 = high precision, 0.35 = high recall
+        #[arg(short, long)]
+        threshold: Option<f32>,
+
+        /// Wipe existing AI tags before running
+        #[arg(short, long)]
+        force: bool,
+    },
+    /// Auto-tag all images in the library that don't already have AI tags
+    TagAutoBatch {
+        /// Confidence threshold. Defaults to 0.50 (balanced).
+        #[arg(short, long)]
+        threshold: Option<f32>,
+
+        /// Wipe existing AI tags before running
+        #[arg(short, long)]
+        force: bool,
+
+        /// Optional list of specific image IDs (space-separated). If omitted, tags all untagged images.
+        image_ids: Vec<i64>,
+    },
+    /// Show the current status of the Camie Tagger model
+    TaggerStatus,
 }
 
 #[derive(Subcommand, Debug)]
@@ -75,7 +104,7 @@ enum TagCommands {
     /// Remove a tag from an image (soft-delete)
     Remove {
         image_id: i64,
-        tag_id: i64,
+        tag: String,
     },
 }
 
@@ -103,13 +132,63 @@ async fn main() -> Result<(), Error> {
         Commands::Status => Request::GetStatus,
         Commands::Import { path } => Request::ImportImage { path },
         Commands::Tag { action } => match action {
-            TagCommands::Add { image_id, tag, category } => Request::AddTag { image_id, tag, category },
-            TagCommands::Remove { image_id, tag_id } => Request::RemoveTag { image_id, tag_id },
+            TagCommands::Add {
+                image_id,
+                tag,
+                category,
+            } => Request::AddTag {
+                image_id,
+                tag,
+                category,
+            },
+            TagCommands::Remove { image_id, tag } => Request::RemoveTag { image_id, tag },
         },
-        Commands::Search { query, tag, limit } => Request::Search { query_text: query, tag_filter: tag, limit },
+        Commands::Search { query, tag, limit } => Request::Search {
+            query_text: query,
+            tag_filter: tag,
+            limit,
+        },
         Commands::List { limit, offset } => Request::ListImages { limit, offset },
         Commands::Show { image_id } => Request::GetImage { image_id },
-        Commands::ValidatePlugin { manifest_path } => Request::ValidatePlugin { manifest_path },
+        Commands::ValidatePlugin { manifest_path } => {
+            Request::ValidatePlugin { manifest_path }
+        }
+        Commands::TagAuto {
+            image_id,
+            threshold,
+            force,
+        } => Request::TagImage {
+            image_id,
+            threshold,
+            force: Some(force),
+        },
+        Commands::TagAutoBatch {
+            threshold,
+            force,
+            image_ids,
+        } => {
+            if image_ids.is_empty() {
+                // Fetch all image IDs from the service first if no IDs provided.
+                // For simplicity we use a large ListImages request.
+                eprintln!(
+                    "No image IDs provided; batch will tag ALL images. \
+                     This may take a long time. Use Ctrl+C to cancel, \
+                     or pass specific IDs: tag-auto-batch <id1> <id2> ..."
+                );
+                Request::TagImageBatch {
+                    image_ids: vec![],
+                    threshold,
+                    force: Some(force),
+                }
+            } else {
+                Request::TagImageBatch {
+                    image_ids,
+                    threshold,
+                    force: Some(force),
+                }
+            }
+        }
+        Commands::TaggerStatus => Request::GetTaggerStatus,
     };
 
     // 3. Connect to Named Pipe IPC Server
@@ -120,24 +199,42 @@ async fn main() -> Result<(), Error> {
 
     // 4. Perform Handshake (Send Token)
     client.write_all(token.as_bytes()).await?;
-    
+
     let mut auth_buffer = vec![0; 32];
     let n = client.read(&mut auth_buffer).await?;
     let auth_status = String::from_utf8_lossy(&auth_buffer[..n]);
     if auth_status != "AUTH_OK" {
-        return Err(anyhow::anyhow!("Service authentication failed: {}", auth_status));
+        return Err(anyhow::anyhow!(
+            "Service authentication failed: {}",
+            auth_status
+        ));
     }
 
     // 5. Send Request
     let request_str = serde_json::to_string(&request)?;
     client.write_all(request_str.as_bytes()).await?;
-
+    client.flush().await?;
+    // Shutdown write half so the service knows we are done sending requests
+    // but keep read half open. NamedPipeServer loop reads until connection closes.
+    // In our architecture, it is a request-response pattern.
+    // Let's read until we get the full response packet.
+    
     // 6. Read Response
-    let mut response_buffer = vec![0; 65536]; // larger buffer for image list/search matches
-    let n = client.read(&mut response_buffer).await?;
-    let response_str = String::from_utf8_lossy(&response_buffer[..n]);
-    let response: Response = serde_json::from_str(&response_str)
-        .context("Failed to parse response JSON from service")?;
+    let mut response_buffer = Vec::new();
+    let mut temp_buf = vec![0; 65536];
+    loop {
+        let n = client.read(&mut temp_buf).await?;
+        if n == 0 {
+            break;
+        }
+        response_buffer.extend_from_slice(&temp_buf[..n]);
+        // If we can parse a valid Response JSON, we have the complete packet.
+        if serde_json::from_slice::<Response>(&response_buffer).is_ok() {
+            break;
+        }
+    }
+    let response: Response = serde_json::from_slice(&response_buffer)
+        .context("Failed to parse response JSON from service. The buffer may have been truncated.")?;
 
     // 7. Format and Print Response
     match response {
@@ -150,10 +247,14 @@ async fn main() -> Result<(), Error> {
             println!("  SHA256: {}", sha256);
             println!("  (Background job scheduled for vector embedding generation)");
         }
-        Response::StatusResult { image_count, vector_count, pending_jobs } => {
+        Response::StatusResult {
+            image_count,
+            vector_count,
+            pending_jobs,
+        } => {
             println!("Curator Database Status:");
-            println!("  Images Imported:  {}", image_count);
-            println!("  Vectors Indexed:  {}", vector_count);
+            println!("  Images Imported:   {}", image_count);
+            println!("  Vectors Indexed:   {}", vector_count);
             println!("  Pending Job Queue: {}", pending_jobs);
         }
         Response::SearchResult { matches } => {
@@ -162,9 +263,16 @@ async fn main() -> Result<(), Error> {
             } else {
                 println!("Search Results ({} matches):", matches.len());
                 for (idx, m) in matches.iter().enumerate() {
-                    println!("{}. [ID: {}] {} (Score: {:.4})", idx + 1, m.id, m.filepath, m.score);
+                    println!(
+                        "{}. [ID: {}] {} (Score: {:.4})",
+                        idx + 1,
+                        m.id,
+                        m.filepath,
+                        m.score
+                    );
                     if !m.tags.is_empty() {
-                        println!("    Tags: {}", m.tags.join(", "));
+                        let tag_strs: Vec<String> = m.tags.iter().map(|t| format!("{}({})", t.tag, t.category)).collect();
+                        println!("    Tags: {}", tag_strs.join(", "));
                     }
                 }
             }
@@ -182,7 +290,12 @@ async fn main() -> Result<(), Error> {
         Response::ImageResult { image } => {
             print_image_details(&image);
         }
-        Response::ValidationResult { name, version, valid, error } => {
+        Response::ValidationResult {
+            name,
+            version,
+            valid,
+            error,
+        } => {
             if valid {
                 println!("Plugin manifest is VALID!");
                 println!("  Name:    {}", name);
@@ -191,6 +304,46 @@ async fn main() -> Result<(), Error> {
                 println!("Plugin manifest is INVALID!");
                 println!("  Error: {}", error.unwrap_or_default());
             }
+        }
+        Response::TagImageResult {
+            image_id,
+            tags_applied,
+            skipped,
+            tags,
+        } => {
+            if skipped {
+                println!("Image {} already has AI tags — skipped (use --force to re-tag).", image_id);
+            } else {
+                println!("Auto-tagged image {} — {} tags applied:", image_id, tags_applied);
+                for t in &tags {
+                    println!(
+                        "  [{:<12}] {:<40} ({:.2}%)",
+                        t.category,
+                        t.tag,
+                        t.confidence * 100.0
+                    );
+                }
+            }
+        }
+        Response::BatchTagResult {
+            processed,
+            failed,
+            skipped,
+        } => {
+            println!("Batch auto-tag complete:");
+            println!("  Tagged:  {}", processed);
+            println!("  Skipped: {} (already had AI tags)", skipped);
+            println!("  Failed:  {}", failed);
+        }
+        Response::TaggerStatusResult {
+            loaded,
+            model_path,
+            total_tags,
+        } => {
+            println!("Camie Tagger v2 Status:");
+            println!("  Loaded:     {}", if loaded { "Yes" } else { "No (lazy — loads on first use)" });
+            println!("  Model path: {}", model_path);
+            println!("  Tag count:  {}", if total_tags > 0 { total_tags.to_string() } else { "N/A (not loaded)".to_string() });
         }
     }
 
@@ -203,7 +356,8 @@ fn print_image_details(img: &ImageDetails) {
     println!("  SHA256:  {}", img.sha256);
     println!("  Indexed: {}", img.vector_state);
     if !img.tags.is_empty() {
-        println!("  Tags:    {}", img.tags.join(", "));
+        let tag_strs: Vec<String> = img.tags.iter().map(|t| format!("{}({})", t.tag, t.category)).collect();
+        println!("  Tags:    {}", tag_strs.join(", "));
     }
     println!("  Created: {}", img.created_at);
     println!();

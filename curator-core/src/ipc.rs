@@ -13,7 +13,7 @@ pub enum Request {
     },
     RemoveTag {
         image_id: i64,
-        tag_id: i64,
+        tag: String,
     },
     Search {
         query_text: Option<String>,
@@ -31,6 +31,23 @@ pub enum Request {
     ValidatePlugin {
         manifest_path: String,
     },
+    /// Run Camie Tagger v2 on a single image (on-demand, lazy-loads model).
+    TagImage {
+        image_id: i64,
+        /// Confidence threshold. None uses the balanced default (0.50).
+        threshold: Option<f32>,
+        /// If true, wipes existing Camie tags before tagging again.
+        force: Option<bool>,
+    },
+    /// Run Camie Tagger v2 on a batch of image IDs.
+    TagImageBatch {
+        image_ids: Vec<i64>,
+        threshold: Option<f32>,
+        /// If true, wipes existing Camie tags before tagging again.
+        force: Option<bool>,
+    },
+    /// Query whether the Camie Tagger model is currently loaded.
+    GetTaggerStatus,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -64,6 +81,26 @@ pub enum Response {
         valid: bool,
         error: Option<String>,
     },
+    /// Result of a single-image auto-tag operation.
+    TagImageResult {
+        image_id: i64,
+        tags_applied: usize,
+        /// True when the image already had Camie tags and was not re-tagged.
+        skipped: bool,
+        tags: Vec<TagSummary>,
+    },
+    /// Result of a batch auto-tag operation.
+    BatchTagResult {
+        processed: usize,
+        failed: usize,
+        skipped: usize,
+    },
+    /// Current state of the Camie Tagger engine.
+    TaggerStatusResult {
+        loaded: bool,
+        model_path: String,
+        total_tags: usize,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,7 +108,7 @@ pub struct SearchMatch {
     pub id: i64,
     pub filepath: String,
     pub score: f32,
-    pub tags: Vec<String>,
+    pub tags: Vec<TagSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +118,14 @@ pub struct ImageDetails {
     pub current_filepath: String,
     pub mtime: i64,
     pub created_at: String,
-    pub tags: Vec<String>,
+    pub tags: Vec<TagSummary>,
     pub vector_state: String,
+}
+
+/// A single predicted or user tag returned.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct TagSummary {
+    pub tag: String,
+    pub category: String,
+    pub confidence: f32,
 }

@@ -2,7 +2,8 @@ use anyhow::{Context, Error};
 use clap::Parser;
 use curator_core::db::init_db;
 use curator_core::vector::{ModelManager, VectorIndex};
-use curator_core::ipc::{Request, Response, SearchMatch, ImageDetails};
+use curator_core::ipc::{Request, Response, SearchMatch, ImageDetails, TagSummary};
+use curator_core::tagger::TaggerEngine;
 use sqlx::SqlitePool;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,6 +25,11 @@ use worker::BackgroundWorker;
 struct Args {
     #[arg(short, long, default_value = ".curator")]
     data_dir: String,
+
+    /// Directory containing camie-tagger-v2.onnx and camie-tagger-v2-metadata.json.
+    /// If not set or path is invalid, auto-tagging will be unavailable.
+    #[arg(long, default_value = "k:\\dataset\\camie-tagger-v2")]
+    tagger_model_dir: String,
 }
 
 #[tokio::main]
@@ -63,9 +69,15 @@ async fn main() -> Result<(), Error> {
     let db_path = data_dir.join("curator.db");
     let db = init_db(&db_path).await?;
 
-    // Seed the AI model source if missing
+    // Seed AI model sources if missing
     sqlx::query(
         "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES ('ai:clip-vit-b-32', 'AI_MODEL', '{}')"
+    )
+    .execute(&db)
+    .await?;
+
+    sqlx::query(
+        "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES ('ai:camie-tagger-v2', 'AI_MODEL', '{}')"
     )
     .execute(&db)
     .await?;
@@ -87,17 +99,26 @@ async fn main() -> Result<(), Error> {
     let index_path = data_dir.join("vector_index.usearch");
     let vector_index = Arc::new(VectorIndex::new(&index_path, 512)?);
 
-    // 5. Start Background Job Worker
+    // 5. Initialize Camie Tagger (lazy — does not load the model yet)
+    let tagger_dir = PathBuf::from(&args.tagger_model_dir);
+    let tagger = Arc::new(TaggerEngine::new(&tagger_dir));
+    info!(
+        "Camie Tagger configured at {:?} (model loads on first use)",
+        tagger_dir
+    );
+
+    // 6. Start Background Job Worker
     let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone());
     worker.start();
 
-    // 6. Start Named Pipe Server Loop
+    // 7. Start Named Pipe Server Loop
     let pipe_name = r"\\.\pipe\curator_ipc";
     info!("Listening on Named Pipe: {}", pipe_name);
 
     let db_arc = db.clone();
     let mm_arc = model_manager.clone();
     let vi_arc = vector_index.clone();
+    let tagger_arc = tagger.clone();
     let key_arc = Arc::new(service_key);
 
     // Named Pipe listener loop
@@ -114,10 +135,11 @@ async fn main() -> Result<(), Error> {
         let db = db_arc.clone();
         let mm = mm_arc.clone();
         let vi = vi_arc.clone();
+        let tagger = tagger_arc.clone();
         let key = key_arc.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = handle_client(server, db, mm, vi, key).await {
+            if let Err(e) = handle_client(server, db, mm, vi, tagger, key).await {
                 error!("Error handling IPC client: {:?}", e);
             }
         });
@@ -129,6 +151,7 @@ async fn handle_client(
     db: SqlitePool,
     model_manager: Arc<ModelManager>,
     vector_index: Arc<VectorIndex>,
+    tagger: Arc<TaggerEngine>,
     service_key: Arc<String>,
 ) -> Result<(), Error> {
     info!("New client connected to named pipe.");
@@ -161,7 +184,9 @@ async fn handle_client(
         let request: Request = match serde_json::from_str(&request_str) {
             Ok(r) => r,
             Err(e) => {
-                let err_resp = Response::Error { message: format!("Failed to parse request JSON: {:?}", e) };
+                let err_resp = Response::Error {
+                    message: format!("Failed to parse request JSON: {:?}", e),
+                };
                 let resp_str = serde_json::to_string(&err_resp)?;
                 stream.write_all(resp_str.as_bytes()).await?;
                 continue;
@@ -169,8 +194,9 @@ async fn handle_client(
         };
 
         info!("Received Request: {:?}", request);
-        let response = handle_request(request, &db, &model_manager, &vector_index).await;
-        
+        let response =
+            handle_request(request, &db, &model_manager, &vector_index, &tagger).await;
+
         let response_str = serde_json::to_string(&response)?;
         stream.write_all(response_str.as_bytes()).await?;
     }
@@ -184,97 +210,373 @@ async fn handle_request(
     db: &SqlitePool,
     model_manager: &ModelManager,
     vector_index: &VectorIndex,
+    tagger: &Arc<TaggerEngine>,
 ) -> Response {
     match request {
         Request::Ping => Response::Pong,
-        Request::GetStatus => {
-            match query_status(db).await {
-                Ok((images, vectors, pending)) => Response::StatusResult {
-                    image_count: images,
-                    vector_count: vectors,
-                    pending_jobs: pending,
-                },
-                Err(e) => Response::Error { message: e.to_string() }
+
+        Request::GetStatus => match query_status(db).await {
+            Ok((images, vectors, pending)) => Response::StatusResult {
+                image_count: images,
+                vector_count: vectors,
+                pending_jobs: pending,
+            },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
+        Request::ImportImage { path } => match import_image_logic(&path, db).await {
+            Ok((id, sha256)) => Response::ImportResult {
+                image_id: id,
+                sha256,
+            },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
+        Request::AddTag {
+            image_id,
+            tag,
+            category,
+        } => match add_tag_logic(image_id, &tag, &category, db).await {
+            Ok(_) => Response::Success,
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
+        Request::RemoveTag { image_id, tag } => {
+            // Find the tag ID
+            let tag_res: Option<(i64,)> = sqlx::query_as("SELECT id FROM tags WHERE name = ? LIMIT 1")
+                .bind(&tag)
+                .fetch_optional(db)
+                .await
+                .unwrap_or(None);
+
+            if let Some((tag_id,)) = tag_res {
+                // Find the user source ID
+                let user_source: Option<(i64,)> = sqlx::query_as("SELECT id FROM sources WHERE name = 'user' LIMIT 1")
+                    .fetch_optional(db)
+                    .await
+                    .unwrap_or(None);
+
+                if let Some((source_id,)) = user_source {
+                    // Soft-delete: only delete if the association was created by user
+                    match sqlx::query(
+                        "UPDATE image_tags
+                         SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP
+                         WHERE image_id = ? AND tag_id = ? AND source_id = ?",
+                    )
+                    .bind(image_id)
+                    .bind(tag_id)
+                    .bind(source_id)
+                    .execute(db)
+                    .await
+                    {
+                        Ok(_) => Response::Success,
+                        Err(e) => Response::Error {
+                            message: e.to_string(),
+                        },
+                    }
+                } else {
+                    Response::Error { message: "User source not found".to_string() }
+                }
+            } else {
+                Response::Error { message: "Tag not found".to_string() }
             }
         }
-        Request::ImportImage { path } => {
-            match import_image_logic(&path, db).await {
-                Ok((id, sha256)) => Response::ImportResult { image_id: id, sha256 },
-                Err(e) => Response::Error { message: e.to_string() }
-            }
-        }
-        Request::AddTag { image_id, tag, category } => {
-            match add_tag_logic(image_id, &tag, &category, db).await {
-                Ok(_) => Response::Success,
-                Err(e) => Response::Error { message: e.to_string() }
-            }
-        }
-        Request::RemoveTag { image_id, tag_id } => {
-            // Soft delete
-            match sqlx::query(
-                "UPDATE image_tags 
-                 SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP 
-                 WHERE image_id = ? AND tag_id = ?"
-            )
-            .bind(image_id)
-            .bind(tag_id)
-            .execute(db)
-            .await
+
+        Request::Search {
+            query_text,
+            tag_filter,
+            limit,
+        } => {
+            match search_logic(query_text, tag_filter, limit, db, model_manager, vector_index).await
             {
-                Ok(_) => Response::Success,
-                Err(e) => Response::Error { message: e.to_string() }
-            }
-        }
-        Request::Search { query_text, tag_filter, limit } => {
-            match search_logic(query_text, tag_filter, limit, db, model_manager, vector_index).await {
                 Ok(matches) => Response::SearchResult { matches },
-                Err(e) => Response::Error { message: e.to_string() }
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
             }
         }
+
         Request::ListImages { limit, offset } => {
             match list_images_logic(limit, offset, db).await {
                 Ok(images) => Response::ListResult { images },
-                Err(e) => Response::Error { message: e.to_string() }
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
             }
         }
-        Request::GetImage { image_id } => {
-            match get_image_logic(image_id, db).await {
-                Ok(image) => Response::ImageResult { image },
-                Err(e) => Response::Error { message: e.to_string() }
-            }
-        }
+
+        Request::GetImage { image_id } => match get_image_logic(image_id, db).await {
+            Ok(image) => Response::ImageResult { image },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
         Request::ValidatePlugin { manifest_path } => {
             match validate_plugin_logic(&manifest_path).await {
-                Ok((name, version)) => Response::ValidationResult { name, version, valid: true, error: None },
+                Ok((name, version)) => Response::ValidationResult {
+                    name,
+                    version,
+                    valid: true,
+                    error: None,
+                },
                 Err(e) => Response::ValidationResult {
                     name: String::new(),
                     version: String::new(),
                     valid: false,
                     error: Some(e.to_string()),
+                },
+            }
+        }
+
+        // ----------------------------------------------------------------
+        // Camie Tagger handlers
+        // ----------------------------------------------------------------
+        Request::GetTaggerStatus => {
+            let status = tagger.status();
+            Response::TaggerStatusResult {
+                loaded: status.loaded,
+                model_path: status.model_path,
+                total_tags: status.total_tags,
+            }
+        }
+
+        Request::TagImage {
+            image_id,
+            threshold,
+            force,
+        } => {
+            let threshold = threshold.unwrap_or(0.5);
+            let force = force.unwrap_or(false);
+            match tag_image_logic(image_id, threshold, force, db, tagger).await {
+                Ok(outcome) => Response::TagImageResult {
+                    image_id,
+                    tags_applied: outcome.tags_applied,
+                    skipped: outcome.skipped,
+                    tags: outcome.tags,
+                },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+        Request::TagImageBatch {
+            image_ids,
+            threshold,
+            force,
+        } => {
+            let threshold = threshold.unwrap_or(0.5);
+            let force = force.unwrap_or(false);
+            let mut processed = 0usize;
+            let mut failed = 0usize;
+            let mut skipped = 0usize;
+
+            for image_id in image_ids {
+                match tag_image_logic(image_id, threshold, force, db, tagger).await {
+                    Ok(outcome) => {
+                        if outcome.skipped {
+                            skipped += 1;
+                        } else {
+                            processed += 1;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Batch auto-tag failed for image {}: {:?}", image_id, e);
+                        failed += 1;
+                    }
                 }
+            }
+
+            Response::BatchTagResult {
+                processed,
+                failed,
+                skipped,
             }
         }
     }
 }
 
+// ---------------------------------------------------------------------------
+// Tagger logic
+// ---------------------------------------------------------------------------
+
+struct TagImageOutcome {
+    tags_applied: usize,
+    skipped: bool,
+    tags: Vec<TagSummary>,
+}
+
+async fn tag_image_logic(
+    image_id: i64,
+    threshold: f32,
+    force: bool,
+    db: &SqlitePool,
+    tagger: &Arc<TaggerEngine>,
+) -> Result<TagImageOutcome, Error> {
+    // 1. Resolve image path
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT current_filepath FROM images WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(image_id)
+    .fetch_optional(db)
+    .await?;
+
+    let filepath = match row {
+        Some(r) => r.0,
+        None => anyhow::bail!("Image {} not found", image_id),
+    };
+
+    // 2. Dedup/Overwrite check
+    let camie_source: Option<(i64,)> =
+        sqlx::query_as("SELECT id FROM sources WHERE name = 'ai:camie-tagger-v2' LIMIT 1")
+            .fetch_optional(db)
+            .await?;
+
+    if let Some((camie_source_id,)) = camie_source {
+        if force {
+            // Wipe existing Camie tags (hard delete to allow clean overwrite)
+            sqlx::query("DELETE FROM image_tags WHERE image_id = ? AND source_id = ?")
+                .bind(image_id)
+                .bind(camie_source_id)
+                .execute(db)
+                .await?;
+            info!("Forced overwrite: wiped existing Camie tags for image {}", image_id);
+        } else {
+            let existing: (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM image_tags WHERE image_id = ? AND source_id = ? AND is_deleted = 0",
+            )
+            .bind(image_id)
+            .bind(camie_source_id)
+            .fetch_one(db)
+            .await?;
+
+            if existing.0 > 0 {
+                info!(
+                    "Image {} already has {} Camie tags — skipping",
+                    image_id, existing.0
+                );
+                return Ok(TagImageOutcome {
+                    tags_applied: 0,
+                    skipped: true,
+                    tags: vec![],
+                });
+            }
+        }
+    }
+
+    // 3. Run inference in a blocking thread (model uses std::sync::Mutex)
+    let tagger_clone = Arc::clone(tagger);
+    let filepath_clone = filepath.clone();
+    let predictions = tokio::task::spawn_blocking(move || {
+        tagger_clone.tag_image(&filepath_clone, threshold)
+    })
+    .await
+    .context("spawn_blocking panicked during Camie inference")??;
+
+    // 4. Get camie source_id (seed it if missing)
+    let source_row: (i64,) =
+        sqlx::query_as("SELECT id FROM sources WHERE name = 'ai:camie-tagger-v2' LIMIT 1")
+            .fetch_one(db)
+            .await?;
+    let source_id = source_row.0;
+
+    // 5. Generate a shared transaction_id for this tagging run (enables future undo)
+    let transaction_id = uuid::Uuid::new_v4().to_string();
+
+    // 6. Persist each predicted tag
+    let mut tag_summaries: Vec<TagSummary> = Vec::with_capacity(predictions.len());
+
+    for pred in &predictions {
+        // Ensure tag exists in tags table
+        sqlx::query("INSERT OR IGNORE INTO tags (name, category) VALUES (?, ?)")
+            .bind(&pred.tag)
+            .bind(&pred.category)
+            .execute(db)
+            .await?;
+
+        let tag_row: (i64,) = sqlx::query_as("SELECT id FROM tags WHERE name = ? LIMIT 1")
+            .bind(&pred.tag)
+            .fetch_one(db)
+            .await?;
+        let tag_id = tag_row.0;
+
+        // Insert with confidence and transaction tracking
+        sqlx::query(
+            "INSERT OR IGNORE INTO image_tags
+             (image_id, tag_id, source_id, confidence, is_deleted, transaction_id)
+             VALUES (?, ?, ?, ?, 0, ?)",
+        )
+        .bind(image_id)
+        .bind(tag_id)
+        .bind(source_id)
+        .bind(pred.confidence)
+        .bind(&transaction_id)
+        .execute(db)
+        .await?;
+
+        tag_summaries.push(TagSummary {
+            tag: pred.tag.clone(),
+            category: pred.category.clone(),
+            confidence: pred.confidence,
+        });
+    }
+
+    info!(
+        "Auto-tagged image {} with {} tags (tx: {})",
+        image_id,
+        tag_summaries.len(),
+        &transaction_id[..8]
+    );
+
+    Ok(TagImageOutcome {
+        tags_applied: tag_summaries.len(),
+        skipped: false,
+        tags: tag_summaries,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Existing logic (unchanged)
+// ---------------------------------------------------------------------------
+
 async fn query_status(db: &SqlitePool) -> Result<(i64, i64, i64), Error> {
-    let images: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM images WHERE deleted_at IS NULL").fetch_one(db).await?;
-    let vectors: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'ready'").fetch_one(db).await?;
-    let pending: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'pending'").fetch_one(db).await?;
+    let images: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM images WHERE deleted_at IS NULL")
+            .fetch_one(db)
+            .await?;
+    let vectors: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'ready'",
+    )
+    .fetch_one(db)
+    .await?;
+    let pending: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'pending'",
+    )
+    .fetch_one(db)
+    .await?;
     Ok((images.0, vectors.0, pending.0))
 }
 
 async fn import_image_logic(path_str: &str, db: &SqlitePool) -> Result<(i64, String), Error> {
     let path = Path::new(path_str);
     if !path.exists() {
-        return Err(anyhow::anyhow!("File or directory does not exist: {}", path_str));
+        return Err(anyhow::anyhow!(
+            "File or directory does not exist: {}",
+            path_str
+        ));
     }
 
     if path.is_dir() {
-        // Scan directory recursively
         let mut paths_to_process = vec![path.to_path_buf()];
         let mut image_paths = Vec::new();
-        
+
         while let Some(current_path) = paths_to_process.pop() {
             if current_path.is_dir() {
                 if let Ok(entries) = fs::read_dir(&current_path) {
@@ -285,21 +587,27 @@ async fn import_image_logic(path_str: &str, db: &SqlitePool) -> Result<(i64, Str
             } else if current_path.is_file() {
                 if let Some(ext) = current_path.extension().and_then(|s| s.to_str()) {
                     let ext_lower = ext.to_lowercase();
-                    if ext_lower == "png" || ext_lower == "jpg" || ext_lower == "jpeg" || ext_lower == "webp" || ext_lower == "bmp" || ext_lower == "gif" || ext_lower == "tiff" {
+                    if matches!(
+                        ext_lower.as_str(),
+                        "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" | "tiff"
+                    ) {
                         image_paths.push(current_path);
                     }
                 }
             }
         }
-        
+
         if image_paths.is_empty() {
-            return Err(anyhow::anyhow!("No supported image files found in directory: {}", path_str));
+            return Err(anyhow::anyhow!(
+                "No supported image files found in directory: {}",
+                path_str
+            ));
         }
-        
+
         let mut first_id = 0;
         let mut first_sha = String::new();
         let mut imported_any = false;
-        
+
         for img_path in image_paths {
             if let Some(p_str) = img_path.to_str() {
                 match import_single_image(p_str, db).await {
@@ -316,11 +624,14 @@ async fn import_image_logic(path_str: &str, db: &SqlitePool) -> Result<(i64, Str
                 }
             }
         }
-        
+
         if imported_any {
             Ok((first_id, first_sha))
         } else {
-            Err(anyhow::anyhow!("Failed to import any images from directory: {}", path_str))
+            Err(anyhow::anyhow!(
+                "Failed to import any images from directory: {}",
+                path_str
+            ))
         }
     } else {
         import_single_image(path_str, db).await
@@ -333,56 +644,55 @@ async fn import_single_image(path_str: &str, db: &SqlitePool) -> Result<(i64, St
         return Err(anyhow::anyhow!("File does not exist: {}", path_str));
     }
 
-    // 1. Compute SHA256 hash
     let data = fs::read(path)?;
     let sha256 = format!("{:x}", sha2::Sha256::digest(&data));
 
-    // Get file mtime
     let metadata = fs::metadata(path)?;
-    let mtime = metadata.modified()?
+    let mtime = metadata
+        .modified()?
         .duration_since(std::time::SystemTime::UNIX_EPOCH)?
         .as_secs() as i64;
 
-    // Fetch CLIP model source ID
-    let clip_row: (i64,) = sqlx::query_as("SELECT id FROM sources WHERE name = 'ai:clip-vit-b-32' LIMIT 1").fetch_one(db).await?;
+    let clip_row: (i64,) =
+        sqlx::query_as("SELECT id FROM sources WHERE name = 'ai:clip-vit-b-32' LIMIT 1")
+            .fetch_one(db)
+            .await?;
     let clip_source_id = clip_row.0;
 
-    // Check if image already exists
-    let existing: Option<(i64, String)> = sqlx::query_as(
-        "SELECT id, current_filepath FROM images WHERE sha256 = ?"
-    )
-    .bind(&sha256)
-    .fetch_optional(db)
-    .await?;
+    let existing: Option<(i64, String)> =
+        sqlx::query_as("SELECT id, current_filepath FROM images WHERE sha256 = ?")
+            .bind(&sha256)
+            .fetch_optional(db)
+            .await?;
 
     if let Some((id, old_path)) = existing {
-        // Path repair: update filepath if it moved
         if old_path != path_str {
-            sqlx::query("UPDATE images SET current_filepath = ?, mtime = ?, deleted_at = NULL WHERE id = ?")
-                .bind(path_str)
-                .bind(mtime)
-                .bind(id)
-                .execute(db)
-                .await?;
-            info!("Path repair: updated filepath of image ID {} from {} to {}", id, old_path, path_str);
+            sqlx::query(
+                "UPDATE images SET current_filepath = ?, mtime = ?, deleted_at = NULL WHERE id = ?",
+            )
+            .bind(path_str)
+            .bind(mtime)
+            .bind(id)
+            .execute(db)
+            .await?;
+            info!(
+                "Path repair: updated filepath of image ID {} from {} to {}",
+                id, old_path, path_str
+            );
         }
         return Ok((id, sha256));
     }
 
-    // Insert new image
-    let id = sqlx::query(
-        "INSERT INTO images (sha256, current_filepath, mtime) VALUES (?, ?, ?)"
-    )
-    .bind(&sha256)
-    .bind(path_str)
-    .bind(mtime)
-    .execute(db)
-    .await?
-    .last_insert_rowid();
+    let id = sqlx::query("INSERT INTO images (sha256, current_filepath, mtime) VALUES (?, ?, ?)")
+        .bind(&sha256)
+        .bind(path_str)
+        .bind(mtime)
+        .execute(db)
+        .await?
+        .last_insert_rowid();
 
-    // Create pending vector placeholder
     sqlx::query(
-        "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')"
+        "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
     )
     .bind(id)
     .bind(clip_source_id)
@@ -392,25 +702,33 @@ async fn import_single_image(path_str: &str, db: &SqlitePool) -> Result<(i64, St
     Ok((id, sha256))
 }
 
-async fn add_tag_logic(image_id: i64, tag: &str, category: &str, db: &SqlitePool) -> Result<(), Error> {
-    // Insert tag or ignore if exists
+async fn add_tag_logic(
+    image_id: i64,
+    tag: &str,
+    category: &str,
+    db: &SqlitePool,
+) -> Result<(), Error> {
     sqlx::query("INSERT OR IGNORE INTO tags (name, category) VALUES (?, ?)")
         .bind(tag)
         .bind(category)
         .execute(db)
         .await?;
 
-    let tag_row: (i64,) = sqlx::query_as("SELECT id FROM tags WHERE name = ? LIMIT 1").bind(tag).fetch_one(db).await?;
+    let tag_row: (i64,) = sqlx::query_as("SELECT id FROM tags WHERE name = ? LIMIT 1")
+        .bind(tag)
+        .fetch_one(db)
+        .await?;
     let tag_id = tag_row.0;
 
-    // Fetch user source ID
-    let source_row: (i64,) = sqlx::query_as("SELECT id FROM sources WHERE name = 'user' LIMIT 1").fetch_one(db).await?;
+    let source_row: (i64,) =
+        sqlx::query_as("SELECT id FROM sources WHERE name = 'user' LIMIT 1")
+            .fetch_one(db)
+            .await?;
     let source_id = source_row.0;
 
-    // Add to image_tags
     sqlx::query(
-        "INSERT OR REPLACE INTO image_tags (image_id, tag_id, source_id, confidence, is_deleted) 
-         VALUES (?, ?, ?, 1.0, 0)"
+        "INSERT OR REPLACE INTO image_tags (image_id, tag_id, source_id, confidence, is_deleted)
+         VALUES (?, ?, ?, 1.0, 0)",
     )
     .bind(image_id)
     .bind(tag_id)
@@ -430,33 +748,30 @@ async fn search_logic(
     vector_index: &VectorIndex,
 ) -> Result<Vec<SearchMatch>, Error> {
     let mut candidate_ids: Option<std::collections::HashSet<i64>> = None;
-    let mut vector_scores: std::collections::HashMap<i64, f32> = std::collections::HashMap::new();
+    let mut vector_scores: std::collections::HashMap<i64, f32> =
+        std::collections::HashMap::new();
 
-    // 1. Vector Search
     if let Some(text) = query_text {
         if !text.trim().is_empty() {
             let query_vector = model_manager.generate_text_embedding(&text)?;
             let results = vector_index.search(&query_vector, limit.max(100))?;
-            
+
             let mut ids = std::collections::HashSet::new();
             for (id, dist) in results {
                 let id_i64 = id as i64;
                 ids.insert(id_i64);
-                // Cosine similarity = 1.0 - cosine distance
-                let score = 1.0 - dist;
-                vector_scores.insert(id_i64, score);
+                vector_scores.insert(id_i64, 1.0 - dist);
             }
             candidate_ids = Some(ids);
         }
     }
 
-    // 2. Tag Filter
     if let Some(tag_name) = tag_filter {
         if !tag_name.trim().is_empty() {
             let tagged_images: Vec<(i64,)> = sqlx::query_as(
                 "SELECT DISTINCT it.image_id FROM image_tags it
                  JOIN tags t ON it.tag_id = t.id
-                 WHERE t.name = ? AND it.is_deleted = 0"
+                 WHERE t.name = ? AND it.is_deleted = 0",
             )
             .bind(tag_name)
             .fetch_all(db)
@@ -467,22 +782,19 @@ async fn search_logic(
                 tag_set.insert(row.0);
             }
 
-            if let Some(ref mut existing_candidates) = candidate_ids {
-                // Intersect
-                *existing_candidates = existing_candidates.intersection(&tag_set).cloned().collect();
+            if let Some(ref mut existing) = candidate_ids {
+                *existing = existing.intersection(&tag_set).cloned().collect();
             } else {
                 candidate_ids = Some(tag_set);
             }
         }
     }
 
-    // 3. Populate detailed match fields
     let target_ids = match candidate_ids {
         Some(set) => set.into_iter().collect::<Vec<i64>>(),
         None => {
-            // Default: List latest 50 images if no filters
             let latest: Vec<(i64,)> = sqlx::query_as(
-                "SELECT id FROM images WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ?"
+                "SELECT id FROM images WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ?",
             )
             .bind(limit as i64)
             .fetch_all(db)
@@ -504,17 +816,22 @@ async fn search_logic(
         }
     }
 
-    // Sort matches by score descending
-    matches.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-
-    // Limit results
+    matches.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     matches.truncate(limit);
     Ok(matches)
 }
 
-async fn list_images_logic(limit: usize, offset: usize, db: &SqlitePool) -> Result<Vec<ImageDetails>, Error> {
+async fn list_images_logic(
+    limit: usize,
+    offset: usize,
+    db: &SqlitePool,
+) -> Result<Vec<ImageDetails>, Error> {
     let image_ids: Vec<(i64,)> = sqlx::query_as(
-        "SELECT id FROM images WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        "SELECT id FROM images WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?",
     )
     .bind(limit as i64)
     .bind(offset as i64)
@@ -532,14 +849,15 @@ async fn list_images_logic(limit: usize, offset: usize, db: &SqlitePool) -> Resu
 
 async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDetails, Error> {
     let img: curator_core::db::models::Image = sqlx::query_as(
-        "SELECT * FROM images WHERE id = ? AND deleted_at IS NULL"
+        "SELECT * FROM images WHERE id = ? AND deleted_at IS NULL",
     )
     .bind(image_id)
     .fetch_one(db)
     .await?;
 
-    let tags: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT t.name FROM image_tags it
+    let tags: Vec<TagSummary> = sqlx::query_as(
+        "SELECT t.name as tag, t.category as category, it.confidence as confidence
+         FROM image_tags it
          JOIN tags t ON it.tag_id = t.id
          WHERE it.image_id = ? AND it.is_deleted = 0"
     )
@@ -547,12 +865,40 @@ async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDetails,
     .fetch_all(db)
     .await?;
 
-    let vector_state: (String,) = sqlx::query_as(
-        "SELECT vector_state FROM image_vectors WHERE image_id = ? LIMIT 1"
+    // Sort tags: user tags at the absolute top (category == "user"),
+    // followed by character, copyright, meta, then the rest.
+    // Within each category, sort by confidence descending.
+    let mut sorted_tags = tags;
+    sorted_tags.sort_by(|a, b| {
+        let priority = |cat: &str| -> i32 {
+            match cat {
+                "user" => 0,
+                "character" => 1,
+                "copyright" => 2,
+                "meta" => 3,
+                _ => 4,
+            }
+        };
+
+        let p_a = priority(&a.category);
+        let p_b = priority(&b.category);
+
+        if p_a != p_b {
+            p_a.cmp(&p_b)
+        } else {
+            b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal)
+        }
+    });
+
+    // Use fetch_optional to avoid panic if image_vectors row is missing
+    let vector_state: String = sqlx::query_as(
+        "SELECT vector_state FROM image_vectors WHERE image_id = ? LIMIT 1",
     )
     .bind(image_id)
-    .fetch_one(db)
-    .await?;
+    .fetch_optional(db)
+    .await?
+    .map(|(s,): (String,)| s)
+    .unwrap_or_else(|| "unknown".to_string());
 
     Ok(ImageDetails {
         id: img.id,
@@ -560,8 +906,8 @@ async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDetails,
         current_filepath: img.current_filepath,
         mtime: img.mtime,
         created_at: img.created_at.to_string(),
-        tags: tags.into_iter().map(|r| r.0).collect(),
-        vector_state: vector_state.0,
+        tags: sorted_tags,
+        vector_state,
     })
 }
 
@@ -574,10 +920,17 @@ async fn validate_plugin_logic(manifest_path_str: &str) -> Result<(String, Strin
     let content = fs::read_to_string(path)?;
     let val: serde_json::Value = serde_json::from_str(&content)?;
 
-    let name = val.get("name").and_then(|v| v.as_str()).context("Missing 'name' field")?.to_string();
-    let version = val.get("version").and_then(|v| v.as_str()).context("Missing 'version' field")?.to_string();
-    
-    // Check permission format
+    let name = val
+        .get("name")
+        .and_then(|v| v.as_str())
+        .context("Missing 'name' field")?
+        .to_string();
+    let version = val
+        .get("version")
+        .and_then(|v| v.as_str())
+        .context("Missing 'version' field")?
+        .to_string();
+
     if let Some(permissions) = val.get("permissions") {
         if !permissions.is_object() {
             return Err(anyhow::anyhow!("'permissions' must be a JSON object"));
