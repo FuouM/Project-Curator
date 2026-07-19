@@ -37,6 +37,10 @@ enum Commands {
         /// Text phrase for CLIP semantic search
         query: Option<String>,
 
+        /// Path to an image file for reverse search
+        #[arg(short, long)]
+        image: Option<String>,
+
         /// Exact tag name to filter by
         #[arg(short, long)]
         tag: Option<String>,
@@ -145,8 +149,9 @@ async fn main() -> Result<(), Error> {
             },
             TagCommands::Remove { image_id, tag } => Request::RemoveTag { image_id, tag },
         },
-        Commands::Search { query, tag, limit } => Request::Search {
+        Commands::Search { query, image, tag, limit } => Request::Search {
             query_text: query,
+            query_image_path: image,
             tag_filter: tag,
             limit,
         },
@@ -303,12 +308,17 @@ async fn main() -> Result<(), Error> {
             } else {
                 println!("Search Results ({} matches):", matches.len());
                 for (idx, m) in matches.iter().enumerate() {
+                    let info_str = if let Some(dist) = m.hamming_distance {
+                        format!("Match Type: {}, Hamming: {}, Score: {:.4}", m.match_type, dist, m.score)
+                    } else {
+                        format!("Match Type: {}, Score: {:.4}", m.match_type, m.score)
+                    };
                     println!(
-                        "{}. [ID: {}] {} (Score: {:.4})",
+                        "{}. [ID: {}] {} ({})",
                         idx + 1,
                         m.id,
                         m.filepath,
-                        m.score
+                        info_str
                     );
                     if !m.tags.is_empty() {
                         let tag_strs: Vec<String> = m.tags.iter().map(|t| format!("{}({})", t.tag, t.category)).collect();

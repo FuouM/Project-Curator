@@ -156,10 +156,24 @@
           <div class="group-box">
             <div class="group-box-title">AI Semantic & Tag Search</div>
             <form id="search-form">
-              <div class="form-group">
-                <input class="input-field" id="search-text-input" placeholder="Type natural language query (e.g. 'a cute dog sleeping')..." style="flex: 1;" />
-                <input class="input-field" id="search-tag-input" placeholder="Filter by tag name (optional)..." style="width: 200px;" />
-                <button type="submit" class="win-button">Search</button>
+              <div class="form-group" style="display: flex; flex-direction: column; gap: 8px; align-items: stretch;">
+                <div style="display: flex; gap: 6px; width: 100%;">
+                  <input class="input-field" id="search-text-input" placeholder="Type natural language query (e.g. 'a cute dog sleeping')..." style="flex: 1;" />
+                  <input class="input-field" id="search-tag-input" placeholder="Filter by tag name (optional)..." style="width: 200px;" />
+                </div>
+                <div style="display: flex; gap: 6px; width: 100%; align-items: center;">
+                  <input class="input-field" id="search-image-path-input" placeholder="Or select image path for reverse search..." style="flex: 1;" />
+                  <button type="button" class="win-button" id="search-browse-image-btn" style="white-space: nowrap;"><i class="bi bi-file-earmark-image"></i> Browse Image...</button>
+                  <button type="button" class="win-button" id="search-clear-image-btn" style="white-space: nowrap;"><i class="bi bi-x-lg"></i> Clear Path</button>
+                  <button type="submit" class="win-button" style="width: 100px; font-weight: bold;">Search</button>
+                </div>
+                <div id="search-image-preview-container" style="display: none; align-items: center; gap: 10px; margin-top: 4px; padding: 6px; border: 1px dashed var(--sys-border-dark); background-color: var(--sys-window-bg); max-width: 350px;">
+                  <img id="search-image-preview-img" src="" alt="Query Preview" style="height: 60px; width: 60px; object-fit: cover; border: 1px solid var(--sys-border-dark);" />
+                  <div style="display: flex; flex-direction: column; gap: 2px; overflow: hidden; flex: 1;">
+                    <span style="font-weight: bold; font-size: 11px;">Input Query Image:</span>
+                    <span id="search-image-preview-filename" style="font-size: 10px; color: #555555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title=""></span>
+                  </div>
+                </div>
               </div>
             </form>
           </div>

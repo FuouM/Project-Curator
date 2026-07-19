@@ -35,6 +35,7 @@ pub enum Request {
     },
     Search {
         query_text: Option<String>,
+        query_image_path: Option<String>,
         tag_filter: Option<String>,
         limit: usize,
     },
@@ -160,6 +161,8 @@ pub struct SearchMatch {
     pub filepath: String,
     pub score: f32,
     pub tags: Vec<TagSummary>,
+    pub match_type: String,
+    pub hamming_distance: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

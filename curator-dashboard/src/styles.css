@@ -626,3 +626,24 @@ body {
 .image-preview {
   cursor: pointer;
 }
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.animate-spin {
+  animation: spin 1s linear infinite;
+  display: inline-block;
+}
+.search-loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  grid-column: 1 / -1;
+  padding: 3rem 0;
+  gap: 12px;
+  color: #555555;
+  font-size: 13px;
+}

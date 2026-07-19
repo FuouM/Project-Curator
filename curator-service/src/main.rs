@@ -424,10 +424,11 @@ async fn handle_request(
 
         Request::Search {
             query_text,
+            query_image_path,
             tag_filter,
             limit,
         } => {
-            match search_logic(query_text, tag_filter, limit, db, model_manager, vector_index).await
+            match search_logic(query_text, query_image_path, tag_filter, limit, db, model_manager, vector_index).await
             {
                 Ok(matches) => Response::SearchResult { matches },
                 Err(e) => Response::Error {
@@ -862,6 +863,14 @@ async fn import_single_image(path_str: &str, db: &SqlitePool) -> Result<(i64, St
             .await?;
     let clip_source_id = clip_row.0;
 
+    let phash = match curator_core::vector::compute_ahash(path) {
+        Ok(h) => Some(h),
+        Err(e) => {
+            warn!("Failed to compute aHash for image {:?}: {:?}", path, e);
+            None
+        }
+    };
+
     let existing: Option<(i64, String)> =
         sqlx::query_as("SELECT id, current_filepath FROM images WHERE sha256 = ?")
             .bind(&sha256)
@@ -871,10 +880,11 @@ async fn import_single_image(path_str: &str, db: &SqlitePool) -> Result<(i64, St
     if let Some((id, old_path)) = existing {
         if old_path != path_str {
             sqlx::query(
-                "UPDATE images SET current_filepath = ?, mtime = ?, deleted_at = NULL WHERE id = ?",
+                "UPDATE images SET current_filepath = ?, mtime = ?, phash = ?, deleted_at = NULL WHERE id = ?",
             )
             .bind(path_str)
             .bind(mtime)
+            .bind(&phash)
             .bind(id)
             .execute(db)
             .await?;
@@ -886,8 +896,9 @@ async fn import_single_image(path_str: &str, db: &SqlitePool) -> Result<(i64, St
         return Ok((id, sha256));
     }
 
-    let id = sqlx::query("INSERT INTO images (sha256, current_filepath, mtime) VALUES (?, ?, ?)")
+    let id = sqlx::query("INSERT INTO images (sha256, phash, current_filepath, mtime) VALUES (?, ?, ?, ?)")
         .bind(&sha256)
+        .bind(&phash)
         .bind(path_str)
         .bind(mtime)
         .execute(db)
@@ -944,6 +955,7 @@ async fn add_tag_logic(
 
 async fn search_logic(
     query_text: Option<String>,
+    query_image_path: Option<String>,
     tag_filter: Option<String>,
     limit: usize,
     db: &SqlitePool,
@@ -953,10 +965,43 @@ async fn search_logic(
     let mut candidate_ids: Option<std::collections::HashSet<i64>> = None;
     let mut vector_scores: std::collections::HashMap<i64, f32> =
         std::collections::HashMap::new();
+    let mut exact_matches = std::collections::HashSet::new();
+    let mut perceptual_matches = std::collections::HashMap::new();
 
-    if let Some(text) = query_text {
-        if !text.trim().is_empty() {
-            let query_vector = model_manager.generate_text_embedding(&text)?;
+    if let Some(img_path) = query_image_path {
+        let path = std::path::Path::new(&img_path);
+        if path.exists() {
+            // 1. Exact Match via SHA256
+            if let Ok(data) = std::fs::read(path) {
+                let sha256 = format!("{:x}", sha2::Sha256::digest(&data));
+                let rows: Vec<(i64,)> = sqlx::query_as("SELECT id FROM images WHERE sha256 = ? AND deleted_at IS NULL")
+                    .bind(&sha256)
+                    .fetch_all(db)
+                    .await
+                    .unwrap_or_default();
+                for r in rows {
+                    exact_matches.insert(r.0);
+                }
+            }
+
+            // 2. Perceptual Close Match via aHash
+            if let Ok(query_ahash) = curator_core::vector::compute_ahash(path) {
+                let query_val = u64::from_str_radix(&query_ahash, 16).unwrap_or(0);
+                let rows: Vec<(i64, String)> = sqlx::query_as("SELECT id, phash FROM images WHERE phash IS NOT NULL AND deleted_at IS NULL")
+                    .fetch_all(db)
+                    .await
+                    .unwrap_or_default();
+                for (id, db_phash) in rows {
+                    let db_val = u64::from_str_radix(&db_phash, 16).unwrap_or(0);
+                    let dist = (query_val ^ db_val).count_ones();
+                    if dist <= 10 {
+                        perceptual_matches.insert(id, dist);
+                    }
+                }
+            }
+
+            // 3. Semantic Vector Search
+            let query_vector = model_manager.generate_image_embedding(path)?;
             let results = vector_index.search(&query_vector, limit.max(100))?;
 
             let mut ids = std::collections::HashSet::new();
@@ -969,6 +1014,28 @@ async fn search_logic(
         }
     }
 
+    if let Some(ref text) = query_text {
+        if !text.trim().is_empty() {
+            let query_vector = model_manager.generate_text_embedding(text)?;
+            let results = vector_index.search(&query_vector, limit.max(100))?;
+
+            let mut ids = std::collections::HashSet::new();
+            for (id, dist) in results {
+                let id_i64 = id as i64;
+                ids.insert(id_i64);
+                vector_scores.insert(id_i64, 1.0 - dist);
+            }
+            candidate_ids = Some(ids);
+        }
+    }
+
+    let mut target_set = std::collections::HashSet::new();
+    if let Some(c_ids) = candidate_ids {
+        target_set.extend(c_ids);
+    }
+    target_set.extend(exact_matches.iter().copied());
+    target_set.extend(perceptual_matches.keys().copied());
+
     if let Some(tag_name) = tag_filter {
         if !tag_name.trim().is_empty() {
             let tagged_images: Vec<(i64,)> = sqlx::query_as(
@@ -980,49 +1047,68 @@ async fn search_logic(
             .fetch_all(db)
             .await?;
 
-            let mut tag_set = std::collections::HashSet::new();
-            for row in tagged_images {
-                tag_set.insert(row.0);
-            }
+            let tag_set: std::collections::HashSet<i64> = tagged_images.into_iter().map(|row| row.0).collect();
 
-            if let Some(ref mut existing) = candidate_ids {
-                *existing = existing.intersection(&tag_set).cloned().collect();
+            if target_set.is_empty() && query_text.is_none() && exact_matches.is_empty() && perceptual_matches.is_empty() {
+                target_set = tag_set;
             } else {
-                candidate_ids = Some(tag_set);
+                target_set = target_set.intersection(&tag_set).cloned().collect();
             }
         }
     }
 
-    let target_ids = match candidate_ids {
-        Some(set) => set.into_iter().collect::<Vec<i64>>(),
-        None => {
-            let latest: Vec<(i64,)> = sqlx::query_as(
-                "SELECT id FROM images WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ?",
-            )
-            .bind(limit as i64)
-            .fetch_all(db)
-            .await?;
-            latest.into_iter().map(|r| r.0).collect()
-        }
+    let target_ids = if target_set.is_empty() && query_text.is_none() && exact_matches.is_empty() && perceptual_matches.is_empty() {
+        let latest: Vec<(i64,)> = sqlx::query_as(
+            "SELECT id FROM images WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ?",
+        )
+        .bind(limit as i64)
+        .fetch_all(db)
+        .await?;
+        latest.into_iter().map(|r| r.0).collect()
+    } else {
+        target_set.into_iter().collect::<Vec<i64>>()
     };
 
     let mut matches = Vec::new();
     for id in target_ids {
         if let Ok(details) = get_image_logic(id, db).await {
-            let score = vector_scores.get(&details.id).cloned().unwrap_or(1.0);
+            let (match_type, score, hamming_distance) = if exact_matches.contains(&id) {
+                ("exact".to_string(), 1.0, None)
+            } else if let Some(&dist) = perceptual_matches.get(&id) {
+                ("perceptual".to_string(), 1.0 - (dist as f32 / 64.0), Some(dist))
+            } else {
+                let sem_score = vector_scores.get(&details.id).cloned().unwrap_or(0.0);
+                ("semantic".to_string(), sem_score, None)
+            };
+
             matches.push(SearchMatch {
                 id: details.id,
                 filepath: details.current_filepath,
                 score,
                 tags: details.tags,
+                match_type,
+                hamming_distance,
             });
         }
     }
 
     matches.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
+        let priority = |m: &str| -> i32 {
+            match m {
+                "exact" => 0,
+                "perceptual" => 1,
+                _ => 2,
+            }
+        };
+        let p_a = priority(&a.match_type);
+        let p_b = priority(&b.match_type);
+        if p_a != p_b {
+            p_a.cmp(&p_b)
+        } else {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }
     });
     matches.truncate(limit);
     Ok(matches)

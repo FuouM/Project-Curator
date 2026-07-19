@@ -75,7 +75,7 @@ type RequestPayload =
   | { ImportImage: { path: string } }
   | { AddTag: { image_id: number; tag: string; category: string } }
   | { RemoveTag: { image_id: number; tag: string } }
-  | { Search: { query_text: string | null; tag_filter: string | null; limit: number } }
+  | { Search: { query_text: string | null; query_image_path: string | null; tag_filter: string | null; limit: number } }
   | { ListImages: { limit: number; offset: number } }
   | { GetImage: { image_id: number } }
   | { ValidatePlugin: { manifest_path: string } }
@@ -91,6 +91,8 @@ interface SearchMatch {
   filepath: string;
   score: number;
   tags: TagSummary[];
+  match_type: string;
+  hamming_distance?: number;
 }
 
 interface ImageDetails {
@@ -399,25 +401,81 @@ function setupForms() {
   const searchForm = document.getElementById("search-form");
   const queryInput = document.getElementById("search-text-input") as HTMLInputElement;
   const tagInput = document.getElementById("search-tag-input") as HTMLInputElement;
+  const imageInput = document.getElementById("search-image-path-input") as HTMLInputElement;
+
+  function updateImagePreview() {
+    const container = document.getElementById("search-image-preview-container");
+    const img = document.getElementById("search-image-preview-img") as HTMLImageElement;
+    const filenameSpan = document.getElementById("search-image-preview-filename");
+    if (!imageInput || !container || !img || !filenameSpan) return;
+
+    const path = imageInput.value.trim();
+    if (path) {
+      img.src = convertFileSrc(path);
+      filenameSpan.textContent = path;
+      filenameSpan.title = path;
+      container.style.display = "flex";
+    } else {
+      img.src = "";
+      filenameSpan.textContent = "";
+      filenameSpan.title = "";
+      container.style.display = "none";
+    }
+  }
+
+  imageInput?.addEventListener("input", updateImagePreview);
+  imageInput?.addEventListener("change", updateImagePreview);
+
+  document.getElementById("search-browse-image-btn")?.addEventListener("click", async () => {
+    try {
+      const selected: string | null = await invoke("select_path", { isDirectory: false });
+      if (selected && imageInput) {
+        imageInput.value = selected;
+        updateImagePreview();
+      }
+    } catch (err) {
+      console.error("Browse image dialog error: ", err);
+    }
+  });
+
+  document.getElementById("search-clear-image-btn")?.addEventListener("click", () => {
+    if (imageInput) {
+      imageInput.value = "";
+      updateImagePreview();
+    }
+  });
 
   searchForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!queryInput || !tagInput) return;
+    if (!queryInput || !tagInput || !imageInput) return;
+
+    const grid = document.getElementById("search-results-grid");
+    if (grid) {
+      grid.innerHTML = `
+        <div class="search-loading-container">
+          <i class="bi bi-arrow-clockwise animate-spin" style="font-size: 24px;"></i>
+          <span>Running AI search query...</span>
+        </div>
+      `;
+    }
 
     try {
       const query = queryInput.value.trim() || null;
       const tag = tagInput.value.trim() || null;
+      const imagePath = imageInput.value.trim() || null;
       
       const resp = await callService({
-        Search: { query_text: query, tag_filter: tag, limit: 20 }
+        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, limit: 20 }
       });
 
       if ("SearchResult" in resp) {
         renderSearchResults(resp.SearchResult.matches);
       } else if ("Error" in resp) {
+        if (grid) grid.innerHTML = `<p style="color: #ef4444; padding: 10px;">Search failed: ${resp.Error.message}</p>`;
         alert("Search failed: " + resp.Error.message);
       }
-    } catch (e) {
+    } catch (e: any) {
+      if (grid) grid.innerHTML = `<p style="color: #ef4444; padding: 10px;">IPC Search failed: ${e.message || e}</p>`;
       alert("IPC Search failed: " + e);
     }
   });
@@ -593,16 +651,7 @@ function renderFeaturedDay(featured: ImageDetails) {
   `;
 
   document.getElementById("featured-search-btn")?.addEventListener("click", async () => {
-    const searchNavItem = document.querySelector('.nav-item[data-view="search"]') as HTMLElement;
-    if (searchNavItem) {
-      searchNavItem.click();
-      
-      const queryInput = document.getElementById("search-text-input") as HTMLInputElement;
-      if (queryInput) {
-        queryInput.value = featured.tags.length > 0 ? featured.tags[0].tag : "image matching featured characteristics";
-        document.getElementById("search-form")?.dispatchEvent(new Event("submit"));
-      }
-    }
+    (window as any).findSimilar(featured.current_filepath);
   });
 }
 
@@ -744,9 +793,14 @@ function renderImages(images: ImageDetails[], gridId: string) {
         <div class="tag-list">
           ${tagHtml}
         </div>
-        <button class="win-button" style="font-size: 11px; margin-top: auto;" onclick="window.openTags(${img.id}, '${img.current_filepath.replace(/\\/g, '\\\\')}')">
-          <i class="bi bi-tag"></i> Manage Tags
-        </button>
+        <div style="display: flex; gap: 4px; margin-top: auto; width: 100%;">
+          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.openTags(${img.id}, '${img.current_filepath.replace(/\\/g, '\\\\')}')">
+            <i class="bi bi-tag"></i> Tags
+          </button>
+          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.findSimilar('${img.current_filepath.replace(/\\/g, '\\\\')}')">
+            <i class="bi bi-search"></i> Similar
+          </button>
+        </div>
       </div>
     `;
 
@@ -868,20 +922,47 @@ function renderSearchResults(matches: SearchMatch[]) {
     const tagHtml = displayTags.map(t => getTagPillHtml(t)).join("") +
                     (extraCount > 0 ? `<span class="tag-pill" style="background-color: #f0f0f0; color: #555555; font-style: italic;">+${extraCount} more</span>` : "");
 
+    const badgeBg = m.match_type === "exact"
+      ? "#dff6dd" // Green
+      : m.match_type === "perceptual"
+      ? "#deecf9" // Light Blue
+      : "#f3f2f1"; // Gray
+    const badgeColor = m.match_type === "exact"
+      ? "#107c41"
+      : m.match_type === "perceptual"
+      ? "#005a9e"
+      : "#323130";
+    const badgeBorder = m.match_type === "exact"
+      ? "#107c41"
+      : m.match_type === "perceptual"
+      ? "#005a9e"
+      : "#8a8886";
+
+    const scoreBadgeText = m.match_type === "exact"
+      ? "Exact Match"
+      : m.match_type === "perceptual"
+      ? `Perceptual (d=${m.hamming_distance})`
+      : `Score: ${m.score.toFixed(4)}`;
+
     card.innerHTML = `
       <div class="image-preview">
         <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
-        <div class="vector-badge badge-ready" style="background-color: #dff6dd; border: 1px solid #107c41; color: #107c41;">Score: ${m.score.toFixed(4)}</div>
+        <div class="vector-badge" style="background-color: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor};">${scoreBadgeText}</div>
       </div>
       <div class="image-info">
         <div class="image-path" title="${m.filepath}">${m.filepath}</div>
         <div class="tag-list">
           ${tagHtml}
         </div>
-        <button class="win-button" style="font-size: 11px; margin-top: auto;" onclick="window.openTags(${m.id}, '${m.filepath.replace(/\\/g, '\\\\')}')">
-          <i class="bi bi-tag"></i> Manage Tags
-        </button>
+        <div style="display: flex; gap: 4px; margin-top: auto; width: 100%;">
+          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.openTags(${m.id}, '${m.filepath.replace(/\\/g, '\\\\')}')">
+            <i class="bi bi-tag"></i> Tags
+          </button>
+          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.findSimilar('${m.filepath.replace(/\\/g, '\\\\')}')">
+            <i class="bi bi-search"></i> Similar
+          </button>
+        </div>
       </div>
     `;
 
@@ -905,6 +986,28 @@ function renderSearchResults(matches: SearchMatch[]) {
 // Expose tag management globally for inline onclick handlers
 (window as any).openTags = (imgId: number, path: string) => {
   openTagModal(imgId, path);
+};
+
+(window as any).findSimilar = (path: string) => {
+  const searchNavItem = document.querySelector('.nav-item[data-view="search"]') as HTMLElement;
+  if (searchNavItem) {
+    searchNavItem.click();
+    
+    const queryInput = document.getElementById("search-text-input") as HTMLInputElement;
+    const tagInput = document.getElementById("search-tag-input") as HTMLInputElement;
+    const imageInput = document.getElementById("search-image-path-input") as HTMLInputElement;
+    
+    if (queryInput) queryInput.value = "";
+    if (tagInput) tagInput.value = "";
+    if (imageInput) {
+      imageInput.value = path;
+      imageInput.dispatchEvent(new Event("change"));
+      // Wait for DOM updates/view switch, then submit form
+      setTimeout(() => {
+        document.getElementById("search-form")?.dispatchEvent(new Event("submit"));
+      }, 50);
+    }
+  }
 };
 
 (window as any).removeTag = async (imgId: number, tagName: string) => {
