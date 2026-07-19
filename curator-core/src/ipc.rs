@@ -1,5 +1,23 @@
 use serde::{Deserialize, Serialize};
 
+/// Device selection for ONNX model inference.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DevicePreference {
+    /// Try GPU first, fall back to CPU if unavailable.
+    Auto,
+    /// Force CPU-only execution.
+    Cpu,
+    /// Force GPU execution (fails if no GPU provider available).
+    Gpu,
+}
+
+impl Default for DevicePreference {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Request {
     Ping,
@@ -50,6 +68,13 @@ pub enum Request {
     GetTaggerStatus,
     /// Run CPU vs GPU ONNX model benchmark.
     RunBenchmark,
+    /// Get current settings (device preferences, etc.).
+    GetSettings,
+    /// Update settings. Partial update — only provided fields are changed.
+    UpdateSettings {
+        clip_device: Option<DevicePreference>,
+        tagger_device: Option<DevicePreference>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -111,6 +136,11 @@ pub enum Response {
         loaded: bool,
         model_path: String,
         total_tags: usize,
+    },
+    /// Current application settings.
+    SettingsResult {
+        clip_device: DevicePreference,
+        tagger_device: DevicePreference,
     },
 }
 

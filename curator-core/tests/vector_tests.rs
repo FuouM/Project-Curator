@@ -1,4 +1,5 @@
 use curator_core::vector::{ModelManager, VectorIndex};
+use curator_core::ipc::DevicePreference;
 use tempfile::tempdir;
 
 #[tokio::test]
@@ -8,7 +9,7 @@ async fn test_vector_indexing_and_clip_inference() {
     let index_path = temp_dir.path().join("vector_index.usearch");
 
     // Initialize ModelManager (downloads ONNX models)
-    let mut model_manager = ModelManager::new(&model_dir);
+    let mut model_manager = ModelManager::new(&model_dir, DevicePreference::Auto);
     
     // We run the initialization (which downloads the models)
     model_manager.init().expect("Failed to initialize CLIP models");

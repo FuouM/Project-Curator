@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use anyhow::{Context, Result};
+use crate::ipc::DevicePreference;
+use crate::vector::apply_device_preference;
 use image::{GenericImageView, imageops::FilterType};
 use ndarray::Array4;
 use ort::{inputs, session::Session, value::TensorRef};
@@ -31,9 +33,7 @@ struct DatasetInfo {
 
 #[derive(Debug, Deserialize)]
 struct TagMapping {
-    /// Maps stringified index → tag name
     idx_to_tag: HashMap<String, String>,
-    /// Maps tag name → category string
     tag_to_category: HashMap<String, String>,
 }
 
@@ -41,7 +41,6 @@ struct TagMapping {
 // Public types
 // ---------------------------------------------------------------------------
 
-/// A single predicted tag with its category and confidence score.
 #[derive(Debug, Clone)]
 pub struct TagPrediction {
     pub tag: String,
@@ -49,7 +48,6 @@ pub struct TagPrediction {
     pub confidence: f32,
 }
 
-/// Status of the tagger engine.
 #[derive(Debug, Clone)]
 pub struct TaggerStatus {
     pub loaded: bool,
@@ -61,15 +59,10 @@ pub struct TaggerStatus {
 // TaggerEngine
 // ---------------------------------------------------------------------------
 
-/// Lazy-loaded ONNX inference engine for Camie Tagger v2.
-///
-/// The 789 MB model is only loaded into memory on the first call to
-/// [`tag_image`] or when [`load`] is called explicitly.  Nothing happens
-/// at construction time.
 pub struct TaggerEngine {
     model_path: PathBuf,
     metadata_path: PathBuf,
-    /// Wrapped in Option so we can report "not loaded" state.
+    device: Mutex<DevicePreference>,
     inner: Mutex<Option<TaggerInner>>,
 }
 
@@ -82,16 +75,12 @@ struct TaggerInner {
 }
 
 impl TaggerEngine {
-    /// Create a new engine pointing at the model directory.
-    ///
-    /// The model directory must contain:
-    /// - `camie-tagger-v2.onnx`
-    /// - `camie-tagger-v2-metadata.json`
-    pub fn new(model_dir: impl AsRef<Path>) -> Self {
+    pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
         Self {
             model_path: dir.join("camie-tagger-v2.onnx"),
             metadata_path: dir.join("camie-tagger-v2-metadata.json"),
+            device: Mutex::new(device),
             inner: Mutex::new(None),
         }
     }
@@ -100,12 +89,10 @@ impl TaggerEngine {
         &self.model_path
     }
 
-    /// Return true if the ONNX session is already loaded in memory.
     pub fn is_loaded(&self) -> bool {
         self.inner.lock().unwrap().is_some()
     }
 
-    /// Status snapshot (does not trigger loading).
     pub fn status(&self) -> TaggerStatus {
         let guard = self.inner.lock().unwrap();
         TaggerStatus {
@@ -115,8 +102,18 @@ impl TaggerEngine {
         }
     }
 
-    /// Explicitly load the model into memory.  Idempotent — safe to call
-    /// multiple times.
+    pub fn set_device(&self, device: DevicePreference) {
+        {
+            let mut d = self.device.lock().unwrap();
+            *d = device.clone();
+        }
+        let mut guard = self.inner.lock().unwrap();
+        if guard.is_some() {
+            info!("Camie Tagger: device changed to {:?} — unloading model for reload", device);
+            *guard = None;
+        }
+    }
+
     pub fn load(&self) -> Result<()> {
         let mut guard = self.inner.lock().unwrap();
         if guard.is_some() {
@@ -126,19 +123,11 @@ impl TaggerEngine {
         Ok(())
     }
 
-    /// Tag a single image file.  Lazily loads the model on first call.
-    ///
-    /// `threshold` is the minimum sigmoid confidence to include a tag.
-    /// Recommended values:
-    /// - 0.35  balanced (default)
-    /// - 0.492 macro-optimised
-    /// - 0.614 micro-optimised
     pub fn tag_image(
         &self,
         image_path: impl AsRef<Path>,
         threshold: f32,
     ) -> Result<Vec<TagPrediction>> {
-        // Ensure loaded
         {
             let guard = self.inner.lock().unwrap();
             if guard.is_none() {
@@ -150,11 +139,9 @@ impl TaggerEngine {
         let guard = self.inner.lock().unwrap();
         let inner = guard.as_ref().unwrap();
 
-        // Pre-process image
         let tensor = preprocess_image(image_path.as_ref(), inner.img_size)
             .with_context(|| format!("Preprocessing {:?}", image_path.as_ref()))?;
 
-        // Run inference
         debug!("Running Camie Tagger inference on {:?}", image_path.as_ref());
         
         let mut session_guard = inner.session.lock().unwrap();
@@ -162,11 +149,6 @@ impl TaggerEngine {
             .run(inputs![TensorRef::from_array_view(&tensor)?])
             .context("ONNX inference failed")?;
 
-        // Model emits 3 outputs: [initial_preds, refined_preds, selected_candidates]
-        // We use refined_preds (index 1) as the main output, matching the Python reference.
-        // We retrieve the output tensor by key or order. Since Session::run output
-        // is typically accessed via node name or index, let's look for "refined_predictions"
-        // or check outputs.
         let output_tensor = outputs
             .get("refined_predictions")
             .or_else(|| outputs.get("output_1"))
@@ -176,7 +158,6 @@ impl TaggerEngine {
         let output_ref = output_tensor.try_extract_tensor::<f32>()?;
         let logits = output_ref.1;
 
-        // logits shape: [1, N_tags]
         let probs_iter = logits.iter().map(|&x| sigmoid(x));
 
         let mut predictions = Vec::new();
@@ -201,8 +182,6 @@ impl TaggerEngine {
             }
         }
 
-        // Sort by category priority: character, copyright, meta, then the rest.
-        // Within each category, sort by confidence score descending.
         predictions.sort_by(|a, b| {
             let priority = |cat: &str| -> i32 {
                 match cat {
@@ -252,9 +231,10 @@ impl TaggerEngine {
             );
         }
 
-        info!("Loading Camie Tagger v2 ONNX model from {:?}", self.model_path);
+        let device = self.device.lock().unwrap().clone();
 
-        // Load metadata JSON
+        info!("Loading Camie Tagger v2 ONNX model from {:?} (device: {:?})", self.model_path, device);
+
         let meta_bytes = std::fs::read(&self.metadata_path)
             .context("Failed to read metadata JSON")?;
         let meta: MetadataRoot = serde_json::from_slice(&meta_bytes)
@@ -270,39 +250,12 @@ impl TaggerEngine {
             total_tags, img_size
         );
 
-        // Build ONNX session — single-threaded to avoid contention with CLIP worker
         let mut builder = Session::builder()
             .context("Failed to build tagger session")?
             .with_intra_threads(1)
             .context("Failed to set tagger threads")?;
 
-        #[cfg(target_os = "windows")]
-        {
-            debug!("Attempting to register DirectML Execution Provider for Tagger...");
-            if let Ok(b) = builder.clone().with_execution_providers([ort::ep::DirectML::default().build()]) {
-                builder = b;
-            }
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            debug!("Attempting to register CoreML Execution Provider for Tagger...");
-            if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CoreML::default().build()]) {
-                builder = b;
-            }
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            debug!("Attempting to register CUDA Execution Provider for Tagger...");
-            if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CUDA::default().build()]) {
-                builder = b;
-            }
-            debug!("Attempting to register ROCm Execution Provider for Tagger...");
-            if let Ok(b) = builder.clone().with_execution_providers([ort::ep::ROCm::default().build()]) {
-                builder = b;
-            }
-        }
+        apply_device_preference(&mut builder, &device, "Camie Tagger");
 
         let session = builder
             .commit_from_file(&self.model_path)
@@ -322,19 +275,10 @@ impl TaggerEngine {
 
 // ---------------------------------------------------------------------------
 // Image preprocessing
-// Mirrors onnx_inference.py::preprocess_image() exactly:
-//   1. Open + convert to RGB
-//   2. Aspect-ratio-preserving resize (longest side → img_size)
-//   3. Center-paste onto img_size×img_size canvas filled with ImageNet mean
-//      color rgb(124, 116, 104)  [== 0.485*255, 0.456*255, 0.406*255 rounded]
-//   4. Per-channel ImageNet normalization
-//      mean=[0.485, 0.456, 0.406]  std=[0.229, 0.224, 0.225]
-//   5. Return Array4<f32> shaped [1, 3, H, W] (NCHW)
 // ---------------------------------------------------------------------------
 
 const IMAGENET_MEAN: [f32; 3] = [0.485, 0.456, 0.406];
 const IMAGENET_STD: [f32; 3] = [0.229, 0.224, 0.225];
-/// ImageNet mean color used to fill padding areas, in 0–255 range.
 const PAD_COLOR: [u8; 3] = [124, 116, 104];
 
 fn preprocess_image(path: &Path, img_size: u32) -> Result<Array4<f32>> {
@@ -344,7 +288,6 @@ fn preprocess_image(path: &Path, img_size: u32) -> Result<Array4<f32>> {
     let (orig_w, orig_h) = img.dimensions();
     let aspect = orig_w as f32 / orig_h as f32;
 
-    // Compute new dimensions maintaining aspect ratio
     let (new_w, new_h) = if aspect > 1.0 {
         let nw = img_size;
         let nh = (img_size as f32 / aspect).round() as u32;
@@ -355,7 +298,6 @@ fn preprocess_image(path: &Path, img_size: u32) -> Result<Array4<f32>> {
         (nw, nh)
     };
 
-    // Resize with Triangle (≈ Lanczos-lite, best available in the image crate without the lanczos feature)
     let resized = image::imageops::resize(
         &img,
         new_w,
@@ -363,19 +305,16 @@ fn preprocess_image(path: &Path, img_size: u32) -> Result<Array4<f32>> {
         FilterType::Triangle,
     );
 
-    // Create a blank canvas filled with ImageNet mean pad color
     let mut canvas = image::RgbImage::from_pixel(
         img_size,
         img_size,
         image::Rgb(PAD_COLOR),
     );
 
-    // Center-paste resized image onto canvas
     let paste_x = (img_size - new_w) / 2;
     let paste_y = (img_size - new_h) / 2;
     image::imageops::overlay(&mut canvas, &resized, paste_x as i64, paste_y as i64);
 
-    // Build [1, 3, H, W] f32 tensor with ImageNet normalization
     let s = img_size as usize;
     let mut tensor = Array4::<f32>::zeros((1, 3, s, s));
 

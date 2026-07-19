@@ -1,9 +1,11 @@
 use anyhow::{Context, Error};
+use crate::ipc::DevicePreference;
 use image::{imageops::FilterType, GenericImageView};
 use ndarray::{Array2, Array4};
-use ort::{inputs, session::Session, value::TensorRef};
+use ort::{inputs, session::Session, session::builder::SessionBuilder, value::TensorRef};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use tokenizers::Tokenizer;
 use tracing::{info, warn};
 use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
@@ -75,15 +77,17 @@ impl VectorIndex {
 
 pub struct ModelManager {
     model_dir: PathBuf,
+    device: Mutex<DevicePreference>,
     vision_session: Option<std::sync::Mutex<Session>>,
     text_session: Option<std::sync::Mutex<Session>>,
     tokenizer: Option<Tokenizer>,
 }
 
 impl ModelManager {
-    pub fn new<P: AsRef<Path>>(model_dir: P) -> Self {
+    pub fn new<P: AsRef<Path>>(model_dir: P, device: DevicePreference) -> Self {
         Self {
             model_dir: model_dir.as_ref().to_path_buf(),
+            device: Mutex::new(device),
             vision_session: None,
             text_session: None,
             tokenizer: None,
@@ -92,6 +96,17 @@ impl ModelManager {
 
     pub fn model_dir(&self) -> &Path {
         &self.model_dir
+    }
+
+    /// Switch the device at runtime. Reinitializes both ONNX sessions with the
+    /// new execution provider.
+    pub fn set_device(&self, device: DevicePreference) {
+        {
+            let mut d = self.device.lock().unwrap();
+            *d = device.clone();
+        }
+        // For commit 1, device changes take effect on next restart
+        info!("CLIP: device preference changed to {:?} (takes effect on restart)", device);
     }
 
     pub fn init(&mut self) -> Result<(), Error> {
@@ -146,33 +161,15 @@ impl ModelManager {
         )?;
 
         // Initialize sessions
+        let device = self.device.lock().unwrap().clone();
+
         info!("Loading ONNX Vision Session from {:?}", vision_path);
         let mut vision_builder = Session::builder()
             .map_err(|e| anyhow::anyhow!("Failed to build vision session: {:?}", e))?
             .with_intra_threads(1)
             .map_err(|e| anyhow::anyhow!("Failed to set vision threads: {:?}", e))?;
 
-        #[cfg(target_os = "windows")]
-        {
-            if let Ok(b) = vision_builder.clone().with_execution_providers([ort::ep::DirectML::default().build()]) {
-                vision_builder = b;
-            }
-        }
-        #[cfg(target_os = "macos")]
-        {
-            if let Ok(b) = vision_builder.clone().with_execution_providers([ort::ep::CoreML::default().build()]) {
-                vision_builder = b;
-            }
-        }
-        #[cfg(target_os = "linux")]
-        {
-            if let Ok(b) = vision_builder.clone().with_execution_providers([ort::ep::CUDA::default().build()]) {
-                vision_builder = b;
-            }
-            if let Ok(b) = vision_builder.clone().with_execution_providers([ort::ep::ROCm::default().build()]) {
-                vision_builder = b;
-            }
-        }
+        apply_device_preference(&mut vision_builder, &device, "CLIP Vision");
 
         let vision_session = vision_builder
             .commit_from_file(&vision_path)
@@ -184,27 +181,7 @@ impl ModelManager {
             .with_intra_threads(1)
             .map_err(|e| anyhow::anyhow!("Failed to set text threads: {:?}", e))?;
 
-        #[cfg(target_os = "windows")]
-        {
-            if let Ok(b) = text_builder.clone().with_execution_providers([ort::ep::DirectML::default().build()]) {
-                text_builder = b;
-            }
-        }
-        #[cfg(target_os = "macos")]
-        {
-            if let Ok(b) = text_builder.clone().with_execution_providers([ort::ep::CoreML::default().build()]) {
-                text_builder = b;
-            }
-        }
-        #[cfg(target_os = "linux")]
-        {
-            if let Ok(b) = text_builder.clone().with_execution_providers([ort::ep::CUDA::default().build()]) {
-                text_builder = b;
-            }
-            if let Ok(b) = text_builder.clone().with_execution_providers([ort::ep::ROCm::default().build()]) {
-                text_builder = b;
-            }
-        }
+        apply_device_preference(&mut text_builder, &device, "CLIP Text");
 
         let text_session = text_builder
             .commit_from_file(&text_path)
@@ -227,8 +204,6 @@ impl ModelManager {
         }
 
         info!("Downloading {} from {} to {:?}", name, url, path);
-        // Call ureq using its standard API.
-        // In ureq 3.x, the API is ureq::get(url).call()
         let agent = ureq::Agent::new_with_defaults();
         let mut response = agent.get(url)
             .call()
@@ -279,14 +254,12 @@ impl ModelManager {
         // 5. Run inference
         let outputs = session_guard.run(inputs![TensorRef::from_array_view(&input_array)?])?;
         
-        // Output from Xenova vision model is usually named "image_embeds" or is the first output
         let output_tensor = outputs.get("image_embeds")
             .or_else(|| outputs.get("output_0"))
             .context("Failed to get image embeds output from model")?;
 
         let output_ref = output_tensor.try_extract_tensor::<f32>()?;
         
-        // Normalize the vector (L2 norm) to ensure cosine distance matches dot product
         let mut embedding = output_ref.1.to_vec();
         let norm = (embedding.iter().map(|&x| x * x).sum::<f32>()).sqrt();
         if norm > 0.0 {
@@ -305,29 +278,24 @@ impl ModelManager {
             .map_err(|_| anyhow::anyhow!("Text mutex poisoned"))?;
         let tokenizer = self.tokenizer.as_ref().context("Tokenizer not initialized")?;
 
-        // 1. Tokenize query
         let encoding = tokenizer.encode(text, true)
             .map_err(|e| anyhow::anyhow!("Tokenization failed: {:?}", e))?;
         
         let input_ids = encoding.get_ids();
         let seq_len = input_ids.len();
 
-        // 2. Prepare tensors
         let input_ids_array = Array2::<i64>::from_shape_fn((1, seq_len), |(_, j)| input_ids[j] as i64);
 
-        // 3. Run inference
         let outputs = session_guard.run(inputs![
             "input_ids" => TensorRef::from_array_view(&input_ids_array)?
         ])?;
 
-        // Output name is "text_embeds"
         let output_tensor = outputs.get("text_embeds")
             .or_else(|| outputs.get("output_0"))
             .context("Failed to get text embeds output from model")?;
 
         let output_ref = output_tensor.try_extract_tensor::<f32>()?;
         
-        // Normalize vector (L2 norm)
         let mut embedding = output_ref.1.to_vec();
         let norm = (embedding.iter().map(|&x| x * x).sum::<f32>()).sqrt();
         if norm > 0.0 {
@@ -337,5 +305,78 @@ impl ModelManager {
         }
 
         Ok(embedding)
+    }
+}
+
+/// Apply GPU/CPU device preference to an ONNX session builder.
+pub fn apply_device_preference(
+    builder: &mut SessionBuilder,
+    device: &DevicePreference,
+    model_name: &str,
+) {
+    match device {
+        DevicePreference::Cpu => {
+            info!("{}: forced to CPU — skipping GPU execution providers", model_name);
+        }
+        DevicePreference::Gpu => {
+            let mut registered = false;
+            #[cfg(target_os = "windows")]
+            {
+                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::DirectML::default().build()]) {
+                    *builder = b;
+                    registered = true;
+                    info!("{}: using DirectML (GPU)", model_name);
+                }
+            }
+            #[cfg(target_os = "macos")]
+            {
+                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CoreML::default().build()]) {
+                    *builder = b;
+                    registered = true;
+                    info!("{}: using CoreML (GPU)", model_name);
+                }
+            }
+            #[cfg(target_os = "linux")]
+            {
+                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CUDA::default().build()]) {
+                    *builder = b;
+                    registered = true;
+                    info!("{}: using CUDA (GPU)", model_name);
+                } else if let Ok(b) = builder.clone().with_execution_providers([ort::ep::ROCm::default().build()]) {
+                    *builder = b;
+                    registered = true;
+                    info!("{}: using ROCm (GPU)", model_name);
+                }
+            }
+            if !registered {
+                warn!("{}: GPU requested but no provider available — falling back to CPU", model_name);
+            }
+        }
+        DevicePreference::Auto => {
+            #[cfg(target_os = "windows")]
+            {
+                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::DirectML::default().build()]) {
+                    *builder = b;
+                    info!("{}: auto-selected DirectML (GPU)", model_name);
+                }
+            }
+            #[cfg(target_os = "macos")]
+            {
+                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CoreML::default().build()]) {
+                    *builder = b;
+                    info!("{}: auto-selected CoreML (GPU)", model_name);
+                }
+            }
+            #[cfg(target_os = "linux")]
+            {
+                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CUDA::default().build()]) {
+                    *builder = b;
+                    info!("{}: auto-selected CUDA (GPU)", model_name);
+                } else if let Ok(b) = builder.clone().with_execution_providers([ort::ep::ROCm::default().build()]) {
+                    *builder = b;
+                    info!("{}: auto-selected ROCm (GPU)", model_name);
+                }
+            }
+        }
     }
 }

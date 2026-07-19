@@ -2,8 +2,9 @@ use anyhow::{Context, Error};
 use clap::Parser;
 use curator_core::db::init_db;
 use curator_core::vector::{ModelManager, VectorIndex};
-use curator_core::ipc::{Request, Response, SearchMatch, ImageDetails, TagSummary};
+use curator_core::ipc::{Request, Response, SearchMatch, ImageDetails, TagSummary, DevicePreference};
 use curator_core::tagger::TaggerEngine;
+use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,6 +20,41 @@ mod worker;
 
 use auth::load_or_create_service_key;
 use worker::BackgroundWorker;
+
+/// Persistent application settings stored in `<data_dir>/settings.json`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AppSettings {
+    clip_device: DevicePreference,
+    tagger_device: DevicePreference,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            clip_device: DevicePreference::Auto,
+            tagger_device: DevicePreference::Auto,
+        }
+    }
+}
+
+fn load_settings(data_dir: &Path) -> AppSettings {
+    let path = data_dir.join("settings.json");
+    match fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_else(|e| {
+            warn!("Failed to parse settings.json, using defaults: {:?}", e);
+            AppSettings::default()
+        }),
+        Err(_) => AppSettings::default(),
+    }
+}
+
+fn save_settings(data_dir: &Path, settings: &AppSettings) -> Result<(), Error> {
+    let path = data_dir.join("settings.json");
+    let json = serde_json::to_string_pretty(settings)
+        .context("Failed to serialize settings")?;
+    fs::write(&path, json).context("Failed to write settings.json")?;
+    Ok(())
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -89,32 +125,42 @@ async fn main() -> Result<(), Error> {
     .execute(&db)
     .await?;
 
-    // 3. Initialize CLIP Models
+    // 3. Load settings
+    let settings = load_settings(&data_dir);
+    info!(
+        "Settings loaded: clip_device={:?}, tagger_device={:?}",
+        settings.clip_device, settings.tagger_device
+    );
+
+    // 4. Initialize CLIP Models
     let model_dir = data_dir.join("models");
-    let mut model_manager = ModelManager::new(&model_dir);
+    let mut model_manager = ModelManager::new(&model_dir, settings.clip_device.clone());
     model_manager.init()?;
     let model_manager = Arc::new(model_manager);
 
-    // 4. Initialize Vector Index
+    // 5. Initialize Vector Index
     let index_path = data_dir.join("vector_index.usearch");
     let vector_index = Arc::new(VectorIndex::new(&index_path, 512)?);
 
-    // 5. Initialize Camie Tagger (lazy — does not load the model yet)
+    // 6. Initialize Camie Tagger (lazy — does not load the model yet)
     let tagger_dir = args.tagger_model_dir
         .as_ref()
         .map(PathBuf::from)
         .unwrap_or_else(|| data_dir.join("models"));
-    let tagger = Arc::new(TaggerEngine::new(&tagger_dir));
+    let tagger = Arc::new(TaggerEngine::new(&tagger_dir, settings.tagger_device.clone()));
     info!(
-        "Camie Tagger configured at {:?} (model loads on first use)",
-        tagger_dir
+        "Camie Tagger configured at {:?} with device {:?} (model loads on first use)",
+        tagger_dir, settings.tagger_device
     );
 
-    // 6. Start Background Job Worker
+    // 7. Start Background Job Worker
     let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone());
     worker.start();
 
-    // 7. Start Named Pipe Server Loop
+    // 8. Create settings arc (shared by idle reaper + IPC handler)
+    let settings_arc = Arc::new(tokio::sync::Mutex::new(settings));
+
+    // 10. Start Named Pipe Server Loop
     let pipe_name = r"\\.\pipe\curator_ipc";
     info!("Listening on Named Pipe: {}", pipe_name);
 
@@ -123,6 +169,7 @@ async fn main() -> Result<(), Error> {
     let vi_arc = vector_index.clone();
     let tagger_arc = tagger.clone();
     let key_arc = Arc::new(service_key);
+    let data_dir_arc = Arc::new(data_dir);
 
     // Named Pipe listener loop
     let mut is_first = true;
@@ -140,9 +187,11 @@ async fn main() -> Result<(), Error> {
         let vi = vi_arc.clone();
         let tagger = tagger_arc.clone();
         let key = key_arc.clone();
+        let dd = data_dir_arc.clone();
+        let st = settings_arc.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = handle_client(server, db, mm, vi, tagger, key).await {
+            if let Err(e) = handle_client(server, db, mm, vi, tagger, key, dd, st).await {
                 error!("Error handling IPC client: {:?}", e);
             }
         });
@@ -156,6 +205,8 @@ async fn handle_client(
     vector_index: Arc<VectorIndex>,
     tagger: Arc<TaggerEngine>,
     service_key: Arc<String>,
+    data_dir: Arc<PathBuf>,
+    settings: Arc<tokio::sync::Mutex<AppSettings>>,
 ) -> Result<(), Error> {
     info!("New client connected to named pipe.");
     let mut buffer = vec![0; 16384];
@@ -198,7 +249,7 @@ async fn handle_client(
 
         info!("Received Request: {:?}", request);
         let response =
-            handle_request(request, &db, &model_manager, &vector_index, &tagger).await;
+            handle_request(request, &db, &model_manager, &vector_index, &tagger, &data_dir, &settings).await;
 
         let response_str = serde_json::to_string(&response)?;
         stream.write_all(response_str.as_bytes()).await?;
@@ -214,6 +265,8 @@ async fn handle_request(
     model_manager: &ModelManager,
     vector_index: &VectorIndex,
     tagger: &Arc<TaggerEngine>,
+    data_dir: &PathBuf,
+    settings: &Arc<tokio::sync::Mutex<AppSettings>>,
 ) -> Response {
     match request {
         Request::Ping => Response::Pong,
@@ -395,9 +448,12 @@ async fn handle_request(
                     skipped: outcome.skipped,
                     tags: outcome.tags,
                 },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
+                Err(e) => {
+                    error!("TagImage {} failed: {:?}", image_id, e);
+                    Response::Error {
+                        message: e.to_string(),
+                    }
+                }
             }
         }
 
@@ -432,6 +488,49 @@ async fn handle_request(
                 processed,
                 failed,
                 skipped,
+            }
+        }
+
+        Request::GetSettings => {
+            let s = settings.lock().await;
+            Response::SettingsResult {
+                clip_device: s.clip_device.clone(),
+                tagger_device: s.tagger_device.clone(),
+            }
+        }
+
+        Request::UpdateSettings {
+            clip_device,
+            tagger_device,
+        } => {
+            let mut s = settings.lock().await;
+            if let Some(ref cd) = clip_device {
+                s.clip_device = cd.clone();
+            }
+            if let Some(ref td) = tagger_device {
+                s.tagger_device = td.clone();
+            }
+            if let Err(e) = save_settings(data_dir, &s) {
+                warn!("Failed to save settings: {:?}", e);
+            }
+            let clip = s.clip_device.clone();
+            let tagger_dev = s.tagger_device.clone();
+            drop(s);
+
+            // Apply CLIP device change immediately (unloads sessions for reload)
+            if clip_device.is_some() {
+                model_manager.set_device(clip.clone());
+            }
+
+            // Apply Tagger device change immediately (unloads if loaded)
+            if tagger_device.is_some() {
+                tagger.set_device(tagger_dev.clone());
+            }
+
+            info!("Settings updated: clip_device={:?}, tagger_device={:?}", clip, tagger_dev);
+            Response::SettingsResult {
+                clip_device: clip,
+                tagger_device: tagger_dev,
             }
         }
     }
