@@ -294,6 +294,21 @@
 
         <!-- SETTINGS VIEW -->
         <section class="view-section" id="view-settings">
+          <!-- Image Viewing Setting -->
+          <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+            <div class="group-box-title">Image Viewing</div>
+            <p style="font-size: 11px; color: #333333;">
+              Choose what happens when you click an image in the Gallery.
+            </p>
+            <div class="form-group">
+              <label style="font-weight: 600; min-width: 120px;">Click Action:</label>
+              <select class="input-field" id="settings-image-click-action" style="width: 220px;">
+                <option value="in-app">Open in App (Image Viewer)</option>
+                <option value="external">Open with Default Application</option>
+              </select>
+            </div>
+          </div>
+
           <div class="group-box" style="display: flex; flex-direction: column; gap: 16px;">
             <div class="group-box-title">Model Device Settings</div>
             <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">
@@ -301,21 +316,6 @@
             </p>
 
             <div style="display: flex; flex-direction: column; gap: 16px;">
-              <!-- Image Viewing Setting -->
-              <div class="group-box" style="padding: 12px;">
-                <div class="group-box-title">Image Viewing</div>
-                <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">
-                  Choose what happens when you click an image in the Gallery.
-                </p>
-                <div class="form-group">
-                  <label style="font-weight: 600; min-width: 120px;">Click Action:</label>
-                  <select class="input-field" id="settings-image-click-action" style="width: 220px;">
-                    <option value="in-app">Open in App (Image Viewer)</option>
-                    <option value="external">Open with Default Application</option>
-                  </select>
-                </div>
-              </div>
-
               <!-- CLIP Model Device -->
               <div class="group-box" style="padding: 12px;">
                 <div class="group-box-title">CLIP ViT-B/32 (Semantic Search)</div>
