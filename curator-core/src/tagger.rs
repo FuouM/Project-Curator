@@ -96,6 +96,10 @@ impl TaggerEngine {
         }
     }
 
+    pub fn model_path(&self) -> &Path {
+        &self.model_path
+    }
+
     /// Return true if the ONNX session is already loaded in memory.
     pub fn is_loaded(&self) -> bool {
         self.inner.lock().unwrap().is_some()
@@ -267,10 +271,40 @@ impl TaggerEngine {
         );
 
         // Build ONNX session — single-threaded to avoid contention with CLIP worker
-        let session = Session::builder()
+        let mut builder = Session::builder()
             .context("Failed to build tagger session")?
             .with_intra_threads(1)
-            .context("Failed to set tagger threads")?
+            .context("Failed to set tagger threads")?;
+
+        #[cfg(target_os = "windows")]
+        {
+            debug!("Attempting to register DirectML Execution Provider for Tagger...");
+            if let Ok(b) = builder.clone().with_execution_providers([ort::ep::DirectML::default().build()]) {
+                builder = b;
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            debug!("Attempting to register CoreML Execution Provider for Tagger...");
+            if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CoreML::default().build()]) {
+                builder = b;
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            debug!("Attempting to register CUDA Execution Provider for Tagger...");
+            if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CUDA::default().build()]) {
+                builder = b;
+            }
+            debug!("Attempting to register ROCm Execution Provider for Tagger...");
+            if let Ok(b) = builder.clone().with_execution_providers([ort::ep::ROCm::default().build()]) {
+                builder = b;
+            }
+        }
+
+        let session = builder
             .commit_from_file(&self.model_path)
             .context("Failed to load Camie Tagger ONNX session")?;
 

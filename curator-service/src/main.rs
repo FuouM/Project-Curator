@@ -27,9 +27,9 @@ struct Args {
     data_dir: String,
 
     /// Directory containing camie-tagger-v2.onnx and camie-tagger-v2-metadata.json.
-    /// If not set or path is invalid, auto-tagging will be unavailable.
-    #[arg(long, default_value = "k:\\dataset\\camie-tagger-v2")]
-    tagger_model_dir: String,
+    /// If not set, defaults to <data_dir>/models.
+    #[arg(long)]
+    tagger_model_dir: Option<String>,
 }
 
 #[tokio::main]
@@ -100,7 +100,10 @@ async fn main() -> Result<(), Error> {
     let vector_index = Arc::new(VectorIndex::new(&index_path, 512)?);
 
     // 5. Initialize Camie Tagger (lazy — does not load the model yet)
-    let tagger_dir = PathBuf::from(&args.tagger_model_dir);
+    let tagger_dir = args.tagger_model_dir
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| data_dir.join("models"));
     let tagger = Arc::new(TaggerEngine::new(&tagger_dir));
     info!(
         "Camie Tagger configured at {:?} (model loads on first use)",
@@ -214,6 +217,37 @@ async fn handle_request(
 ) -> Response {
     match request {
         Request::Ping => Response::Pong,
+
+        Request::RunBenchmark => {
+            let vision_path = model_manager.model_dir().join("vision_model.onnx");
+            let tagger_path = tagger.model_path();
+            info!("RunBenchmark request: vision_path={:?}, tagger_path={:?}, tagger_path_exists={}", vision_path, tagger_path, tagger_path.exists());
+
+            let clip_res = curator_core::run_onnx_benchmark(&vision_path, 224);
+            let tagger_res = if tagger_path.exists() {
+                match curator_core::run_onnx_benchmark(&tagger_path, 512) {
+                    Ok((cpu, gpu, err, _)) => (Some(cpu), gpu, err),
+                    Err(e) => (None, None, Some(format!("Tagger benchmark failed: {:?}", e))),
+                }
+            } else {
+                (None, None, Some("Tagger model file not found.".to_string()))
+            };
+
+            match clip_res {
+                Ok((clip_cpu, clip_gpu, clip_err, has_gpu)) => Response::BenchmarkResult {
+                    clip_cpu_time_ms: clip_cpu,
+                    clip_gpu_time_ms: clip_gpu,
+                    clip_gpu_error: clip_err,
+                    tagger_cpu_time_ms: tagger_res.0,
+                    tagger_gpu_time_ms: tagger_res.1,
+                    tagger_gpu_error: tagger_res.2,
+                    has_gpu,
+                },
+                Err(e) => Response::Error {
+                    message: format!("CLIP model benchmark failed: {:?}", e),
+                },
+            }
+        }
 
         Request::GetStatus => match query_status(db).await {
             Ok((images, vectors, pending)) => Response::StatusResult {

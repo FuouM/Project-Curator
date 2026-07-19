@@ -48,6 +48,8 @@ pub enum Request {
     },
     /// Query whether the Camie Tagger model is currently loaded.
     GetTaggerStatus,
+    /// Run CPU vs GPU ONNX model benchmark.
+    RunBenchmark,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -56,6 +58,15 @@ pub enum Response {
     Success,
     Error {
         message: String,
+    },
+    BenchmarkResult {
+        clip_cpu_time_ms: f64,
+        clip_gpu_time_ms: Option<f64>,
+        clip_gpu_error: Option<String>,
+        tagger_cpu_time_ms: Option<f64>,
+        tagger_gpu_time_ms: Option<f64>,
+        tagger_gpu_error: Option<String>,
+        has_gpu: bool,
     },
     ImportResult {
         image_id: i64,

@@ -59,6 +59,9 @@
               <li class="nav-item" data-view="logs">
                 <span><i class="bi bi-journal-text"></i></span> Application Logs
               </li>
+              <li class="nav-item" data-view="benchmark">
+                <span><i class="bi bi-speedometer"></i></span> GPU Benchmark
+              </li>
             </ul>
           </li>
         </ul>
@@ -191,6 +194,64 @@
               <button class="win-button" id="clear-logs-btn"><i class="bi bi-x-lg"></i> Clear Logs</button>
             </div>
             <textarea id="log-textarea" readonly style="flex: 1; font-family: 'Consolas', monospace; font-size: 11px; background-color: #ffffff; color: #000000; border: 1px solid #7a7a7a; padding: 8px; resize: none; overflow-y: scroll; outline: none;"></textarea>
+          </div>
+        </section>
+
+        <!-- BENCHMARK VIEW -->
+        <section class="view-section" id="view-benchmark">
+          <div class="group-box" style="display: flex; flex-direction: column; gap: 16px;">
+            <div class="group-box-title">Hardware Throughput Benchmark</div>
+            <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">
+              Measure inference latency on CPU vs GPU. This runs CLIP Vision model inference (5 iterations) and reports average speed and throughput factor.
+            </p>
+            <div>
+              <button class="win-button" id="run-benchmark-btn">
+                <i class="bi bi-play-fill"></i> Run Benchmark
+              </button>
+            </div>
+            
+            <div class="group-box" style="padding: 12px; margin-top: 10px; background-color: #f6f6f6;">
+              <div class="group-box-title">Results</div>
+              <div style="display: flex; flex-direction: column; gap: 12px; font-size: 11px;">
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #ccc; padding-bottom: 4px;">
+                  <span style="font-weight: bold;">GPU Provider Support:</span>
+                  <span id="benchmark-gpu-loaded">—</span>
+                </div>
+
+                <div style="margin-top: 4px;">
+                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">CLIP Vision Model (224x224)</div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>CPU Throughput:</span>
+                    <span id="benchmark-clip-cpu">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>GPU Throughput:</span>
+                    <span id="benchmark-clip-gpu">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
+                    <span>Throughput Factor:</span>
+                    <span id="benchmark-clip-speedup">—</span>
+                  </div>
+                </div>
+
+                <div style="margin-top: 8px;">
+                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">Camie Tagger v2 Model (512x512)</div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>CPU Throughput:</span>
+                    <span id="benchmark-tagger-cpu">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>GPU Throughput:</span>
+                    <span id="benchmark-tagger-gpu">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
+                    <span>Throughput Factor:</span>
+                    <span id="benchmark-tagger-speedup">—</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: red;" id="benchmark-error-msg"></p>
           </div>
         </section>
       </main>

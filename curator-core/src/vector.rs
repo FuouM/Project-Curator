@@ -90,6 +90,10 @@ impl ModelManager {
         }
     }
 
+    pub fn model_dir(&self) -> &Path {
+        &self.model_dir
+    }
+
     pub fn init(&mut self) -> Result<(), Error> {
         // Search upwards for onnxruntime.dll starting from current executable path
         if let Ok(exe_path) = std::env::current_exe() {
@@ -143,18 +147,66 @@ impl ModelManager {
 
         // Initialize sessions
         info!("Loading ONNX Vision Session from {:?}", vision_path);
-        let vision_session = Session::builder()
+        let mut vision_builder = Session::builder()
             .map_err(|e| anyhow::anyhow!("Failed to build vision session: {:?}", e))?
             .with_intra_threads(1)
-            .map_err(|e| anyhow::anyhow!("Failed to set vision threads: {:?}", e))?
+            .map_err(|e| anyhow::anyhow!("Failed to set vision threads: {:?}", e))?;
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(b) = vision_builder.clone().with_execution_providers([ort::ep::DirectML::default().build()]) {
+                vision_builder = b;
+            }
+        }
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(b) = vision_builder.clone().with_execution_providers([ort::ep::CoreML::default().build()]) {
+                vision_builder = b;
+            }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok(b) = vision_builder.clone().with_execution_providers([ort::ep::CUDA::default().build()]) {
+                vision_builder = b;
+            }
+            if let Ok(b) = vision_builder.clone().with_execution_providers([ort::ep::ROCm::default().build()]) {
+                vision_builder = b;
+            }
+        }
+
+        let vision_session = vision_builder
             .commit_from_file(&vision_path)
             .map_err(|e| anyhow::anyhow!("Failed to commit vision session: {:?}", e))?;
 
         info!("Loading ONNX Text Session from {:?}", text_path);
-        let text_session = Session::builder()
+        let mut text_builder = Session::builder()
             .map_err(|e| anyhow::anyhow!("Failed to build text session: {:?}", e))?
             .with_intra_threads(1)
-            .map_err(|e| anyhow::anyhow!("Failed to set text threads: {:?}", e))?
+            .map_err(|e| anyhow::anyhow!("Failed to set text threads: {:?}", e))?;
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(b) = text_builder.clone().with_execution_providers([ort::ep::DirectML::default().build()]) {
+                text_builder = b;
+            }
+        }
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(b) = text_builder.clone().with_execution_providers([ort::ep::CoreML::default().build()]) {
+                text_builder = b;
+            }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok(b) = text_builder.clone().with_execution_providers([ort::ep::CUDA::default().build()]) {
+                text_builder = b;
+            }
+            if let Ok(b) = text_builder.clone().with_execution_providers([ort::ep::ROCm::default().build()]) {
+                text_builder = b;
+            }
+        }
+
+        let text_session = text_builder
             .commit_from_file(&text_path)
             .map_err(|e| anyhow::anyhow!("Failed to commit text session: {:?}", e))?;
 

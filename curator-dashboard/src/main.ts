@@ -12,14 +12,15 @@ type RequestPayload =
   | { GetStatus: null }
   | { ImportImage: { path: string } }
   | { AddTag: { image_id: number; tag: string; category: string } }
-  | { RemoveTag: { image_id: number; tag_id: number } }
+  | { RemoveTag: { image_id: number; tag: string } }
   | { Search: { query_text: string | null; tag_filter: string | null; limit: number } }
   | { ListImages: { limit: number; offset: number } }
   | { GetImage: { image_id: number } }
   | { ValidatePlugin: { manifest_path: string } }
   | { TagImage: { image_id: number; threshold: number | null; force: boolean | null } }
   | { TagImageBatch: { image_ids: number[]; threshold: number | null; force: boolean | null } }
-  | { GetTaggerStatus: null };
+  | { GetTaggerStatus: null }
+  | { RunBenchmark: null };
 
 interface SearchMatch {
   id: number;
@@ -56,7 +57,8 @@ type ResponsePayload =
   | { ValidationResult: { name: string; version: string; valid: boolean; error: string | null } }
   | { TagImageResult: { image_id: number; tags_applied: number; skipped: boolean; tags: TagSummary[] } }
   | { BatchTagResult: { processed: number; failed: number; skipped: number } }
-  | { TaggerStatusResult: { loaded: boolean; model_path: string; total_tags: number } };
+  | { TaggerStatusResult: { loaded: boolean; model_path: string; total_tags: number } }
+  | { BenchmarkResult: { clip_cpu_time_ms: number; clip_gpu_time_ms: number | null; clip_gpu_error: string | null; tagger_cpu_time_ms: number | null; tagger_gpu_time_ms: number | null; tagger_gpu_error: string | null; has_gpu: boolean } };
 
 // Helpers for invoking the service through Rust Named Pipe bridge
 async function callService(request: RequestPayload): Promise<ResponsePayload> {
@@ -85,6 +87,8 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
     formattedReq = { TagImageBatch: request.TagImageBatch };
   } else if ("GetTaggerStatus" in request) {
     formattedReq = "GetTaggerStatus";
+  } else if ("RunBenchmark" in request) {
+    formattedReq = "RunBenchmark";
   }
 
   try {
@@ -110,6 +114,7 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
     if (parsed.TagImageResult) return { TagImageResult: parsed.TagImageResult };
     if (parsed.BatchTagResult) return { BatchTagResult: parsed.BatchTagResult };
     if (parsed.TaggerStatusResult) return { TaggerStatusResult: parsed.TaggerStatusResult };
+    if (parsed.BenchmarkResult) return { BenchmarkResult: parsed.BenchmarkResult };
 
     throw new Error("Unknown response format: " + respStr);
   } catch (err: any) {
@@ -124,6 +129,7 @@ function init() {
   startStatusPolling();
   refreshDashboard();
   setupTaggerCard();
+  setupBenchmark();
 }
 
 if (document.readyState === "loading") {
@@ -145,7 +151,8 @@ function setupNavigation() {
     import: { title: "Import Images", sub: "Register and index new images locally." },
     search: { title: "Semantic Search", sub: "Perform neural and tag-based image retrieval." },
     plugins: { title: "Plugins", sub: "Verify and manage sandboxed plugin modules." },
-    logs: { title: "System Diagnostic Logs", sub: "View active traces and stderr/stdout logs from the local engine." }
+    logs: { title: "System Diagnostic Logs", sub: "View active traces and stderr/stdout logs from the local engine." },
+    benchmark: { title: "Hardware Performance Benchmark", sub: "Run latency and throughput comparisons on CPU vs GPU." }
   };
 
   navItems.forEach((item) => {
@@ -512,7 +519,7 @@ function renderFeaturedDay(featured: ImageDetails) {
       
       const queryInput = document.getElementById("search-text-input") as HTMLInputElement;
       if (queryInput) {
-        queryInput.value = featured.tags.length > 0 ? featured.tags[0] : "image matching featured characteristics";
+        queryInput.value = featured.tags.length > 0 ? featured.tags[0].tag : "image matching featured characteristics";
         document.getElementById("search-form")?.dispatchEvent(new Event("submit"));
       }
     }
@@ -707,7 +714,7 @@ async function handleModalAutoTag() {
   try {
     const resp = await callService({ TagImage: { image_id: imageId, threshold, force } });
     if ("TagImageResult" in resp) {
-      const { tags_applied, skipped, tags } = resp.TagImageResult;
+      const { tags_applied, skipped } = resp.TagImageResult;
       if (skipped) {
         // AI tags already exist, trigger overwrite confirmation flow
         overwriteTargetId = imageId;
@@ -831,4 +838,120 @@ async function clearLogsData() {
   } catch (e) {
     alert("Failed to clear logs: " + e);
   }
+}
+
+function setupBenchmark() {
+  const runBtn = document.getElementById("run-benchmark-btn");
+  const gpuLoaded = document.getElementById("benchmark-gpu-loaded");
+  const errText = document.getElementById("benchmark-error-msg");
+
+  const clipCpu = document.getElementById("benchmark-clip-cpu");
+  const clipGpu = document.getElementById("benchmark-clip-gpu");
+  const clipSpeedup = document.getElementById("benchmark-clip-speedup");
+
+  const taggerCpu = document.getElementById("benchmark-tagger-cpu");
+  const taggerGpu = document.getElementById("benchmark-tagger-gpu");
+  const taggerSpeedup = document.getElementById("benchmark-tagger-speedup");
+
+  if (!runBtn) return;
+
+  runBtn.addEventListener("click", async () => {
+    runBtn.setAttribute("disabled", "true");
+    runBtn.textContent = "Benchmarking...";
+    
+    if (clipCpu) clipCpu.textContent = "Running...";
+    if (clipGpu) clipGpu.textContent = "Running...";
+    if (clipSpeedup) clipSpeedup.textContent = "Calculating...";
+    
+    if (taggerCpu) taggerCpu.textContent = "Running...";
+    if (taggerGpu) taggerGpu.textContent = "Running...";
+    if (taggerSpeedup) taggerSpeedup.textContent = "Calculating...";
+    
+    if (gpuLoaded) gpuLoaded.textContent = "...";
+    if (errText) errText.textContent = "";
+
+    try {
+      const resp = await callService({ RunBenchmark: null });
+      if ("BenchmarkResult" in resp) {
+        const {
+          clip_cpu_time_ms,
+          clip_gpu_time_ms,
+          clip_gpu_error,
+          tagger_cpu_time_ms,
+          tagger_gpu_time_ms,
+          tagger_gpu_error,
+          has_gpu
+        } = resp.BenchmarkResult;
+
+        // Render CLIP Results
+        if (clipCpu) {
+          clipCpu.textContent = `${clip_cpu_time_ms.toFixed(2)} ms / image (${(1000 / clip_cpu_time_ms).toFixed(1)} items/sec)`;
+        }
+        if (clip_gpu_time_ms !== null) {
+          if (clipGpu) {
+            clipGpu.textContent = `${clip_gpu_time_ms.toFixed(2)} ms / image (${(1000 / clip_gpu_time_ms).toFixed(1)} items/sec)`;
+          }
+          if (clipSpeedup) {
+            const factor = clip_cpu_time_ms / clip_gpu_time_ms;
+            clipSpeedup.textContent = `${factor.toFixed(2)}x Speedup`;
+            clipSpeedup.style.color = factor > 1 ? "#008000" : "#d00000";
+            clipSpeedup.style.fontWeight = "bold";
+          }
+        } else {
+          if (clipGpu) {
+            clipGpu.textContent = clip_gpu_error ? `Error: ${clip_gpu_error}` : "N/A (Disabled or Failed)";
+          }
+          if (clipSpeedup) clipSpeedup.textContent = "—";
+        }
+
+        // Render Tagger Results
+        if (tagger_cpu_time_ms !== null) {
+          if (taggerCpu) {
+            taggerCpu.textContent = `${tagger_cpu_time_ms.toFixed(2)} ms / image (${(1000 / tagger_cpu_time_ms).toFixed(1)} items/sec)`;
+          }
+          if (tagger_gpu_time_ms !== null) {
+            if (taggerGpu) {
+              taggerGpu.textContent = `${tagger_gpu_time_ms.toFixed(2)} ms / image (${(1000 / tagger_gpu_time_ms).toFixed(1)} items/sec)`;
+            }
+            if (taggerSpeedup) {
+              const factor = tagger_cpu_time_ms / tagger_gpu_time_ms;
+              taggerSpeedup.textContent = `${factor.toFixed(2)}x Speedup`;
+              taggerSpeedup.style.color = factor > 1 ? "#008000" : "#d00000";
+              taggerSpeedup.style.fontWeight = "bold";
+            }
+          } else {
+            if (taggerGpu) {
+              taggerGpu.textContent = tagger_gpu_error ? `Error: ${tagger_gpu_error}` : "N/A";
+            }
+            if (taggerSpeedup) taggerSpeedup.textContent = "—";
+          }
+        } else {
+          if (taggerCpu) {
+            taggerCpu.textContent = tagger_gpu_error ? `Error: ${tagger_gpu_error}` : "N/A (Model file not found)";
+          }
+          if (taggerGpu) taggerGpu.textContent = "N/A";
+          if (taggerSpeedup) taggerSpeedup.textContent = "—";
+        }
+
+        // Render GPU provider support status
+        if (gpuLoaded) {
+          if (has_gpu) {
+            gpuLoaded.textContent = "Yes";
+            gpuLoaded.style.color = "#008000";
+            gpuLoaded.style.fontWeight = "bold";
+          } else {
+            gpuLoaded.textContent = "No (CPU only build)";
+            gpuLoaded.style.color = "#555555";
+          }
+        }
+      } else if ("Error" in resp) {
+        if (errText) errText.textContent = resp.Error.message;
+      }
+    } catch (e: any) {
+      if (errText) errText.textContent = e.message || "Request failed";
+    } finally {
+      runBtn.removeAttribute("disabled");
+      runBtn.innerHTML = '<i class="bi bi-play-fill"></i> Run Benchmark';
+    }
+  });
 }

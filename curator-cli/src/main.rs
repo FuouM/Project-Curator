@@ -90,6 +90,8 @@ enum Commands {
     },
     /// Show the current status of the Camie Tagger model
     TaggerStatus,
+    /// Run CPU vs GPU ONNX model benchmark
+    Benchmark,
 }
 
 #[derive(Subcommand, Debug)]
@@ -189,6 +191,7 @@ async fn main() -> Result<(), Error> {
             }
         }
         Commands::TaggerStatus => Request::GetTaggerStatus,
+        Commands::Benchmark => Request::RunBenchmark,
     };
 
     // 3. Connect to Named Pipe IPC Server
@@ -241,6 +244,43 @@ async fn main() -> Result<(), Error> {
         Response::Pong => println!("Pong! Curator Service is alive and healthy."),
         Response::Success => println!("Operation completed successfully."),
         Response::Error { message } => println!("Error: {}", message),
+        Response::BenchmarkResult {
+            clip_cpu_time_ms,
+            clip_gpu_time_ms,
+            clip_gpu_error,
+            tagger_cpu_time_ms,
+            tagger_gpu_time_ms,
+            tagger_gpu_error,
+            has_gpu,
+        } => {
+            println!("Benchmark Results:");
+            println!("GPU Support: {}", if has_gpu { "Yes" } else { "No" });
+            println!("\nCLIP Vision Model (224x224):");
+            println!("  CPU: {:.2} ms/image", clip_cpu_time_ms);
+            if let Some(gpu) = clip_gpu_time_ms {
+                println!("  GPU: {:.2} ms/image ({:.2}x speedup)", gpu, clip_cpu_time_ms / gpu);
+            } else {
+                println!("  GPU: N/A");
+            }
+            if let Some(err) = clip_gpu_error {
+                println!("  GPU Load Error: {}", err);
+            }
+            println!("\nCamie Tagger v2 Model (512x512):");
+            if let Some(cpu) = tagger_cpu_time_ms {
+                println!("  CPU: {:.2} ms/image", cpu);
+                if let Some(gpu) = tagger_gpu_time_ms {
+                    println!("  GPU: {:.2} ms/image ({:.2}x speedup)", gpu, cpu / gpu);
+                } else {
+                    println!("  GPU: N/A");
+                }
+            } else {
+                println!("  CPU: N/A");
+                println!("  GPU: N/A");
+            }
+            if let Some(err) = tagger_gpu_error {
+                println!("  Tagger Error: {}", err);
+            }
+        }
         Response::ImportResult { image_id, sha256 } => {
             println!("Successfully imported image:");
             println!("  ID:     {}", image_id);
