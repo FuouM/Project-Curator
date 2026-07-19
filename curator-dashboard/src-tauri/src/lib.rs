@@ -295,6 +295,27 @@ fn log_frontend(message: String) {
     log_dashboard_event(&format!("[JS] {}", message));
 }
 
+#[tauri::command]
+async fn open_file_externally(path: String) -> Result<(), String> {
+    log_dashboard_event(&format!("open_file_externally called with path: {}", path));
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        let msg = format!("File not found: {}", path);
+        log_dashboard_event(&msg);
+        return Err(msg);
+    }
+    Command::new("cmd")
+        .args(["/C", "start", "", &path])
+        .spawn()
+        .map_err(|e| {
+            let msg = format!("Failed to open file: {:?}", e);
+            log_dashboard_event(&msg);
+            msg
+        })?;
+    log_dashboard_event(&format!("Successfully spawned open for: {}", path));
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -314,7 +335,8 @@ pub fn run() {
             select_path,
             read_logs,
             clear_logs,
-            log_frontend
+            log_frontend,
+            open_file_externally
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -504,3 +504,87 @@ body {
   background-color: var(--sys-window-bg);
   border: 1px solid var(--sys-border-dark);
 }
+
+/* Image Viewer Modal */
+#image-viewer-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.85);
+  z-index: 10000;
+  flex-direction: column;
+}
+#image-viewer-modal.active {
+  display: flex;
+}
+.image-viewer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background-color: #1e1e1e;
+  color: #ffffff;
+  flex-shrink: 0;
+  user-select: none;
+}
+.image-viewer-title {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: 12px;
+}
+.image-viewer-header-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.image-viewer-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 8px;
+}
+.image-viewer-body img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.image-viewer-btn {
+  background-color: #333333;
+  color: #ffffff;
+  border: 1px solid #555555;
+  padding: 4px 10px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.image-viewer-btn:hover {
+  background-color: #444444;
+  border-color: #777777;
+}
+.image-viewer-close {
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  color: #ffffff;
+  padding: 0 4px;
+}
+.image-viewer-close:hover {
+  color: #ff6b6b;
+}
+
+/* Image preview click hint */
+.image-preview {
+  cursor: pointer;
+}

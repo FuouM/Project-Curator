@@ -267,6 +267,21 @@
             </p>
 
             <div style="display: flex; flex-direction: column; gap: 16px;">
+              <!-- Image Viewing Setting -->
+              <div class="group-box" style="padding: 12px;">
+                <div class="group-box-title">Image Viewing</div>
+                <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">
+                  Choose what happens when you click an image in the Gallery.
+                </p>
+                <div class="form-group">
+                  <label style="font-weight: 600; min-width: 120px;">Click Action:</label>
+                  <select class="input-field" id="settings-image-click-action" style="width: 220px;">
+                    <option value="in-app">Open in App (Image Viewer)</option>
+                    <option value="external">Open with Default Application</option>
+                  </select>
+                </div>
+              </div>
+
               <!-- CLIP Model Device -->
               <div class="group-box" style="padding: 12px;">
                 <div class="group-box-title">CLIP ViT-B/32 (Semantic Search)</div>
@@ -344,6 +359,22 @@
         <span>Ready</span>
       </div>
     </footer>
+
+    <!-- Image Viewer Modal -->
+    <div id="image-viewer-modal">
+      <div class="image-viewer-header">
+        <span class="image-viewer-title" id="image-viewer-filename"></span>
+        <div class="image-viewer-header-actions">
+          <button class="image-viewer-btn" id="image-viewer-open-external">
+            <i class="bi bi-box-arrow-up-right"></i> Open Externally
+          </button>
+          <span class="image-viewer-close" id="image-viewer-close">&times;</span>
+        </div>
+      </div>
+      <div class="image-viewer-body">
+        <img id="image-viewer-img" src="" alt="Full size image" />
+      </div>
+    </div>
 
     <!-- Add Tag Modal Dialog -->
     <div class="modal" id="add-tag-modal">

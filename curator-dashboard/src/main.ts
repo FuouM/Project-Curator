@@ -6,6 +6,68 @@ function logJS(msg: string) {
   invoke("log_frontend", { message: msg }).catch(() => {});
 }
 
+// --- Image Click Setting ---
+const IMAGE_CLICK_KEY = "curator-image-click-action";
+
+function getImageClickAction(): string {
+  return localStorage.getItem(IMAGE_CLICK_KEY) || "in-app";
+}
+
+function setImageClickAction(action: string) {
+  localStorage.setItem(IMAGE_CLICK_KEY, action);
+}
+
+// --- Image Viewer ---
+let currentViewerPath: string | null = null;
+
+function openImageViewer(filepath: string) {
+  const modal = document.getElementById("image-viewer-modal");
+  const img = document.getElementById("image-viewer-img") as HTMLImageElement;
+  const title = document.getElementById("image-viewer-filename");
+
+  if (!modal || !img || !title) return;
+
+  currentViewerPath = filepath;
+  title.textContent = filepath;
+  img.src = convertFileSrc(filepath);
+  modal.classList.add("active");
+}
+
+function closeImageViewer() {
+  const modal = document.getElementById("image-viewer-modal");
+  if (modal) modal.classList.remove("active");
+  currentViewerPath = null;
+}
+
+function setupImageViewer() {
+  document.getElementById("image-viewer-close")?.addEventListener("click", closeImageViewer);
+
+  document.getElementById("image-viewer-modal")?.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+    // Close unless clicking on an interactive element or the image
+    if (!target.closest("button") && !target.closest(".image-viewer-close") && target.tagName !== "IMG") {
+      closeImageViewer();
+    }
+  });
+
+  document.getElementById("image-viewer-open-external")?.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (currentViewerPath) {
+      logJS("Open external clicked for: " + currentViewerPath);
+      try {
+        await invoke("open_file_externally", { path: currentViewerPath });
+      } catch (err: any) {
+        logJS("open_file_externally error: " + (err?.message || String(err)));
+        alert("Failed to open file: " + (err?.message || err));
+      }
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeImageViewer();
+  });
+}
+
 // Define Request/Response payloads to match curator-core::ipc
 type RequestPayload =
   | { Ping: null }
@@ -139,6 +201,7 @@ function init() {
   setupTaggerCard();
   setupBenchmark();
   setupSettings();
+  setupImageViewer();
 }
 
 if (document.readyState === "loading") {
@@ -654,15 +717,15 @@ function renderImages(images: ImageDetails[], gridId: string) {
   images.forEach((img) => {
     const card = document.createElement("div");
     card.className = "image-card";
-    
+
     const badgeClass = img.vector_state === "ready" ? "badge-ready" : "badge-pending";
     const srcUrl = convertFileSrc(img.current_filepath);
-    
+
     const displayTags = img.tags.slice(0, 10);
     const extraCount = img.tags.length - 10;
-    const tagHtml = displayTags.map(t => getTagPillHtml(t)).join("") + 
+    const tagHtml = displayTags.map(t => getTagPillHtml(t)).join("") +
                     (extraCount > 0 ? `<span class="tag-pill" style="background-color: #f0f0f0; color: #555555; font-style: italic;">+${extraCount} more</span>` : "");
-    
+
     card.innerHTML = `
       <div class="image-preview">
         <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
@@ -679,6 +742,20 @@ function renderImages(images: ImageDetails[], gridId: string) {
         </button>
       </div>
     `;
+
+    const previewDiv = card.querySelector(".image-preview");
+    if (previewDiv) {
+      previewDiv.addEventListener("click", () => {
+        if (getImageClickAction() === "external") {
+          invoke("open_file_externally", { path: img.current_filepath }).catch((err) => {
+            console.error("Failed to open file externally:", err);
+          });
+        } else {
+          openImageViewer(img.current_filepath);
+        }
+      });
+    }
+
     grid.appendChild(card);
   });
 }
@@ -778,12 +855,12 @@ function renderSearchResults(matches: SearchMatch[]) {
     const card = document.createElement("div");
     card.className = "image-card";
     const srcUrl = convertFileSrc(m.filepath);
-    
+
     const displayTags = m.tags.slice(0, 10);
     const extraCount = m.tags.length - 10;
-    const tagHtml = displayTags.map(t => getTagPillHtml(t)).join("") + 
+    const tagHtml = displayTags.map(t => getTagPillHtml(t)).join("") +
                     (extraCount > 0 ? `<span class="tag-pill" style="background-color: #f0f0f0; color: #555555; font-style: italic;">+${extraCount} more</span>` : "");
-    
+
     card.innerHTML = `
       <div class="image-preview">
         <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
@@ -800,6 +877,20 @@ function renderSearchResults(matches: SearchMatch[]) {
         </button>
       </div>
     `;
+
+    const previewDiv = card.querySelector(".image-preview");
+    if (previewDiv) {
+      previewDiv.addEventListener("click", () => {
+        if (getImageClickAction() === "external") {
+          invoke("open_file_externally", { path: m.filepath }).catch((err) => {
+            console.error("Failed to open file externally:", err);
+          });
+        } else {
+          openImageViewer(m.filepath);
+        }
+      });
+    }
+
     grid.appendChild(card);
   });
 }
@@ -972,6 +1063,15 @@ function setupSettings() {
   const idleSelect = document.getElementById("settings-idle-timeout") as HTMLSelectElement;
   const saveBtn = document.getElementById("save-settings-btn");
   const statusMsg = document.getElementById("settings-status-msg");
+
+  // Image click action setting (localStorage)
+  const imageClickSelect = document.getElementById("settings-image-click-action") as HTMLSelectElement;
+  if (imageClickSelect) {
+    imageClickSelect.value = getImageClickAction();
+    imageClickSelect.addEventListener("change", () => {
+      setImageClickAction(imageClickSelect.value);
+    });
+  }
 
   // Load current settings
   async function loadSettings() {
