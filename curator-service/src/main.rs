@@ -2,7 +2,7 @@ use anyhow::{Context, Error};
 use clap::Parser;
 use curator_core::db::init_db;
 use curator_core::vector::{ModelManager, VectorIndex};
-use curator_core::ipc::{Request, Response, SearchMatch, ImageDetails, TagSummary, DevicePreference};
+use curator_core::ipc::{Request, Response, SearchMatch, ImageDetails, TagSummary, TagStat, DevicePreference};
 use curator_core::tagger::TaggerEngine;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -586,6 +586,28 @@ async fn handle_request(
                 clip_device: clip,
                 tagger_device: tagger_dev,
                 idle_timeout_secs: idle,
+            }
+        }
+
+        Request::GetTagStatistics => {
+            let result = sqlx::query_as::<_, TagStat>(
+                r#"
+                SELECT t.name AS tag, t.category AS category, COUNT(*) AS count
+                FROM tags t
+                JOIN image_tags it ON it.tag_id = t.id
+                WHERE it.is_deleted = 0
+                GROUP BY t.id
+                ORDER BY count DESC
+                "#,
+            )
+            .fetch_all(db)
+            .await;
+
+            match result {
+                Ok(tags) => Response::TagStatisticsResult { tags },
+                Err(e) => Response::Error {
+                    message: format!("Failed to fetch tag statistics: {:?}", e),
+                },
             }
         }
     }

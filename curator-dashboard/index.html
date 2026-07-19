@@ -32,6 +32,9 @@
               <li class="nav-item" data-view="gallery">
                 <span><i class="bi bi-image"></i></span> Gallery
               </li>
+              <li class="nav-item" data-view="tagstats">
+                <span><i class="bi bi-tags"></i></span> Tag Statistics
+              </li>
             </ul>
           </li>
           <li class="tree-node" style="margin-top: 10px;">
@@ -133,6 +136,16 @@
             </div>
             <div class="image-grid" id="gallery-grid">
               <!-- Dynamically populated -->
+            </div>
+          </div>
+        </section>
+
+        <!-- TAG STATISTICS VIEW -->
+        <section class="view-section" id="view-tagstats">
+          <div class="group-box">
+            <div class="group-box-title">Tags by Category</div>
+            <div id="tagstats-content" style="display: flex; flex-direction: column; gap: 16px;">
+              <p style="color: #666; font-style: italic;">Loading tag statistics...</p>
             </div>
           </div>
         </section>

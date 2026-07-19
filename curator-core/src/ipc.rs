@@ -81,6 +81,8 @@ pub enum Request {
         tagger_device: Option<DevicePreference>,
         idle_timeout_secs: Option<u64>,
     },
+    /// Get aggregate tag statistics: counts per tag grouped by category.
+    GetTagStatistics,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -153,6 +155,17 @@ pub enum Response {
     PreprocessBenchmarkResult {
         report: String,
     },
+    /// Aggregate tag statistics.
+    TagStatisticsResult {
+        tags: Vec<TagStat>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct TagStat {
+    pub tag: String,
+    pub category: String,
+    pub count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

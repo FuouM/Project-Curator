@@ -1,4 +1,31 @@
 # Launch Project Curator in dev mode
 . ".\env.ps1"
+
+# Stop any running service process so the exe isn't locked
+$procs = Get-Process curator-service -ErrorAction SilentlyContinue
+if ($procs) {
+    Write-Host "Stopping running curator-service..." -ForegroundColor Yellow
+    $procs | Stop-Process -Force
+    Start-Sleep -Seconds 1
+}
+
+# Build the service first so it's always fresh
+Write-Host "Building curator-service..." -ForegroundColor Cyan
+cargo build --manifest-path ".\curator-service\Cargo.toml"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Service build failed!" -ForegroundColor Red
+    exit 1
+}
+Write-Host "Service build OK." -ForegroundColor Green
+
 Set-Location ".\curator-dashboard"
-npm run tauri dev
+try {
+    npm run tauri dev
+} finally {
+    # Kill the service when the app stops
+    $procs = Get-Process curator-service -ErrorAction SilentlyContinue
+    if ($procs) {
+        Write-Host "Stopping curator-service..." -ForegroundColor Yellow
+        $procs | Stop-Process -Force
+    }
+}
