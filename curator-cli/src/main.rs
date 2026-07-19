@@ -395,6 +395,9 @@ async fn main() -> Result<(), Error> {
             println!("  Tagger device:    {:?}", tagger_device);
             println!("  Idle timeout:     {}s", idle_timeout_secs);
         }
+        Response::PreprocessBenchmarkResult { report } => {
+            println!("{}", report);
+        }
     }
 
     Ok(())

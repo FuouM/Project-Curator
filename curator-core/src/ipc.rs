@@ -68,6 +68,10 @@ pub enum Request {
     GetTaggerStatus,
     /// Run CPU vs GPU ONNX model benchmark.
     RunBenchmark,
+    /// Benchmark image preprocessing (decode + resize + normalize) across methods.
+    BenchmarkPreprocess {
+        image_path: String,
+    },
     /// Get current settings (device preferences, etc.).
     GetSettings,
     /// Update settings. Partial update — only provided fields are changed.
@@ -143,6 +147,10 @@ pub enum Response {
         clip_device: DevicePreference,
         tagger_device: DevicePreference,
         idle_timeout_secs: u64,
+    },
+    /// Results of preprocessing benchmark.
+    PreprocessBenchmarkResult {
+        report: String,
     },
 }
 

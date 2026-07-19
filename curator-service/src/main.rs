@@ -336,6 +336,19 @@ async fn handle_request(
             }
         }
 
+        Request::BenchmarkPreprocess { image_path } => {
+            let path = std::path::Path::new(&image_path);
+            match curator_core::benchmark_preprocess(path, 512, 3) {
+                Ok((_decode, _resize, _norm, report)) => {
+                    info!("Preprocess benchmark:\n{}", report);
+                    Response::PreprocessBenchmarkResult { report }
+                }
+                Err(e) => Response::Error {
+                    message: format!("Preprocess benchmark failed: {:?}", e),
+                },
+            }
+        }
+
         Request::GetStatus => match query_status(db).await {
             Ok((images, vectors, pending)) => Response::StatusResult {
                 image_count: images,
