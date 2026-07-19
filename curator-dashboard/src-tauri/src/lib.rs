@@ -1,5 +1,5 @@
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::windows::named_pipe::ClientOptions;
+use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -94,6 +94,11 @@ fn get_spawn_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+fn get_pipe_connection() -> &'static Mutex<Option<NamedPipeClient>> {
+    static CONN: OnceLock<Mutex<Option<NamedPipeClient>>> = OnceLock::new();
+    CONN.get_or_init(|| Mutex::new(None))
+}
+
 /// Returns true when `s` appears to contain a complete JSON value
 /// (balanced braces/brackets), accounting for strings and escapes.
 fn is_json_complete(s: &str) -> bool {
@@ -143,14 +148,14 @@ fn is_json_complete(s: &str) -> bool {
 #[tauri::command]
 async fn send_to_service(request_json: String) -> Result<String, String> {
     let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
-    
+
     // Acquire spawn lock to prevent concurrent spawns/connection races
     let _guard = get_spawn_lock().lock().await;
 
     // 1. Read Service Key
     let key_file = data_dir.join("service.key");
-    
-    log_dashboard_event(&format!("send_to_service called with: {}", request_json));
+
+    log_dashboard_event(&format!("send_to_service: {}", request_json));
 
     // If key file doesn't exist, we try to spawn the service first to generate it
     if !key_file.exists() {
@@ -158,12 +163,11 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
         spawn_service();
         tokio::time::sleep(std::time::Duration::from_secs(4)).await;
     }
-    
+
     let token = match fs::read_to_string(&key_file) {
         Ok(t) => t.trim().to_string(),
         Err(e) => {
             log_dashboard_event(&format!("Failed to read service.key on first pass: {:?}", e));
-            // Try spawning and reading one more time
             spawn_service();
             tokio::time::sleep(std::time::Duration::from_secs(4)).await;
             fs::read_to_string(&key_file)
@@ -177,26 +181,78 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
         }
     };
 
-    // 2. Connect to Named Pipe (with auto-spawning retry)
     let pipe_name = r"\\.\pipe\curator_ipc";
-    let mut client = match ClientOptions::new().open(pipe_name) {
-        Ok(c) => c,
-        Err(e) => {
-            log_dashboard_event(&format!("Named Pipe connection failed on first pass: {:?}. Spawning service...", e));
-            // Spawn the service and retry
-            spawn_service();
-            tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-            ClientOptions::new().open(pipe_name)
-                .map_err(|err| {
-                    let err_msg = format!("Failed to connect to Named Pipe after spawning service: {:?}", err);
-                    log_dashboard_event(&err_msg);
-                    err_msg
-                })?
+
+    // 2. Try reusing existing connection, or establish a new one
+    let conn_mutex = get_pipe_connection();
+    let mut conn_guard = conn_mutex.lock().await;
+
+    if conn_guard.is_none() {
+        // No existing connection — create and authenticate
+        log_dashboard_event("No persistent pipe connection. Connecting...");
+        match connect_and_authenticate(pipe_name, &token).await {
+            Ok(client) => {
+                *conn_guard = Some(client);
+            }
+            Err(e) => {
+                log_dashboard_event(&format!("{} Spawning service and retrying...", e));
+                spawn_service();
+                tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                let client = connect_and_authenticate(pipe_name, &token).await?;
+                *conn_guard = Some(client);
+            }
         }
+    }
+
+    // 3. Send request on existing connection; reconnect on failure
+    let send_result = {
+        let client = conn_guard.as_mut().unwrap();
+        send_request_json(client, &request_json).await
     };
 
-    // 3. Handshake
+    match send_result {
+        Ok(response) => {
+            log_dashboard_event(&format!("Successfully received response from service ({} bytes).", response.len()));
+            Ok(response)
+        }
+        Err(e) => {
+            log_dashboard_event(&format!("Request on persistent connection failed ({}). Reconnecting...", e));
+            // Drop broken connection, reconnect and retry once
+            *conn_guard = None;
+            match connect_and_authenticate(pipe_name, &token).await {
+                Ok(client) => {
+                    *conn_guard = Some(client);
+                }
+                Err(_) => {
+                    log_dashboard_event("Reconnect failed. Spawning service and retrying...");
+                    spawn_service();
+                    tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                    let client = connect_and_authenticate(pipe_name, &token).await?;
+                    *conn_guard = Some(client);
+                }
+            }
+            let response = send_request_json(conn_guard.as_mut().unwrap(), &request_json).await
+                .map_err(|e2| {
+                    let err_msg = format!("Retry also failed: {}", e2);
+                    log_dashboard_event(&err_msg);
+                    err_msg
+                })?;
+            log_dashboard_event(&format!("Successfully received response from service ({} bytes).", response.len()));
+            Ok(response)
+        }
+    }
+}
+
+async fn connect_and_authenticate(pipe_name: &str, token: &str) -> Result<NamedPipeClient, String> {
+    let mut client = ClientOptions::new().open(pipe_name)
+        .map_err(|e| {
+            let err_msg = format!("Named Pipe connection failed: {:?}", e);
+            log_dashboard_event(&err_msg);
+            err_msg
+        })?;
+
     log_dashboard_event("Sending token handshake to service...");
+
     client.write_all(token.as_bytes()).await
         .map_err(|e| {
             let err_msg = format!("Handshake write failed: {:?}", e);
@@ -211,7 +267,7 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
             log_dashboard_event(&err_msg);
             err_msg
         })?;
-        
+
     let auth_status = String::from_utf8_lossy(&auth_buffer[..n]);
     if auth_status != "AUTH_OK" {
         let err_msg = format!("Authentication failed: {}", auth_status);
@@ -219,35 +275,27 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
         return Err(err_msg);
     }
 
-    log_dashboard_event("Authentication handshake succeeded. Sending request JSON...");
+    log_dashboard_event("Authentication handshake succeeded. Persistent connection ready.");
+    Ok(client)
+}
 
-    // 4. Send request JSON
+async fn send_request_json(client: &mut NamedPipeClient, request_json: &str) -> Result<String, String> {
     client.write_all(request_json.as_bytes()).await
-        .map_err(|e| {
-            let err_msg = format!("Request send failed: {:?}", e);
-            log_dashboard_event(&err_msg);
-            err_msg
-        })?;
+        .map_err(|e| format!("Request send failed: {}", e))?;
 
-    // 5. Read response JSON — loop until we have a complete JSON value
-    // Windows named pipes can split large responses across multiple reads.
     let mut accumulated = Vec::new();
     let mut chunk = vec![0u8; 65536];
     loop {
         let n = client.read(&mut chunk).await
-            .map_err(|e| {
-                let err_msg = format!("Response read failed: {:?}", e);
-                log_dashboard_event(&err_msg);
-                err_msg
-            })?;
+            .map_err(|e| format!("Response read failed: {}", e))?;
         if n == 0 {
-            break; // EOF / pipe closed
+            if accumulated.is_empty() {
+                return Err("Connection closed by service before response".to_string());
+            }
+            break;
         }
         accumulated.extend_from_slice(&chunk[..n]);
 
-        // Check if the accumulated bytes form a complete JSON value.
-        // We detect this by counting open/close braces/brackets and
-        // ensuring they're balanced with at least one char read.
         if let Ok(s) = std::str::from_utf8(&accumulated) {
             let s = s.trim();
             if !s.is_empty() && is_json_complete(s) {
@@ -256,9 +304,7 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
         }
     }
 
-    let response_str = String::from_utf8_lossy(&accumulated).to_string();
-    log_dashboard_event(&format!("Successfully received response from service ({} bytes).", response_str.len()));
-    Ok(response_str)
+    Ok(String::from_utf8_lossy(&accumulated).to_string())
 }
 #[tauri::command]
 async fn select_path(is_directory: bool) -> Result<Option<String>, String> {
