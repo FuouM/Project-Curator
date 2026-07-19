@@ -298,6 +298,25 @@
                   </select>
                 </div>
               </div>
+
+              <!-- Idle Timeout -->
+              <div class="group-box" style="padding: 12px;">
+                <div class="group-box-title">Memory Management</div>
+                <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">
+                  Automatically unload models from memory after a period of inactivity to free GPU/RAM.
+                </p>
+                <div class="form-group">
+                  <label style="font-weight: 600; min-width: 120px;">Idle timeout:</label>
+                  <select class="input-field" id="settings-idle-timeout" style="width: 180px;">
+                    <option value="60">1 minute</option>
+                    <option value="120">2 minutes</option>
+                    <option value="300" selected>5 minutes</option>
+                    <option value="600">10 minutes</option>
+                    <option value="1800">30 minutes</option>
+                    <option value="0">Never unload</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
             <div style="display: flex; gap: 8px; align-items: center;">
@@ -308,7 +327,7 @@
             </div>
 
             <div style="background-color: #e8f5e9; border: 1px solid #a5d6a7; padding: 8px; border-radius: 2px; color: #2e7d32; font-size: 11px;">
-              <strong>Note:</strong> Device changes take effect immediately — sessions are unloaded and rebuilt with the new device on the next inference call.
+              <strong>Note:</strong> Device changes take effect immediately. Models are automatically unloaded after the idle timeout, then reloaded on the next inference call.
             </div>
           </div>
         </section>

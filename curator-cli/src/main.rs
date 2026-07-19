@@ -388,10 +388,12 @@ async fn main() -> Result<(), Error> {
         Response::SettingsResult {
             clip_device,
             tagger_device,
+            idle_timeout_secs,
         } => {
             println!("Settings:");
-            println!("  CLIP device:   {:?}", clip_device);
-            println!("  Tagger device: {:?}", tagger_device);
+            println!("  CLIP device:      {:?}", clip_device);
+            println!("  Tagger device:    {:?}", tagger_device);
+            println!("  Idle timeout:     {}s", idle_timeout_secs);
         }
     }
 

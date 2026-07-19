@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use crate::ipc::DevicePreference;
@@ -37,6 +39,13 @@ struct TagMapping {
     tag_to_category: HashMap<String, String>,
 }
 
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -64,6 +73,7 @@ pub struct TaggerEngine {
     metadata_path: PathBuf,
     device: Mutex<DevicePreference>,
     inner: Mutex<Option<TaggerInner>>,
+    last_used: AtomicU64,
 }
 
 struct TaggerInner {
@@ -82,6 +92,7 @@ impl TaggerEngine {
             metadata_path: dir.join("camie-tagger-v2-metadata.json"),
             device: Mutex::new(device),
             inner: Mutex::new(None),
+            last_used: AtomicU64::new(now_secs()),
         }
     }
 
@@ -91,6 +102,20 @@ impl TaggerEngine {
 
     pub fn is_loaded(&self) -> bool {
         self.inner.lock().unwrap().is_some()
+    }
+
+    /// Seconds since last inference.
+    pub fn idle_secs(&self) -> u64 {
+        now_secs().saturating_sub(self.last_used.load(Ordering::Relaxed))
+    }
+
+    /// Unload the model from memory to free RAM.
+    pub fn unload(&self) {
+        let mut guard = self.inner.lock().unwrap();
+        if guard.is_some() {
+            info!("Camie Tagger: unloading model (idle {}s)", self.idle_secs());
+            *guard = None;
+        }
     }
 
     pub fn status(&self) -> TaggerStatus {
@@ -136,6 +161,7 @@ impl TaggerEngine {
             }
         }
 
+        self.last_used.store(now_secs(), Ordering::Relaxed);
         let guard = self.inner.lock().unwrap();
         let inner = guard.as_ref().unwrap();
 

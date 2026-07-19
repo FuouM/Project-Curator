@@ -9,6 +9,7 @@ use sqlx::SqlitePool;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::windows::named_pipe::ServerOptions;
 use tracing::{error, info, warn};
@@ -26,6 +27,13 @@ use worker::BackgroundWorker;
 struct AppSettings {
     clip_device: DevicePreference,
     tagger_device: DevicePreference,
+    /// Seconds of inactivity before models are automatically unloaded. 0 = never.
+    #[serde(default = "default_idle_timeout")]
+    idle_timeout_secs: u64,
+}
+
+fn default_idle_timeout() -> u64 {
+    300 // 5 minutes
 }
 
 impl Default for AppSettings {
@@ -33,6 +41,7 @@ impl Default for AppSettings {
         Self {
             clip_device: DevicePreference::Auto,
             tagger_device: DevicePreference::Auto,
+            idle_timeout_secs: default_idle_timeout(),
         }
     }
 }
@@ -128,8 +137,8 @@ async fn main() -> Result<(), Error> {
     // 3. Load settings
     let settings = load_settings(&data_dir);
     info!(
-        "Settings loaded: clip_device={:?}, tagger_device={:?}",
-        settings.clip_device, settings.tagger_device
+        "Settings loaded: clip_device={:?}, tagger_device={:?}, idle_timeout={}s",
+        settings.clip_device, settings.tagger_device, settings.idle_timeout_secs
     );
 
     // 4. Initialize CLIP Models
@@ -159,6 +168,31 @@ async fn main() -> Result<(), Error> {
 
     // 8. Create settings arc (shared by idle reaper + IPC handler)
     let settings_arc = Arc::new(tokio::sync::Mutex::new(settings));
+
+    // 9. Start idle timeout reaper
+    {
+        let mm = model_manager.clone();
+        let tg = tagger.clone();
+        let st = settings_arc.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                let timeout = {
+                    let s = st.lock().await;
+                    s.idle_timeout_secs
+                };
+                if timeout == 0 {
+                    continue;
+                }
+                if mm.is_loaded() && mm.idle_secs() >= timeout {
+                    mm.unload();
+                }
+                if tg.is_loaded() && tg.idle_secs() >= timeout {
+                    tg.unload();
+                }
+            }
+        });
+    }
 
     // 10. Start Named Pipe Server Loop
     let pipe_name = r"\\.\pipe\curator_ipc";
@@ -496,12 +530,14 @@ async fn handle_request(
             Response::SettingsResult {
                 clip_device: s.clip_device.clone(),
                 tagger_device: s.tagger_device.clone(),
+                idle_timeout_secs: s.idle_timeout_secs,
             }
         }
 
         Request::UpdateSettings {
             clip_device,
             tagger_device,
+            idle_timeout_secs,
         } => {
             let mut s = settings.lock().await;
             if let Some(ref cd) = clip_device {
@@ -510,11 +546,15 @@ async fn handle_request(
             if let Some(ref td) = tagger_device {
                 s.tagger_device = td.clone();
             }
+            if let Some(to) = idle_timeout_secs {
+                s.idle_timeout_secs = to;
+            }
             if let Err(e) = save_settings(data_dir, &s) {
                 warn!("Failed to save settings: {:?}", e);
             }
             let clip = s.clip_device.clone();
             let tagger_dev = s.tagger_device.clone();
+            let idle = s.idle_timeout_secs;
             drop(s);
 
             // Apply CLIP device change immediately (unloads sessions for reload)
@@ -527,10 +567,11 @@ async fn handle_request(
                 tagger.set_device(tagger_dev.clone());
             }
 
-            info!("Settings updated: clip_device={:?}, tagger_device={:?}", clip, tagger_dev);
+            info!("Settings updated: clip_device={:?}, tagger_device={:?}, idle_timeout={}s", clip, tagger_dev, idle);
             Response::SettingsResult {
                 clip_device: clip,
                 tagger_device: tagger_dev,
+                idle_timeout_secs: idle,
             }
         }
     }

@@ -22,7 +22,7 @@ type RequestPayload =
   | { GetTaggerStatus: null }
   | { RunBenchmark: null }
   | { GetSettings: null }
-  | { UpdateSettings: { clip_device: string | null; tagger_device: string | null } };
+  | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null } };
 
 interface SearchMatch {
   id: number;
@@ -61,7 +61,7 @@ type ResponsePayload =
   | { BatchTagResult: { processed: number; failed: number; skipped: number } }
   | { TaggerStatusResult: { loaded: boolean; model_path: string; total_tags: number } }
   | { BenchmarkResult: { clip_cpu_time_ms: number; clip_gpu_time_ms: number | null; clip_gpu_error: string | null; tagger_cpu_time_ms: number | null; tagger_gpu_time_ms: number | null; tagger_gpu_error: string | null; has_gpu: boolean } }
-  | { SettingsResult: { clip_device: string; tagger_device: string } };
+  | { SettingsResult: { clip_device: string; tagger_device: string; idle_timeout_secs: number } };
 
 // Helpers for invoking the service through Rust Named Pipe bridge
 async function callService(request: RequestPayload): Promise<ResponsePayload> {
@@ -969,6 +969,7 @@ function setupBenchmark() {
 function setupSettings() {
   const clipSelect = document.getElementById("settings-clip-device") as HTMLSelectElement;
   const taggerSelect = document.getElementById("settings-tagger-device") as HTMLSelectElement;
+  const idleSelect = document.getElementById("settings-idle-timeout") as HTMLSelectElement;
   const saveBtn = document.getElementById("save-settings-btn");
   const statusMsg = document.getElementById("settings-status-msg");
 
@@ -979,6 +980,7 @@ function setupSettings() {
       if ("SettingsResult" in resp) {
         if (clipSelect) clipSelect.value = resp.SettingsResult.clip_device;
         if (taggerSelect) taggerSelect.value = resp.SettingsResult.tagger_device;
+        if (idleSelect) idleSelect.value = resp.SettingsResult.idle_timeout_secs.toString();
       }
     } catch (e: any) {
       if (statusMsg) {
@@ -990,7 +992,7 @@ function setupSettings() {
 
   // Save settings
   saveBtn?.addEventListener("click", async () => {
-    if (!clipSelect || !taggerSelect || !statusMsg) return;
+    if (!clipSelect || !taggerSelect || !idleSelect || !statusMsg) return;
 
     statusMsg.textContent = "Saving...";
     statusMsg.style.color = "#fbbf24";
@@ -1000,6 +1002,7 @@ function setupSettings() {
         UpdateSettings: {
           clip_device: clipSelect.value,
           tagger_device: taggerSelect.value,
+          idle_timeout_secs: parseInt(idleSelect.value, 10),
         }
       });
 

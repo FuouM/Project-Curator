@@ -74,6 +74,7 @@ pub enum Request {
     UpdateSettings {
         clip_device: Option<DevicePreference>,
         tagger_device: Option<DevicePreference>,
+        idle_timeout_secs: Option<u64>,
     },
 }
 
@@ -141,6 +142,7 @@ pub enum Response {
     SettingsResult {
         clip_device: DevicePreference,
         tagger_device: DevicePreference,
+        idle_timeout_secs: u64,
     },
 }
 

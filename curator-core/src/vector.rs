@@ -6,6 +6,8 @@ use ort::{inputs, session::Session, session::builder::SessionBuilder, value::Ten
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokenizers::Tokenizer;
 use tracing::{info, warn};
 use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
@@ -75,12 +77,20 @@ impl VectorIndex {
     }
 }
 
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 pub struct ModelManager {
     model_dir: PathBuf,
     device: Mutex<DevicePreference>,
-    vision_session: Option<std::sync::Mutex<Session>>,
-    text_session: Option<std::sync::Mutex<Session>>,
-    tokenizer: Option<Tokenizer>,
+    vision_session: Mutex<Option<Session>>,
+    text_session: Mutex<Option<Session>>,
+    tokenizer: Mutex<Option<Tokenizer>>,
+    last_used: AtomicU64,
 }
 
 impl ModelManager {
@@ -88,9 +98,10 @@ impl ModelManager {
         Self {
             model_dir: model_dir.as_ref().to_path_buf(),
             device: Mutex::new(device),
-            vision_session: None,
-            text_session: None,
-            tokenizer: None,
+            vision_session: Mutex::new(None),
+            text_session: Mutex::new(None),
+            tokenizer: Mutex::new(None),
+            last_used: AtomicU64::new(now_secs()),
         }
     }
 
@@ -98,17 +109,115 @@ impl ModelManager {
         &self.model_dir
     }
 
-    /// Switch the device at runtime. Reinitializes both ONNX sessions with the
-    /// new execution provider.
+    /// Return true if ONNX sessions are loaded in memory.
+    pub fn is_loaded(&self) -> bool {
+        self.vision_session.lock().unwrap().is_some()
+            && self.text_session.lock().unwrap().is_some()
+    }
+
+    /// Seconds since last inference.
+    pub fn idle_secs(&self) -> u64 {
+        now_secs().saturating_sub(self.last_used.load(Ordering::Relaxed))
+    }
+
+    /// Unload all sessions and tokenizer to free memory.
+    pub fn unload(&self) {
+        let mut vs = self.vision_session.lock().unwrap();
+        let mut ts = self.text_session.lock().unwrap();
+        let mut tok = self.tokenizer.lock().unwrap();
+        if vs.is_some() || ts.is_some() {
+            info!("CLIP: unloading sessions (idle {}s)", self.idle_secs());
+            *vs = None;
+            *ts = None;
+            *tok = None;
+        }
+    }
+
+    /// Switch the device at runtime. Unloads sessions so they are rebuilt with
+    /// the new execution provider on the next inference call.
     pub fn set_device(&self, device: DevicePreference) {
         {
             let mut d = self.device.lock().unwrap();
             *d = device.clone();
         }
-        // For commit 1, device changes take effect on next restart
-        info!("CLIP: device preference changed to {:?} (takes effect on restart)", device);
+        let mut vs = self.vision_session.lock().unwrap();
+        let mut ts = self.text_session.lock().unwrap();
+        if vs.is_some() || ts.is_some() {
+            info!("CLIP: device changed to {:?} — unloading sessions for reload", device);
+            *vs = None;
+            *ts = None;
+        }
     }
 
+    /// Ensure both ONNX sessions and tokenizer are loaded. Idempotent.
+    fn ensure_loaded(&self) -> Result<(), Error> {
+        // Fast path: already loaded
+        if self.tokenizer.lock().unwrap().is_some()
+            && self.vision_session.lock().unwrap().is_some()
+            && self.text_session.lock().unwrap().is_some()
+        {
+            return Ok(());
+        }
+
+        // Slow path: load everything
+        let tokenizer_path = self.model_dir.join("tokenizer.json");
+        let vision_path = self.model_dir.join("vision_model.onnx");
+        let text_path = self.model_dir.join("text_model.onnx");
+        let device = self.device.lock().unwrap().clone();
+
+        // Tokenizer
+        {
+            let mut tok = self.tokenizer.lock().unwrap();
+            if tok.is_none() {
+                info!("Loading Tokenizer from {:?}", tokenizer_path);
+                *tok = Some(
+                    Tokenizer::from_file(&tokenizer_path)
+                        .map_err(|e| anyhow::anyhow!("Failed to parse tokenizer.json: {:?}", e))?,
+                );
+            }
+        }
+
+        // Vision session
+        {
+            let mut vs = self.vision_session.lock().unwrap();
+            if vs.is_none() {
+                info!("Loading ONNX Vision Session from {:?}", vision_path);
+                let mut builder = Session::builder()
+                    .map_err(|e| anyhow::anyhow!("Failed to build vision session: {:?}", e))?
+                    .with_intra_threads(1)
+                    .map_err(|e| anyhow::anyhow!("Failed to set vision threads: {:?}", e))?;
+                apply_device_preference(&mut builder, &device, "CLIP Vision");
+                *vs = Some(
+                    builder
+                        .commit_from_file(&vision_path)
+                        .map_err(|e| anyhow::anyhow!("Failed to commit vision session: {:?}", e))?,
+                );
+            }
+        }
+
+        // Text session
+        {
+            let mut ts = self.text_session.lock().unwrap();
+            if ts.is_none() {
+                info!("Loading ONNX Text Session from {:?}", text_path);
+                let mut builder = Session::builder()
+                    .map_err(|e| anyhow::anyhow!("Failed to build text session: {:?}", e))?
+                    .with_intra_threads(1)
+                    .map_err(|e| anyhow::anyhow!("Failed to set text threads: {:?}", e))?;
+                apply_device_preference(&mut builder, &device, "CLIP Text");
+                *ts = Some(
+                    builder
+                        .commit_from_file(&text_path)
+                        .map_err(|e| anyhow::anyhow!("Failed to commit text session: {:?}", e))?,
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Download models and tokenizer. Does NOT create ONNX sessions — those
+    /// are created lazily on the first inference call.
     pub fn init(&mut self) -> Result<(), Error> {
         // Search upwards for onnxruntime.dll starting from current executable path
         if let Ok(exe_path) = std::env::current_exe() {
@@ -160,41 +269,7 @@ impl ModelManager {
             "Tokenizer configuration"
         )?;
 
-        // Initialize sessions
-        let device = self.device.lock().unwrap().clone();
-
-        info!("Loading ONNX Vision Session from {:?}", vision_path);
-        let mut vision_builder = Session::builder()
-            .map_err(|e| anyhow::anyhow!("Failed to build vision session: {:?}", e))?
-            .with_intra_threads(1)
-            .map_err(|e| anyhow::anyhow!("Failed to set vision threads: {:?}", e))?;
-
-        apply_device_preference(&mut vision_builder, &device, "CLIP Vision");
-
-        let vision_session = vision_builder
-            .commit_from_file(&vision_path)
-            .map_err(|e| anyhow::anyhow!("Failed to commit vision session: {:?}", e))?;
-
-        info!("Loading ONNX Text Session from {:?}", text_path);
-        let mut text_builder = Session::builder()
-            .map_err(|e| anyhow::anyhow!("Failed to build text session: {:?}", e))?
-            .with_intra_threads(1)
-            .map_err(|e| anyhow::anyhow!("Failed to set text threads: {:?}", e))?;
-
-        apply_device_preference(&mut text_builder, &device, "CLIP Text");
-
-        let text_session = text_builder
-            .commit_from_file(&text_path)
-            .map_err(|e| anyhow::anyhow!("Failed to commit text session: {:?}", e))?;
-
-        info!("Loading Tokenizer from {:?}", tokenizer_path);
-        let tokenizer = Tokenizer::from_file(&tokenizer_path)
-            .map_err(|e| anyhow::anyhow!("Failed to parse tokenizer.json: {:?}", e))?;
-
-        self.vision_session = Some(std::sync::Mutex::new(vision_session));
-        self.text_session = Some(std::sync::Mutex::new(text_session));
-        self.tokenizer = Some(tokenizer);
-
+        info!("CLIP models downloaded — sessions will be created on first use");
         Ok(())
     }
 
@@ -218,10 +293,11 @@ impl ModelManager {
     }
 
     pub fn generate_image_embedding<P: AsRef<Path>>(&self, image_path: P) -> Result<Vec<f32>, Error> {
-        let mut session_guard = self.vision_session.as_ref()
-            .context("Vision model not initialized")?
-            .lock()
+        self.ensure_loaded()?;
+        self.last_used.store(now_secs(), Ordering::Relaxed);
+        let mut session_guard = self.vision_session.lock()
             .map_err(|_| anyhow::anyhow!("Vision mutex poisoned"))?;
+        let session = session_guard.as_mut().context("Vision model not initialized")?;
         
         // 1. Load image and convert to RGB
         let img = image::open(image_path)?;
@@ -252,7 +328,8 @@ impl ModelManager {
         }
 
         // 5. Run inference
-        let outputs = session_guard.run(inputs![TensorRef::from_array_view(&input_array)?])?;
+        let session = session_guard.as_mut().context("Vision model not initialized")?;
+        let outputs = session.run(inputs![TensorRef::from_array_view(&input_array)?])?;
         
         let output_tensor = outputs.get("image_embeds")
             .or_else(|| outputs.get("output_0"))
@@ -272,11 +349,13 @@ impl ModelManager {
     }
 
     pub fn generate_text_embedding(&self, text: &str) -> Result<Vec<f32>, Error> {
-        let mut session_guard = self.text_session.as_ref()
-            .context("Text model not initialized")?
-            .lock()
+        self.ensure_loaded()?;
+        self.last_used.store(now_secs(), Ordering::Relaxed);
+        let mut session_guard = self.text_session.lock()
             .map_err(|_| anyhow::anyhow!("Text mutex poisoned"))?;
-        let tokenizer = self.tokenizer.as_ref().context("Tokenizer not initialized")?;
+        let session = session_guard.as_mut().context("Text model not initialized")?;
+        let tok_guard = self.tokenizer.lock().unwrap();
+        let tokenizer = tok_guard.as_ref().context("Tokenizer not initialized")?;
 
         let encoding = tokenizer.encode(text, true)
             .map_err(|e| anyhow::anyhow!("Tokenization failed: {:?}", e))?;
@@ -286,7 +365,8 @@ impl ModelManager {
 
         let input_ids_array = Array2::<i64>::from_shape_fn((1, seq_len), |(_, j)| input_ids[j] as i64);
 
-        let outputs = session_guard.run(inputs![
+        let session = session_guard.as_mut().context("Text model not initialized")?;
+        let outputs = session.run(inputs![
             "input_ids" => TensorRef::from_array_view(&input_ids_array)?
         ])?;
 
