@@ -385,6 +385,19 @@ async fn main() -> Result<(), Error> {
             println!("  Model path: {}", model_path);
             println!("  Tag count:  {}", if total_tags > 0 { total_tags.to_string() } else { "N/A (not loaded)".to_string() });
         }
+        Response::SettingsResult {
+            clip_device,
+            tagger_device,
+            idle_timeout_secs,
+        } => {
+            println!("Settings:");
+            println!("  CLIP device:      {:?}", clip_device);
+            println!("  Tagger device:    {:?}", tagger_device);
+            println!("  Idle timeout:     {}s", idle_timeout_secs);
+        }
+        Response::PreprocessBenchmarkResult { report } => {
+            println!("{}", report);
+        }
     }
 
     Ok(())

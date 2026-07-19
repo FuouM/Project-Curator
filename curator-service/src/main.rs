@@ -2,12 +2,14 @@ use anyhow::{Context, Error};
 use clap::Parser;
 use curator_core::db::init_db;
 use curator_core::vector::{ModelManager, VectorIndex};
-use curator_core::ipc::{Request, Response, SearchMatch, ImageDetails, TagSummary};
+use curator_core::ipc::{Request, Response, SearchMatch, ImageDetails, TagSummary, DevicePreference};
 use curator_core::tagger::TaggerEngine;
+use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::windows::named_pipe::ServerOptions;
 use tracing::{error, info, warn};
@@ -19,6 +21,49 @@ mod worker;
 
 use auth::load_or_create_service_key;
 use worker::BackgroundWorker;
+
+/// Persistent application settings stored in `<data_dir>/settings.json`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AppSettings {
+    clip_device: DevicePreference,
+    tagger_device: DevicePreference,
+    /// Seconds of inactivity before models are automatically unloaded. 0 = never.
+    #[serde(default = "default_idle_timeout")]
+    idle_timeout_secs: u64,
+}
+
+fn default_idle_timeout() -> u64 {
+    300 // 5 minutes
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            clip_device: DevicePreference::Auto,
+            tagger_device: DevicePreference::Auto,
+            idle_timeout_secs: default_idle_timeout(),
+        }
+    }
+}
+
+fn load_settings(data_dir: &Path) -> AppSettings {
+    let path = data_dir.join("settings.json");
+    match fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_else(|e| {
+            warn!("Failed to parse settings.json, using defaults: {:?}", e);
+            AppSettings::default()
+        }),
+        Err(_) => AppSettings::default(),
+    }
+}
+
+fn save_settings(data_dir: &Path, settings: &AppSettings) -> Result<(), Error> {
+    let path = data_dir.join("settings.json");
+    let json = serde_json::to_string_pretty(settings)
+        .context("Failed to serialize settings")?;
+    fs::write(&path, json).context("Failed to write settings.json")?;
+    Ok(())
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -89,32 +134,67 @@ async fn main() -> Result<(), Error> {
     .execute(&db)
     .await?;
 
-    // 3. Initialize CLIP Models
+    // 3. Load settings
+    let settings = load_settings(&data_dir);
+    info!(
+        "Settings loaded: clip_device={:?}, tagger_device={:?}, idle_timeout={}s",
+        settings.clip_device, settings.tagger_device, settings.idle_timeout_secs
+    );
+
+    // 4. Initialize CLIP Models
     let model_dir = data_dir.join("models");
-    let mut model_manager = ModelManager::new(&model_dir);
+    let mut model_manager = ModelManager::new(&model_dir, settings.clip_device.clone());
     model_manager.init()?;
     let model_manager = Arc::new(model_manager);
 
-    // 4. Initialize Vector Index
+    // 5. Initialize Vector Index
     let index_path = data_dir.join("vector_index.usearch");
     let vector_index = Arc::new(VectorIndex::new(&index_path, 512)?);
 
-    // 5. Initialize Camie Tagger (lazy — does not load the model yet)
+    // 6. Initialize Camie Tagger (lazy — does not load the model yet)
     let tagger_dir = args.tagger_model_dir
         .as_ref()
         .map(PathBuf::from)
         .unwrap_or_else(|| data_dir.join("models"));
-    let tagger = Arc::new(TaggerEngine::new(&tagger_dir));
+    let tagger = Arc::new(TaggerEngine::new(&tagger_dir, settings.tagger_device.clone()));
     info!(
-        "Camie Tagger configured at {:?} (model loads on first use)",
-        tagger_dir
+        "Camie Tagger configured at {:?} with device {:?} (model loads on first use)",
+        tagger_dir, settings.tagger_device
     );
 
-    // 6. Start Background Job Worker
+    // 7. Start Background Job Worker
     let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone());
     worker.start();
 
-    // 7. Start Named Pipe Server Loop
+    // 8. Create settings arc (shared by idle reaper + IPC handler)
+    let settings_arc = Arc::new(tokio::sync::Mutex::new(settings));
+
+    // 9. Start idle timeout reaper
+    {
+        let mm = model_manager.clone();
+        let tg = tagger.clone();
+        let st = settings_arc.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                let timeout = {
+                    let s = st.lock().await;
+                    s.idle_timeout_secs
+                };
+                if timeout == 0 {
+                    continue;
+                }
+                if mm.is_loaded() && mm.idle_secs() >= timeout {
+                    mm.unload();
+                }
+                if tg.is_loaded() && tg.idle_secs() >= timeout {
+                    tg.unload();
+                }
+            }
+        });
+    }
+
+    // 10. Start Named Pipe Server Loop
     let pipe_name = r"\\.\pipe\curator_ipc";
     info!("Listening on Named Pipe: {}", pipe_name);
 
@@ -123,6 +203,7 @@ async fn main() -> Result<(), Error> {
     let vi_arc = vector_index.clone();
     let tagger_arc = tagger.clone();
     let key_arc = Arc::new(service_key);
+    let data_dir_arc = Arc::new(data_dir);
 
     // Named Pipe listener loop
     let mut is_first = true;
@@ -140,9 +221,11 @@ async fn main() -> Result<(), Error> {
         let vi = vi_arc.clone();
         let tagger = tagger_arc.clone();
         let key = key_arc.clone();
+        let dd = data_dir_arc.clone();
+        let st = settings_arc.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = handle_client(server, db, mm, vi, tagger, key).await {
+            if let Err(e) = handle_client(server, db, mm, vi, tagger, key, dd, st).await {
                 error!("Error handling IPC client: {:?}", e);
             }
         });
@@ -156,6 +239,8 @@ async fn handle_client(
     vector_index: Arc<VectorIndex>,
     tagger: Arc<TaggerEngine>,
     service_key: Arc<String>,
+    data_dir: Arc<PathBuf>,
+    settings: Arc<tokio::sync::Mutex<AppSettings>>,
 ) -> Result<(), Error> {
     info!("New client connected to named pipe.");
     let mut buffer = vec![0; 16384];
@@ -198,7 +283,7 @@ async fn handle_client(
 
         info!("Received Request: {:?}", request);
         let response =
-            handle_request(request, &db, &model_manager, &vector_index, &tagger).await;
+            handle_request(request, &db, &model_manager, &vector_index, &tagger, &data_dir, &settings).await;
 
         let response_str = serde_json::to_string(&response)?;
         stream.write_all(response_str.as_bytes()).await?;
@@ -214,6 +299,8 @@ async fn handle_request(
     model_manager: &ModelManager,
     vector_index: &VectorIndex,
     tagger: &Arc<TaggerEngine>,
+    data_dir: &PathBuf,
+    settings: &Arc<tokio::sync::Mutex<AppSettings>>,
 ) -> Response {
     match request {
         Request::Ping => Response::Pong,
@@ -245,6 +332,19 @@ async fn handle_request(
                 },
                 Err(e) => Response::Error {
                     message: format!("CLIP model benchmark failed: {:?}", e),
+                },
+            }
+        }
+
+        Request::BenchmarkPreprocess { image_path } => {
+            let path = std::path::Path::new(&image_path);
+            match curator_core::benchmark_preprocess(path, 512, 3) {
+                Ok((_decode, _resize, _norm, report)) => {
+                    info!("Preprocess benchmark:\n{}", report);
+                    Response::PreprocessBenchmarkResult { report }
+                }
+                Err(e) => Response::Error {
+                    message: format!("Preprocess benchmark failed: {:?}", e),
                 },
             }
         }
@@ -395,9 +495,12 @@ async fn handle_request(
                     skipped: outcome.skipped,
                     tags: outcome.tags,
                 },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
+                Err(e) => {
+                    error!("TagImage {} failed: {:?}", image_id, e);
+                    Response::Error {
+                        message: e.to_string(),
+                    }
+                }
             }
         }
 
@@ -434,6 +537,56 @@ async fn handle_request(
                 skipped,
             }
         }
+
+        Request::GetSettings => {
+            let s = settings.lock().await;
+            Response::SettingsResult {
+                clip_device: s.clip_device.clone(),
+                tagger_device: s.tagger_device.clone(),
+                idle_timeout_secs: s.idle_timeout_secs,
+            }
+        }
+
+        Request::UpdateSettings {
+            clip_device,
+            tagger_device,
+            idle_timeout_secs,
+        } => {
+            let mut s = settings.lock().await;
+            if let Some(ref cd) = clip_device {
+                s.clip_device = cd.clone();
+            }
+            if let Some(ref td) = tagger_device {
+                s.tagger_device = td.clone();
+            }
+            if let Some(to) = idle_timeout_secs {
+                s.idle_timeout_secs = to;
+            }
+            if let Err(e) = save_settings(data_dir, &s) {
+                warn!("Failed to save settings: {:?}", e);
+            }
+            let clip = s.clip_device.clone();
+            let tagger_dev = s.tagger_device.clone();
+            let idle = s.idle_timeout_secs;
+            drop(s);
+
+            // Apply CLIP device change immediately (unloads sessions for reload)
+            if clip_device.is_some() {
+                model_manager.set_device(clip.clone());
+            }
+
+            // Apply Tagger device change immediately (unloads if loaded)
+            if tagger_device.is_some() {
+                tagger.set_device(tagger_dev.clone());
+            }
+
+            info!("Settings updated: clip_device={:?}, tagger_device={:?}, idle_timeout={}s", clip, tagger_dev, idle);
+            Response::SettingsResult {
+                clip_device: clip,
+                tagger_device: tagger_dev,
+                idle_timeout_secs: idle,
+            }
+        }
     }
 }
 
@@ -454,7 +607,10 @@ async fn tag_image_logic(
     db: &SqlitePool,
     tagger: &Arc<TaggerEngine>,
 ) -> Result<TagImageOutcome, Error> {
+    let t_start = std::time::Instant::now();
+
     // 1. Resolve image path
+    let t0 = std::time::Instant::now();
     let row: Option<(String,)> = sqlx::query_as(
         "SELECT current_filepath FROM images WHERE id = ? AND deleted_at IS NULL",
     )
@@ -466,8 +622,10 @@ async fn tag_image_logic(
         Some(r) => r.0,
         None => anyhow::bail!("Image {} not found", image_id),
     };
+    let db_resolve_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
     // 2. Dedup/Overwrite check
+    let t1 = std::time::Instant::now();
     let camie_source: Option<(i64,)> =
         sqlx::query_as("SELECT id FROM sources WHERE name = 'ai:camie-tagger-v2' LIMIT 1")
             .fetch_optional(db)
@@ -504,8 +662,10 @@ async fn tag_image_logic(
             }
         }
     }
+    let db_dedup_ms = t1.elapsed().as_secs_f64() * 1000.0;
 
     // 3. Run inference in a blocking thread (model uses std::sync::Mutex)
+    let t2 = std::time::Instant::now();
     let tagger_clone = Arc::clone(tagger);
     let filepath_clone = filepath.clone();
     let predictions = tokio::task::spawn_blocking(move || {
@@ -513,8 +673,10 @@ async fn tag_image_logic(
     })
     .await
     .context("spawn_blocking panicked during Camie inference")??;
+    let inference_ms = t2.elapsed().as_secs_f64() * 1000.0;
 
     // 4. Get camie source_id (seed it if missing)
+    let t3 = std::time::Instant::now();
     let source_row: (i64,) =
         sqlx::query_as("SELECT id FROM sources WHERE name = 'ai:camie-tagger-v2' LIMIT 1")
             .fetch_one(db)
@@ -567,6 +729,13 @@ async fn tag_image_logic(
         image_id,
         tag_summaries.len(),
         &transaction_id[..8]
+    );
+
+    let db_write_ms = t3.elapsed().as_secs_f64() * 1000.0;
+    let total_ms = t_start.elapsed().as_secs_f64() * 1000.0;
+    info!(
+        "TagImage {} timing: db_resolve={:.1}ms db_dedup={:.1}ms inference={:.1}ms db_write={:.1}ms total={:.1}ms",
+        image_id, db_resolve_ms, db_dedup_ms, inference_ms, db_write_ms, total_ms
     );
 
     Ok(TagImageOutcome {

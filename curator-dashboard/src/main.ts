@@ -20,7 +20,9 @@ type RequestPayload =
   | { TagImage: { image_id: number; threshold: number | null; force: boolean | null } }
   | { TagImageBatch: { image_ids: number[]; threshold: number | null; force: boolean | null } }
   | { GetTaggerStatus: null }
-  | { RunBenchmark: null };
+  | { RunBenchmark: null }
+  | { GetSettings: null }
+  | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null } };
 
 interface SearchMatch {
   id: number;
@@ -58,7 +60,8 @@ type ResponsePayload =
   | { TagImageResult: { image_id: number; tags_applied: number; skipped: boolean; tags: TagSummary[] } }
   | { BatchTagResult: { processed: number; failed: number; skipped: number } }
   | { TaggerStatusResult: { loaded: boolean; model_path: string; total_tags: number } }
-  | { BenchmarkResult: { clip_cpu_time_ms: number; clip_gpu_time_ms: number | null; clip_gpu_error: string | null; tagger_cpu_time_ms: number | null; tagger_gpu_time_ms: number | null; tagger_gpu_error: string | null; has_gpu: boolean } };
+  | { BenchmarkResult: { clip_cpu_time_ms: number; clip_gpu_time_ms: number | null; clip_gpu_error: string | null; tagger_cpu_time_ms: number | null; tagger_gpu_time_ms: number | null; tagger_gpu_error: string | null; has_gpu: boolean } }
+  | { SettingsResult: { clip_device: string; tagger_device: string; idle_timeout_secs: number } };
 
 // Helpers for invoking the service through Rust Named Pipe bridge
 async function callService(request: RequestPayload): Promise<ResponsePayload> {
@@ -89,6 +92,10 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
     formattedReq = "GetTaggerStatus";
   } else if ("RunBenchmark" in request) {
     formattedReq = "RunBenchmark";
+  } else if ("GetSettings" in request) {
+    formattedReq = "GetSettings";
+  } else if ("UpdateSettings" in request) {
+    formattedReq = { UpdateSettings: request.UpdateSettings };
   }
 
   try {
@@ -115,6 +122,7 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
     if (parsed.BatchTagResult) return { BatchTagResult: parsed.BatchTagResult };
     if (parsed.TaggerStatusResult) return { TaggerStatusResult: parsed.TaggerStatusResult };
     if (parsed.BenchmarkResult) return { BenchmarkResult: parsed.BenchmarkResult };
+    if (parsed.SettingsResult) return { SettingsResult: parsed.SettingsResult };
 
     throw new Error("Unknown response format: " + respStr);
   } catch (err: any) {
@@ -130,6 +138,7 @@ function init() {
   refreshDashboard();
   setupTaggerCard();
   setupBenchmark();
+  setupSettings();
 }
 
 if (document.readyState === "loading") {
@@ -152,7 +161,8 @@ function setupNavigation() {
     search: { title: "Semantic Search", sub: "Perform neural and tag-based image retrieval." },
     plugins: { title: "Plugins", sub: "Verify and manage sandboxed plugin modules." },
     logs: { title: "System Diagnostic Logs", sub: "View active traces and stderr/stdout logs from the local engine." },
-    benchmark: { title: "Hardware Performance Benchmark", sub: "Run latency and throughput comparisons on CPU vs GPU." }
+    benchmark: { title: "Hardware Performance Benchmark", sub: "Run latency and throughput comparisons on CPU vs GPU." },
+    settings: { title: "Settings", sub: "Configure model device preferences (GPU / CPU)." }
   };
 
   navItems.forEach((item) => {
@@ -954,4 +964,67 @@ function setupBenchmark() {
       runBtn.innerHTML = '<i class="bi bi-play-fill"></i> Run Benchmark';
     }
   });
+}
+
+function setupSettings() {
+  const clipSelect = document.getElementById("settings-clip-device") as HTMLSelectElement;
+  const taggerSelect = document.getElementById("settings-tagger-device") as HTMLSelectElement;
+  const idleSelect = document.getElementById("settings-idle-timeout") as HTMLSelectElement;
+  const saveBtn = document.getElementById("save-settings-btn");
+  const statusMsg = document.getElementById("settings-status-msg");
+
+  // Load current settings
+  async function loadSettings() {
+    try {
+      const resp = await callService({ GetSettings: null });
+      if ("SettingsResult" in resp) {
+        if (clipSelect) clipSelect.value = resp.SettingsResult.clip_device;
+        if (taggerSelect) taggerSelect.value = resp.SettingsResult.tagger_device;
+        if (idleSelect) idleSelect.value = resp.SettingsResult.idle_timeout_secs.toString();
+      }
+    } catch (e: any) {
+      if (statusMsg) {
+        statusMsg.textContent = "Failed to load settings: " + (e.message || e);
+        statusMsg.style.color = "#ef4444";
+      }
+    }
+  }
+
+  // Save settings
+  saveBtn?.addEventListener("click", async () => {
+    if (!clipSelect || !taggerSelect || !idleSelect || !statusMsg) return;
+
+    statusMsg.textContent = "Saving...";
+    statusMsg.style.color = "#fbbf24";
+
+    try {
+      const resp = await callService({
+        UpdateSettings: {
+          clip_device: clipSelect.value,
+          tagger_device: taggerSelect.value,
+          idle_timeout_secs: parseInt(idleSelect.value, 10),
+        }
+      });
+
+      if ("SettingsResult" in resp) {
+        statusMsg.textContent = "Settings saved and applied successfully.";
+        statusMsg.style.color = "#10b981";
+      } else if ("Error" in resp) {
+        statusMsg.textContent = "Failed: " + resp.Error.message;
+        statusMsg.style.color = "#ef4444";
+      }
+    } catch (e: any) {
+      statusMsg.textContent = "Error: " + (e.message || e);
+      statusMsg.style.color = "#ef4444";
+    }
+  });
+
+  // Also load settings when the settings view becomes visible
+  const settingsNav = document.querySelector('.nav-item[data-view="settings"]');
+  settingsNav?.addEventListener("click", () => {
+    loadSettings();
+  });
+
+  // Initial load
+  loadSettings();
 }

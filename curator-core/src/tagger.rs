@@ -1,8 +1,12 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
+use crate::ipc::DevicePreference;
+use crate::vector::apply_device_preference;
 use image::{GenericImageView, imageops::FilterType};
 use ndarray::Array4;
 use ort::{inputs, session::Session, value::TensorRef};
@@ -31,17 +35,21 @@ struct DatasetInfo {
 
 #[derive(Debug, Deserialize)]
 struct TagMapping {
-    /// Maps stringified index → tag name
     idx_to_tag: HashMap<String, String>,
-    /// Maps tag name → category string
     tag_to_category: HashMap<String, String>,
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
-/// A single predicted tag with its category and confidence score.
 #[derive(Debug, Clone)]
 pub struct TagPrediction {
     pub tag: String,
@@ -49,7 +57,6 @@ pub struct TagPrediction {
     pub confidence: f32,
 }
 
-/// Status of the tagger engine.
 #[derive(Debug, Clone)]
 pub struct TaggerStatus {
     pub loaded: bool,
@@ -61,16 +68,12 @@ pub struct TaggerStatus {
 // TaggerEngine
 // ---------------------------------------------------------------------------
 
-/// Lazy-loaded ONNX inference engine for Camie Tagger v2.
-///
-/// The 789 MB model is only loaded into memory on the first call to
-/// [`tag_image`] or when [`load`] is called explicitly.  Nothing happens
-/// at construction time.
 pub struct TaggerEngine {
     model_path: PathBuf,
     metadata_path: PathBuf,
-    /// Wrapped in Option so we can report "not loaded" state.
+    device: Mutex<DevicePreference>,
     inner: Mutex<Option<TaggerInner>>,
+    last_used: AtomicU64,
 }
 
 struct TaggerInner {
@@ -79,20 +82,18 @@ struct TaggerInner {
     idx_to_tag: HashMap<String, String>,
     tag_to_category: HashMap<String, String>,
     total_tags: usize,
+    resizer: Mutex<fast_image_resize::Resizer>,
 }
 
 impl TaggerEngine {
-    /// Create a new engine pointing at the model directory.
-    ///
-    /// The model directory must contain:
-    /// - `camie-tagger-v2.onnx`
-    /// - `camie-tagger-v2-metadata.json`
-    pub fn new(model_dir: impl AsRef<Path>) -> Self {
+    pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
         Self {
             model_path: dir.join("camie-tagger-v2.onnx"),
             metadata_path: dir.join("camie-tagger-v2-metadata.json"),
+            device: Mutex::new(device),
             inner: Mutex::new(None),
+            last_used: AtomicU64::new(now_secs()),
         }
     }
 
@@ -100,12 +101,24 @@ impl TaggerEngine {
         &self.model_path
     }
 
-    /// Return true if the ONNX session is already loaded in memory.
     pub fn is_loaded(&self) -> bool {
         self.inner.lock().unwrap().is_some()
     }
 
-    /// Status snapshot (does not trigger loading).
+    /// Seconds since last inference.
+    pub fn idle_secs(&self) -> u64 {
+        now_secs().saturating_sub(self.last_used.load(Ordering::Relaxed))
+    }
+
+    /// Unload the model from memory to free RAM.
+    pub fn unload(&self) {
+        let mut guard = self.inner.lock().unwrap();
+        if guard.is_some() {
+            info!("Camie Tagger: unloading model (idle {}s)", self.idle_secs());
+            *guard = None;
+        }
+    }
+
     pub fn status(&self) -> TaggerStatus {
         let guard = self.inner.lock().unwrap();
         TaggerStatus {
@@ -115,8 +128,18 @@ impl TaggerEngine {
         }
     }
 
-    /// Explicitly load the model into memory.  Idempotent — safe to call
-    /// multiple times.
+    pub fn set_device(&self, device: DevicePreference) {
+        {
+            let mut d = self.device.lock().unwrap();
+            *d = device.clone();
+        }
+        let mut guard = self.inner.lock().unwrap();
+        if guard.is_some() {
+            info!("Camie Tagger: device changed to {:?} — unloading model for reload", device);
+            *guard = None;
+        }
+    }
+
     pub fn load(&self) -> Result<()> {
         let mut guard = self.inner.lock().unwrap();
         if guard.is_some() {
@@ -126,47 +149,46 @@ impl TaggerEngine {
         Ok(())
     }
 
-    /// Tag a single image file.  Lazily loads the model on first call.
-    ///
-    /// `threshold` is the minimum sigmoid confidence to include a tag.
-    /// Recommended values:
-    /// - 0.35  balanced (default)
-    /// - 0.492 macro-optimised
-    /// - 0.614 micro-optimised
     pub fn tag_image(
         &self,
         image_path: impl AsRef<Path>,
         threshold: f32,
     ) -> Result<Vec<TagPrediction>> {
+        let t_total = Instant::now();
+
         // Ensure loaded
-        {
-            let guard = self.inner.lock().unwrap();
+        let t0 = Instant::now();
+        {            let guard = self.inner.lock().unwrap();
             if guard.is_none() {
                 drop(guard);
                 self.load()?;
             }
         }
+        let load_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
+        self.last_used.store(now_secs(), Ordering::Relaxed);
         let guard = self.inner.lock().unwrap();
         let inner = guard.as_ref().unwrap();
 
         // Pre-process image
-        let tensor = preprocess_image(image_path.as_ref(), inner.img_size)
+        let t1 = Instant::now();
+        let mut resizer_guard = inner.resizer.lock().unwrap();
+        let tensor = preprocess_image(image_path.as_ref(), inner.img_size, &mut resizer_guard)
             .with_context(|| format!("Preprocessing {:?}", image_path.as_ref()))?;
+        drop(resizer_guard);
+        let preprocess_ms = t1.elapsed().as_secs_f64() * 1000.0;
 
         // Run inference
+        let t2 = Instant::now();
+
         debug!("Running Camie Tagger inference on {:?}", image_path.as_ref());
         
         let mut session_guard = inner.session.lock().unwrap();
         let outputs = session_guard
             .run(inputs![TensorRef::from_array_view(&tensor)?])
             .context("ONNX inference failed")?;
+        let inference_ms = t2.elapsed().as_secs_f64() * 1000.0;
 
-        // Model emits 3 outputs: [initial_preds, refined_preds, selected_candidates]
-        // We use refined_preds (index 1) as the main output, matching the Python reference.
-        // We retrieve the output tensor by key or order. Since Session::run output
-        // is typically accessed via node name or index, let's look for "refined_predictions"
-        // or check outputs.
         let output_tensor = outputs
             .get("refined_predictions")
             .or_else(|| outputs.get("output_1"))
@@ -176,7 +198,6 @@ impl TaggerEngine {
         let output_ref = output_tensor.try_extract_tensor::<f32>()?;
         let logits = output_ref.1;
 
-        // logits shape: [1, N_tags]
         let probs_iter = logits.iter().map(|&x| sigmoid(x));
 
         let mut predictions = Vec::new();
@@ -201,8 +222,6 @@ impl TaggerEngine {
             }
         }
 
-        // Sort by category priority: character, copyright, meta, then the rest.
-        // Within each category, sort by confidence score descending.
         predictions.sort_by(|a, b| {
             let priority = |cat: &str| -> i32 {
                 match cat {
@@ -222,11 +241,13 @@ impl TaggerEngine {
                 b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal)
             }
         });
+        let postprocess_ms = t2.elapsed().as_secs_f64() * 1000.0 - inference_ms;
 
+        let total_ms = t_total.elapsed().as_secs_f64() * 1000.0;
         info!(
-            "Camie Tagger: {} predictions above threshold {:.3} for {:?}",
+            "Camie Tagger timing: load={:.1}ms preprocess={:.1}ms inference={:.1}ms postprocess={:.1}ms total={:.1}ms | {} predictions for {:?}",
+            load_ms, preprocess_ms, inference_ms, postprocess_ms, total_ms,
             predictions.len(),
-            threshold,
             image_path.as_ref()
         );
 
@@ -252,9 +273,10 @@ impl TaggerEngine {
             );
         }
 
-        info!("Loading Camie Tagger v2 ONNX model from {:?}", self.model_path);
+        let device = self.device.lock().unwrap().clone();
 
-        // Load metadata JSON
+        info!("Loading Camie Tagger v2 ONNX model from {:?} (device: {:?})", self.model_path, device);
+
         let meta_bytes = std::fs::read(&self.metadata_path)
             .context("Failed to read metadata JSON")?;
         let meta: MetadataRoot = serde_json::from_slice(&meta_bytes)
@@ -270,39 +292,12 @@ impl TaggerEngine {
             total_tags, img_size
         );
 
-        // Build ONNX session — single-threaded to avoid contention with CLIP worker
         let mut builder = Session::builder()
             .context("Failed to build tagger session")?
             .with_intra_threads(1)
             .context("Failed to set tagger threads")?;
 
-        #[cfg(target_os = "windows")]
-        {
-            debug!("Attempting to register DirectML Execution Provider for Tagger...");
-            if let Ok(b) = builder.clone().with_execution_providers([ort::ep::DirectML::default().build()]) {
-                builder = b;
-            }
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            debug!("Attempting to register CoreML Execution Provider for Tagger...");
-            if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CoreML::default().build()]) {
-                builder = b;
-            }
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            debug!("Attempting to register CUDA Execution Provider for Tagger...");
-            if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CUDA::default().build()]) {
-                builder = b;
-            }
-            debug!("Attempting to register ROCm Execution Provider for Tagger...");
-            if let Ok(b) = builder.clone().with_execution_providers([ort::ep::ROCm::default().build()]) {
-                builder = b;
-            }
-        }
+        apply_device_preference(&mut builder, &device, "Camie Tagger");
 
         let session = builder
             .commit_from_file(&self.model_path)
@@ -316,35 +311,59 @@ impl TaggerEngine {
             idx_to_tag,
             tag_to_category,
             total_tags,
+            resizer: Mutex::new(fast_image_resize::Resizer::new()),
         })
     }
 }
 
 // ---------------------------------------------------------------------------
 // Image preprocessing
-// Mirrors onnx_inference.py::preprocess_image() exactly:
-//   1. Open + convert to RGB
-//   2. Aspect-ratio-preserving resize (longest side → img_size)
-//   3. Center-paste onto img_size×img_size canvas filled with ImageNet mean
-//      color rgb(124, 116, 104)  [== 0.485*255, 0.456*255, 0.406*255 rounded]
-//   4. Per-channel ImageNet normalization
-//      mean=[0.485, 0.456, 0.406]  std=[0.229, 0.224, 0.225]
-//   5. Return Array4<f32> shaped [1, 3, H, W] (NCHW)
 // ---------------------------------------------------------------------------
 
 const IMAGENET_MEAN: [f32; 3] = [0.485, 0.456, 0.406];
 const IMAGENET_STD: [f32; 3] = [0.229, 0.224, 0.225];
-/// ImageNet mean color used to fill padding areas, in 0–255 range.
 const PAD_COLOR: [u8; 3] = [124, 116, 104];
 
-fn preprocess_image(path: &Path, img_size: u32) -> Result<Array4<f32>> {
-    let img = image::open(path).with_context(|| format!("Cannot open image {:?}", path))?;
-    let img = img.to_rgb8();
+fn preprocess_image(path: &Path, img_size: u32, resizer: &mut fast_image_resize::Resizer) -> Result<Array4<f32>> {
+    // Fast decode: turbojpeg for JPEG, png+zlib-rs for PNG, image crate fallback
+    let data = std::fs::read(path).with_context(|| format!("Cannot read image {:?}", path))?;
+    let is_jpeg = data.len() >= 2 && data[0] == 0xFF && data[1] == 0xD8;
+    let is_png = data.len() >= 8
+        && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
 
-    let (orig_w, orig_h) = img.dimensions();
+    let (rgb_buf, orig_w, orig_h) = if is_jpeg {
+        let image = turbojpeg::decompress(&data, turbojpeg::PixelFormat::RGB)
+            .with_context(|| format!("turbojpeg decode failed for {:?}", path))?;
+        (image.pixels.to_vec(), image.width as u32, image.height as u32)
+    } else if is_png {
+        let decoder = png::Decoder::new(std::io::Cursor::new(&data));
+        let mut reader = decoder.read_info()
+            .with_context(|| format!("png decode header failed for {:?}", path))?;
+        let w = reader.info().width;
+        let h = reader.info().height;
+        let buf_size = reader.output_buffer_size()
+            .unwrap_or_else(|| w as usize * h as usize * 4);
+        let mut raw = vec![0u8; buf_size];
+        let out_info = reader.next_frame(&mut raw)
+            .with_context(|| format!("png decode failed for {:?}", path))?;
+        let pixels = out_info.buffer_size();
+        let rgb: Vec<u8> = match out_info.color_type {
+            png::ColorType::Rgb => raw[..pixels].to_vec(),
+            png::ColorType::Rgba => raw[..pixels].chunks(4).flat_map(|c| [c[0], c[1], c[2]]).collect(),
+            png::ColorType::Grayscale => raw[..pixels].iter().map(|&g| [g, g, g]).flatten().collect(),
+            png::ColorType::GrayscaleAlpha => raw[..pixels].chunks(2).flat_map(|c| [c[0], c[0], c[0]]).collect(),
+            _ => raw[..pixels].chunks(3).flat_map(|c| [c[0], c[1], c[2]]).collect(),
+        };
+        (rgb, w, h)
+    } else {
+        let img = image::open(path).with_context(|| format!("Cannot open image {:?}", path))?;
+        let rgb = img.to_rgb8();
+        let (w, h) = rgb.dimensions();
+        (rgb.into_raw(), w, h)
+    };
+
     let aspect = orig_w as f32 / orig_h as f32;
 
-    // Compute new dimensions maintaining aspect ratio
     let (new_w, new_h) = if aspect > 1.0 {
         let nw = img_size;
         let nh = (img_size as f32 / aspect).round() as u32;
@@ -355,36 +374,49 @@ fn preprocess_image(path: &Path, img_size: u32) -> Result<Array4<f32>> {
         (nw, nh)
     };
 
-    // Resize with Triangle (≈ Lanczos-lite, best available in the image crate without the lanczos feature)
-    let resized = image::imageops::resize(
-        &img,
-        new_w,
-        new_h,
-        FilterType::Triangle,
-    );
+    // SIMD-accelerated resize via fast_image_resize (resizer reused across calls)
+    let src = fast_image_resize::images::ImageRef::new(
+        orig_w, orig_h, &rgb_buf, fast_image_resize::PixelType::U8x3,
+    )?;
+    let dst_buf = vec![0u8; (new_w * new_h * 3) as usize];
+    let mut dst = fast_image_resize::images::Image::from_vec_u8(
+        new_w, new_h, dst_buf, fast_image_resize::PixelType::U8x3,
+    )?;
+    let opts = fast_image_resize::ResizeOptions::new()
+        .resize_alg(fast_image_resize::ResizeAlg::Convolution(
+            fast_image_resize::FilterType::Bilinear,
+        ));
+    resizer.resize(&src, &mut dst, Some(&opts))?;
+    let data = dst.buffer();
 
-    // Create a blank canvas filled with ImageNet mean pad color
-    let mut canvas = image::RgbImage::from_pixel(
-        img_size,
-        img_size,
-        image::Rgb(PAD_COLOR),
-    );
-
-    // Center-paste resized image onto canvas
-    let paste_x = (img_size - new_w) / 2;
-    let paste_y = (img_size - new_h) / 2;
-    image::imageops::overlay(&mut canvas, &resized, paste_x as i64, paste_y as i64);
-
-    // Build [1, 3, H, W] f32 tensor with ImageNet normalization
     let s = img_size as usize;
     let mut tensor = Array4::<f32>::zeros((1, 3, s, s));
+    let slice = tensor.as_slice_mut().unwrap();
 
-    for y in 0..s {
-        for x in 0..s {
-            let pixel = canvas.get_pixel(x as u32, y as u32);
-            for c in 0..3usize {
-                let val = pixel[c] as f32 / 255.0;
-                tensor[[0, c, y, x]] = (val - IMAGENET_MEAN[c]) / IMAGENET_STD[c];
+    let paste_x = ((img_size - new_w) / 2) as usize;
+    let paste_y = ((img_size - new_h) / 2) as usize;
+    let nw = new_w as usize;
+    let nh = new_h as usize;
+
+    for c in 0..3usize {
+        let mean = IMAGENET_MEAN[c];
+        let std_dev = IMAGENET_STD[c];
+        let pad_val = (PAD_COLOR[c] as f32 / 255.0 - mean) / std_dev;
+        let dst_base = c * s * s;
+
+        for y in 0..s {
+            let rs = dst_base + y * s;
+            for x in 0..s {
+                slice[rs + x] = pad_val;
+            }
+        }
+
+        for y in 0..nh {
+            let src_row = y * nw * 3 + c;
+            let dst_row = dst_base + (paste_y + y) * s + paste_x;
+            for x in 0..nw {
+                let val = data[src_row + x * 3] as f32 / 255.0;
+                slice[dst_row + x] = (val - mean) / std_dev;
             }
         }
     }
