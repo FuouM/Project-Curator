@@ -195,6 +195,38 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
   }
 }
 
+// Inline Clear Button (x) for Input Fields
+function setupInputClearButtons() {
+  const inputs = document.querySelectorAll<HTMLInputElement>('.input-field.has-clear');
+
+  inputs.forEach((input) => {
+    const wrapper = input.closest('.input-wrapper');
+    if (!wrapper) return;
+
+    const clearBtn = wrapper.querySelector('.input-clear-btn') as HTMLButtonElement;
+    if (!clearBtn) return;
+
+    function updateClearVisibility() {
+      if (input.value.length > 0) {
+        wrapper.classList.add('has-value');
+      } else {
+        wrapper.classList.remove('has-value');
+      }
+    }
+
+    input.addEventListener('input', updateClearVisibility);
+    input.addEventListener('change', updateClearVisibility);
+    updateClearVisibility();
+
+    clearBtn.addEventListener('click', () => {
+      input.value = '';
+      updateClearVisibility();
+      input.focus();
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  });
+}
+
 function init() {
   setupNavigation();
   setupForms();
@@ -205,6 +237,7 @@ function init() {
   setupSettings();
   setupImageViewer();
   setupLogTabs();
+  setupInputClearButtons();
 }
 
 if (document.readyState === "loading") {
@@ -356,6 +389,7 @@ function setupForms() {
       const selected: string | null = await invoke("select_path", { isDirectory: false });
       if (selected && importInput) {
         importInput.value = selected;
+        importInput.dispatchEvent(new Event('change', { bubbles: true }));
       }
     } catch (err) {
       console.error("File dialog error: ", err);
@@ -367,6 +401,7 @@ function setupForms() {
       const selected: string | null = await invoke("select_path", { isDirectory: true });
       if (selected && importInput) {
         importInput.value = selected;
+        importInput.dispatchEvent(new Event('change', { bubbles: true }));
       }
     } catch (err) {
       console.error("Folder dialog error: ", err);
@@ -386,6 +421,7 @@ function setupForms() {
         importMsg.textContent = `Success! Image imported with ID ${resp.ImportResult.image_id}. SHA256: ${resp.ImportResult.sha256}`;
         importMsg.style.color = "#10b981";
         importInput.value = "";
+        importInput.dispatchEvent(new Event('change', { bubbles: true }));
         refreshDashboard();
       } else if ("Error" in resp) {
         importMsg.textContent = `Error: ${resp.Error.message}`;
@@ -431,6 +467,7 @@ function setupForms() {
       const selected: string | null = await invoke("select_path", { isDirectory: false });
       if (selected && imageInput) {
         imageInput.value = selected;
+        imageInput.dispatchEvent(new Event('change', { bubbles: true }));
         updateImagePreview();
       }
     } catch (err) {
@@ -441,6 +478,7 @@ function setupForms() {
   document.getElementById("search-clear-image-btn")?.addEventListener("click", () => {
     if (imageInput) {
       imageInput.value = "";
+      imageInput.dispatchEvent(new Event('change', { bubbles: true }));
       updateImagePreview();
     }
   });
@@ -499,6 +537,7 @@ function setupForms() {
 
       if ("Success" in resp) {
         tagNameInput.value = "";
+        tagNameInput.dispatchEvent(new Event('change', { bubbles: true }));
         // Refresh tags in modal
         await refreshModalTags(imgId);
         refreshDashboard();
@@ -997,8 +1036,8 @@ function renderSearchResults(matches: SearchMatch[]) {
     const tagInput = document.getElementById("search-tag-input") as HTMLInputElement;
     const imageInput = document.getElementById("search-image-path-input") as HTMLInputElement;
     
-    if (queryInput) queryInput.value = "";
-    if (tagInput) tagInput.value = "";
+    if (queryInput) { queryInput.value = ""; queryInput.dispatchEvent(new Event('change')); }
+    if (tagInput) { tagInput.value = ""; tagInput.dispatchEvent(new Event('change')); }
     if (imageInput) {
       imageInput.value = path;
       imageInput.dispatchEvent(new Event("change"));

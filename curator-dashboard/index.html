@@ -141,7 +141,10 @@
             <div class="group-box-title">Register Image Path</div>
             <form id="import-form">
               <div class="form-group">
-                <input class="input-field" id="import-path-input" placeholder="Enter path or choose file/folder..." style="flex: 1; min-width: 250px;" required />
+                <div class="input-wrapper" style="flex: 1; min-width: 250px;">
+                  <input class="input-field has-clear" id="import-path-input" placeholder="Enter path or choose file/folder..." style="width: 100%;" required />
+                  <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
+                </div>
                 <button type="button" class="win-button" id="browse-file-btn"><i class="bi bi-file-earmark"></i> File...</button>
                 <button type="button" class="win-button" id="browse-folder-btn"><i class="bi bi-folder"></i> Folder...</button>
                 <button type="submit" class="win-button">Import</button>
@@ -158,11 +161,20 @@
             <form id="search-form">
               <div class="form-group" style="display: flex; flex-direction: column; gap: 8px; align-items: stretch;">
                 <div style="display: flex; gap: 6px; width: 100%;">
-                  <input class="input-field" id="search-text-input" placeholder="Type natural language query (e.g. 'a cute dog sleeping')..." style="flex: 1;" />
-                  <input class="input-field" id="search-tag-input" placeholder="Filter by tag name (optional)..." style="width: 200px;" />
+                  <div class="input-wrapper" style="flex: 1;">
+                    <input class="input-field has-clear" id="search-text-input" placeholder="Type natural language query (e.g. 'a cute dog sleeping')..." />
+                    <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
+                  </div>
+                  <div class="input-wrapper" style="width: 200px;">
+                    <input class="input-field has-clear" id="search-tag-input" placeholder="Filter by tag name (optional)..." />
+                    <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
+                  </div>
                 </div>
                 <div style="display: flex; gap: 6px; width: 100%; align-items: center;">
-                  <input class="input-field" id="search-image-path-input" placeholder="Or select image path for reverse search..." style="flex: 1;" />
+                  <div class="input-wrapper" style="flex: 1;">
+                    <input class="input-field has-clear" id="search-image-path-input" placeholder="Or select image path for reverse search..." />
+                    <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
+                  </div>
                   <button type="button" class="win-button" id="search-browse-image-btn" style="white-space: nowrap;"><i class="bi bi-file-earmark-image"></i> Browse Image...</button>
                   <button type="button" class="win-button" id="search-clear-image-btn" style="white-space: nowrap;"><i class="bi bi-x-lg"></i> Clear Path</button>
                   <button type="submit" class="win-button" style="width: 100px; font-weight: bold;">Search</button>
@@ -192,7 +204,10 @@
             <div class="group-box-title">Verify Plugin manifest.json</div>
             <form id="plugin-form">
               <div class="form-group">
-                <input class="input-field" id="plugin-path-input" placeholder="Enter absolute path to manifest.json file..." style="flex: 1;" required />
+                <div class="input-wrapper" style="flex: 1;">
+                  <input class="input-field has-clear" id="plugin-path-input" placeholder="Enter absolute path to manifest.json file..." required />
+                  <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
+                </div>
                 <button type="submit" class="win-button">Validate Signature</button>
               </div>
             </form>
@@ -415,7 +430,10 @@
             </div>
 
             <div class="form-group" style="margin-top: 8px;">
-              <input class="input-field" id="tag-name-input" placeholder="Enter tag name (e.g. meme)..." style="flex: 1;" required />
+              <div class="input-wrapper" style="flex: 1;">
+                <input class="input-field has-clear" id="tag-name-input" placeholder="Enter tag name (e.g. meme)..." required />
+                <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
+              </div>
               <button type="submit" class="win-button">Add Tag</button>
             </div>
 
