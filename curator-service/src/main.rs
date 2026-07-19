@@ -594,7 +594,10 @@ async fn tag_image_logic(
     db: &SqlitePool,
     tagger: &Arc<TaggerEngine>,
 ) -> Result<TagImageOutcome, Error> {
+    let t_start = std::time::Instant::now();
+
     // 1. Resolve image path
+    let t0 = std::time::Instant::now();
     let row: Option<(String,)> = sqlx::query_as(
         "SELECT current_filepath FROM images WHERE id = ? AND deleted_at IS NULL",
     )
@@ -606,8 +609,10 @@ async fn tag_image_logic(
         Some(r) => r.0,
         None => anyhow::bail!("Image {} not found", image_id),
     };
+    let db_resolve_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
     // 2. Dedup/Overwrite check
+    let t1 = std::time::Instant::now();
     let camie_source: Option<(i64,)> =
         sqlx::query_as("SELECT id FROM sources WHERE name = 'ai:camie-tagger-v2' LIMIT 1")
             .fetch_optional(db)
@@ -644,8 +649,10 @@ async fn tag_image_logic(
             }
         }
     }
+    let db_dedup_ms = t1.elapsed().as_secs_f64() * 1000.0;
 
     // 3. Run inference in a blocking thread (model uses std::sync::Mutex)
+    let t2 = std::time::Instant::now();
     let tagger_clone = Arc::clone(tagger);
     let filepath_clone = filepath.clone();
     let predictions = tokio::task::spawn_blocking(move || {
@@ -653,8 +660,10 @@ async fn tag_image_logic(
     })
     .await
     .context("spawn_blocking panicked during Camie inference")??;
+    let inference_ms = t2.elapsed().as_secs_f64() * 1000.0;
 
     // 4. Get camie source_id (seed it if missing)
+    let t3 = std::time::Instant::now();
     let source_row: (i64,) =
         sqlx::query_as("SELECT id FROM sources WHERE name = 'ai:camie-tagger-v2' LIMIT 1")
             .fetch_one(db)
@@ -707,6 +716,13 @@ async fn tag_image_logic(
         image_id,
         tag_summaries.len(),
         &transaction_id[..8]
+    );
+
+    let db_write_ms = t3.elapsed().as_secs_f64() * 1000.0;
+    let total_ms = t_start.elapsed().as_secs_f64() * 1000.0;
+    info!(
+        "TagImage {} timing: db_resolve={:.1}ms db_dedup={:.1}ms inference={:.1}ms db_write={:.1}ms total={:.1}ms",
+        image_id, db_resolve_ms, db_dedup_ms, inference_ms, db_write_ms, total_ms
     );
 
     Ok(TagImageOutcome {

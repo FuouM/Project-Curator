@@ -154,22 +154,32 @@ impl TaggerEngine {
         image_path: impl AsRef<Path>,
         threshold: f32,
     ) -> Result<Vec<TagPrediction>> {
-        {
-            let guard = self.inner.lock().unwrap();
+        let t_total = Instant::now();
+
+        // Ensure loaded
+        let t0 = Instant::now();
+        {            let guard = self.inner.lock().unwrap();
             if guard.is_none() {
                 drop(guard);
                 self.load()?;
             }
         }
+        let load_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
         self.last_used.store(now_secs(), Ordering::Relaxed);
         let guard = self.inner.lock().unwrap();
         let inner = guard.as_ref().unwrap();
 
+        // Pre-process image
+        let t1 = Instant::now();
         let mut resizer_guard = inner.resizer.lock().unwrap();
         let tensor = preprocess_image(image_path.as_ref(), inner.img_size, &mut resizer_guard)
             .with_context(|| format!("Preprocessing {:?}", image_path.as_ref()))?;
         drop(resizer_guard);
+        let preprocess_ms = t1.elapsed().as_secs_f64() * 1000.0;
+
+        // Run inference
+        let t2 = Instant::now();
 
         debug!("Running Camie Tagger inference on {:?}", image_path.as_ref());
         
@@ -177,6 +187,7 @@ impl TaggerEngine {
         let outputs = session_guard
             .run(inputs![TensorRef::from_array_view(&tensor)?])
             .context("ONNX inference failed")?;
+        let inference_ms = t2.elapsed().as_secs_f64() * 1000.0;
 
         let output_tensor = outputs
             .get("refined_predictions")
@@ -230,11 +241,13 @@ impl TaggerEngine {
                 b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal)
             }
         });
+        let postprocess_ms = t2.elapsed().as_secs_f64() * 1000.0 - inference_ms;
 
+        let total_ms = t_total.elapsed().as_secs_f64() * 1000.0;
         info!(
-            "Camie Tagger: {} predictions above threshold {:.3} for {:?}",
+            "Camie Tagger timing: load={:.1}ms preprocess={:.1}ms inference={:.1}ms postprocess={:.1}ms total={:.1}ms | {} predictions for {:?}",
+            load_ms, preprocess_ms, inference_ms, postprocess_ms, total_ms,
             predictions.len(),
-            threshold,
             image_path.as_ref()
         );
 
