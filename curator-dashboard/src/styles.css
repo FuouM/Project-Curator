@@ -432,6 +432,9 @@ body {
   align-items: center;
   gap: 4px;
   border-radius: 2px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 220px;
 }
 /* User added tags: Gold/Orange */
 .tag-pill.tag-user {

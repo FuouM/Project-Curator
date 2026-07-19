@@ -779,7 +779,7 @@ function getTagPillHtml(t: TagSummary, isDeletable = false, imageId = 0): string
     ? ` <span class="tag-remove-btn" title="Remove user tag" onclick="window.removeTag(${imageId}, '${t.tag}')">&times;</span>`
     : "";
 
-  return `<span class="tag-pill ${styleClass}">${t.tag}${deleteBtn}</span>`;
+  return `<span class="tag-pill ${styleClass}">${t.tag.replace(/_/g, '_\u200B')}${deleteBtn}</span>`;
 }
 
 async function refreshModalTags(imgId: number) {
