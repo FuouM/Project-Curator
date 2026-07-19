@@ -665,20 +665,20 @@ function renderFeaturedDay(featured: ImageDetails) {
           <div class="vector-badge ${badgeClass}">${featured.vector_state}</div>
           <div class="featured-badge-overlay"><i class="bi bi-stars"></i> Feature of the Day</div>
         </div>
-      </div>
-      <div class="featured-details">
-        <div class="featured-filename" title="${featured.current_filepath}">${featured.current_filepath.split(/[\\/]/).pop()}</div>
-        <div class="image-path" title="${featured.current_filepath}">${featured.current_filepath}</div>
-        <div class="tag-list" style="margin-top: 6px;">
-          ${featured.tags.length > 0 ? featured.tags.map(t => getTagPillHtml(t)).join("") : '<span style="color: #999; font-style: italic; font-size: 11px;">No tags</span>'}
-        </div>
-        <div style="display: flex; gap: 4px; margin-top: auto;">
+        <div style="display: flex; gap: 4px; margin-top: 4px;">
           <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.openTags(${featured.id}, '${featured.current_filepath.replace(/\\/g, '\\\\')}')">
             <i class="bi bi-tag"></i> Tags
           </button>
           <button class="win-button" style="font-size: 11px; flex: 1;" id="featured-search-btn">
             <i class="bi bi-search"></i> Similar
           </button>
+        </div>
+      </div>
+      <div class="featured-details">
+        <div class="featured-filename" title="${featured.current_filepath}">${featured.current_filepath.split(/[\\/]/).pop()}</div>
+        <div class="image-path" title="${featured.current_filepath}">${featured.current_filepath}</div>
+        <div class="tag-list" style="margin-top: 6px;">
+          ${featured.tags.length > 0 ? featured.tags.map(t => getTagPillHtml(t)).join("") : '<span style="color: #999; font-style: italic; font-size: 11px;">No tags</span>'}
         </div>
       </div>
     </div>
@@ -695,6 +695,25 @@ function renderFeaturedDay(featured: ImageDetails) {
         openImageViewer(featured.current_filepath);
       }
     });
+  }
+
+  // Constrain tag-list height to match the image card
+  const tagList = container.querySelector(".featured-details .tag-list") as HTMLElement;
+  const card = container.querySelector(".featured-card") as HTMLElement;
+  if (tagList && card) {
+    const applyTagListHeight = () => {
+      const filename = container.querySelector(".featured-filename") as HTMLElement;
+      const path = container.querySelector(".image-path") as HTMLElement;
+      const fixedHeight = (filename?.offsetHeight || 0) + (path?.offsetHeight || 0) + 6; // margins/gaps
+      tagList.style.maxHeight = Math.max(0, card.offsetHeight - fixedHeight) + "px";
+      tagList.style.overflowY = "auto";
+    };
+    // After the image loads, recalculate
+    const img = previewDiv.querySelector("img");
+    if (img && !img.complete) {
+      img.addEventListener("load", applyTagListHeight, { once: true });
+    }
+    applyTagListHeight();
   }
 
   document.getElementById("featured-search-btn")?.addEventListener("click", async () => {
