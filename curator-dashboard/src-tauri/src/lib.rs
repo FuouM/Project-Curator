@@ -283,11 +283,29 @@ async fn read_logs() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn read_service_logs() -> Result<String, String> {
+    let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
+    let log_file = data_dir.join("service_stdout.log");
+    match fs::read_to_string(&log_file) {
+        Ok(content) => Ok(content),
+        Err(e) => Err(format!("Failed to read service log file: {:?}", e))
+    }
+}
+
+#[tauri::command]
 async fn clear_logs() -> Result<(), String> {
     let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
     let log_file = data_dir.join("dashboard.log");
     fs::write(&log_file, "")
         .map_err(|e| format!("Failed to clear logs: {:?}", e))
+}
+
+#[tauri::command]
+async fn clear_service_logs() -> Result<(), String> {
+    let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
+    let log_file = data_dir.join("service_stdout.log");
+    fs::write(&log_file, "")
+        .map_err(|e| format!("Failed to clear service logs: {:?}", e))
 }
 
 #[tauri::command]
@@ -334,7 +352,9 @@ pub fn run() {
             send_to_service,
             select_path,
             read_logs,
+            read_service_logs,
             clear_logs,
+            clear_service_logs,
             log_frontend,
             open_file_externally
         ])

@@ -502,6 +502,28 @@ body {
 .modal-close:active {
   background-color: #bf0f1d;
 }
+
+/* Log Tabs */
+.log-tab {
+  position: relative;
+  z-index: 1;
+}
+.log-tab.active {
+  background-color: #0078d7;
+  color: #ffffff;
+  border-color: #005499;
+}
+.log-tab:not(.active):hover {
+  background-color: var(--sys-button-hover);
+}
+
+/* Logs view fills main panel without causing outer scroll */
+#view-logs.active {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
 .modal-body {
   padding: 16px;
   display: flex;
