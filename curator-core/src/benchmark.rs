@@ -233,13 +233,12 @@ pub fn run_onnx_benchmark(model_path: &Path, img_size: usize) -> Result<(f64, Op
     }
     let cpu_time = start.elapsed().as_secs_f64() * 1000.0 / (runs as f64);
 
-    let mut has_gpu = false;
+    let has_gpu = cfg!(any(target_os = "windows", target_os = "macos", target_os = "linux"));
     let mut gpu_time = None;
     let mut gpu_err = None;
 
     #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
     {
-        has_gpu = true;
         let mut builder = Session::builder()?.with_intra_threads(1)?;
         let mut provider_registered = false;
 

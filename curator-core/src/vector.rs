@@ -1,6 +1,5 @@
 use anyhow::{Context, Error};
 use crate::ipc::DevicePreference;
-use image::{imageops::FilterType, GenericImageView};
 use ndarray::{Array2, Array4};
 use ort::{inputs, session::Session, session::builder::SessionBuilder, value::TensorRef};
 use std::fs;
@@ -297,7 +296,7 @@ impl ModelManager {
         self.last_used.store(now_secs(), Ordering::Relaxed);
         let mut session_guard = self.vision_session.lock()
             .map_err(|_| anyhow::anyhow!("Vision mutex poisoned"))?;
-        let session = session_guard.as_mut().context("Vision model not initialized")?;
+        let _session = session_guard.as_mut().context("Vision model not initialized")?;
         
         // 1. Decode image — turbojpeg for JPEG, png+zlib-rs for PNG, image crate for others
         let img_ref = image_path.as_ref();
@@ -403,7 +402,7 @@ impl ModelManager {
         self.last_used.store(now_secs(), Ordering::Relaxed);
         let mut session_guard = self.text_session.lock()
             .map_err(|_| anyhow::anyhow!("Text mutex poisoned"))?;
-        let session = session_guard.as_mut().context("Text model not initialized")?;
+        let _session = session_guard.as_mut().context("Text model not initialized")?;
         let tok_guard = self.tokenizer.lock().unwrap();
         let tokenizer = tok_guard.as_ref().context("Tokenizer not initialized")?;
 

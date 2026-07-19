@@ -7,7 +7,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use crate::ipc::DevicePreference;
 use crate::vector::apply_device_preference;
-use image::{GenericImageView, imageops::FilterType};
+
 use ndarray::Array4;
 use ort::{inputs, session::Session, value::TensorRef};
 use serde::Deserialize;
