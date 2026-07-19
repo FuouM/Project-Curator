@@ -484,7 +484,23 @@ body {
 .modal-close {
   cursor: pointer;
   font-weight: bold;
-  font-size: 14px;
+  font-size: 18px;
+  width: 46px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  margin: -6px -10px;
+  padding: 6px 10px;
+  user-select: none;
+}
+.modal-close:hover {
+  background-color: #e81123;
+  color: #ffffff;
+}
+.modal-close:active {
+  background-color: #bf0f1d;
 }
 .modal-body {
   padding: 16px;
