@@ -82,6 +82,7 @@ struct TaggerInner {
     idx_to_tag: HashMap<String, String>,
     tag_to_category: HashMap<String, String>,
     total_tags: usize,
+    resizer: Mutex<fast_image_resize::Resizer>,
 }
 
 impl TaggerEngine {
@@ -165,8 +166,10 @@ impl TaggerEngine {
         let guard = self.inner.lock().unwrap();
         let inner = guard.as_ref().unwrap();
 
-        let tensor = preprocess_image(image_path.as_ref(), inner.img_size)
+        let mut resizer_guard = inner.resizer.lock().unwrap();
+        let tensor = preprocess_image(image_path.as_ref(), inner.img_size, &mut resizer_guard)
             .with_context(|| format!("Preprocessing {:?}", image_path.as_ref()))?;
+        drop(resizer_guard);
 
         debug!("Running Camie Tagger inference on {:?}", image_path.as_ref());
         
@@ -295,6 +298,7 @@ impl TaggerEngine {
             idx_to_tag,
             tag_to_category,
             total_tags,
+            resizer: Mutex::new(fast_image_resize::Resizer::new()),
         })
     }
 }
@@ -307,11 +311,44 @@ const IMAGENET_MEAN: [f32; 3] = [0.485, 0.456, 0.406];
 const IMAGENET_STD: [f32; 3] = [0.229, 0.224, 0.225];
 const PAD_COLOR: [u8; 3] = [124, 116, 104];
 
-fn preprocess_image(path: &Path, img_size: u32) -> Result<Array4<f32>> {
-    let img = image::open(path).with_context(|| format!("Cannot open image {:?}", path))?;
-    let img = img.to_rgb8();
+fn preprocess_image(path: &Path, img_size: u32, resizer: &mut fast_image_resize::Resizer) -> Result<Array4<f32>> {
+    // Fast decode: turbojpeg for JPEG, png+zlib-rs for PNG, image crate fallback
+    let data = std::fs::read(path).with_context(|| format!("Cannot read image {:?}", path))?;
+    let is_jpeg = data.len() >= 2 && data[0] == 0xFF && data[1] == 0xD8;
+    let is_png = data.len() >= 8
+        && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
 
-    let (orig_w, orig_h) = img.dimensions();
+    let (rgb_buf, orig_w, orig_h) = if is_jpeg {
+        let image = turbojpeg::decompress(&data, turbojpeg::PixelFormat::RGB)
+            .with_context(|| format!("turbojpeg decode failed for {:?}", path))?;
+        (image.pixels.to_vec(), image.width as u32, image.height as u32)
+    } else if is_png {
+        let decoder = png::Decoder::new(std::io::Cursor::new(&data));
+        let mut reader = decoder.read_info()
+            .with_context(|| format!("png decode header failed for {:?}", path))?;
+        let w = reader.info().width;
+        let h = reader.info().height;
+        let buf_size = reader.output_buffer_size()
+            .unwrap_or_else(|| w as usize * h as usize * 4);
+        let mut raw = vec![0u8; buf_size];
+        let out_info = reader.next_frame(&mut raw)
+            .with_context(|| format!("png decode failed for {:?}", path))?;
+        let pixels = out_info.buffer_size();
+        let rgb: Vec<u8> = match out_info.color_type {
+            png::ColorType::Rgb => raw[..pixels].to_vec(),
+            png::ColorType::Rgba => raw[..pixels].chunks(4).flat_map(|c| [c[0], c[1], c[2]]).collect(),
+            png::ColorType::Grayscale => raw[..pixels].iter().map(|&g| [g, g, g]).flatten().collect(),
+            png::ColorType::GrayscaleAlpha => raw[..pixels].chunks(2).flat_map(|c| [c[0], c[0], c[0]]).collect(),
+            _ => raw[..pixels].chunks(3).flat_map(|c| [c[0], c[1], c[2]]).collect(),
+        };
+        (rgb, w, h)
+    } else {
+        let img = image::open(path).with_context(|| format!("Cannot open image {:?}", path))?;
+        let rgb = img.to_rgb8();
+        let (w, h) = rgb.dimensions();
+        (rgb.into_raw(), w, h)
+    };
+
     let aspect = orig_w as f32 / orig_h as f32;
 
     let (new_w, new_h) = if aspect > 1.0 {
@@ -324,32 +361,49 @@ fn preprocess_image(path: &Path, img_size: u32) -> Result<Array4<f32>> {
         (nw, nh)
     };
 
-    let resized = image::imageops::resize(
-        &img,
-        new_w,
-        new_h,
-        FilterType::Triangle,
-    );
-
-    let mut canvas = image::RgbImage::from_pixel(
-        img_size,
-        img_size,
-        image::Rgb(PAD_COLOR),
-    );
-
-    let paste_x = (img_size - new_w) / 2;
-    let paste_y = (img_size - new_h) / 2;
-    image::imageops::overlay(&mut canvas, &resized, paste_x as i64, paste_y as i64);
+    // SIMD-accelerated resize via fast_image_resize (resizer reused across calls)
+    let src = fast_image_resize::images::ImageRef::new(
+        orig_w, orig_h, &rgb_buf, fast_image_resize::PixelType::U8x3,
+    )?;
+    let dst_buf = vec![0u8; (new_w * new_h * 3) as usize];
+    let mut dst = fast_image_resize::images::Image::from_vec_u8(
+        new_w, new_h, dst_buf, fast_image_resize::PixelType::U8x3,
+    )?;
+    let opts = fast_image_resize::ResizeOptions::new()
+        .resize_alg(fast_image_resize::ResizeAlg::Convolution(
+            fast_image_resize::FilterType::Bilinear,
+        ));
+    resizer.resize(&src, &mut dst, Some(&opts))?;
+    let data = dst.buffer();
 
     let s = img_size as usize;
     let mut tensor = Array4::<f32>::zeros((1, 3, s, s));
+    let slice = tensor.as_slice_mut().unwrap();
 
-    for y in 0..s {
-        for x in 0..s {
-            let pixel = canvas.get_pixel(x as u32, y as u32);
-            for c in 0..3usize {
-                let val = pixel[c] as f32 / 255.0;
-                tensor[[0, c, y, x]] = (val - IMAGENET_MEAN[c]) / IMAGENET_STD[c];
+    let paste_x = ((img_size - new_w) / 2) as usize;
+    let paste_y = ((img_size - new_h) / 2) as usize;
+    let nw = new_w as usize;
+    let nh = new_h as usize;
+
+    for c in 0..3usize {
+        let mean = IMAGENET_MEAN[c];
+        let std_dev = IMAGENET_STD[c];
+        let pad_val = (PAD_COLOR[c] as f32 / 255.0 - mean) / std_dev;
+        let dst_base = c * s * s;
+
+        for y in 0..s {
+            let rs = dst_base + y * s;
+            for x in 0..s {
+                slice[rs + x] = pad_val;
+            }
+        }
+
+        for y in 0..nh {
+            let src_row = y * nw * 3 + c;
+            let dst_row = dst_base + (paste_y + y) * s + paste_x;
+            for x in 0..nw {
+                let val = data[src_row + x * 3] as f32 / 255.0;
+                slice[dst_row + x] = (val - mean) / std_dev;
             }
         }
     }

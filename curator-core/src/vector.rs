@@ -299,30 +299,80 @@ impl ModelManager {
             .map_err(|_| anyhow::anyhow!("Vision mutex poisoned"))?;
         let session = session_guard.as_mut().context("Vision model not initialized")?;
         
-        // 1. Load image and convert to RGB
-        let img = image::open(image_path)?;
-        let (width, height) = img.dimensions();
-        let rgb_img = img.to_rgb8();
+        // 1. Decode image — turbojpeg for JPEG, png+zlib-rs for PNG, image crate for others
+        let img_ref = image_path.as_ref();
+        let data = std::fs::read(img_ref)?;
+        let is_jpeg = data.len() >= 2 && data[0] == 0xFF && data[1] == 0xD8;
+        let is_png = data.len() >= 8
+            && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
 
-        // 2. Center crop and resize to 224x224
+        let (rgb_buf, width, height) = if is_jpeg {
+            let image = turbojpeg::decompress(&data, turbojpeg::PixelFormat::RGB)?;
+            (image.pixels.to_vec(), image.width as u32, image.height as u32)
+        } else if is_png {
+            let decoder = png::Decoder::new(std::io::Cursor::new(&data));
+            let mut reader = decoder.read_info()?;
+            let w = reader.info().width;
+            let h = reader.info().height;
+            let buf_size = reader.output_buffer_size()
+                .unwrap_or_else(|| w as usize * h as usize * 4);
+            let mut raw = vec![0u8; buf_size];
+            let out_info = reader.next_frame(&mut raw)?;
+            let pixels = out_info.buffer_size();
+            let rgb: Vec<u8> = match out_info.color_type {
+                png::ColorType::Rgb => raw[..pixels].to_vec(),
+                png::ColorType::Rgba => raw[..pixels].chunks(4).flat_map(|c| [c[0], c[1], c[2]]).collect(),
+                png::ColorType::Grayscale => raw[..pixels].iter().map(|&g| [g, g, g]).flatten().collect(),
+                png::ColorType::GrayscaleAlpha => raw[..pixels].chunks(2).flat_map(|c| [c[0], c[0], c[0]]).collect(),
+                _ => raw[..pixels].chunks(3).flat_map(|c| [c[0], c[1], c[2]]).collect(),
+            };
+            (rgb, w, h)
+        } else {
+            let img = image::open(img_ref)?;
+            let rgb = img.to_rgb8();
+            let (w, h) = rgb.dimensions();
+            (rgb.into_raw(), w, h)
+        };
+
+        // 2. Center crop to square
         let size = width.min(height);
-        let x = (width - size) / 2;
-        let y = (height - size) / 2;
-        let cropped = image::imageops::crop_imm(&rgb_img, x, y, size, size).to_image();
-        let resized = image::imageops::resize(&cropped, 224, 224, FilterType::Triangle);
+        let cx = (width - size) / 2;
+        let cy = (height - size) / 2;
+        let mut cropped = vec![0u8; (size * size * 3) as usize];
+        for y in 0..size {
+            let src_row = ((cy + y) * width + cx) as usize * 3;
+            let dst_row = (y * size) as usize * 3;
+            let copy_len = (size * 3) as usize;
+            cropped[dst_row..dst_row + copy_len]
+                .copy_from_slice(&rgb_buf[src_row..src_row + copy_len]);
+        }
 
-        // 3. Normalization parameters for CLIP
+        // 3. SIMD-accelerated resize to 224x224
+        let crop_ref = fast_image_resize::images::ImageRef::new(
+            size, size, &cropped, fast_image_resize::PixelType::U8x3,
+        )?;
+        let mut dst_image = fast_image_resize::images::Image::from_vec_u8(
+            224, 224, vec![0u8; 224 * 224 * 3], fast_image_resize::PixelType::U8x3,
+        )?;
+        let mut resizer = fast_image_resize::Resizer::new();
+        let opts = fast_image_resize::ResizeOptions::new()
+            .resize_alg(fast_image_resize::ResizeAlg::Convolution(
+                fast_image_resize::FilterType::Bilinear,
+            ));
+        resizer.resize(&crop_ref, &mut dst_image, Some(&opts))?;
+        let resized_buf = dst_image.buffer();
+
+        // 4. Normalization parameters for CLIP
         let mean = [0.48145466, 0.4578275, 0.40821073];
         let std = [0.26862954, 0.26130258, 0.27577711];
 
-        // 4. Construct N-dimensional array in shape [1, 3, 224, 224]
+        // 5. Construct N-dimensional array in shape [1, 3, 224, 224]
         let mut input_array = Array4::<f32>::zeros((1, 3, 224, 224));
         for c in 0..3 {
             for row in 0..224 {
                 for col in 0..224 {
-                    let pixel = resized.get_pixel(col, row);
-                    let val = pixel[c] as f32 / 255.0;
-                    input_array[[0, c, row as usize, col as usize]] = (val - mean[c]) / std[c];
+                    let val = resized_buf[(row * 224 + col) * 3 + c] as f32 / 255.0;
+                    input_array[[0, c, row, col]] = (val - mean[c]) / std[c];
                 }
             }
         }
