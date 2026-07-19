@@ -81,7 +81,7 @@
         </header>
 
         <!-- DASHBOARD VIEW -->
-        <section class="view-section active" id="view-dashboard">
+        <section class="view-section active dashboard-view" id="view-dashboard">
           <div class="stats-grid">
             <div class="stat-card">
               <div class="stat-label">Total Images</div>
@@ -100,21 +100,23 @@
               <div class="stat-value" id="stat-tagger" style="font-size: 13px;">—</div>
             </div>
           </div>
-          
-          <div style="display: flex; gap: 16px; margin-top: 1.5rem; flex-wrap: wrap;">
+
+          <div class="dashboard-bottom-row">
             <!-- Feature of the Day Panel -->
             <div class="group-box" style="flex: 1; min-width: 300px;">
               <div class="group-box-title">Feature of the Day</div>
-              <div id="featured-day-content" style="display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 250px; justify-content: center;">
+              <div id="featured-day-content" style="display: flex; flex-direction: column; gap: 12px; justify-content: flex-start;">
                 <p style="color: #666666; font-style: italic; text-align: center;">Loading featured content...</p>
               </div>
             </div>
 
             <!-- Latest Imports Panel -->
-            <div class="group-box" style="flex: 1.5; min-width: 350px;">
+            <div class="group-box imports-panel" style="flex: 1.5; min-width: 350px;">
               <div class="group-box-title">Latest Imports</div>
-              <div class="image-grid" id="latest-imports-grid" style="grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));">
-                <!-- Dynamically populated -->
+              <div class="imports-scroll">
+                <div class="image-grid" id="latest-imports-grid" style="grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));">
+                  <!-- Dynamically populated -->
+                </div>
               </div>
             </div>
           </div>

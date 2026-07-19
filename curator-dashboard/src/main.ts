@@ -652,42 +652,50 @@ async function refreshDashboard() {
 function renderFeaturedDay(featured: ImageDetails) {
   const container = document.getElementById("featured-day-content");
   if (!container) return;
-  
+
   const srcUrl = convertFileSrc(featured.current_filepath);
-  
+  const badgeClass = featured.vector_state === "ready" ? "badge-ready" : "badge-pending";
+
   container.innerHTML = `
-    <div style="display: flex; gap: 16px; align-items: flex-start; height: 100%;">
-      <div class="image-preview" style="width: 110px; height: 110px; flex-shrink: 0; position: relative;">
-        <img src="${srcUrl}" alt="Featured Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
-        <span style="display: none;"><i class="bi bi-image"></i></span>
+    <div class="featured-layout">
+      <div class="image-card featured-card">
+        <div class="image-preview featured-preview">
+          <img src="${srcUrl}" alt="Featured Image" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+          <span style="display: none;"><i class="bi bi-image"></i></span>
+          <div class="vector-badge ${badgeClass}">${featured.vector_state}</div>
+          <div class="featured-badge-overlay"><i class="bi bi-stars"></i> Feature of the Day</div>
+        </div>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
-        <div>
-          <span style="font-weight: bold; color: #0078d7; font-size: 13px;"><i class="bi bi-star-fill"></i> Image Selection of the Day</span>
-          <div class="image-path" title="${featured.current_filepath}" style="margin-top: 4px; font-size: 11px; height: auto; -webkit-line-clamp: 3; word-break: break-all;">
-            ${featured.current_filepath}
-          </div>
+      <div class="featured-details">
+        <div class="featured-filename" title="${featured.current_filepath}">${featured.current_filepath.split(/[\\/]/).pop()}</div>
+        <div class="image-path" title="${featured.current_filepath}">${featured.current_filepath}</div>
+        <div class="tag-list" style="margin-top: 6px;">
+          ${featured.tags.length > 0 ? featured.tags.map(t => getTagPillHtml(t)).join("") : '<span style="color: #999; font-style: italic; font-size: 11px;">No tags</span>'}
         </div>
-        <div>
-          <span style="color: #666666; font-size: 10px;">Assigned Tags:</span>
-          <div class="tag-list" style="margin-top: 2px;">
-            ${featured.tags.length > 0 ? featured.tags.map(t => getTagPillHtml(t)).join("") : '<span style="color: #999999; font-style: italic; font-size: 11px;">None</span>'}
-          </div>
-        </div>
-        <div style="margin-top: 8px; display: flex; gap: 8px;">
-          <button class="win-button" style="font-size: 11px;" onclick="window.openTags(${featured.id}, '${featured.current_filepath.replace(/\\/g, '\\\\')}')">
-            <i class="bi bi-tag"></i> Manage Tags
+        <div style="display: flex; gap: 4px; margin-top: auto;">
+          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.openTags(${featured.id}, '${featured.current_filepath.replace(/\\/g, '\\\\')}')">
+            <i class="bi bi-tag"></i> Tags
           </button>
-          <button class="win-button" style="font-size: 11px;" id="featured-search-btn">
-            <i class="bi bi-search"></i> Find Similar
+          <button class="win-button" style="font-size: 11px; flex: 1;" id="featured-search-btn">
+            <i class="bi bi-search"></i> Similar
           </button>
         </div>
       </div>
-    </div>
-    <div style="background-color: #fff8e1; border: 1px solid #ffe082; padding: 8px; margin-top: 8px; border-radius: 2px; color: #827717; font-size: 11px;">
-      <strong>Tip of the Day:</strong> Double click on tag pills in search tags to filter by them, or click "Find Similar" above to run a semantic vector search based on this image's content!
     </div>
   `;
+
+  const previewDiv = container.querySelector(".featured-preview");
+  if (previewDiv) {
+    previewDiv.addEventListener("click", () => {
+      if ((window as any).getImageClickAction?.() === "external") {
+        (window as any).__TAURI__.core.invoke("open_file_externally", { path: featured.current_filepath }).catch((err: any) => {
+          console.error("Failed to open file externally:", err);
+        });
+      } else {
+        openImageViewer(featured.current_filepath);
+      }
+    });
+  }
 
   document.getElementById("featured-search-btn")?.addEventListener("click", async () => {
     (window as any).findSimilar(featured.current_filepath);
