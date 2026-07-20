@@ -401,5 +401,122 @@ export const componentRegistry: ComponentMetadata[] = [
         `
       }
     ]
+  },
+  {
+    name: "Loading & Progress",
+    description: "Skeleton placeholders, progress bars, spinners, and indeterminate loaders for async states.",
+    variants: [
+      {
+        name: "Skeleton Placeholders",
+        render: () => `
+          <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+            <div style="font-size: 11px; font-weight: 600; color: #555;">Text Skeleton</div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <div class="skeleton-text skeleton-pulse" style="width: 80%; height: 12px;"></div>
+              <div class="skeleton-text skeleton-pulse" style="width: 60%; height: 12px;"></div>
+              <div class="skeleton-text skeleton-pulse" style="width: 90%; height: 12px;"></div>
+            </div>
+            <div style="font-size: 11px; font-weight: 600; color: #555; margin-top: 8px;">Card Skeleton</div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+              <div class="skeleton-card skeleton-pulse" style="height: 160px; border-radius: 4px;"></div>
+              <div class="skeleton-card skeleton-pulse" style="height: 160px; border-radius: 4px;"></div>
+              <div class="skeleton-card skeleton-pulse" style="height: 160px; border-radius: 4px;"></div>
+            </div>
+            <div style="font-size: 11px; font-weight: 600; color: #555; margin-top: 8px;">Circle / Avatar Skeleton</div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <div class="skeleton-pulse" style="width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;"></div>
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 5px;">
+                <div class="skeleton-text skeleton-pulse" style="width: 50%; height: 10px;"></div>
+                <div class="skeleton-text skeleton-pulse" style="width: 30%; height: 10px;"></div>
+              </div>
+            </div>
+          </div>
+        `
+      },
+      {
+        name: "Progress Bars",
+        render: () => `
+          <div style="display: flex; flex-direction: column; gap: 14px; width: 100%;">
+            <div>
+              <div style="font-size: 11px; font-weight: 600; color: #555; margin-bottom: 4px;">Determinate — 0%</div>
+              <div style="width: 100%; height: 8px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                <div style="width: 0%; height: 100%; background-color: #3b82f6; transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size: 11px; font-weight: 600; color: #555; margin-bottom: 4px;">Determinate — 35%</div>
+              <div style="width: 100%; height: 8px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                <div style="width: 35%; height: 100%; background-color: #3b82f6; transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size: 11px; font-weight: 600; color: #555; margin-bottom: 4px;">Determinate — 72%</div>
+              <div style="width: 100%; height: 8px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                <div style="width: 72%; height: 100%; background-color: #3b82f6; transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size: 11px; font-weight: 600; color: #555; margin-bottom: 4px;">Determinate — 100% (Complete)</div>
+              <div style="width: 100%; height: 8px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                <div style="width: 100%; height: 100%; background-color: #10b981; transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size: 11px; font-weight: 600; color: #555; margin-bottom: 4px;">Indeterminate (Animated)</div>
+              <div style="width: 100%; height: 8px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden; position: relative;">
+                <div class="progress-indeterminate" style="position: absolute; top: 0; left: 0; width: 40%; height: 100%; background-color: #3b82f6; border-radius: 4px;"></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size: 11px; font-weight: 600; color: #555; margin-bottom: 4px;">Large Progress — 60%</div>
+              <div style="width: 100%; height: 16px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden; border: 1px solid #d1d5db;">
+                <div style="width: 60%; height: 100%; background: linear-gradient(90deg, #3b82f6, #60a5fa); transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size: 11px; font-weight: 600; color: #555; margin-bottom: 4px;">Segmented Progress (Preprocessing + Indexing)</div>
+              <div style="width: 100%; height: 10px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden; display: flex;">
+                <div style="width: 80%; height: 100%; background-color: #3b82f6;"></div>
+                <div style="width: 15%; height: 100%; background-color: #10b981;"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px; color: #888; margin-top: 3px;">
+                <span>Preprocessing (80%)</span>
+                <span>Indexed (15%)</span>
+              </div>
+            </div>
+          </div>
+        `
+      },
+      {
+        name: "Spinners & Loaders",
+        render: () => `
+          <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: center;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+              <div class="spinner-css-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                  <path d="M21 3v5h-5" />
+                </svg>
+              </div>
+              <span style="font-size: 10px; color: #888;">Icon Spinner</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+              <div class="spinner-ring" style="width: 24px; height: 24px;"></div>
+              <span style="font-size: 10px; color: #888;">CSS Ring</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+              <div class="spinner-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <span style="font-size: 10px; color: #888;">Bouncing Dots</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+              <div class="spinner-bar"></div>
+              <span style="font-size: 10px; color: #888;">Pulse Bar</span>
+            </div>
+          </div>
+        `
+      }
+    ]
   }
 ];
