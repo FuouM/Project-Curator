@@ -87,7 +87,7 @@ type RequestPayload =
   | { TagImage: { image_id: number; threshold: number | null; force: boolean | null } }
   | { TagImageBatch: { image_ids: number[]; threshold: number | null; force: boolean | null } }
   | { GetTaggerStatus: null }
-  | { RunBenchmark: null }
+  | { RunBenchmark: { embedding_model: "clip-vit-b-32" | "mobileclip-s2" } }
   | { GetSettings: null }
   | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null } }
   | { ReindexVectors: null }
@@ -169,7 +169,7 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
   } else if ("GetTaggerStatus" in request) {
     formattedReq = "GetTaggerStatus";
   } else if ("RunBenchmark" in request) {
-    formattedReq = "RunBenchmark";
+    formattedReq = { RunBenchmark: request.RunBenchmark };
   } else if ("GetSettings" in request) {
     formattedReq = "GetSettings";
   } else if ("UpdateSettings" in request) {
@@ -1354,6 +1354,11 @@ function setupBenchmark() {
   if (!runBtn) return;
 
   runBtn.addEventListener("click", async () => {
+    const modelSelect = document.getElementById("benchmark-embedding-model") as HTMLSelectElement;
+    const selectedModel = modelSelect ? (modelSelect.value as "clip-vit-b-32" | "mobileclip-s2") : "clip-vit-b-32";
+
+    updateBenchmarkModelHeader(selectedModel);
+
     runBtn.setAttribute("disabled", "true");
     runBtn.textContent = "Benchmarking...";
     
@@ -1369,7 +1374,7 @@ function setupBenchmark() {
     if (errText) errText.textContent = "";
 
     try {
-      const resp = await callService({ RunBenchmark: null });
+      const resp = await callService({ RunBenchmark: { embedding_model: selectedModel } });
       if ("BenchmarkResult" in resp) {
         const {
           clip_cpu_time_ms,
@@ -1452,6 +1457,16 @@ function setupBenchmark() {
       runBtn.innerHTML = '<i class="bi bi-play-fill"></i> Run Benchmark';
     }
   });
+}
+
+function updateBenchmarkModelHeader(model: string | null) {
+  const titleEl = document.getElementById("benchmark-clip-title");
+  if (!titleEl) return;
+  if (model === "mobileclip-s2") {
+    titleEl.textContent = "MobileCLIP-S2 Model (256x256)";
+  } else {
+    titleEl.textContent = "CLIP ViT-B/32 Model (224x224)";
+  }
 }
 
 function setupSettings() {
@@ -1540,15 +1555,7 @@ function setupSettings() {
     reindexPollInterval = setInterval(check, 1000) as unknown as number;
   }
 
-  function updateBenchmarkModelHeader(model: string | null) {
-    const titleEl = document.getElementById("benchmark-clip-title");
-    if (!titleEl) return;
-    if (model === "mobileclip-s2") {
-      titleEl.textContent = "MobileCLIP-S2 Model (256x256)";
-    } else {
-      titleEl.textContent = "CLIP ViT-B/32 Model (224x224)";
-    }
-  }
+
 
   // Image click action setting (localStorage)
   const imageClickSelect = document.getElementById("settings-image-click-action") as HTMLSelectElement;

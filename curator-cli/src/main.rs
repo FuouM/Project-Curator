@@ -1,6 +1,6 @@
 use anyhow::{Context, Error};
 use clap::{Parser, Subcommand};
-use curator_core::ipc::{Request, Response, ImageDetails};
+use curator_core::ipc::{Request, Response, ImageDetails, EmbeddingModel};
 use std::fs;
 use std::path::PathBuf;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -95,7 +95,11 @@ enum Commands {
     /// Show the current status of the Camie Tagger model
     TaggerStatus,
     /// Run CPU vs GPU ONNX model benchmark
-    Benchmark,
+    Benchmark {
+        /// Embedding model to benchmark ('clip-vit-b-32' or 'mobileclip-s2')
+        #[arg(short, long, default_value = "clip-vit-b-32")]
+        model: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -196,7 +200,15 @@ async fn main() -> Result<(), Error> {
             }
         }
         Commands::TaggerStatus => Request::GetTaggerStatus,
-        Commands::Benchmark => Request::RunBenchmark,
+        Commands::Benchmark { model } => {
+            let emb_model = match model.as_str() {
+                "mobileclip-s2" | "mobileclip_s2" => EmbeddingModel::MobileClipS2,
+                _ => EmbeddingModel::ClipVitB32,
+            };
+            Request::RunBenchmark {
+                embedding_model: emb_model,
+            }
+        }
     };
 
     // 3. Connect to Named Pipe IPC Server

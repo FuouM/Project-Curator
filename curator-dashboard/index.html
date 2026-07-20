@@ -259,7 +259,14 @@
             <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">
               Measure inference latency on CPU vs GPU. This runs CLIP Vision model inference (5 iterations) and reports average speed and throughput factor.
             </p>
-            <div>
+            <div style="display: flex; gap: 16px; align-items: center;">
+              <div class="form-group" style="margin-bottom: 0; display: flex; align-items: center; gap: 8px;">
+                <label style="font-weight: 600; font-size: 11px;">Embedding Model:</label>
+                <select class="input-field" id="benchmark-embedding-model" style="width: 180px; padding: 2px 4px; font-size: 11px;">
+                  <option value="clip-vit-b-32">CLIP ViT-B/32 (224x224)</option>
+                  <option value="mobileclip-s2">MobileCLIP-S2 (256x256)</option>
+                </select>
+              </div>
               <button class="win-button" id="run-benchmark-btn">
                 <i class="bi bi-play-fill"></i> Run Benchmark
               </button>

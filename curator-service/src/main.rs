@@ -315,18 +315,17 @@ async fn handle_request(
     match request {
         Request::Ping => Response::Pong,
 
-        Request::RunBenchmark => {
-            let active = model_manager.active_model();
-            let vision_path = match active {
+        Request::RunBenchmark { embedding_model } => {
+            let vision_path = match embedding_model {
                 EmbeddingModel::ClipVitB32 => model_manager.model_dir().join("vision_model.onnx"),
                 EmbeddingModel::MobileClipS2 => model_manager.model_dir().join("mobileclip_s2/onnx/vision_model.onnx"),
             };
-            let target_size = match active {
+            let target_size = match embedding_model {
                 EmbeddingModel::ClipVitB32 => 224,
                 EmbeddingModel::MobileClipS2 => 256,
             };
             let tagger_path = tagger.model_path();
-            info!("RunBenchmark request: active_model={:?}, vision_path={:?}, tagger_path={:?}, tagger_path_exists={}", active, vision_path, tagger_path, tagger_path.exists());
+            info!("RunBenchmark request: embedding_model={:?}, vision_path={:?}, tagger_path={:?}, tagger_path_exists={}", embedding_model, vision_path, tagger_path, tagger_path.exists());
 
             let clip_res = curator_core::run_onnx_benchmark(&vision_path, target_size);
             let tagger_res = if tagger_path.exists() {

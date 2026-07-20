@@ -84,7 +84,9 @@ pub enum Request {
     /// Query whether the Camie Tagger model is currently loaded.
     GetTaggerStatus,
     /// Run CPU vs GPU ONNX model benchmark.
-    RunBenchmark,
+    RunBenchmark {
+        embedding_model: EmbeddingModel,
+    },
     /// Benchmark image preprocessing (decode + resize + normalize) across methods.
     BenchmarkPreprocess {
         image_path: String,
