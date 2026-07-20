@@ -322,6 +322,31 @@
         <section class="view-section" id="view-settings">
           <!-- Image Viewing Setting -->
           <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+            <div class="group-box-title">Display</div>
+            <p style="font-size: 11px; color: #333333;">
+              Configure dashboard display preferences.
+            </p>
+            <div class="form-group" style="flex-direction: column; align-items: flex-start; gap: 6px;">
+              <label style="font-weight: 600; min-width: 120px;">Path Visibility:</label>
+              <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;">
+                  <input type="radio" name="path-vis" value="full"> Full path
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;">
+                  <input type="radio" name="path-vis" value="filename" checked> Only filename
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;">
+                  <input type="radio" name="path-vis" value="drive-filename"> Drive + filename
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;">
+                  <input type="radio" name="path-vis" value="drive-folders"> Drive +
+                  <input type="number" id="settings-path-folders" class="input-field" min="0" max="10" value="1" style="width: 48px; padding: 2px 4px; font-size: 12px;"> folder(s) + filename
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
             <div class="group-box-title">Image Viewing</div>
             <p style="font-size: 11px; color: #333333;">
               Choose what happens when you click an image in the Gallery.

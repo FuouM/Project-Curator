@@ -4,6 +4,41 @@ export interface TagSummary {
   count?: number;
 }
 
+// --- Path Visibility ---
+const PATH_VIS_KEY = "curator-path-vis-mode";
+const PATH_FOLDERS_KEY = "curator-path-vis-folders";
+
+function getPathVisMode(): string {
+  return localStorage.getItem(PATH_VIS_KEY) || "filename";
+}
+
+function getPathVisFolders(): number {
+  return parseInt(localStorage.getItem(PATH_FOLDERS_KEY) || "1", 10);
+}
+
+export function maskPath(fullPath: string): string {
+  const mode = getPathVisMode();
+  if (mode === "full") return fullPath;
+
+  const sep = fullPath.includes("/") ? "/" : "\\";
+  const parts = fullPath.split(/[/\\]/);
+  const filename = parts[parts.length - 1];
+
+  if (mode === "filename") return filename;
+
+  const drive = parts[0];
+  if (mode === "drive-filename") return `${drive}${sep}...${sep}${filename}`;
+
+  const folders = getPathVisFolders();
+  const inner = parts.slice(1);
+  const innerFolders = inner.slice(0, -1);
+  const showFolders = innerFolders.slice(-folders);
+  if (folders >= innerFolders.length) {
+    return [drive, ...showFolders, filename].join(sep);
+  }
+  return `${drive}${sep}...${sep}${showFolders.join(sep)}${sep}${filename}`;
+}
+
 // 1. Tag Pill Component
 export function renderTagPill(t: TagSummary, options?: { isDeletable?: boolean; imageId?: number }): string {
   let styleClass = "tag-rank-3"; // Default general / rank 3 (white)
@@ -130,7 +165,7 @@ export function renderImageCard(srcUrl: string, filepath: string, options?: Imag
         <div class="vector-badge ${badgeClass}">${badgeText}</div>
       </div>
       <div class="image-info">
-        <div class="image-path" title="${filepath}">${filepath}</div>
+        <div class="image-path" title="${filepath}">${maskPath(filepath)}</div>
         <div class="tag-list">
           ${tagPills}${extraTagHtml}
         </div>

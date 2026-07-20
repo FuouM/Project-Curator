@@ -3,7 +3,8 @@ import "bootstrap-icons/font/bootstrap-icons.css";
 import {
   renderTagPill,
   renderGroupBox,
-  componentRegistry
+  componentRegistry,
+  maskPath
 } from "./components";
 
 function logJS(msg: string) {
@@ -33,7 +34,7 @@ function openImageViewer(filepath: string) {
   if (!modal || !img || !title) return;
 
   currentViewerPath = filepath;
-  title.textContent = filepath;
+  title.textContent = maskPath(filepath);
   img.src = convertFileSrc(filepath);
   modal.classList.add("active");
 }
@@ -379,7 +380,7 @@ function startStatusPolling() {
             taggerEl.textContent = loaded ? "Active in RAM" : "Ready to load";
             if (taggerDetail) {
               const parts: string[] = [];
-              if (model_path) parts.push(model_path.split(/[/\\]/).pop()!);
+              if (model_path) parts.push(maskPath(model_path));
               if (total_tags > 0) parts.push(`${total_tags} tags`);
               taggerDetail.textContent = parts.length > 0 ? parts.join(" | ") : "—";
             }
@@ -480,7 +481,7 @@ function setupForms() {
     const path = imageInput.value.trim();
     if (path) {
       img.src = convertFileSrc(path);
-      filenameSpan.textContent = path;
+      filenameSpan.textContent = maskPath(path);
       filenameSpan.title = path;
       container.style.display = "flex";
     } else {
@@ -708,7 +709,7 @@ function renderFeaturedDay(featured: ImageDetails) {
       </div>
       <div class="featured-details">
         <div class="featured-filename" title="${featured.current_filepath}">${featured.current_filepath.split(/[\\/]/).pop()}</div>
-        <div class="image-path" title="${featured.current_filepath}">${featured.current_filepath}</div>
+        <div class="image-path" title="${featured.current_filepath}">${maskPath(featured.current_filepath)}</div>
         <div class="tag-list" style="margin-top: 6px;">
           ${featured.tags.length > 0 ? featured.tags.map(t => getTagPillHtml(t)).join("") : '<span style="color: #999; font-style: italic; font-size: 11px;">No tags</span>'}
         </div>
@@ -915,7 +916,7 @@ async function openTagModal(imgId: number, path: string) {
   const autoTagBtn = document.getElementById("auto-tag-modal-btn");
 
   if (idInput) idInput.value = imgId.toString();
-  if (pathPreview) pathPreview.textContent = path;
+  if (pathPreview) pathPreview.textContent = maskPath(path);
   if (statusArea) statusArea.textContent = ""; 
   if (autoTagBtn) {
     autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
@@ -986,7 +987,7 @@ function renderImages(images: ImageDetails[], gridId: string) {
         <div class="vector-badge ${badgeClass}">${img.vector_state}</div>
       </div>
       <div class="image-info">
-        <div class="image-path" title="${img.current_filepath}">${img.current_filepath}</div>
+        <div class="image-path" title="${img.current_filepath}">${maskPath(img.current_filepath)}</div>
         <div class="tag-list">
           ${tagHtml}
         </div>
@@ -1128,7 +1129,7 @@ function renderSearchResults(matches: SearchMatch[]) {
         <div class="vector-badge" style="background-color: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor};">${scoreBadgeText}</div>
       </div>
       <div class="image-info">
-        <div class="image-path" title="${m.filepath}">${m.filepath}</div>
+        <div class="image-path" title="${m.filepath}">${maskPath(m.filepath)}</div>
         <div class="tag-list">
           ${tagHtml}
         </div>
@@ -1550,6 +1551,26 @@ function setupSettings() {
     imageClickSelect.value = getImageClickAction();
     imageClickSelect.addEventListener("change", () => {
       setImageClickAction(imageClickSelect.value);
+    });
+  }
+
+  // Path visibility setting (localStorage)
+  const pathVisRadios = document.querySelectorAll('input[name="path-vis"]') as NodeListOf<HTMLInputElement>;
+  const pathFoldersInput = document.getElementById("settings-path-folders") as HTMLInputElement;
+  // Restore saved state
+  const savedMode = localStorage.getItem("curator-path-vis-mode") || "filename";
+  const savedFolders = parseInt(localStorage.getItem("curator-path-vis-folders") || "1", 10);
+  pathVisRadios.forEach(r => { r.checked = r.value === savedMode; });
+  if (pathFoldersInput) pathFoldersInput.value = savedFolders.toString();
+  // Persist on change
+  pathVisRadios.forEach(r => {
+    r.addEventListener("change", () => {
+      localStorage.setItem("curator-path-vis-mode", r.value);
+    });
+  });
+  if (pathFoldersInput) {
+    pathFoldersInput.addEventListener("change", () => {
+      localStorage.setItem("curator-path-vis-folders", pathFoldersInput.value);
     });
   }
 
