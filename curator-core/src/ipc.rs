@@ -104,6 +104,9 @@ pub enum Request {
     ReindexVectors,
     /// Get aggregate tag statistics: counts per tag grouped by category.
     GetTagStatistics,
+    /// Batch call for dashboard init: returns status, tagger status, settings,
+    /// and initial image lists all at once to minimize IPC round-trips.
+    GetDashboardInit,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -181,6 +184,22 @@ pub enum Response {
     /// Aggregate tag statistics.
     TagStatisticsResult {
         tags: Vec<TagStat>,
+    },
+    /// All data needed for dashboard initialization in a single response.
+    DashboardInitResult {
+        image_count: i64,
+        vector_count: i64,
+        pending_jobs: i64,
+        preprocessing_jobs: i64,
+        tagger_loaded: bool,
+        tagger_model_path: String,
+        tagger_total_tags: usize,
+        clip_device: DevicePreference,
+        tagger_device: DevicePreference,
+        idle_timeout_secs: u64,
+        embedding_model: EmbeddingModel,
+        featured_images: Vec<ImageDetails>,
+        latest_images: Vec<ImageDetails>,
     },
 }
 

@@ -3,6 +3,7 @@ use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use tauri::Emitter;
 
 // We will default to the standard curator data path
 const DEFAULT_DATA_DIR: &str = r".curator";
@@ -89,14 +90,14 @@ fn spawn_service() {
 use std::sync::OnceLock;
 use tokio::sync::Mutex;
 
-fn get_spawn_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
-
 fn get_pipe_connection() -> &'static Mutex<Option<NamedPipeClient>> {
     static CONN: OnceLock<Mutex<Option<NamedPipeClient>>> = OnceLock::new();
     CONN.get_or_init(|| Mutex::new(None))
+}
+
+fn get_cached_token() -> &'static Mutex<Option<String>> {
+    static TOKEN: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    TOKEN.get_or_init(|| Mutex::new(None))
 }
 
 /// Returns true when `s` appears to contain a complete JSON value
@@ -149,36 +150,49 @@ fn is_json_complete(s: &str) -> bool {
 async fn send_to_service(request_json: String) -> Result<String, String> {
     let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
 
-    // Acquire spawn lock to prevent concurrent spawns/connection races
-    let _guard = get_spawn_lock().lock().await;
-
-    // 1. Read Service Key
-    let key_file = data_dir.join("service.key");
-
     log_dashboard_event(&format!("send_to_service: {}", request_json));
 
-    // If key file doesn't exist, we try to spawn the service first to generate it
-    if !key_file.exists() {
-        log_dashboard_event("service.key does not exist, triggering spawn_service...");
-        spawn_service();
-        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-    }
+    // Read or reuse cached service key (no lock needed — token is immutable after first read)
+    let token = {
+        let cached = get_cached_token().lock().await;
+        cached.clone()
+    };
 
-    let token = match fs::read_to_string(&key_file) {
-        Ok(t) => t.trim().to_string(),
-        Err(e) => {
-            log_dashboard_event(&format!("Failed to read service.key on first pass: {:?}", e));
+    let token = if let Some(t) = token {
+        t
+    } else {
+        let key_file = data_dir.join("service.key");
+
+        // If key file doesn't exist, we try to spawn the service first to generate it
+        if !key_file.exists() {
+            log_dashboard_event("service.key does not exist, triggering spawn_service...");
             spawn_service();
             tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-            fs::read_to_string(&key_file)
-                .map_err(|err| {
-                    let err_msg = format!("Failed to read service key file: {:?}", err);
-                    log_dashboard_event(&err_msg);
-                    err_msg
-                })?
-                .trim()
-                .to_string()
         }
+
+        let t = match fs::read_to_string(&key_file) {
+            Ok(t) => t.trim().to_string(),
+            Err(e) => {
+                log_dashboard_event(&format!("Failed to read service.key on first pass: {:?}", e));
+                spawn_service();
+                tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                fs::read_to_string(&key_file)
+                    .map_err(|err| {
+                        let err_msg = format!("Failed to read service key file: {:?}", err);
+                        log_dashboard_event(&err_msg);
+                        err_msg
+                    })?
+                    .trim()
+                    .to_string()
+            }
+        };
+
+        // Cache the token for future calls
+        {
+            let mut cached = get_cached_token().lock().await;
+            *cached = Some(t.clone());
+        }
+        t
     };
 
     let pipe_name = r"\\.\pipe\curator_ipc";
@@ -197,8 +211,18 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
             Err(e) => {
                 log_dashboard_event(&format!("{} Spawning service and retrying...", e));
                 spawn_service();
+                // Invalidate cached token — service may have regenerated it
+                {
+                    let mut cached = get_cached_token().lock().await;
+                    *cached = None;
+                }
                 tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-                let client = connect_and_authenticate(pipe_name, &token).await?;
+                // Re-read token from disk
+                let key_file = data_dir.join("service.key");
+                let fresh_token = fs::read_to_string(&key_file)
+                    .map(|t| t.trim().to_string())
+                    .map_err(|e| format!("Failed to read service key: {:?}", e))?;
+                let client = connect_and_authenticate(pipe_name, &fresh_token).await?;
                 *conn_guard = Some(client);
             }
         }
@@ -226,8 +250,17 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
                 Err(_) => {
                     log_dashboard_event("Reconnect failed. Spawning service and retrying...");
                     spawn_service();
+                    // Invalidate cached token — service may have regenerated it
+                    {
+                        let mut cached = get_cached_token().lock().await;
+                        *cached = None;
+                    }
                     tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-                    let client = connect_and_authenticate(pipe_name, &token).await?;
+                    let key_file = data_dir.join("service.key");
+                    let fresh_token = fs::read_to_string(&key_file)
+                        .map(|t| t.trim().to_string())
+                        .map_err(|e| format!("Failed to read service key: {:?}", e))?;
+                    let client = connect_and_authenticate(pipe_name, &fresh_token).await?;
                     *conn_guard = Some(client);
                 }
             }
@@ -392,6 +425,63 @@ pub fn run() {
             let _ = fs::write(&log_file, "");
             let _ = fs::write(&stdout_log, "");
             log_dashboard_event("Dashboard started. Cleaned log files.");
+
+            // Eagerly pre-establish the pipe connection in a background task
+            // so the first IPC call from the frontend is instant.
+            let app_handle = _app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                // Ensure service is running
+                let key_file = data_dir.join("service.key");
+                if !key_file.exists() {
+                    log_dashboard_event("Pre-connect: service.key missing, spawning service...");
+                    spawn_service();
+                    // Poll for key file instead of blind sleep
+                    for _ in 0..40 {
+                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                        if key_file.exists() { break; }
+                    }
+                }
+
+                // Read and cache token
+                if let Ok(t) = fs::read_to_string(&key_file) {
+                    let token = t.trim().to_string();
+                    {
+                        let mut cached = get_cached_token().lock().await;
+                        *cached = Some(token.clone());
+                    }
+                    // Establish pipe connection
+                    let pipe_name = r"\\.\pipe\curator_ipc";
+                    match connect_and_authenticate(pipe_name, &token).await {
+                        Ok(client) => {
+                            let conn_mutex = get_pipe_connection();
+                            let mut conn_guard = conn_mutex.lock().await;
+                            *conn_guard = Some(client);
+                            log_dashboard_event("Pre-connect: pipe connection established.");
+                        }
+                        Err(e) => {
+                            log_dashboard_event(&format!("Pre-connect failed (will retry on first call): {}", e));
+                        }
+                    }
+                }
+
+                // Warm up: fire a Ping to verify the connection works
+                let ping_json = serde_json::to_string(&"Ping").unwrap_or_default();
+                let conn_mutex = get_pipe_connection();
+                let mut conn_guard = conn_mutex.lock().await;
+                if let Some(ref mut client) = *conn_guard {
+                    match send_request_json(client, &ping_json).await {
+                        Ok(_) => log_dashboard_event("Pre-connect: Ping OK, connection warm."),
+                        Err(e) => {
+                            log_dashboard_event(&format!("Pre-connect Ping failed ({}), dropping connection.", e));
+                            *conn_guard = None;
+                        }
+                    }
+                }
+
+                // Emit a Tauri event so the frontend knows the connection is ready
+                let _ = app_handle.emit("service-ready", ());
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

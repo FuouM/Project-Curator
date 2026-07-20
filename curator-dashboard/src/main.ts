@@ -92,7 +92,8 @@ type RequestPayload =
   | { GetSettings: null }
   | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null } }
   | { ReindexVectors: null }
-  | { GetTagStatistics: null };
+  | { GetTagStatistics: null }
+  | { GetDashboardInit: null };
 
 interface SearchMatch {
   id: number;
@@ -140,7 +141,13 @@ type ResponsePayload =
   | { TaggerStatusResult: { loaded: boolean; model_path: string; total_tags: number } }
   | { BenchmarkResult: { clip_cpu_time_ms: number; clip_gpu_time_ms: number | null; clip_gpu_error: string | null; tagger_cpu_time_ms: number | null; tagger_gpu_time_ms: number | null; tagger_gpu_error: string | null; has_gpu: boolean } }
   | { SettingsResult: { clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string } }
-  | { TagStatisticsResult: { tags: TagStat[] } };
+  | { TagStatisticsResult: { tags: TagStat[] } }
+  | { DashboardInitResult: {
+      image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number;
+      tagger_loaded: boolean; tagger_model_path: string; tagger_total_tags: number;
+      clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string;
+      featured_images: ImageDetails[]; latest_images: ImageDetails[];
+    } };
 
 // Helpers for invoking the service through Rust Named Pipe bridge
 async function callService(request: RequestPayload): Promise<ResponsePayload> {
@@ -179,6 +186,8 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
     formattedReq = "ReindexVectors";
   } else if ("GetTagStatistics" in request) {
     formattedReq = "GetTagStatistics";
+  } else if ("GetDashboardInit" in request) {
+    formattedReq = "GetDashboardInit";
   }
 
   try {
@@ -207,6 +216,7 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
     if (parsed.BenchmarkResult) return { BenchmarkResult: parsed.BenchmarkResult };
     if (parsed.SettingsResult) return { SettingsResult: parsed.SettingsResult };
     if (parsed.TagStatisticsResult) return { TagStatisticsResult: parsed.TagStatisticsResult };
+    if (parsed.DashboardInitResult) return { DashboardInitResult: parsed.DashboardInitResult };
 
     throw new Error("Unknown response format: " + respStr);
   } catch (err: any) {
@@ -247,16 +257,74 @@ function setupInputClearButtons() {
   });
 }
 
+// Apply settings to the UI form elements
+function applySettingsToUI(resp: ResponsePayload) {
+  if (!("SettingsResult" in resp)) return;
+  const s = resp.SettingsResult;
+  const clipSelect = document.getElementById("settings-clip-device") as HTMLSelectElement;
+  const taggerSelect = document.getElementById("settings-tagger-device") as HTMLSelectElement;
+  const idleSelect = document.getElementById("settings-idle-timeout") as HTMLSelectElement;
+  const embeddingSelect = document.getElementById("settings-embedding-model") as HTMLSelectElement;
+  if (clipSelect) clipSelect.value = s.clip_device;
+  if (taggerSelect) taggerSelect.value = s.tagger_device;
+  if (idleSelect) idleSelect.value = s.idle_timeout_secs.toString();
+  if (embeddingSelect) {
+    embeddingSelect.value = s.embedding_model;
+    updateBenchmarkModelHeader(s.embedding_model);
+  }
+}
+
 function init() {
   setupNavigation();
   setupForms();
-  startStatusPolling();
-  refreshDashboard();
-  setupBenchmark();
-  setupSettings();
   setupImageViewer();
   setupLogTabs();
   setupInputClearButtons();
+  setupBenchmark();
+  setupSettings();
+
+  // Phase 1: Fast data (status + tagger + settings) — show immediately
+  callService({ GetDashboardInit: null }).then((resp) => {
+    if ("DashboardInitResult" in resp) {
+      const d = resp.DashboardInitResult;
+
+      // Status bar
+      const dot = document.getElementById("service-dot");
+      const text = document.getElementById("service-status-text");
+      if (dot && text) { dot.classList.remove("offline"); text.textContent = "Service Online"; }
+
+      // Stats
+      const imgEl = document.getElementById("stat-images");
+      const vecEl = document.getElementById("stat-vectors");
+      const pendEl = document.getElementById("stat-pending");
+      if (imgEl) imgEl.textContent = d.image_count.toString();
+      if (vecEl) vecEl.textContent = d.vector_count.toString();
+      if (pendEl) pendEl.textContent = (d.pending_jobs + d.preprocessing_jobs).toString();
+
+      // Tagger
+      const taggerEl = document.getElementById("stat-tagger");
+      const taggerDetail = document.getElementById("stat-tagger-detail");
+      if (taggerEl) {
+        taggerEl.textContent = d.tagger_loaded ? "Active in RAM" : "Ready to load";
+        if (taggerDetail) {
+          const parts: string[] = [];
+          if (d.tagger_model_path) parts.push(maskPath(d.tagger_model_path));
+          if (d.tagger_total_tags > 0) parts.push(`${d.tagger_total_tags} tags`);
+          taggerDetail.textContent = parts.length > 0 ? parts.join(" | ") : "—";
+        }
+      }
+
+      // Settings
+      applySettingsToUI({ SettingsResult: { clip_device: d.clip_device, tagger_device: d.tagger_device, idle_timeout_secs: d.idle_timeout_secs, embedding_model: d.embedding_model } });
+
+      // Phase 2: Render images from the same response (already fetched by backend)
+      if (d.featured_images.length > 0) renderFeaturedDay(d.featured_images[0]);
+      renderImages(d.latest_images, "latest-imports-grid");
+    }
+  }).catch(() => {});
+
+  // Start periodic polling
+  startStatusPolling();
 }
 
 if (document.readyState === "loading") {
@@ -348,64 +416,60 @@ function setupNavigation() {
 }
 
 // Poll service status and update UI indicators
-function startStatusPolling() {
+function applyStatusUpdate(resp: ResponsePayload) {
   const dot = document.getElementById("service-dot");
   const text = document.getElementById("service-status-text");
 
+  if ("StatusResult" in resp) {
+    if (dot && text) {
+      dot.classList.remove("offline");
+      text.textContent = "Service Online";
+    }
+    const { image_count, vector_count, pending_jobs, preprocessing_jobs } = resp.StatusResult;
+    const imgEl = document.getElementById("stat-images");
+    const vecEl = document.getElementById("stat-vectors");
+    const pendEl = document.getElementById("stat-pending");
+    if (imgEl) imgEl.textContent = image_count.toString();
+    if (vecEl) vecEl.textContent = vector_count.toString();
+    if (pendEl) pendEl.textContent = (pending_jobs + preprocessing_jobs).toString();
+  } else if ("Error" in resp) {
+    logJS("Status poll returned Error: " + resp.Error.message);
+    if (dot && text) { dot.classList.add("offline"); text.textContent = "Service Error"; }
+  }
+}
+
+function applyTaggerUpdate(resp: ResponsePayload) {
+  const taggerEl = document.getElementById("stat-tagger");
+  const taggerDetail = document.getElementById("stat-tagger-detail");
+  if (taggerEl && "TaggerStatusResult" in resp) {
+    const { loaded, model_path, total_tags } = resp.TaggerStatusResult;
+    taggerEl.textContent = loaded ? "Active in RAM" : "Ready to load";
+    if (taggerDetail) {
+      const parts: string[] = [];
+      if (model_path) parts.push(maskPath(model_path));
+      if (total_tags > 0) parts.push(`${total_tags} tags`);
+      taggerDetail.textContent = parts.length > 0 ? parts.join(" | ") : "—";
+    }
+  }
+}
+
+function startStatusPolling() {
   async function check() {
     try {
-      const resp = await callService({ GetStatus: null });
-      if ("StatusResult" in resp) {
-        if (dot && text) {
-          dot.classList.remove("offline");
-          text.textContent = "Service Online";
-        }
-        
-        // Update stats
-        const { image_count, vector_count, pending_jobs, preprocessing_jobs } = resp.StatusResult;
-        const imgEl = document.getElementById("stat-images");
-        const vecEl = document.getElementById("stat-vectors");
-        const pendEl = document.getElementById("stat-pending");
-        if (imgEl) imgEl.textContent = image_count.toString();
-        if (vecEl) vecEl.textContent = vector_count.toString();
-        if (pendEl) pendEl.textContent = (pending_jobs + preprocessing_jobs).toString();
-
-        // Also refresh tagger status card value
-        try {
-          const tStatus = await callService({ GetTaggerStatus: null });
-          const taggerEl = document.getElementById("stat-tagger");
-          const taggerDetail = document.getElementById("stat-tagger-detail");
-          if (taggerEl && "TaggerStatusResult" in tStatus) {
-            const { loaded, model_path, total_tags } = tStatus.TaggerStatusResult;
-            taggerEl.textContent = loaded ? "Active in RAM" : "Ready to load";
-            if (taggerDetail) {
-              const parts: string[] = [];
-              if (model_path) parts.push(maskPath(model_path));
-              if (total_tags > 0) parts.push(`${total_tags} tags`);
-              taggerDetail.textContent = parts.length > 0 ? parts.join(" | ") : "—";
-            }
-          }
-        } catch (te) {}
-
-      } else if ("Error" in resp) {
-        logJS("startStatusPolling returned Error response: " + resp.Error.message);
-        if (dot && text) {
-          dot.classList.add("offline");
-          text.textContent = "Service Error";
-        }
-      } else {
-        logJS("startStatusPolling unexpected response: " + JSON.stringify(resp));
-      }
+      const [statusResp, taggerResp] = await Promise.all([
+        callService({ GetStatus: null }),
+        callService({ GetTaggerStatus: null }),
+      ]);
+      applyStatusUpdate(statusResp);
+      applyTaggerUpdate(taggerResp);
     } catch (e: any) {
       logJS("startStatusPolling exception: " + (e.message || e));
-      if (dot && text) {
-        dot.classList.add("offline");
-        text.textContent = "Service Offline";
-      }
+      const dot = document.getElementById("service-dot");
+      const text = document.getElementById("service-status-text");
+      if (dot && text) { dot.classList.add("offline"); text.textContent = "Service Offline"; }
     }
   }
 
-  check();
   setInterval(check, 5000);
 }
 
@@ -627,57 +691,53 @@ function setupForms() {
   document.getElementById("auto-tag-modal-btn")?.addEventListener("click", handleModalAutoTag);
 }
 
-// Refresh Image Grids
-async function refreshDashboard() {
+// Load dashboard images (featured + latest) given an image count
+async function loadDashboardImages(image_count: number) {
   const featuredContainer = document.getElementById("featured-day-content");
 
-  try {
-    // 1. Get total image count via status
-    const statusResp = await callService({ GetStatus: null });
-    if (!("StatusResult" in statusResp)) {
-      throw new Error("Could not reach service");
-    }
-    const { image_count } = statusResp.StatusResult;
-
-    if (image_count === 0) {
-      if (featuredContainer) {
+  if (image_count === 0) {
+    if (featuredContainer) {
         featuredContainer.innerHTML = `
           <div style="text-align: center; color: #777; padding: 20px;">
             <p style="font-size: 13px;">No images imported yet.</p>
             <p style="margin-top: 4px; font-size: 11px;">Use <strong>Import</strong> to add images to your library.</p>
-          </div>`;
-      }
-      renderImages([], "latest-imports-grid");
-      return;
+    </div>`;
     }
+    renderImages([], "latest-imports-grid");
+    return;
+  }
 
-    // 2. Compute stable daily-seeded offset
-    const today = new Date();
-    const daySeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
-    const featuredOffset = daySeed % image_count;
+  const [featuredResp, latestResp] = await Promise.all([
+    callService({ GetDashboardInit: null }),
+    callService({ ListImages: { limit: 8, offset: 0 } }),
+  ]);
 
-    // 3. Fetch featured and latest in parallel
-    const [featuredResp, latestResp] = await Promise.all([
-      callService({ ListImages: { limit: 6, offset: featuredOffset } }),
-      callService({ ListImages: { limit: 8, offset: 0 } }),
-    ]);
+  if ("DashboardInitResult" in featuredResp && featuredResp.DashboardInitResult.featured_images.length > 0) {
+    renderFeaturedDay(featuredResp.DashboardInitResult.featured_images[0]);
+  }
+  if ("ListResult" in latestResp) {
+    renderImages(latestResp.ListResult.images, "latest-imports-grid");
+  }
+}
 
-    if ("ListResult" in featuredResp && featuredResp.ListResult.images.length > 0) {
-      renderFeaturedDay(featuredResp.ListResult.images[0]);
+// Refresh Image Grids
+async function refreshDashboard() {
+  try {
+    const statusResp = await callService({ GetStatus: null });
+    if (!("StatusResult" in statusResp)) {
+      throw new Error("Could not reach service");
     }
-    if ("ListResult" in latestResp) {
-      renderImages(latestResp.ListResult.images, "latest-imports-grid");
-    }
-
+    applyStatusUpdate(statusResp);
+    await loadDashboardImages(statusResp.StatusResult.image_count);
   } catch (e: any) {
     console.error("Failed to refresh dashboard: ", e);
+    const featuredContainer = document.getElementById("featured-day-content");
     if (featuredContainer) {
       featuredContainer.innerHTML = `
         <div style="text-align: center; color: #555555; padding: 20px;">
           <p style="font-weight: bold; color: #a80000; font-size: 13px;">Service Offline</p>
           <p style="margin-top: 6px;">Start the backend service to load featured content.</p>
-        </div>
-      `;
+        </div>`;
     }
   }
 }
@@ -1590,36 +1650,19 @@ function setupSettings() {
     });
   }
 
-  // Load current settings
-  async function loadSettings() {
+  // Check reindex status on load (settings already applied from init)
+  (async () => {
     try {
-      const resp = await callService({ GetSettings: null });
-      if ("SettingsResult" in resp) {
-        if (clipSelect) clipSelect.value = resp.SettingsResult.clip_device;
-        if (taggerSelect) taggerSelect.value = resp.SettingsResult.tagger_device;
-        if (idleSelect) idleSelect.value = resp.SettingsResult.idle_timeout_secs.toString();
-        if (embeddingSelect) {
-          embeddingSelect.value = resp.SettingsResult.embedding_model;
-          updateBenchmarkModelHeader(resp.SettingsResult.embedding_model);
-        }
-      }
-
-      // Check status to see if reindexing is active
       const statusResp = await callService({ GetStatus: null });
       if ("StatusResult" in statusResp) {
-        const { image_count, vector_count, pending_jobs, preprocessing_jobs } = statusResp.StatusResult;
-        updateReindexProgress(image_count, vector_count, pending_jobs, preprocessing_jobs);
+        const { vector_count, pending_jobs, preprocessing_jobs } = statusResp.StatusResult;
+        updateReindexProgress(0, vector_count, pending_jobs, preprocessing_jobs);
         if (pending_jobs > 0 || preprocessing_jobs > 0) {
           startReindexPolling();
         }
       }
-    } catch (e: any) {
-      if (statusMsg) {
-        statusMsg.textContent = "Failed to load settings: " + (e.message || e);
-        statusMsg.style.color = "#ef4444";
-      }
-    }
-  }
+    } catch (e) {}
+  })();
 
   // Save settings
   saveBtn?.addEventListener("click", async () => {
@@ -1679,14 +1722,14 @@ function setupSettings() {
     }
   });
 
-  // Also load settings when the settings view becomes visible
+  // Also refresh settings when the settings view becomes visible
   const settingsNav = document.querySelector('.nav-item[data-view="settings"]');
-  settingsNav?.addEventListener("click", () => {
-    loadSettings();
+  settingsNav?.addEventListener("click", async () => {
+    try {
+      const resp = await callService({ GetSettings: null });
+      applySettingsToUI(resp);
+    } catch (e) {}
   });
-
-  // Initial load
-  loadSettings();
 }
 
 function refreshComponentStylesheet() {

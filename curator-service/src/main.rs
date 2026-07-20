@@ -723,6 +723,98 @@ async fn handle_request(
                 },
             }
         }
+
+        Request::GetDashboardInit => {
+            // All data needed for dashboard init — single round-trip
+            let (status_result, settings_result) = tokio::join!(
+                async {
+                    let active = { settings.lock().await.embedding_model };
+                    query_status(db, active).await
+                },
+                async { settings.lock().await.clone() },
+            );
+
+            let (image_count, vector_count, pending_jobs, preprocessing_jobs) = match status_result {
+                Ok(v) => v,
+                Err(e) => return Response::Error { message: e.to_string() },
+            };
+
+            let tagger_status = tagger.status();
+            let settings_val = settings_result;
+
+            // Compute featured image: stable per day, stored in a file
+            let today_str = {
+                let secs = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let day_number = (secs / 86400) as u64;
+                format!("day_{}", day_number)
+            };
+
+            let featured_file = data_dir.join("featured_of_the_day.txt");
+            let featured_id: Option<i64> = fs::read_to_string(&featured_file)
+                .ok()
+                .and_then(|s| {
+                    let parts: Vec<&str> = s.trim().splitn(2, '|').collect();
+                    if parts.len() == 2 && parts[0] == today_str {
+                        parts[1].parse::<i64>().ok()
+                    } else {
+                        None
+                    }
+                });
+
+            let featured_id = if let Some(id) = featured_id {
+                id
+            } else {
+                // Pick a new featured image for today
+                let all_ids: Result<Vec<(i64,)>, _> = sqlx::query_as(
+                    "SELECT id FROM images WHERE deleted_at IS NULL ORDER BY RANDOM() LIMIT 1",
+                )
+                .fetch_all(db)
+                .await;
+
+                let new_id = all_ids
+                    .map(|rows| rows.first().map(|r| r.0).unwrap_or(0))
+                    .unwrap_or(0);
+
+                if new_id > 0 {
+                    let _ = fs::write(&featured_file, format!("{}|{}", today_str, new_id));
+                }
+                new_id
+            };
+
+            // Fetch the featured image by ID, and latest images
+            let (featured_result, latest_resp) = tokio::join!(
+                async {
+                    if featured_id > 0 {
+                        get_image_logic(featured_id, db).await.ok()
+                    } else {
+                        None
+                    }
+                },
+                list_images_logic(8, 0, db),
+            );
+
+            let featured_images = featured_result.into_iter().collect();
+            let latest_images = latest_resp.unwrap_or_default();
+
+            Response::DashboardInitResult {
+                image_count,
+                vector_count,
+                pending_jobs,
+                preprocessing_jobs,
+                tagger_loaded: tagger_status.loaded,
+                tagger_model_path: tagger_status.model_path,
+                tagger_total_tags: tagger_status.total_tags,
+                clip_device: settings_val.clip_device,
+                tagger_device: settings_val.tagger_device,
+                idle_timeout_secs: settings_val.idle_timeout_secs,
+                embedding_model: settings_val.embedding_model,
+                featured_images,
+                latest_images,
+            }
+        }
     }
 }
 
@@ -1277,19 +1369,83 @@ async fn list_images_logic(
     offset: usize,
     db: &SqlitePool,
 ) -> Result<Vec<ImageDetails>, Error> {
-    let image_ids: Vec<(i64,)> = sqlx::query_as(
-        "SELECT id FROM images WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?",
-    )
-    .bind(limit as i64)
-    .bind(offset as i64)
-    .fetch_all(db)
-    .await?;
+    // Single query: fetch images with their tags in one go (avoids N+1)
+    // Subquery ensures LIMIT applies to distinct images, not JOINed rows
+    let rows: Vec<(i64, String, String, i64, String, Option<String>, Option<String>, Option<f32>)> =
+        sqlx::query_as(
+            r#"
+            SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at,
+                   t.name, t.category, it.confidence
+            FROM (SELECT id FROM images WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?) sub
+            JOIN images i ON i.id = sub.id
+            LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0
+            LEFT JOIN tags t ON it.tag_id = t.id
+            ORDER BY i.created_at DESC
+            "#,
+        )
+        .bind(limit as i64)
+        .bind(offset as i64)
+        .fetch_all(db)
+        .await?;
 
-    let mut images = Vec::new();
-    for row in image_ids {
-        if let Ok(img) = get_image_logic(row.0, db).await {
-            images.push(img);
+    // Group rows by image
+    let mut image_map: std::collections::HashMap<i64, ImageDetails> = std::collections::HashMap::new();
+    for (id, sha256, current_filepath, mtime, created_at, tag_name, tag_category, confidence) in rows {
+        let entry = image_map.entry(id).or_insert_with(|| ImageDetails {
+            id,
+            sha256,
+            current_filepath,
+            mtime,
+            created_at,
+            tags: Vec::new(),
+            vector_state: String::new(),
+        });
+        if let (Some(name), Some(category)) = (tag_name, tag_category) {
+            entry.tags.push(TagSummary {
+                tag: name,
+                category,
+                confidence: confidence.unwrap_or(0.0),
+            });
         }
+    }
+
+    // Fetch vector_state for each image in one query
+    let ids: Vec<i64> = image_map.keys().copied().collect();
+    if !ids.is_empty() {
+        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let query = format!(
+            "SELECT image_id, vector_state FROM image_vectors WHERE image_id IN ({})",
+            placeholders
+        );
+        let mut q = sqlx::query_as::<_, (i64, String)>(&query);
+        for id in &ids {
+            q = q.bind(id);
+        }
+        if let Ok(vrows) = q.fetch_all(db).await {
+            for (vid, state) in vrows {
+                if let Some(img) = image_map.get_mut(&vid) {
+                    img.vector_state = state;
+                }
+            }
+        }
+    }
+
+    let mut images: Vec<ImageDetails> = image_map.into_values().collect();
+    // Sort tags within each image
+    for img in &mut images {
+        img.tags.sort_by(|a, b| {
+            let priority = |cat: &str| -> i32 {
+                match cat {
+                    "user" => 0,
+                    "character" => 1,
+                    "copyright" => 2,
+                    "meta" => 3,
+                    _ => 4,
+                }
+            };
+            priority(&a.category).cmp(&priority(&b.category))
+                .then_with(|| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal))
+        });
     }
     Ok(images)
 }
