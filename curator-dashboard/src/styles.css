@@ -805,6 +805,15 @@ body {
   display: inline-block;
   transform-origin: center center;
 }
+/* Fix Bootstrap icon wobble: force centered rotation */
+.animate-spin.bi {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+}
 .search-loading-container {
   display: flex;
   flex-direction: column;
