@@ -18,6 +18,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "Service build OK." -ForegroundColor Green
 
+$prevDir = $PWD.Path
 Set-Location ".\curator-dashboard"
 try {
     npm run tauri dev
@@ -28,4 +29,5 @@ try {
         Write-Host "Stopping curator-service..." -ForegroundColor Yellow
         $procs | Stop-Process -Force
     }
+    Set-Location $prevDir
 }
