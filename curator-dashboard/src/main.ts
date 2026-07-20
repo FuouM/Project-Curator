@@ -1540,6 +1540,16 @@ function setupSettings() {
     reindexPollInterval = setInterval(check, 1000) as unknown as number;
   }
 
+  function updateBenchmarkModelHeader(model: string | null) {
+    const titleEl = document.getElementById("benchmark-clip-title");
+    if (!titleEl) return;
+    if (model === "mobileclip-s2") {
+      titleEl.textContent = "MobileCLIP-S2 Model (256x256)";
+    } else {
+      titleEl.textContent = "CLIP ViT-B/32 Model (224x224)";
+    }
+  }
+
   // Image click action setting (localStorage)
   const imageClickSelect = document.getElementById("settings-image-click-action") as HTMLSelectElement;
   if (imageClickSelect) {
@@ -1557,7 +1567,10 @@ function setupSettings() {
         if (clipSelect) clipSelect.value = resp.SettingsResult.clip_device;
         if (taggerSelect) taggerSelect.value = resp.SettingsResult.tagger_device;
         if (idleSelect) idleSelect.value = resp.SettingsResult.idle_timeout_secs.toString();
-        if (embeddingSelect) embeddingSelect.value = resp.SettingsResult.embedding_model;
+        if (embeddingSelect) {
+          embeddingSelect.value = resp.SettingsResult.embedding_model;
+          updateBenchmarkModelHeader(resp.SettingsResult.embedding_model);
+        }
       }
 
       // Check status to see if reindexing is active
@@ -1597,6 +1610,9 @@ function setupSettings() {
       if ("SettingsResult" in resp) {
         statusMsg.textContent = "Settings saved and applied successfully. If model was changed, reindexing has started.";
         statusMsg.style.color = "#10b981";
+        if (embeddingSelect) {
+          updateBenchmarkModelHeader(embeddingSelect.value);
+        }
         startReindexPolling();
       } else if ("Error" in resp) {
         statusMsg.textContent = "Failed: " + resp.Error.message;
