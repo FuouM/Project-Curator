@@ -68,6 +68,9 @@
               <li class="nav-item" data-view="settings">
                 <span><i class="bi bi-gear"></i></span> Settings
               </li>
+              <li class="nav-item" data-view="components">
+                <span><i class="bi bi-palette"></i></span> Component Stylesheet
+              </li>
             </ul>
           </li>
         </ul>
@@ -393,6 +396,13 @@
             <div style="background-color: #e8f5e9; border: 1px solid #a5d6a7; padding: 8px; border-radius: 2px; color: #2e7d32; font-size: 11px;">
               <strong>Note:</strong> Device changes take effect immediately. Models are automatically unloaded after the idle timeout, then reloaded on the next inference call.
             </div>
+          </div>
+        </section>
+
+        <!-- COMPONENT STYLESHEET VIEW -->
+        <section class="view-section" id="view-components">
+          <div id="components-showcase-container" style="display: flex; flex-direction: column; gap: 16px;">
+            <!-- Rendered dynamically by components.ts -->
           </div>
         </section>
       </main>

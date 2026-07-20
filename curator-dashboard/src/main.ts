@@ -1,5 +1,10 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import "bootstrap-icons/font/bootstrap-icons.css";
+import {
+  renderTagPill,
+  renderGroupBox,
+  componentRegistry
+} from "./components";
 
 function logJS(msg: string) {
   console.log(msg);
@@ -219,9 +224,9 @@ function setupInputClearButtons() {
 
     function updateClearVisibility() {
       if (input.value.length > 0) {
-        wrapper.classList.add('has-value');
+        wrapper!.classList.add('has-value');
       } else {
-        wrapper.classList.remove('has-value');
+        wrapper!.classList.remove('has-value');
       }
     }
 
@@ -273,7 +278,8 @@ function setupNavigation() {
     logs: { title: "System Diagnostic Logs", sub: "View active traces and stderr/stdout logs from the local engine." },
     benchmark: { title: "Hardware Performance Benchmark", sub: "Run latency and throughput comparisons on CPU vs GPU." },
     settings: { title: "Settings", sub: "Configure model device preferences (GPU / CPU)." },
-    tagstats: { title: "Tag Statistics", sub: "View tag distribution and filter images by tag." }
+    tagstats: { title: "Tag Statistics", sub: "View tag distribution and filter images by tag." },
+    components: { title: "Component Stylesheet", sub: "A showcase and reference of the application's UI components and styles." }
   };
 
   navItems.forEach((item) => {
@@ -309,6 +315,8 @@ function setupNavigation() {
         refreshLogs();
       } else if (view === "tagstats") {
         refreshTagStats();
+      } else if (view === "components") {
+        refreshComponentStylesheet();
       }
     });
   });
@@ -911,28 +919,7 @@ async function openTagModal(imgId: number, path: string) {
 
 // Helper to generate a styled tag pill HTML based on category
 function getTagPillHtml(t: TagSummary, isDeletable = false, imageId = 0): string {
-  let styleClass = "tag-rank-3"; // Default general / rank 3 (white)
-  
-  switch (t.category) {
-    case "user":
-      styleClass = "tag-user";
-      break;
-    case "character":
-      styleClass = "tag-character";
-      break;
-    case "copyright":
-      styleClass = "tag-copyright";
-      break;
-    case "meta":
-      styleClass = "tag-meta";
-      break;
-  }
-
-  const deleteBtn = isDeletable && t.category === "user"
-    ? ` <span class="tag-remove-btn" title="Remove user tag" onclick="window.removeTag(${imageId}, '${t.tag}')">&times;</span>`
-    : "";
-
-  return `<span class="tag-pill ${styleClass}">${t.tag.replace(/_/g, '_\u200B')}${deleteBtn}</span>`;
+  return renderTagPill(t, { isDeletable, imageId });
 }
 
 async function refreshModalTags(imgId: number) {
@@ -1534,4 +1521,30 @@ function setupSettings() {
 
   // Initial load
   loadSettings();
+}
+
+function refreshComponentStylesheet() {
+  const container = document.getElementById("components-showcase-container");
+  if (!container) return;
+
+  container.innerHTML = componentRegistry.map(comp => {
+    const variantsHtml = comp.variants.map(v => `
+      <div style="margin-bottom: 14px;">
+        <div style="font-size: 11px; font-weight: bold; color: #444; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${v.name}</div>
+        <div style="padding: 10px; border: 1px dashed var(--sys-border-dark); background-color: var(--sys-control-bg); display: block; width: 100%;">
+          ${v.render()}
+        </div>
+      </div>
+    `).join("");
+
+    return renderGroupBox(comp.name, `
+      <p style="font-size: 11px; color: #555; margin-bottom: 16px; font-style: italic;">${comp.description}</p>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        ${variantsHtml}
+      </div>
+    `);
+  }).join("");
+
+  // Setup clear buttons for the dynamically rendered showcase inputs
+  setupInputClearButtons();
 }
