@@ -2,7 +2,7 @@ use anyhow::{Context, Error};
 use clap::Parser;
 use curator_core::db::init_db;
 use curator_core::vector::{ModelManager, VectorIndex};
-use curator_core::ipc::{Request, Response, SearchMatch, ImageDetails, TagSummary, TagStat, DevicePreference};
+use curator_core::ipc::{Request, Response, SearchMatch, ImageDetails, TagSummary, TagStat, DevicePreference, EmbeddingModel};
 use curator_core::tagger::TaggerEngine;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -30,6 +30,8 @@ struct AppSettings {
     /// Seconds of inactivity before models are automatically unloaded. 0 = never.
     #[serde(default = "default_idle_timeout")]
     idle_timeout_secs: u64,
+    #[serde(default)]
+    embedding_model: EmbeddingModel,
 }
 
 fn default_idle_timeout() -> u64 {
@@ -42,6 +44,7 @@ impl Default for AppSettings {
             clip_device: DevicePreference::Auto,
             tagger_device: DevicePreference::Auto,
             idle_timeout_secs: default_idle_timeout(),
+            embedding_model: EmbeddingModel::ClipVitB32,
         }
     }
 }
@@ -127,6 +130,12 @@ async fn main() -> Result<(), Error> {
     .execute(&db)
     .await?;
 
+    sqlx::query(
+        "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES ('ai:mobileclip-s2', 'AI_MODEL', '{}')"
+    )
+    .execute(&db)
+    .await?;
+
     // Seed the user source if missing
     sqlx::query(
         "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES ('user', 'USER', '{}')"
@@ -143,7 +152,8 @@ async fn main() -> Result<(), Error> {
 
     // 4. Initialize CLIP Models
     let model_dir = data_dir.join("models");
-    let mut model_manager = ModelManager::new(&model_dir, settings.clip_device.clone());
+    let model_manager = ModelManager::new(&model_dir, settings.clip_device.clone());
+    model_manager.set_active_model(settings.embedding_model);
     model_manager.init()?;
     let model_manager = Arc::new(model_manager);
 
@@ -349,25 +359,38 @@ async fn handle_request(
             }
         }
 
-        Request::GetStatus => match query_status(db).await {
-            Ok((images, vectors, pending)) => Response::StatusResult {
-                image_count: images,
-                vector_count: vectors,
-                pending_jobs: pending,
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
+        Request::GetStatus => {
+            let active = {
+                let s = settings.lock().await;
+                s.embedding_model
+            };
+            match query_status(db, active).await {
+                Ok((images, vectors, pending, preprocessing)) => Response::StatusResult {
+                    image_count: images,
+                    vector_count: vectors,
+                    pending_jobs: pending,
+                    preprocessing_jobs: preprocessing,
+                },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
         },
 
-        Request::ImportImage { path } => match import_image_logic(&path, db).await {
-            Ok((id, sha256)) => Response::ImportResult {
-                image_id: id,
-                sha256,
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
+        Request::ImportImage { path } => {
+            let active = {
+                let s = settings.lock().await;
+                s.embedding_model
+            };
+            match import_image_logic(&path, db, active).await {
+                Ok((id, sha256)) => Response::ImportResult {
+                    image_id: id,
+                    sha256,
+                },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
         },
 
         Request::AddTag {
@@ -539,12 +562,45 @@ async fn handle_request(
             }
         }
 
+        Request::ReindexVectors => {
+            let active = model_manager.active_model();
+            let source_name = match active {
+                EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
+                EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
+            };
+            let source_id: i64 = match sqlx::query_as::<_, (i64,)>("SELECT id FROM sources WHERE name = ? LIMIT 1")
+                .bind(source_name)
+                .fetch_one(db)
+                .await
+            {
+                Ok(row) => row.0,
+                Err(e) => return Response::Error {
+                    message: format!("Failed to fetch source ID for reindex: {:?}", e),
+                },
+            };
+            if let Err(e) = vector_index.clear() {
+                return Response::Error {
+                    message: format!("Failed to clear index: {:?}", e),
+                };
+            }
+            let sql = "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state, vector_checksum)
+                       SELECT id, ?, '', 'pending', NULL FROM images WHERE deleted_at IS NULL
+                       ON CONFLICT(image_id, source_id) DO UPDATE SET vector_state = 'pending', vector_id = '', vector_checksum = NULL";
+            if let Err(e) = sqlx::query(sql).bind(source_id).execute(db).await {
+                return Response::Error {
+                    message: format!("Failed to reset image vectors: {:?}", e),
+                };
+            }
+            Response::Success
+        }
+
         Request::GetSettings => {
             let s = settings.lock().await;
             Response::SettingsResult {
                 clip_device: s.clip_device.clone(),
                 tagger_device: s.tagger_device.clone(),
                 idle_timeout_secs: s.idle_timeout_secs,
+                embedding_model: s.embedding_model,
             }
         }
 
@@ -552,7 +608,9 @@ async fn handle_request(
             clip_device,
             tagger_device,
             idle_timeout_secs,
+            embedding_model,
         } => {
+            let mut model_changed = false;
             let mut s = settings.lock().await;
             if let Some(ref cd) = clip_device {
                 s.clip_device = cd.clone();
@@ -563,12 +621,19 @@ async fn handle_request(
             if let Some(to) = idle_timeout_secs {
                 s.idle_timeout_secs = to;
             }
+            if let Some(ref em) = embedding_model {
+                if s.embedding_model != *em {
+                    s.embedding_model = *em;
+                    model_changed = true;
+                }
+            }
             if let Err(e) = save_settings(data_dir, &s) {
                 warn!("Failed to save settings: {:?}", e);
             }
             let clip = s.clip_device.clone();
             let tagger_dev = s.tagger_device.clone();
             let idle = s.idle_timeout_secs;
+            let active_model = s.embedding_model;
             drop(s);
 
             // Apply CLIP device change immediately (unloads sessions for reload)
@@ -581,11 +646,52 @@ async fn handle_request(
                 tagger.set_device(tagger_dev.clone());
             }
 
-            info!("Settings updated: clip_device={:?}, tagger_device={:?}, idle_timeout={}s", clip, tagger_dev, idle);
+            if model_changed {
+                model_manager.set_active_model(active_model);
+                if let Err(e) = model_manager.init() {
+                    return Response::Error {
+                        message: format!("Failed to initialize new model: {:?}", e),
+                    };
+                }
+                
+                let source_name = match active_model {
+                    EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
+                    EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
+                };
+                let source_id: i64 = match sqlx::query_as::<_, (i64,)>("SELECT id FROM sources WHERE name = ? LIMIT 1")
+                    .bind(source_name)
+                    .fetch_one(db)
+                    .await
+                {
+                    Ok(row) => row.0,
+                    Err(e) => return Response::Error {
+                        message: format!("Failed to fetch source ID for model change: {:?}", e),
+                    },
+                };
+                if let Err(e) = vector_index.clear() {
+                    return Response::Error {
+                        message: format!("Failed to clear index: {:?}", e),
+                    };
+                }
+                let sql = "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state, vector_checksum)
+                           SELECT id, ?, '', 'pending', NULL FROM images WHERE deleted_at IS NULL
+                           ON CONFLICT(image_id, source_id) DO UPDATE SET vector_state = 'pending', vector_id = '', vector_checksum = NULL";
+                if let Err(e) = sqlx::query(sql).bind(source_id).execute(db).await {
+                    return Response::Error {
+                        message: format!("Failed to reset image vectors: {:?}", e),
+                    };
+                }
+            }
+
+            info!(
+                "Settings updated: clip_device={:?}, tagger_device={:?}, idle_timeout={}s, embedding_model={:?}",
+                clip, tagger_dev, idle, active_model
+            );
             Response::SettingsResult {
                 clip_device: clip,
                 tagger_device: tagger_dev,
                 idle_timeout_secs: idle,
+                embedding_model: active_model,
             }
         }
 
@@ -772,25 +878,43 @@ async fn tag_image_logic(
 // Existing logic (unchanged)
 // ---------------------------------------------------------------------------
 
-async fn query_status(db: &SqlitePool) -> Result<(i64, i64, i64), Error> {
+async fn query_status(db: &SqlitePool, active: EmbeddingModel) -> Result<(i64, i64, i64, i64), Error> {
+    let source_name = match active {
+        EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
+        EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
+    };
+    let source_row: Option<(i64,)> = sqlx::query_as("SELECT id FROM sources WHERE name = ? LIMIT 1")
+        .bind(source_name)
+        .fetch_optional(db)
+        .await?;
+    let source_id = source_row.map(|r| r.0).unwrap_or(0);
+
     let images: (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM images WHERE deleted_at IS NULL")
             .fetch_one(db)
             .await?;
     let vectors: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'ready'",
+        "SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'ready' AND source_id = ?",
     )
+    .bind(source_id)
     .fetch_one(db)
     .await?;
     let pending: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'pending'",
+        "SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'pending' AND source_id = ?",
     )
+    .bind(source_id)
     .fetch_one(db)
     .await?;
-    Ok((images.0, vectors.0, pending.0))
+    let preprocessing: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'preprocessing' AND source_id = ?",
+    )
+    .bind(source_id)
+    .fetch_one(db)
+    .await?;
+    Ok((images.0, vectors.0, pending.0, preprocessing.0))
 }
 
-async fn import_image_logic(path_str: &str, db: &SqlitePool) -> Result<(i64, String), Error> {
+async fn import_image_logic(path_str: &str, db: &SqlitePool, active: EmbeddingModel) -> Result<(i64, String), Error> {
     let path = Path::new(path_str);
     if !path.exists() {
         return Err(anyhow::anyhow!(
@@ -836,7 +960,7 @@ async fn import_image_logic(path_str: &str, db: &SqlitePool) -> Result<(i64, Str
 
         for img_path in image_paths {
             if let Some(p_str) = img_path.to_str() {
-                match import_single_image(p_str, db).await {
+                match import_single_image(p_str, db, active).await {
                     Ok((id, sha)) => {
                         if !imported_any {
                             first_id = id;
@@ -860,11 +984,11 @@ async fn import_image_logic(path_str: &str, db: &SqlitePool) -> Result<(i64, Str
             ))
         }
     } else {
-        import_single_image(path_str, db).await
+        import_single_image(path_str, db, active).await
     }
 }
 
-async fn import_single_image(path_str: &str, db: &SqlitePool) -> Result<(i64, String), Error> {
+async fn import_single_image(path_str: &str, db: &SqlitePool, active: EmbeddingModel) -> Result<(i64, String), Error> {
     let path = Path::new(path_str);
     if !path.exists() {
         return Err(anyhow::anyhow!("File does not exist: {}", path_str));
@@ -879,8 +1003,13 @@ async fn import_single_image(path_str: &str, db: &SqlitePool) -> Result<(i64, St
         .duration_since(std::time::SystemTime::UNIX_EPOCH)?
         .as_secs() as i64;
 
+    let source_name = match active {
+        EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
+        EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
+    };
     let clip_row: (i64,) =
-        sqlx::query_as("SELECT id FROM sources WHERE name = 'ai:clip-vit-b-32' LIMIT 1")
+        sqlx::query_as("SELECT id FROM sources WHERE name = ? LIMIT 1")
+            .bind(source_name)
             .fetch_one(db)
             .await?;
     let clip_source_id = clip_row.0;

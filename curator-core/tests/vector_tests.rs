@@ -222,7 +222,7 @@ async fn test_vector_indexing_and_clip_inference() {
     let model_dir = temp_dir.path().join("models");
     let index_path = temp_dir.path().join("vector_index.usearch");
 
-    let mut model_manager = ModelManager::new(&model_dir, DevicePreference::Auto);
+    let model_manager = ModelManager::new(&model_dir, DevicePreference::Auto);
     model_manager.init().expect("Failed to initialize CLIP models");
 
     assert!(model_dir.join("vision_model.onnx").exists());

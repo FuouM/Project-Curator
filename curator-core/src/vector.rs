@@ -1,5 +1,5 @@
 use anyhow::{Context, Error};
-use crate::ipc::DevicePreference;
+use crate::ipc::{DevicePreference, EmbeddingModel};
 use ndarray::{Array2, Array4};
 use ort::{inputs, session::Session, session::builder::SessionBuilder, value::TensorRef};
 use std::fs;
@@ -74,6 +74,17 @@ impl VectorIndex {
         self.index.load(path_str).map_err(|e| anyhow::anyhow!("Failed to load index: {:?}", e))?;
         Ok(())
     }
+
+    pub fn clear(&self) -> Result<(), Error> {
+        self.index.reset().map_err(|e| anyhow::anyhow!("Failed to reset index: {:?}", e))?;
+        self.index.reserve(1000).map_err(|e| anyhow::anyhow!("Failed to reserve capacity: {:?}", e))?;
+        if self.path.exists() {
+            let _ = fs::remove_file(&self.path);
+        }
+        let path_str = self.path.to_str().context("Invalid index path string")?;
+        self.index.save(path_str).map_err(|e| anyhow::anyhow!("Failed to save cleared index: {:?}", e))?;
+        Ok(())
+    }
 }
 
 fn now_secs() -> u64 {
@@ -86,6 +97,7 @@ fn now_secs() -> u64 {
 pub struct ModelManager {
     model_dir: PathBuf,
     device: Mutex<DevicePreference>,
+    active_model: Mutex<EmbeddingModel>,
     vision_session: Mutex<Option<Session>>,
     text_session: Mutex<Option<Session>>,
     tokenizer: Mutex<Option<Tokenizer>>,
@@ -97,6 +109,7 @@ impl ModelManager {
         Self {
             model_dir: model_dir.as_ref().to_path_buf(),
             device: Mutex::new(device),
+            active_model: Mutex::new(EmbeddingModel::ClipVitB32),
             vision_session: Mutex::new(None),
             text_session: Mutex::new(None),
             tokenizer: Mutex::new(None),
@@ -106,6 +119,10 @@ impl ModelManager {
 
     pub fn model_dir(&self) -> &Path {
         &self.model_dir
+    }
+
+    pub fn active_model(&self) -> EmbeddingModel {
+        *self.active_model.lock().unwrap()
     }
 
     /// Return true if ONNX sessions are loaded in memory.
@@ -148,6 +165,26 @@ impl ModelManager {
         }
     }
 
+    pub fn set_active_model(&self, model: EmbeddingModel) {
+        {
+            let mut am = self.active_model.lock().unwrap();
+            if *am == model {
+                return;
+            }
+            *am = model;
+        }
+        let mut vs = self.vision_session.lock().unwrap();
+        let mut ts = self.text_session.lock().unwrap();
+        let mut tok = self.tokenizer.lock().unwrap();
+        if vs.is_some() || ts.is_some() {
+            info!("CLIP: active model changed to {:?} — unloading sessions for reload", model);
+            *vs = None;
+            *ts = None;
+            *tok = None;
+        }
+    }
+
+
     /// Ensure both ONNX sessions and tokenizer are loaded. Idempotent.
     fn ensure_loaded(&self) -> Result<(), Error> {
         // Fast path: already loaded
@@ -159,9 +196,19 @@ impl ModelManager {
         }
 
         // Slow path: load everything
-        let tokenizer_path = self.model_dir.join("tokenizer.json");
-        let vision_path = self.model_dir.join("vision_model.onnx");
-        let text_path = self.model_dir.join("text_model.onnx");
+        let active = self.active_model();
+        let (tokenizer_path, vision_path, text_path) = match active {
+            EmbeddingModel::ClipVitB32 => (
+                self.model_dir.join("tokenizer.json"),
+                self.model_dir.join("vision_model.onnx"),
+                self.model_dir.join("text_model.onnx"),
+            ),
+            EmbeddingModel::MobileClipS2 => (
+                self.model_dir.join("mobileclip_s2").join("tokenizer.json"),
+                self.model_dir.join("mobileclip_s2").join("onnx").join("vision_model.onnx"),
+                self.model_dir.join("mobileclip_s2").join("onnx").join("text_model.onnx"),
+            ),
+        };
         let device = self.device.lock().unwrap().clone();
 
         // Tokenizer
@@ -217,7 +264,7 @@ impl ModelManager {
 
     /// Download models and tokenizer. Does NOT create ONNX sessions — those
     /// are created lazily on the first inference call.
-    pub fn init(&mut self) -> Result<(), Error> {
+    pub fn init(&self) -> Result<(), Error> {
         // Search upwards for onnxruntime.dll starting from current executable path
         if let Ok(exe_path) = std::env::current_exe() {
             let mut current_dir = exe_path.parent();
@@ -245,30 +292,61 @@ impl ModelManager {
 
         fs::create_dir_all(&self.model_dir)?;
 
-        let vision_path = self.model_dir.join("vision_model.onnx");
-        let text_path = self.model_dir.join("text_model.onnx");
-        let tokenizer_path = self.model_dir.join("tokenizer.json");
+        let active = self.active_model();
+        match active {
+            EmbeddingModel::ClipVitB32 => {
+                let vision_path = self.model_dir.join("vision_model.onnx");
+                let text_path = self.model_dir.join("text_model.onnx");
+                let tokenizer_path = self.model_dir.join("tokenizer.json");
 
-        // Download missing files
-        self.download_if_missing(
-            &vision_path,
-            "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model.onnx",
-            "Vision model"
-        )?;
+                self.download_if_missing(
+                    &vision_path,
+                    "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model.onnx",
+                    "Vision model"
+                )?;
 
-        self.download_if_missing(
-            &text_path,
-            "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/text_model.onnx",
-            "Text model"
-        )?;
+                self.download_if_missing(
+                    &text_path,
+                    "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/text_model.onnx",
+                    "Text model"
+                )?;
 
-        self.download_if_missing(
-            &tokenizer_path,
-            "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/tokenizer.json",
-            "Tokenizer configuration"
-        )?;
+                self.download_if_missing(
+                    &tokenizer_path,
+                    "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/tokenizer.json",
+                    "Tokenizer configuration"
+                )?;
+            }
+            EmbeddingModel::MobileClipS2 => {
+                let s2_dir = self.model_dir.join("mobileclip_s2");
+                let onnx_dir = s2_dir.join("onnx");
+                fs::create_dir_all(&onnx_dir)?;
 
-        info!("CLIP models downloaded — sessions will be created on first use");
+                let vision_path = onnx_dir.join("vision_model.onnx");
+                let text_path = onnx_dir.join("text_model.onnx");
+                let tokenizer_path = s2_dir.join("tokenizer.json");
+
+                self.download_if_missing(
+                    &vision_path,
+                    "https://huggingface.co/Xenova/mobileclip_s2/resolve/main/onnx/vision_model.onnx",
+                    "Vision model"
+                )?;
+
+                self.download_if_missing(
+                    &text_path,
+                    "https://huggingface.co/Xenova/mobileclip_s2/resolve/main/onnx/text_model.onnx",
+                    "Text model"
+                )?;
+
+                self.download_if_missing(
+                    &tokenizer_path,
+                    "https://huggingface.co/Xenova/mobileclip_s2/resolve/main/tokenizer.json",
+                    "Tokenizer configuration"
+                )?;
+            }
+        }
+
+        info!("{:?} models initialized", active);
         Ok(())
     }
 
@@ -313,8 +391,10 @@ impl ModelManager {
             let mut reader = decoder.read_info()?;
             let w = reader.info().width;
             let h = reader.info().height;
-            let buf_size = reader.output_buffer_size()
-                .unwrap_or_else(|| w as usize * h as usize * 4);
+            // Always allocate w*h*4 (max RGBA) — output_buffer_size() can underreport
+            // for interlaced or palette-based PNGs, causing "Size of buffer is smaller
+            // than required" on next_frame().
+            let buf_size = w as usize * h as usize * 4;
             let mut raw = vec![0u8; buf_size];
             let out_info = reader.next_frame(&mut raw)?;
             let pixels = out_info.buffer_size();
@@ -323,7 +403,17 @@ impl ModelManager {
                 png::ColorType::Rgba => raw[..pixels].chunks(4).flat_map(|c| [c[0], c[1], c[2]]).collect(),
                 png::ColorType::Grayscale => raw[..pixels].iter().map(|&g| [g, g, g]).flatten().collect(),
                 png::ColorType::GrayscaleAlpha => raw[..pixels].chunks(2).flat_map(|c| [c[0], c[0], c[0]]).collect(),
-                _ => raw[..pixels].chunks(3).flat_map(|c| [c[0], c[1], c[2]]).collect(),
+                png::ColorType::Indexed => {
+                    let palette = reader.info().palette.as_deref()
+                        .context("Indexed PNG has no palette")?;
+                    raw[..pixels].iter()
+                        .map(|&idx| {
+                            let i = idx as usize * 3;
+                            [palette[i], palette[i + 1], palette[i + 2]]
+                        })
+                        .flatten()
+                        .collect()
+                }
             };
             (rgb, w, h)
         } else {
@@ -346,12 +436,18 @@ impl ModelManager {
                 .copy_from_slice(&rgb_buf[src_row..src_row + copy_len]);
         }
 
-        // 3. SIMD-accelerated resize to 224x224
+        // 3. SIMD-accelerated resize to target size
+        let active = self.active_model();
+        let target_size = match active {
+            EmbeddingModel::ClipVitB32 => 224,
+            EmbeddingModel::MobileClipS2 => 256,
+        };
+
         let crop_ref = fast_image_resize::images::ImageRef::new(
             size, size, &cropped, fast_image_resize::PixelType::U8x3,
         )?;
         let mut dst_image = fast_image_resize::images::Image::from_vec_u8(
-            224, 224, vec![0u8; 224 * 224 * 3], fast_image_resize::PixelType::U8x3,
+            target_size, target_size, vec![0u8; (target_size * target_size * 3) as usize], fast_image_resize::PixelType::U8x3,
         )?;
         let mut resizer = fast_image_resize::Resizer::new();
         let opts = fast_image_resize::ResizeOptions::new()
@@ -361,17 +457,29 @@ impl ModelManager {
         resizer.resize(&crop_ref, &mut dst_image, Some(&opts))?;
         let resized_buf = dst_image.buffer();
 
-        // 4. Normalization parameters for CLIP
-        let mean = [0.48145466, 0.4578275, 0.40821073];
-        let std = [0.26862954, 0.26130258, 0.27577711];
-
-        // 5. Construct N-dimensional array in shape [1, 3, 224, 224]
-        let mut input_array = Array4::<f32>::zeros((1, 3, 224, 224));
-        for c in 0..3 {
-            for row in 0..224 {
-                for col in 0..224 {
-                    let val = resized_buf[(row * 224 + col) * 3 + c] as f32 / 255.0;
-                    input_array[[0, c, row, col]] = (val - mean[c]) / std[c];
+        // 4. Construct N-dimensional array in shape [1, 3, target_size, target_size]
+        let mut input_array = Array4::<f32>::zeros((1, 3, target_size as usize, target_size as usize));
+        match active {
+            EmbeddingModel::ClipVitB32 => {
+                let mean = [0.48145466, 0.4578275, 0.40821073];
+                let std = [0.26862954, 0.26130258, 0.27577711];
+                for c in 0..3 {
+                    for row in 0..224 {
+                        for col in 0..224 {
+                            let val = resized_buf[(row * 224 + col) * 3 + c] as f32 / 255.0;
+                            input_array[[0, c, row, col]] = (val - mean[c]) / std[c];
+                        }
+                    }
+                }
+            }
+            EmbeddingModel::MobileClipS2 => {
+                for c in 0..3 {
+                    for row in 0..256 {
+                        for col in 0..256 {
+                            let val = resized_buf[(row * 256 + col) * 3 + c] as f32 / 255.0;
+                            input_array[[0, c, row, col]] = val;
+                        }
+                    }
                 }
             }
         }
@@ -395,6 +503,211 @@ impl ModelManager {
         }
 
         Ok(embedding)
+    }
+
+    pub fn preprocess_image_batch<P: AsRef<Path>>(&self, image_paths: &[P]) -> Result<Vec<Result<Vec<u8>, Error>>, Error> {
+        let active = self.active_model();
+        let target_size = match active {
+            EmbeddingModel::ClipVitB32 => 224,
+            EmbeddingModel::MobileClipS2 => 256,
+        };
+
+        // Preprocess all images in parallel.
+        let mut preprocessed = Vec::with_capacity(image_paths.len());
+        for _ in 0..image_paths.len() {
+            preprocessed.push(Err(anyhow::anyhow!("Initialization failed")));
+        }
+
+        std::thread::scope(|s| {
+            let mut handles = Vec::with_capacity(image_paths.len());
+            for (idx, path) in image_paths.iter().enumerate() {
+                let path_ref = path.as_ref();
+                let handle = s.spawn(move || -> Result<Vec<u8>, Error> {
+                    let img_ref = path_ref;
+                    let data = std::fs::read(img_ref)?;
+                    let is_jpeg = data.len() >= 2 && data[0] == 0xFF && data[1] == 0xD8;
+                    let is_png = data.len() >= 8
+                        && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
+
+                    let (rgb_buf, width, height) = if is_jpeg {
+                        let image = turbojpeg::decompress(&data, turbojpeg::PixelFormat::RGB)?;
+                        (image.pixels.to_vec(), image.width as u32, image.height as u32)
+                    } else if is_png {
+                        let decoder = png::Decoder::new(std::io::Cursor::new(&data));
+                        let mut reader = decoder.read_info()?;
+                        let w = reader.info().width;
+                        let h = reader.info().height;
+                        let buf_size = w as usize * h as usize * 4;
+                        let mut raw = vec![0u8; buf_size];
+                        let out_info = reader.next_frame(&mut raw)?;
+                        let pixels = out_info.buffer_size();
+                        let rgb: Vec<u8> = match out_info.color_type {
+                            png::ColorType::Rgb => raw[..pixels].to_vec(),
+                            png::ColorType::Rgba => raw[..pixels].chunks(4).flat_map(|c| [c[0], c[1], c[2]]).collect(),
+                            png::ColorType::Grayscale => raw[..pixels].iter().map(|&g| [g, g, g]).flatten().collect(),
+                            png::ColorType::GrayscaleAlpha => raw[..pixels].chunks(2).flat_map(|c| [c[0], c[0], c[0]]).collect(),
+                            png::ColorType::Indexed => {
+                                let palette = reader.info().palette.as_deref()
+                                    .context("Indexed PNG has no palette")?;
+                                raw[..pixels].iter()
+                                    .map(|&idx| {
+                                        let i = idx as usize * 3;
+                                        [palette[i], palette[i + 1], palette[i + 2]]
+                                    })
+                                    .flatten()
+                                    .collect()
+                            }
+                        };
+                        (rgb, w, h)
+                    } else {
+                        let img = image::open(img_ref)?;
+                        let rgb = img.to_rgb8();
+                        let (w, h) = rgb.dimensions();
+                        (rgb.into_raw(), w, h)
+                    };
+
+                    let size = width.min(height);
+                    let cx = (width - size) / 2;
+                    let cy = (height - size) / 2;
+                    let mut cropped = vec![0u8; (size * size * 3) as usize];
+                    for y in 0..size {
+                        let src_row = ((cy + y) * width + cx) as usize * 3;
+                        let dst_row = (y * size) as usize * 3;
+                        let copy_len = (size * 3) as usize;
+                        cropped[dst_row..dst_row + copy_len]
+                            .copy_from_slice(&rgb_buf[src_row..src_row + copy_len]);
+                    }
+
+                    let crop_ref = fast_image_resize::images::ImageRef::new(
+                        size, size, &cropped, fast_image_resize::PixelType::U8x3,
+                    )?;
+                    let mut dst_image = fast_image_resize::images::Image::from_vec_u8(
+                        target_size, target_size, vec![0u8; (target_size * target_size * 3) as usize], fast_image_resize::PixelType::U8x3,
+                    )?;
+                    let mut resizer = fast_image_resize::Resizer::new();
+                    let opts = fast_image_resize::ResizeOptions::new()
+                        .resize_alg(fast_image_resize::ResizeAlg::Convolution(
+                            fast_image_resize::FilterType::Bilinear,
+                        ));
+                    resizer.resize(&crop_ref, &mut dst_image, Some(&opts))?;
+                    Ok(dst_image.buffer().to_vec())
+                });
+                handles.push((idx, handle));
+            }
+
+            for (idx, handle) in handles {
+                preprocessed[idx] = handle.join().unwrap_or_else(|_| Err(anyhow::anyhow!("Thread panicked")));
+            }
+        });
+
+        Ok(preprocessed)
+    }
+
+    pub fn run_inference_on_preprocessed_batch(&self, preprocessed: &[Result<Vec<u8>, Error>]) -> Result<Vec<Result<Vec<f32>, Error>>, Error> {
+        self.ensure_loaded()?;
+        self.last_used.store(now_secs(), Ordering::Relaxed);
+        let mut session_guard = self.vision_session.lock()
+            .map_err(|_| anyhow::anyhow!("Vision mutex poisoned"))?;
+
+        let active = self.active_model();
+        let target_size = match active {
+            EmbeddingModel::ClipVitB32 => 224,
+            EmbeddingModel::MobileClipS2 => 256,
+        };
+
+        let mut valid_indices = Vec::new();
+        for (idx, item) in preprocessed.iter().enumerate() {
+            if item.is_ok() {
+                valid_indices.push(idx);
+            }
+        }
+
+        let mut results = Vec::with_capacity(preprocessed.len());
+        for _ in 0..preprocessed.len() {
+            results.push(Err(anyhow::anyhow!("Skipped due to preprocessing error")));
+        }
+
+        if valid_indices.is_empty() {
+            for (idx, item) in preprocessed.iter().enumerate() {
+                if let Err(e) = item {
+                    results[idx] = Err(anyhow::anyhow!("{:?}", e));
+                }
+            }
+            return Ok(results);
+        }
+
+        let batch_size = valid_indices.len();
+        let mut input_array = Array4::<f32>::zeros((batch_size, 3, target_size as usize, target_size as usize));
+        
+        for (batch_idx, &orig_idx) in valid_indices.iter().enumerate() {
+            if let Ok(ref resized_buf) = preprocessed[orig_idx] {
+                match active {
+                    EmbeddingModel::ClipVitB32 => {
+                        let mean = [0.48145466, 0.4578275, 0.40821073];
+                        let std = [0.26862954, 0.26130258, 0.27577711];
+                        for c in 0..3 {
+                            for row in 0..224 {
+                                for col in 0..224 {
+                                    let val = resized_buf[(row * 224 + col) * 3 + c] as f32 / 255.0;
+                                    input_array[[batch_idx, c, row, col]] = (val - mean[c]) / std[c];
+                                }
+                            }
+                        }
+                    }
+                    EmbeddingModel::MobileClipS2 => {
+                        for c in 0..3 {
+                            for row in 0..256 {
+                                for col in 0..256 {
+                                    let val = resized_buf[(row * 256 + col) * 3 + c] as f32 / 255.0;
+                                    input_array[[batch_idx, c, row, col]] = val;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let session = session_guard.as_mut().context("Vision model not initialized")?;
+        let outputs = session.run(inputs![TensorRef::from_array_view(&input_array)?])?;
+        
+        let output_tensor = outputs.get("image_embeds")
+            .or_else(|| outputs.get("output_0"))
+            .context("Failed to get image embeds output from model")?;
+
+        let output_ref = output_tensor.try_extract_tensor::<f32>()?;
+        let flat_outputs = output_ref.1;
+
+        for (batch_idx, &orig_idx) in valid_indices.iter().enumerate() {
+            let start = batch_idx * 512;
+            let end = start + 512;
+            if end <= flat_outputs.len() {
+                let mut embedding = flat_outputs[start..end].to_vec();
+                let norm = (embedding.iter().map(|&x| x * x).sum::<f32>()).sqrt();
+                if norm > 0.0 {
+                    for val in &mut embedding {
+                        *val /= norm;
+                    }
+                }
+                results[orig_idx] = Ok(embedding);
+            } else {
+                results[orig_idx] = Err(anyhow::anyhow!("Output tensor size mismatch"));
+            }
+        }
+
+        // Fill in actual preprocessing errors for failed images
+        for (idx, item) in preprocessed.iter().enumerate() {
+            if let Err(e) = item {
+                results[idx] = Err(anyhow::anyhow!("{:?}", e));
+            }
+        }
+
+        Ok(results)
+    }
+
+    pub fn generate_image_embeddings<P: AsRef<Path>>(&self, image_paths: &[P]) -> Result<Vec<Result<Vec<f32>, Error>>, Error> {
+        let preprocessed = self.preprocess_image_batch(image_paths)?;
+        self.run_inference_on_preprocessed_batch(&preprocessed)
     }
 
     pub fn generate_text_embedding(&self, text: &str) -> Result<Vec<f32>, Error> {

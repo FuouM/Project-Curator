@@ -296,11 +296,13 @@ async fn main() -> Result<(), Error> {
             image_count,
             vector_count,
             pending_jobs,
+            preprocessing_jobs,
         } => {
             println!("Curator Database Status:");
-            println!("  Images Imported:   {}", image_count);
-            println!("  Vectors Indexed:   {}", vector_count);
-            println!("  Pending Job Queue: {}", pending_jobs);
+            println!("  Images Imported:      {}", image_count);
+            println!("  Vectors Indexed:      {}", vector_count);
+            println!("  Pending Job Queue:    {}", pending_jobs);
+            println!("  Preprocessing Queue:  {}", preprocessing_jobs);
         }
         Response::SearchResult { matches } => {
             if matches.is_empty() {
@@ -399,14 +401,19 @@ async fn main() -> Result<(), Error> {
             clip_device,
             tagger_device,
             idle_timeout_secs,
+            embedding_model,
         } => {
             println!("Settings:");
             println!("  CLIP device:      {:?}", clip_device);
             println!("  Tagger device:    {:?}", tagger_device);
             println!("  Idle timeout:     {}s", idle_timeout_secs);
+            println!("  Embedding model:  {:?}", embedding_model);
         }
         Response::PreprocessBenchmarkResult { report } => {
             println!("{}", report);
+        }
+        Response::TagStatisticsResult { .. } => {
+            println!("Tag statistics retrieved.");
         }
     }
 

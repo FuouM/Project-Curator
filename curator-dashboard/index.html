@@ -334,6 +334,51 @@
             </p>
 
             <div style="display: flex; flex-direction: column; gap: 16px;">
+              <!-- Embedding Model Selection -->
+              <div class="group-box" style="padding: 12px;">
+                <div class="group-box-title">Active Embedding Model</div>
+                <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">
+                  Select the model used for vector embeddings. Changing the model will automatically clear the current vector index and reindex all images in the database.
+                </p>
+                <div style="display: flex; gap: 16px; align-items: center;">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-weight: 600; min-width: 120px;">Model:</label>
+                    <select class="input-field" id="settings-embedding-model" style="width: 180px;">
+                      <option value="clip-vit-b-32">CLIP ViT-B/32 (Standard)</option>
+                      <option value="mobileclip-s2">MobileCLIP-S2 (Fast + Accurate)</option>
+                    </select>
+                  </div>
+                  <button class="win-button" id="reindex-vectors-btn" style="padding: 4px 8px; font-size: 11px;">
+                    <i class="bi bi-arrow-repeat"></i> Reindex Everything
+                  </button>
+                </div>
+
+                <!-- Reindexing Progress -->
+                <div id="reindex-progress-container" style="display: none; margin-top: 12px; border-top: 1px solid #eee; padding-top: 12px;">
+                  <!-- Preprocessing Progress Bar -->
+                  <div style="margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; color: #333; margin-bottom: 4px;">
+                      <span id="reindex-preprocess-text">Preprocessing progress: 0/0 (0%)</span>
+                      <span style="font-weight: 600; color: #3b82f6;">CPU Preprocessing</span>
+                    </div>
+                    <div style="width: 100%; height: 8px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden; position: relative;">
+                      <div id="reindex-preprocess-bar" style="width: 0%; height: 100%; background-color: #3b82f6; transition: width 0.3s ease;"></div>
+                    </div>
+                  </div>
+
+                  <!-- Indexing Progress Bar -->
+                  <div>
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; color: #333; margin-bottom: 4px;">
+                      <span id="reindex-index-text">Indexing progress: 0/0 (0%)</span>
+                      <span id="reindex-progress-status" style="font-weight: 600; color: #fbbf24;">Inference & Indexing</span>
+                    </div>
+                    <div style="width: 100%; height: 8px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden; position: relative;">
+                      <div id="reindex-index-bar" style="width: 0%; height: 100%; background-color: #10b981; transition: width 0.3s ease;"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <!-- CLIP Model Device -->
               <div class="group-box" style="padding: 12px;">
                 <div class="group-box-title">CLIP ViT-B/32 (Semantic Search)</div>

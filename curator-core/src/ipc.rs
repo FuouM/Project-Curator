@@ -18,6 +18,22 @@ impl Default for DevicePreference {
     }
 }
 
+/// Supported embedding models.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum EmbeddingModel {
+    #[serde(rename = "clip-vit-b-32")]
+    ClipVitB32,
+    #[serde(rename = "mobileclip-s2")]
+    MobileClipS2,
+}
+
+impl Default for EmbeddingModel {
+    fn default() -> Self {
+        Self::ClipVitB32
+    }
+}
+
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Request {
     Ping,
@@ -80,7 +96,10 @@ pub enum Request {
         clip_device: Option<DevicePreference>,
         tagger_device: Option<DevicePreference>,
         idle_timeout_secs: Option<u64>,
+        embedding_model: Option<EmbeddingModel>,
     },
+    /// Reindex all vectors with the active model.
+    ReindexVectors,
     /// Get aggregate tag statistics: counts per tag grouped by category.
     GetTagStatistics,
 }
@@ -112,6 +131,7 @@ pub enum Response {
         image_count: i64,
         vector_count: i64,
         pending_jobs: i64,
+        preprocessing_jobs: i64,
     },
     ImageResult {
         image: ImageDetails,
@@ -150,6 +170,7 @@ pub enum Response {
         clip_device: DevicePreference,
         tagger_device: DevicePreference,
         idle_timeout_secs: u64,
+        embedding_model: EmbeddingModel,
     },
     /// Results of preprocessing benchmark.
     PreprocessBenchmarkResult {

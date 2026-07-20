@@ -89,7 +89,8 @@ type RequestPayload =
   | { GetTaggerStatus: null }
   | { RunBenchmark: null }
   | { GetSettings: null }
-  | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null } }
+  | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null } }
+  | { ReindexVectors: null }
   | { GetTagStatistics: null };
 
 interface SearchMatch {
@@ -129,7 +130,7 @@ type ResponsePayload =
   | { Error: { message: string } }
   | { ImportResult: { image_id: number; sha256: string } }
   | { SearchResult: { matches: SearchMatch[] } }
-  | { StatusResult: { image_count: number; vector_count: number; pending_jobs: number } }
+  | { StatusResult: { image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number } }
   | { ImageResult: { image: ImageDetails } }
   | { ListResult: { images: ImageDetails[] } }
   | { ValidationResult: { name: string; version: string; valid: boolean; error: string | null } }
@@ -137,7 +138,7 @@ type ResponsePayload =
   | { BatchTagResult: { processed: number; failed: number; skipped: number } }
   | { TaggerStatusResult: { loaded: boolean; model_path: string; total_tags: number } }
   | { BenchmarkResult: { clip_cpu_time_ms: number; clip_gpu_time_ms: number | null; clip_gpu_error: string | null; tagger_cpu_time_ms: number | null; tagger_gpu_time_ms: number | null; tagger_gpu_error: string | null; has_gpu: boolean } }
-  | { SettingsResult: { clip_device: string; tagger_device: string; idle_timeout_secs: number } }
+  | { SettingsResult: { clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string } }
   | { TagStatisticsResult: { tags: TagStat[] } };
 
 // Helpers for invoking the service through Rust Named Pipe bridge
@@ -173,6 +174,8 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
     formattedReq = "GetSettings";
   } else if ("UpdateSettings" in request) {
     formattedReq = { UpdateSettings: request.UpdateSettings };
+  } else if ("ReindexVectors" in request) {
+    formattedReq = "ReindexVectors";
   } else if ("GetTagStatistics" in request) {
     formattedReq = "GetTagStatistics";
   }
@@ -359,13 +362,13 @@ function startStatusPolling() {
         }
         
         // Update stats
-        const { image_count, vector_count, pending_jobs } = resp.StatusResult;
+        const { image_count, vector_count, pending_jobs, preprocessing_jobs } = resp.StatusResult;
         const imgEl = document.getElementById("stat-images");
         const vecEl = document.getElementById("stat-vectors");
         const pendEl = document.getElementById("stat-pending");
         if (imgEl) imgEl.textContent = image_count.toString();
         if (vecEl) vecEl.textContent = vector_count.toString();
-        if (pendEl) pendEl.textContent = pending_jobs.toString();
+        if (pendEl) pendEl.textContent = (pending_jobs + preprocessing_jobs).toString();
 
         // Also refresh tagger status card value
         try {
@@ -1455,8 +1458,87 @@ function setupSettings() {
   const clipSelect = document.getElementById("settings-clip-device") as HTMLSelectElement;
   const taggerSelect = document.getElementById("settings-tagger-device") as HTMLSelectElement;
   const idleSelect = document.getElementById("settings-idle-timeout") as HTMLSelectElement;
+  const embeddingSelect = document.getElementById("settings-embedding-model") as HTMLSelectElement;
   const saveBtn = document.getElementById("save-settings-btn");
+  const reindexBtn = document.getElementById("reindex-vectors-btn");
   const statusMsg = document.getElementById("settings-status-msg");
+
+  let reindexPollInterval: number | null = null;
+
+  function updateReindexProgress(
+    _image_count: number,
+    vector_count: number,
+    pending_jobs: number,
+    preprocessing_jobs: number
+  ) {
+    const container = document.getElementById("reindex-progress-container");
+    const preBar = document.getElementById("reindex-preprocess-bar");
+    const preText = document.getElementById("reindex-preprocess-text");
+    const idxBar = document.getElementById("reindex-index-bar");
+    const idxText = document.getElementById("reindex-index-text");
+    const status = document.getElementById("reindex-progress-status");
+
+    if (!container || !preBar || !preText || !idxBar || !idxText || !status) return;
+
+    const total = vector_count + pending_jobs + preprocessing_jobs;
+
+    if (total > 0 && (pending_jobs > 0 || preprocessing_jobs > 0)) {
+      container.style.display = "block";
+      
+      // Preprocessing Progress (anything already indexed or currently in preprocessing counts as preprocessed)
+      const preprocessed = vector_count + preprocessing_jobs;
+      const prePercent = Math.round((preprocessed / total) * 100);
+      preBar.style.width = prePercent + "%";
+      preText.textContent = `Preprocessing progress: ${preprocessed}/${total} (${prePercent}%)`;
+
+      // Indexing Progress
+      const idxPercent = Math.round((vector_count / total) * 100);
+      idxBar.style.width = idxPercent + "%";
+      idxText.textContent = `Indexing progress: ${vector_count}/${total} (${idxPercent}%)`;
+
+      status.textContent = "Processing...";
+      status.style.color = "#fbbf24";
+    } else {
+      if (container.style.display === "block" && status.textContent === "Processing...") {
+        preBar.style.width = "100%";
+        preText.textContent = `Preprocessing progress: ${total}/${total} (100%)`;
+        idxBar.style.width = "100%";
+        idxText.textContent = `Indexing progress: ${total}/${total} (100%)`;
+        status.textContent = "Completed";
+        status.style.color = "#10b981";
+        setTimeout(() => {
+          if (status.textContent === "Completed") {
+            container.style.display = "none";
+          }
+        }, 5000);
+      } else {
+        container.style.display = "none";
+      }
+    }
+  }
+
+  function startReindexPolling() {
+    if (reindexPollInterval) return;
+    const check = async () => {
+      try {
+        const resp = await callService({ GetStatus: null });
+        if ("StatusResult" in resp) {
+          const { image_count, vector_count, pending_jobs, preprocessing_jobs } = resp.StatusResult;
+          updateReindexProgress(image_count, vector_count, pending_jobs, preprocessing_jobs);
+          if (pending_jobs === 0 && preprocessing_jobs === 0) {
+            if (reindexPollInterval) {
+              clearInterval(reindexPollInterval);
+              reindexPollInterval = null;
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error polling reindex status:", e);
+      }
+    };
+    check();
+    reindexPollInterval = setInterval(check, 1000) as unknown as number;
+  }
 
   // Image click action setting (localStorage)
   const imageClickSelect = document.getElementById("settings-image-click-action") as HTMLSelectElement;
@@ -1475,6 +1557,17 @@ function setupSettings() {
         if (clipSelect) clipSelect.value = resp.SettingsResult.clip_device;
         if (taggerSelect) taggerSelect.value = resp.SettingsResult.tagger_device;
         if (idleSelect) idleSelect.value = resp.SettingsResult.idle_timeout_secs.toString();
+        if (embeddingSelect) embeddingSelect.value = resp.SettingsResult.embedding_model;
+      }
+
+      // Check status to see if reindexing is active
+      const statusResp = await callService({ GetStatus: null });
+      if ("StatusResult" in statusResp) {
+        const { image_count, vector_count, pending_jobs, preprocessing_jobs } = statusResp.StatusResult;
+        updateReindexProgress(image_count, vector_count, pending_jobs, preprocessing_jobs);
+        if (pending_jobs > 0 || preprocessing_jobs > 0) {
+          startReindexPolling();
+        }
       }
     } catch (e: any) {
       if (statusMsg) {
@@ -1497,14 +1590,40 @@ function setupSettings() {
           clip_device: clipSelect.value,
           tagger_device: taggerSelect.value,
           idle_timeout_secs: parseInt(idleSelect.value, 10),
+          embedding_model: embeddingSelect ? embeddingSelect.value : null,
         }
       });
 
       if ("SettingsResult" in resp) {
-        statusMsg.textContent = "Settings saved and applied successfully.";
+        statusMsg.textContent = "Settings saved and applied successfully. If model was changed, reindexing has started.";
         statusMsg.style.color = "#10b981";
+        startReindexPolling();
       } else if ("Error" in resp) {
         statusMsg.textContent = "Failed: " + resp.Error.message;
+        statusMsg.style.color = "#ef4444";
+      }
+    } catch (e: any) {
+      statusMsg.textContent = "Error: " + (e.message || e);
+      statusMsg.style.color = "#ef4444";
+    }
+  });
+
+  // Reindex vectors
+  reindexBtn?.addEventListener("click", async () => {
+    if (!statusMsg) return;
+    if (!confirm("Are you sure you want to reindex all vectors? This will rebuild the vector search index from scratch.")) {
+      return;
+    }
+    statusMsg.textContent = "Reindexing all images...";
+    statusMsg.style.color = "#fbbf24";
+    try {
+      const resp = await callService({ ReindexVectors: null });
+      if ("Success" in resp) {
+        statusMsg.textContent = "Reindexing triggered successfully. The background worker is rebuilding the index.";
+        statusMsg.style.color = "#10b981";
+        startReindexPolling();
+      } else if ("Error" in resp) {
+        statusMsg.textContent = "Reindex failed: " + resp.Error.message;
         statusMsg.style.color = "#ef4444";
       }
     } catch (e: any) {

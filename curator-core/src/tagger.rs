@@ -341,8 +341,10 @@ fn preprocess_image(path: &Path, img_size: u32, resizer: &mut fast_image_resize:
             .with_context(|| format!("png decode header failed for {:?}", path))?;
         let w = reader.info().width;
         let h = reader.info().height;
-        let buf_size = reader.output_buffer_size()
-            .unwrap_or_else(|| w as usize * h as usize * 4);
+        // Always allocate w*h*4 (max RGBA) — output_buffer_size() can underreport
+        // for interlaced or palette-based PNGs, causing "Size of buffer is smaller
+        // than required" on next_frame().
+        let buf_size = w as usize * h as usize * 4;
         let mut raw = vec![0u8; buf_size];
         let out_info = reader.next_frame(&mut raw)
             .with_context(|| format!("png decode failed for {:?}", path))?;
@@ -352,7 +354,17 @@ fn preprocess_image(path: &Path, img_size: u32, resizer: &mut fast_image_resize:
             png::ColorType::Rgba => raw[..pixels].chunks(4).flat_map(|c| [c[0], c[1], c[2]]).collect(),
             png::ColorType::Grayscale => raw[..pixels].iter().map(|&g| [g, g, g]).flatten().collect(),
             png::ColorType::GrayscaleAlpha => raw[..pixels].chunks(2).flat_map(|c| [c[0], c[0], c[0]]).collect(),
-            _ => raw[..pixels].chunks(3).flat_map(|c| [c[0], c[1], c[2]]).collect(),
+            png::ColorType::Indexed => {
+                let palette = reader.info().palette.as_deref()
+                    .context("Indexed PNG has no palette")?;
+                raw[..pixels].iter()
+                    .map(|&idx| {
+                        let i = idx as usize * 3;
+                        [palette[i], palette[i + 1], palette[i + 2]]
+                    })
+                    .flatten()
+                    .collect()
+            }
         };
         (rgb, w, h)
     } else {
