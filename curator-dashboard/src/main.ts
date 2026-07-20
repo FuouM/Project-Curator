@@ -251,7 +251,6 @@ function init() {
   setupForms();
   startStatusPolling();
   refreshDashboard();
-  setupTaggerCard();
   setupBenchmark();
   setupSettings();
   setupImageViewer();
@@ -374,8 +373,16 @@ function startStatusPolling() {
         try {
           const tStatus = await callService({ GetTaggerStatus: null });
           const taggerEl = document.getElementById("stat-tagger");
+          const taggerDetail = document.getElementById("stat-tagger-detail");
           if (taggerEl && "TaggerStatusResult" in tStatus) {
-            taggerEl.textContent = tStatus.TaggerStatusResult.loaded ? "Loaded" : "Ready";
+            const { loaded, model_path, total_tags } = tStatus.TaggerStatusResult;
+            taggerEl.textContent = loaded ? "Active in RAM" : "Ready to load";
+            if (taggerDetail) {
+              const parts: string[] = [];
+              if (model_path) parts.push(model_path.split(/[/\\]/).pop()!);
+              if (total_tags > 0) parts.push(`${total_tags} tags`);
+              taggerDetail.textContent = parts.length > 0 ? parts.join(" | ") : "—";
+            }
           }
         } catch (te) {}
 
@@ -1008,26 +1015,6 @@ function renderImages(images: ImageDetails[], gridId: string) {
     }
 
     grid.appendChild(card);
-  });
-}
-
-// Click listener to trigger info details alert from card
-function setupTaggerCard() {
-  document.getElementById("tagger-stat-card")?.addEventListener("click", async () => {
-    try {
-      const resp = await callService({ GetTaggerStatus: null });
-      if ("TaggerStatusResult" in resp) {
-        const { loaded, model_path, total_tags } = resp.TaggerStatusResult;
-        alert(
-          `Camie Tagger v2 Status:\n\n` +
-          `- Model Loaded: ${loaded ? "Yes (active in RAM)" : "No (ready to load)"}\n` +
-          `- Model File: ${model_path}\n` +
-          `- Supported Tags: ${total_tags > 0 ? total_tags : "N/A"}`
-        );
-      }
-    } catch (e: any) {
-      alert("Failed to query tagger status: " + e.message);
-    }
   });
 }
 
