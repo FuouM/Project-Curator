@@ -534,7 +534,7 @@ function setupForms() {
       const query = queryInput.value.trim() || null;
       const tag = tagInput.value.trim() || null;
       const imagePath = imageInput.value.trim() || null;
-      
+
       const resp = await callService({
         Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, limit: 20 }
       });
@@ -691,7 +691,7 @@ function renderFeaturedDay(featured: ImageDetails) {
 
   container.innerHTML = `
     <div class="featured-layout">
-      <div class="image-card featured-card">
+      <div class="image-card featured-card" data-image-id="${featured.id}">
         <div class="image-preview featured-preview">
           <img src="${srcUrl}" alt="Featured Image" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
           <span style="display: none;"><i class="bi bi-image"></i></span>
@@ -957,6 +957,23 @@ async function refreshModalTags(imgId: number) {
   }
 }
 
+async function refreshCardTags(imgId: number) {
+  try {
+    const resp = await callService({ GetImage: { image_id: imgId } });
+    if (!("ImageResult" in resp)) return;
+    const tags = resp.ImageResult.image.tags;
+    const displayTags = tags.slice(0, 10);
+    const extraCount = tags.length - 10;
+    const tagHtml = displayTags.map(t => getTagPillHtml(t)).join("") +
+                    (extraCount > 0 ? `<span class="tag-pill" style="background-color: #f0f0f0; color: #555555; font-style: italic;">+${extraCount} more</span>` : "");
+    document.querySelectorAll(`[data-image-id="${imgId}"] .tag-list`).forEach((el) => {
+      el.innerHTML = tagHtml;
+    });
+  } catch (e) {
+    console.error("Failed to refresh card tags:", e);
+  }
+}
+
 // Renderers
 function renderImages(images: ImageDetails[], gridId: string) {
   const grid = document.getElementById(gridId);
@@ -971,6 +988,7 @@ function renderImages(images: ImageDetails[], gridId: string) {
   images.forEach((img) => {
     const card = document.createElement("div");
     card.className = "image-card";
+    card.dataset.imageId = img.id.toString();
 
     const badgeClass = img.vector_state === "ready" ? "badge-ready" : "badge-pending";
     const srcUrl = convertFileSrc(img.current_filepath);
@@ -1058,11 +1076,8 @@ async function handleModalAutoTag() {
 
         // Refresh active list in modal
         await refreshModalTags(imageId);
-        // Refresh grids in background
-        refreshDashboard();
-        if (document.getElementById("view-gallery")?.classList.contains("active")) {
-          refreshGallery();
-        }
+        // Update just the tagged card(s) in the background
+        refreshCardTags(imageId);
       }
     } else if ("Error" in resp) {
       statusArea.textContent = `Failed: ${resp.Error.message}`;
@@ -1093,6 +1108,7 @@ function renderSearchResults(matches: SearchMatch[]) {
   matches.forEach((m) => {
     const card = document.createElement("div");
     card.className = "image-card";
+    card.dataset.imageId = m.id.toString();
     const srcUrl = convertFileSrc(m.filepath);
 
     const displayTags = m.tags.slice(0, 10);
