@@ -295,12 +295,16 @@ body {
   gap: 8px;
   align-items: center;
 }
+.form-group label {
+  white-space: nowrap;
+}
 .input-field {
   background-color: var(--sys-window-bg);
   color: var(--sys-window-text);
   border: 1px solid #7a7a7a;
-  padding: 4px 8px;
+  padding: 0 8px;
   height: 24px;
+  line-height: 24px;
   outline: none;
   font-size: 12px;
 }
