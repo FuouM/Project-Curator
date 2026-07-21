@@ -454,6 +454,38 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   background: #ffffff;
   color: #ecc94b;
 }
+
+/* --- Copy to Clipboard Button --- */
+.copy-btn {
+  position: absolute;
+  bottom: 1px;
+  left: 1px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #dcdcdc;
+  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s, background-color 0.2s, color 0.2s;
+  color: #a0aec0;
+}
+.image-card:hover .copy-btn {
+  opacity: 1;
+}
+.copy-btn:hover {
+  background: #ffffff;
+  color: #3b82f6;
+}
+.copy-btn.copied {
+  opacity: 1;
+  color: #10b981;
+  border-color: #10b981;
+}
 .image-preview {
   width: 100%;
   height: 130px;

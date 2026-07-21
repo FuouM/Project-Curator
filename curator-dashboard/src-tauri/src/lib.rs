@@ -439,6 +439,15 @@ async fn open_file_externally(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn read_image_bytes(path: String) -> Result<Vec<u8>, String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err(format!("File not found: {}", path));
+    }
+    std::fs::read(p).map_err(|e| format!("Failed to read file: {:?}", e))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -526,7 +535,8 @@ pub fn run() {
             clear_logs,
             clear_service_logs,
             log_frontend,
-            open_file_externally
+            open_file_externally,
+            read_image_bytes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

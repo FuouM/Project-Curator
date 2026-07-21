@@ -803,6 +803,7 @@ function renderFeaturedDay(featured: ImageDetails) {
           <span style="display: none;"><i class="bi bi-image"></i></span>
           <div class="vector-badge ${badgeClass}">${featured.vector_state}</div>
           <div class="featured-badge-overlay"><i class="bi bi-stars"></i> Feature of the Day</div>
+          <div class="copy-btn" title="Copy image to clipboard"><i class="bi bi-clipboard"></i></div>
         </div>
         <div style="display: flex; gap: 4px; margin-top: 4px;">
           <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.openTags(${featured.id}, '${featured.current_filepath.replace(/\\/g, '\\\\')}')">
@@ -879,6 +880,30 @@ function renderFeaturedDay(featured: ImageDetails) {
       invoke("open_file_externally", { path: dir }).catch((err) => {
         console.error("Failed to open folder:", err);
       });
+    });
+  }
+
+  // Copy image to clipboard button (featured)
+  const copyBtn = container.querySelector(".copy-btn");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try {
+        const bytes: number[] = await invoke("read_image_bytes", { path: featured.current_filepath });
+        const uint8 = new Uint8Array(bytes);
+        const blob = await imageBytesToPngBlob(uint8);
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": blob })
+        ]);
+        copyBtn.classList.add("copied");
+        copyBtn.querySelector("i")?.setAttribute("class", "bi bi-check-lg");
+        setTimeout(() => {
+          copyBtn.classList.remove("copied");
+          copyBtn.querySelector("i")?.setAttribute("class", "bi bi-clipboard");
+        }, 1500);
+      } catch (err) {
+        console.error("Failed to copy image to clipboard:", err);
+      }
     });
   }
 
@@ -1112,6 +1137,29 @@ async function refreshFolders() {
   }
 }
 
+function imageBytesToPngBlob(bytes: Uint8Array): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const blob = new Blob([bytes]);
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { URL.revokeObjectURL(url); reject(new Error("No canvas context")); return; }
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((pngBlob) => {
+        if (pngBlob) resolve(pngBlob);
+        else reject(new Error("Canvas toBlob failed"));
+      }, "image/png");
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Failed to load image")); };
+    img.src = url;
+  });
+}
+
 function escapeHtml(str: string): string {
   const div = document.createElement("div");
   div.textContent = str;
@@ -1293,6 +1341,7 @@ function renderImages(images: ImageDetails[], gridId: string) {
         <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
         <div class="vector-badge ${badgeClass}">${img.vector_state}</div>
+        <div class="copy-btn" title="Copy image to clipboard"><i class="bi bi-clipboard"></i></div>
       </div>
       <div class="image-info">
         <div class="image-path-row">
@@ -1356,6 +1405,30 @@ function renderImages(images: ImageDetails[], gridId: string) {
         invoke("open_file_externally", { path: dir }).catch((err) => {
           console.error("Failed to open folder:", err);
         });
+      });
+    }
+
+    // Copy image to clipboard button
+    const copyBtn = card.querySelector(".copy-btn");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        try {
+          const bytes: number[] = await invoke("read_image_bytes", { path: img.current_filepath });
+          const uint8 = new Uint8Array(bytes);
+          const blob = await imageBytesToPngBlob(uint8);
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/png": blob })
+          ]);
+          copyBtn.classList.add("copied");
+          copyBtn.querySelector("i")?.setAttribute("class", "bi bi-check-lg");
+          setTimeout(() => {
+            copyBtn.classList.remove("copied");
+            copyBtn.querySelector("i")?.setAttribute("class", "bi bi-clipboard");
+          }, 1500);
+        } catch (err) {
+          console.error("Failed to copy image to clipboard:", err);
+        }
       });
     }
 
