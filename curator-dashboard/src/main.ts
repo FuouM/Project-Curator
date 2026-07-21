@@ -1309,6 +1309,16 @@ async function refreshCardTags(imgId: number) {
   }
 }
 
+// Common card data interface
+interface CardImageData {
+  id: number;
+  filepath: string;
+  tags: TagSummary[];
+  favorite?: boolean;
+  badgeHtml?: string;
+  emptyMessage?: string;
+}
+
 // Renderers
 function renderImages(images: ImageDetails[], gridId: string) {
   const grid = document.getElementById(gridId);
@@ -1320,13 +1330,51 @@ function renderImages(images: ImageDetails[], gridId: string) {
     return;
   }
 
-  images.forEach((img) => {
+  const cards: CardImageData[] = images.map(img => ({
+    id: img.id,
+    filepath: img.current_filepath,
+    tags: img.tags,
+    favorite: img.favorite,
+    badgeHtml: `<div class="vector-badge ${img.vector_state === "ready" ? "badge-ready" : "badge-pending"}">${img.vector_state}</div>`,
+  }));
+
+  renderCards(cards, grid);
+}
+
+function renderSearchResults(matches: SearchMatch[]) {
+  const grid = document.getElementById("search-results-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  if (matches.length === 0) {
+    grid.innerHTML = "<p style='color: #64748b; font-style: italic;'>No matching results found.</p>";
+    return;
+  }
+
+  const cards: CardImageData[] = matches.map(m => {
+    const badgeBg = m.match_type === "exact" ? "#dff6dd" : m.match_type === "perceptual" ? "#deecf9" : "#f3f2f1";
+    const badgeColor = m.match_type === "exact" ? "#107c41" : m.match_type === "perceptual" ? "#005a9e" : "#323130";
+    const badgeBorder = m.match_type === "exact" ? "#107c41" : m.match_type === "perceptual" ? "#005a9e" : "#8a8886";
+    const scoreBadgeText = m.match_type === "exact" ? "Exact Match" : m.match_type === "perceptual" ? `Perceptual (d=${m.hamming_distance})` : `Score: ${m.score.toFixed(4)}`;
+    return {
+      id: m.id,
+      filepath: m.filepath,
+      tags: m.tags,
+      badgeHtml: `<div class="vector-badge" style="background-color: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor};">${scoreBadgeText}</div>`,
+      emptyMessage: "No matching results found.",
+    };
+  });
+
+  renderCards(cards, grid);
+}
+
+function renderCards(cards: CardImageData[], grid: HTMLElement) {
+  cards.forEach((img) => {
     const card = document.createElement("div");
     card.className = "image-card";
     card.dataset.imageId = img.id.toString();
 
-    const badgeClass = img.vector_state === "ready" ? "badge-ready" : "badge-pending";
-    const srcUrl = convertFileSrc(img.current_filepath);
+    const srcUrl = convertFileSrc(img.filepath);
 
     const displayTags = img.tags.slice(0, 10);
     const extraCount = img.tags.length - 10;
@@ -1340,12 +1388,12 @@ function renderImages(images: ImageDetails[], gridId: string) {
       <div class="image-preview">
         <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
-        <div class="vector-badge ${badgeClass}">${img.vector_state}</div>
+        ${img.badgeHtml || ""}
         <div class="copy-btn" title="Copy image to clipboard"><i class="bi bi-clipboard"></i></div>
       </div>
       <div class="image-info">
         <div class="image-path-row">
-          <div class="image-path" title="${img.current_filepath}">${maskPath(img.current_filepath)}</div>
+          <div class="image-path" title="${img.filepath}">${maskPath(img.filepath)}</div>
           <button class="win-button image-open-folder-btn" style="display: none; font-size: 10px; padding: 1px 6px; white-space: nowrap;" title="Open containing folder">
             <i class="bi bi-folder2-open"></i>
           </button>
@@ -1354,10 +1402,10 @@ function renderImages(images: ImageDetails[], gridId: string) {
           ${tagHtml}
         </div>
         <div style="display: flex; gap: 4px; margin-top: auto; width: 100%;">
-          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.openTags(${img.id}, '${img.current_filepath.replace(/\\/g, '\\\\')}')">
+          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.openTags(${img.id}, '${img.filepath.replace(/\\/g, '\\\\')}')">
             <i class="bi bi-tag"></i> Tags
           </button>
-          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.findSimilar('${img.current_filepath.replace(/\\/g, '\\\\')}')">
+          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.findSimilar('${img.filepath.replace(/\\/g, '\\\\')}')">
             <i class="bi bi-search"></i> Similar
           </button>
         </div>
@@ -1401,7 +1449,7 @@ function renderImages(images: ImageDetails[], gridId: string) {
       });
       openFolderBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        const dir = img.current_filepath.replace(/[\\/][^\\/]+$/, "");
+        const dir = img.filepath.replace(/[\\/][^\\/]+$/, "");
         invoke("open_file_externally", { path: dir }).catch((err) => {
           console.error("Failed to open folder:", err);
         });
@@ -1414,7 +1462,7 @@ function renderImages(images: ImageDetails[], gridId: string) {
       copyBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
         try {
-          const bytes: number[] = await invoke("read_image_bytes", { path: img.current_filepath });
+          const bytes: number[] = await invoke("read_image_bytes", { path: img.filepath });
           const uint8 = new Uint8Array(bytes);
           const blob = await imageBytesToPngBlob(uint8);
           await navigator.clipboard.write([
@@ -1436,11 +1484,11 @@ function renderImages(images: ImageDetails[], gridId: string) {
     if (previewDiv) {
       previewDiv.addEventListener("click", () => {
         if (getImageClickAction() === "external") {
-          invoke("open_file_externally", { path: img.current_filepath }).catch((err) => {
+          invoke("open_file_externally", { path: img.filepath }).catch((err) => {
             console.error("Failed to open file externally:", err);
           });
         } else {
-          openImageViewer(img.current_filepath);
+          openImageViewer(img.filepath);
         }
       });
     }
@@ -1505,88 +1553,6 @@ async function handleModalAutoTag() {
     autoTagBtn.style.backgroundColor = "";
     overwriteTargetId = null;
   }
-}
-
-function renderSearchResults(matches: SearchMatch[]) {
-  const grid = document.getElementById("search-results-grid");
-  if (!grid) return;
-  grid.innerHTML = "";
-
-  if (matches.length === 0) {
-    grid.innerHTML = "<p style='color: #64748b; font-style: italic;'>No matching results found.</p>";
-    return;
-  }
-
-  matches.forEach((m) => {
-    const card = document.createElement("div");
-    card.className = "image-card";
-    card.dataset.imageId = m.id.toString();
-    const srcUrl = convertFileSrc(m.filepath);
-
-    const displayTags = m.tags.slice(0, 10);
-    const extraCount = m.tags.length - 10;
-    const tagHtml = displayTags.map(t => getTagPillHtml(t)).join("") +
-                    (extraCount > 0 ? `<span class="tag-pill" style="background-color: #f0f0f0; color: #555555; font-style: italic;">+${extraCount} more</span>` : "");
-
-    const badgeBg = m.match_type === "exact"
-      ? "#dff6dd" // Green
-      : m.match_type === "perceptual"
-      ? "#deecf9" // Light Blue
-      : "#f3f2f1"; // Gray
-    const badgeColor = m.match_type === "exact"
-      ? "#107c41"
-      : m.match_type === "perceptual"
-      ? "#005a9e"
-      : "#323130";
-    const badgeBorder = m.match_type === "exact"
-      ? "#107c41"
-      : m.match_type === "perceptual"
-      ? "#005a9e"
-      : "#8a8886";
-
-    const scoreBadgeText = m.match_type === "exact"
-      ? "Exact Match"
-      : m.match_type === "perceptual"
-      ? `Perceptual (d=${m.hamming_distance})`
-      : `Score: ${m.score.toFixed(4)}`;
-
-    card.innerHTML = `
-      <div class="image-preview">
-        <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
-        <span style="display: none;"><i class="bi bi-image"></i></span>
-        <div class="vector-badge" style="background-color: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor};">${scoreBadgeText}</div>
-      </div>
-      <div class="image-info">
-        <div class="image-path" title="${m.filepath}">${maskPath(m.filepath)}</div>
-        <div class="tag-list">
-          ${tagHtml}
-        </div>
-        <div style="display: flex; gap: 4px; margin-top: auto; width: 100%;">
-          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.openTags(${m.id}, '${m.filepath.replace(/\\/g, '\\\\')}')">
-            <i class="bi bi-tag"></i> Tags
-          </button>
-          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.findSimilar('${m.filepath.replace(/\\/g, '\\\\')}')">
-            <i class="bi bi-search"></i> Similar
-          </button>
-        </div>
-      </div>
-    `;
-
-    const previewDiv = card.querySelector(".image-preview");
-    if (previewDiv) {
-      previewDiv.addEventListener("click", () => {
-        if (getImageClickAction() === "external") {
-          invoke("open_file_externally", { path: m.filepath }).catch((err) => {
-            console.error("Failed to open file externally:", err);
-          });
-        } else {
-          openImageViewer(m.filepath);
-        }
-      });
-    }
-
-    grid.appendChild(card);
-  });
 }
 
 // Expose tag management globally for inline onclick handlers
