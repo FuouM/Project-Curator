@@ -53,3 +53,11 @@ pub struct ImageVector {
     pub vector_state: String,
     pub created_at: NaiveDateTime,
 }
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Folder {
+    pub id: i64,
+    pub path: String,
+    pub name: String,
+    pub imported_at: NaiveDateTime,
+}

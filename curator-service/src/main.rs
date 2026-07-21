@@ -2,8 +2,8 @@ use anyhow::{Context, Error};
 use clap::Parser;
 use curator_core::db::init_db;
 use curator_core::ipc::{
-    DevicePreference, EmbeddingModel, ImageDetails, Request, Response, SearchMatch, TagStat,
-    TagSummary,
+    DevicePreference, EmbeddingModel, FolderDetails, ImageDetails, Request, Response, SearchMatch,
+    TagStat, TagSummary,
 };
 use curator_core::tagger::TaggerEngine;
 use curator_core::vector::{ModelManager, VectorIndex};
@@ -916,6 +916,22 @@ async fn handle_request(
                 latest_images,
             }
         }
+
+        Request::GetImportedFolders => match get_imported_folders_logic(db).await {
+            Ok(folders) => Response::ImportedFoldersResult { folders },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
+        Request::BackfillImageFolders => match backfill_image_folders(db).await {
+            Ok(count) => Response::BackfillResult {
+                images_backfilled: count,
+            },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
     }
 }
 
@@ -1118,6 +1134,95 @@ async fn query_status(
     Ok((images.0, vectors.0, pending.0, preprocessing.0))
 }
 
+async fn get_imported_folders_logic(db: &SqlitePool) -> Result<Vec<FolderDetails>, Error> {
+    #[derive(Debug, sqlx::FromRow)]
+    struct FolderRow {
+        id: i64,
+        path: String,
+        name: String,
+        imported_at: String,
+        image_count: i64,
+        vector_ready: i64,
+        vector_pending: i64,
+    }
+
+    let rows: Vec<FolderRow> = sqlx::query_as(
+        r#"
+        SELECT
+            f.id,
+            f.path,
+            f.name,
+            f.imported_at,
+            COUNT(i.id) as image_count,
+            COALESCE(SUM(CASE WHEN iv.vector_state = 'ready' THEN 1 ELSE 0 END), 0) as vector_ready,
+            COALESCE(SUM(CASE WHEN iv.vector_state IN ('pending', 'preprocessing') THEN 1 ELSE 0 END), 0) as vector_pending
+        FROM folders f
+        LEFT JOIN images i ON i.folder_id = f.id AND i.deleted_at IS NULL
+        LEFT JOIN image_vectors iv ON iv.image_id = i.id
+        GROUP BY f.id
+        ORDER BY f.imported_at DESC
+        "#,
+    )
+    .fetch_all(db)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| FolderDetails {
+            id: r.id,
+            path: r.path,
+            name: r.name,
+            imported_at: r.imported_at,
+            image_count: r.image_count,
+            vector_ready: r.vector_ready,
+            vector_pending: r.vector_pending,
+        })
+        .collect())
+}
+
+/// Backfill existing images that don't have a folder_id by assigning them
+/// to their parent directory folder.
+async fn backfill_image_folders(db: &SqlitePool) -> Result<i64, Error> {
+    #[derive(Debug, sqlx::FromRow)]
+    struct ImageRow {
+        id: i64,
+        current_filepath: String,
+    }
+
+    let images: Vec<ImageRow> = sqlx::query_as(
+        "SELECT id, current_filepath FROM images WHERE folder_id IS NULL AND deleted_at IS NULL",
+    )
+    .fetch_all(db)
+    .await?;
+
+    let mut backfilled: i64 = 0;
+
+    for img in images {
+        let path = Path::new(&img.current_filepath);
+        let parent_dir = match path.parent() {
+            Some(p) => p.to_str().unwrap_or(""),
+            None => continue,
+        };
+
+        if parent_dir.is_empty() {
+            continue;
+        }
+
+        let folder_id = get_or_create_folder(parent_dir, db).await?;
+
+        sqlx::query("UPDATE images SET folder_id = ? WHERE id = ?")
+            .bind(folder_id)
+            .bind(img.id)
+            .execute(db)
+            .await?;
+
+        backfilled += 1;
+    }
+
+    info!("Backfilled {} images with folder assignments", backfilled);
+    Ok(backfilled)
+}
+
 async fn import_image_logic(
     path_str: &str,
     db: &SqlitePool,
@@ -1132,6 +1237,9 @@ async fn import_image_logic(
     }
 
     if path.is_dir() {
+        // Track the imported folder
+        let folder_id = get_or_create_folder(path_str, db).await?;
+
         let mut paths_to_process = vec![path.to_path_buf()];
         let mut image_paths = Vec::new();
 
@@ -1168,7 +1276,7 @@ async fn import_image_logic(
 
         for img_path in image_paths {
             if let Some(p_str) = img_path.to_str() {
-                match import_single_image(p_str, db, active).await {
+                match import_single_image(p_str, db, active, Some(folder_id)).await {
                     Ok((id, sha)) => {
                         if !imported_any {
                             first_id = id;
@@ -1192,14 +1300,52 @@ async fn import_image_logic(
             ))
         }
     } else {
-        import_single_image(path_str, db, active).await
+        // For single file import, track the parent folder
+        let parent_dir = path
+            .parent()
+            .and_then(|p| p.to_str())
+            .unwrap_or(path_str);
+        let folder_id = get_or_create_folder(parent_dir, db).await?;
+        import_single_image(path_str, db, active, Some(folder_id)).await
     }
+}
+
+/// Get or create a folder record, returning its ID.
+async fn get_or_create_folder(folder_path: &str, db: &SqlitePool) -> Result<i64, Error> {
+    // Try to find existing folder
+    let existing: Option<(i64,)> = sqlx::query_as("SELECT id FROM folders WHERE path = ? LIMIT 1")
+        .bind(folder_path)
+        .fetch_optional(db)
+        .await?;
+
+    if let Some((id,)) = existing {
+        return Ok(id);
+    }
+
+    // Extract folder name from path
+    let folder_name = Path::new(folder_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(folder_path)
+        .to_string();
+
+    // Insert new folder
+    let id = sqlx::query("INSERT INTO folders (path, name) VALUES (?, ?)")
+        .bind(folder_path)
+        .bind(&folder_name)
+        .execute(db)
+        .await?
+        .last_insert_rowid();
+
+    info!("Created folder record: {} (id={})", folder_name, id);
+    Ok(id)
 }
 
 async fn import_single_image(
     path_str: &str,
     db: &SqlitePool,
     active: EmbeddingModel,
+    folder_id: Option<i64>,
 ) -> Result<(i64, String), Error> {
     let path = Path::new(path_str);
     if !path.exists() {
@@ -1259,12 +1405,13 @@ async fn import_single_image(
     }
 
     let id = sqlx::query(
-        "INSERT INTO images (sha256, phash, current_filepath, mtime) VALUES (?, ?, ?, ?)",
+        "INSERT INTO images (sha256, phash, current_filepath, mtime, folder_id) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&sha256)
     .bind(&phash)
     .bind(path_str)
     .bind(mtime)
+    .bind(folder_id)
     .execute(db)
     .await?
     .last_insert_rowid();

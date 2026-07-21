@@ -38,6 +38,9 @@
               <li class="nav-item" data-view="tagstats">
                 <span><i class="bi bi-tags"></i></span> Tag Statistics
               </li>
+              <li class="nav-item" data-view="folders">
+                <span><i class="bi bi-folder2-open"></i></span> Imported Folders
+              </li>
             </ul>
           </li>
           <li class="tree-node" style="margin-top: 10px;">
@@ -179,6 +182,16 @@
             <div class="group-box-title">Tags by Category</div>
             <div id="tagstats-content" style="display: flex; flex-direction: column; gap: 16px;">
               <p style="color: #666; font-style: italic;">Loading tag statistics...</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- IMPORTED FOLDERS VIEW -->
+        <section class="view-section" id="view-folders">
+          <div class="group-box">
+            <div class="group-box-title">Imported Folders</div>
+            <div id="folders-content">
+              <p style="color: #666; font-style: italic;">Loading folders...</p>
             </div>
           </div>
         </section>
@@ -508,6 +521,19 @@
 
             <div style="background-color: #e8f5e9; border: 1px solid #a5d6a7; padding: 8px; border-radius: 2px; color: #2e7d32; font-size: 11px;">
               <strong>Note:</strong> Device changes take effect immediately. Models are automatically unloaded after the idle timeout, then reloaded on the next inference call.
+            </div>
+          </div>
+
+          <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+            <div class="group-box-title">Folder Management</div>
+            <p style="font-size: 11px; color: #333333;">
+              Assign existing images to their parent folders. This is useful if you have images imported before folder tracking was enabled.
+            </p>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button class="win-button" id="backfill-folders-btn">
+                <i class="bi bi-folder-fill"></i> Backfill Image Folders
+              </button>
+              <span id="backfill-status-msg" style="font-size: 11px; min-height: 16px;"></span>
             </div>
           </div>
         </section>

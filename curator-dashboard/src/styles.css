@@ -1044,3 +1044,40 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   min-width: 30px;
   text-align: right;
 }
+
+/* --- Imported Folders Table --- */
+.folders-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.folders-table thead {
+  background-color: var(--sys-control-bg, #ececec);
+  border-bottom: 1px solid var(--sys-border-dark, #b0b0b0);
+}
+.folders-table th {
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 11px;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.folders-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e8e8e8;
+  vertical-align: middle;
+}
+.folders-row {
+  transition: background-color 0.15s;
+}
+.folders-row:hover {
+  background-color: var(--sys-button-hover, #e5f1fb);
+}
+.folders-row:nth-child(even) {
+  background-color: #fafafa;
+}
+.folders-row:nth-child(even):hover {
+  background-color: var(--sys-button-hover, #e5f1fb);
+}

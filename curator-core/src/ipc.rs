@@ -103,6 +103,10 @@ pub enum Request {
     /// Batch call for dashboard init: returns status, tagger status, settings,
     /// and initial image lists all at once to minimize IPC round-trips.
     GetDashboardInit,
+    /// Get all imported folders with their statistics.
+    GetImportedFolders,
+    /// Backfill existing images with their parent folder assignments.
+    BackfillImageFolders,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -197,6 +201,14 @@ pub enum Response {
         featured_images: Vec<ImageDetails>,
         latest_images: Vec<ImageDetails>,
     },
+    /// Imported folders with their statistics.
+    ImportedFoldersResult {
+        folders: Vec<FolderDetails>,
+    },
+    /// Result of backfilling image folder assignments.
+    BackfillResult {
+        images_backfilled: i64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -234,4 +246,16 @@ pub struct TagSummary {
     pub tag: String,
     pub category: String,
     pub confidence: f32,
+}
+
+/// Folder details with statistics for the Imported Folders tab.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderDetails {
+    pub id: i64,
+    pub path: String,
+    pub name: String,
+    pub imported_at: String,
+    pub image_count: i64,
+    pub vector_ready: i64,
+    pub vector_pending: i64,
 }
