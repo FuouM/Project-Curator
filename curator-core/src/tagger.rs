@@ -11,7 +11,7 @@ use crate::vector::apply_device_preference;
 use ndarray::Array4;
 use ort::{inputs, session::Session, value::TensorRef};
 use serde::Deserialize;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 // ---------------------------------------------------------------------------
 // Metadata structures (mirrors camie-tagger-v2-metadata.json)
@@ -149,9 +149,9 @@ impl TaggerEngine {
         Ok(())
     }
 
-    pub fn tag_image(
+    fn tag_image_inner(
         &self,
-        image_path: impl AsRef<Path>,
+        image_path: &Path,
         threshold: f32,
     ) -> Result<Vec<TagPrediction>> {
         let t_total = Instant::now();
@@ -173,15 +173,15 @@ impl TaggerEngine {
         // Pre-process image
         let t1 = Instant::now();
         let mut resizer_guard = inner.resizer.lock().unwrap();
-        let tensor = preprocess_image(image_path.as_ref(), inner.img_size, &mut resizer_guard)
-            .with_context(|| format!("Preprocessing {:?}", image_path.as_ref()))?;
+        let tensor = preprocess_image(image_path, inner.img_size, &mut resizer_guard)
+            .with_context(|| format!("Preprocessing {:?}", image_path))?;
         drop(resizer_guard);
         let preprocess_ms = t1.elapsed().as_secs_f64() * 1000.0;
 
         // Run inference
         let t2 = Instant::now();
 
-        debug!("Running Camie Tagger inference on {:?}", image_path.as_ref());
+        debug!("Running Camie Tagger inference on {:?}", image_path);
         
         let mut session_guard = inner.session.lock().unwrap();
         let outputs = session_guard
@@ -248,10 +248,32 @@ impl TaggerEngine {
             "Camie Tagger timing: load={:.1}ms preprocess={:.1}ms inference={:.1}ms postprocess={:.1}ms total={:.1}ms | {} predictions for {:?}",
             load_ms, preprocess_ms, inference_ms, postprocess_ms, total_ms,
             predictions.len(),
-            image_path.as_ref()
+            image_path
         );
 
         Ok(predictions)
+    }
+
+    pub fn tag_image(
+        &self,
+        image_path: impl AsRef<Path>,
+        threshold: f32,
+    ) -> Result<Vec<TagPrediction>> {
+        let path = image_path.as_ref();
+        let res = self.tag_image_inner(path, threshold);
+        if res.is_err() {
+            let is_gpu = {
+                let d = self.device.lock().unwrap();
+                *d != DevicePreference::Cpu
+            };
+            if is_gpu {
+                let err = res.unwrap_err();
+                warn!("Camie Tagger inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...", err);
+                self.set_device(DevicePreference::Cpu);
+                return self.tag_image_inner(path, threshold);
+            }
+        }
+        res
     }
 
     // -----------------------------------------------------------------------

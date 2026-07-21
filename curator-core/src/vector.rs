@@ -369,7 +369,7 @@ impl ModelManager {
         Ok(())
     }
 
-    pub fn generate_image_embedding<P: AsRef<Path>>(&self, image_path: P) -> Result<Vec<f32>, Error> {
+    fn generate_image_embedding_inner(&self, image_path: &Path) -> Result<Vec<f32>, Error> {
         self.ensure_loaded()?;
         self.last_used.store(now_secs(), Ordering::Relaxed);
         let mut session_guard = self.vision_session.lock()
@@ -377,7 +377,7 @@ impl ModelManager {
         let _session = session_guard.as_mut().context("Vision model not initialized")?;
         
         // 1. Decode image — turbojpeg for JPEG, png+zlib-rs for PNG, image crate for others
-        let img_ref = image_path.as_ref();
+        let img_ref = image_path;
         let data = std::fs::read(img_ref)?;
         let is_jpeg = data.len() >= 2 && data[0] == 0xFF && data[1] == 0xD8;
         let is_png = data.len() >= 8
@@ -505,6 +505,24 @@ impl ModelManager {
         Ok(embedding)
     }
 
+    pub fn generate_image_embedding<P: AsRef<Path>>(&self, image_path: P) -> Result<Vec<f32>, Error> {
+        let path = image_path.as_ref();
+        let res = self.generate_image_embedding_inner(path);
+        if res.is_err() {
+            let is_gpu = {
+                let d = self.device.lock().unwrap();
+                *d != DevicePreference::Cpu
+            };
+            if is_gpu {
+                let err = res.unwrap_err();
+                warn!("ONNX vision inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...", err);
+                self.set_device(DevicePreference::Cpu);
+                return self.generate_image_embedding_inner(path);
+            }
+        }
+        res
+    }
+
     pub fn preprocess_image_batch<P: AsRef<Path>>(&self, image_paths: &[P]) -> Result<Vec<Result<Vec<u8>, Error>>, Error> {
         let active = self.active_model();
         let target_size = match active {
@@ -603,7 +621,7 @@ impl ModelManager {
         Ok(preprocessed)
     }
 
-    pub fn run_inference_on_preprocessed_batch(&self, preprocessed: &[Result<Vec<u8>, Error>]) -> Result<Vec<Result<Vec<f32>, Error>>, Error> {
+    fn run_inference_on_preprocessed_batch_inner(&self, preprocessed: &[Result<Vec<u8>, Error>]) -> Result<Vec<Result<Vec<f32>, Error>>, Error> {
         self.ensure_loaded()?;
         self.last_used.store(now_secs(), Ordering::Relaxed);
         let mut session_guard = self.vision_session.lock()
@@ -705,12 +723,29 @@ impl ModelManager {
         Ok(results)
     }
 
+    pub fn run_inference_on_preprocessed_batch(&self, preprocessed: &[Result<Vec<u8>, Error>]) -> Result<Vec<Result<Vec<f32>, Error>>, Error> {
+        let res = self.run_inference_on_preprocessed_batch_inner(preprocessed);
+        if res.is_err() {
+            let is_gpu = {
+                let d = self.device.lock().unwrap();
+                *d != DevicePreference::Cpu
+            };
+            if is_gpu {
+                let err = res.unwrap_err();
+                warn!("ONNX vision batch inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...", err);
+                self.set_device(DevicePreference::Cpu);
+                return self.run_inference_on_preprocessed_batch_inner(preprocessed);
+            }
+        }
+        res
+    }
+
     pub fn generate_image_embeddings<P: AsRef<Path>>(&self, image_paths: &[P]) -> Result<Vec<Result<Vec<f32>, Error>>, Error> {
         let preprocessed = self.preprocess_image_batch(image_paths)?;
         self.run_inference_on_preprocessed_batch(&preprocessed)
     }
 
-    pub fn generate_text_embedding(&self, text: &str) -> Result<Vec<f32>, Error> {
+    fn generate_text_embedding_inner(&self, text: &str) -> Result<Vec<f32>, Error> {
         self.ensure_loaded()?;
         self.last_used.store(now_secs(), Ordering::Relaxed);
         let mut session_guard = self.text_session.lock()
@@ -723,9 +758,23 @@ impl ModelManager {
             .map_err(|e| anyhow::anyhow!("Tokenization failed: {:?}", e))?;
         
         let input_ids = encoding.get_ids();
-        let seq_len = input_ids.len();
+        
+        // Pad or truncate to exactly 77 tokens (CLIP standard) to prevent dynamic shape errors in DirectML
+        let mut padded_ids = vec![0i64; 77];
+        let copy_len = input_ids.len().min(77);
+        for i in 0..copy_len {
+            padded_ids[i] = input_ids[i] as i64;
+        }
+        let eos_token = if input_ids.is_empty() {
+            0
+        } else {
+            input_ids[input_ids.len() - 1] as i64
+        };
+        for i in copy_len..77 {
+            padded_ids[i] = eos_token;
+        }
 
-        let input_ids_array = Array2::<i64>::from_shape_fn((1, seq_len), |(_, j)| input_ids[j] as i64);
+        let input_ids_array = Array2::<i64>::from_shape_fn((1, 77), |(_, j)| padded_ids[j]);
 
         let session = session_guard.as_mut().context("Text model not initialized")?;
         let outputs = session.run(inputs![
@@ -747,6 +796,23 @@ impl ModelManager {
         }
 
         Ok(embedding)
+    }
+
+    pub fn generate_text_embedding(&self, text: &str) -> Result<Vec<f32>, Error> {
+        let res = self.generate_text_embedding_inner(text);
+        if res.is_err() {
+            let is_gpu = {
+                let d = self.device.lock().unwrap();
+                *d != DevicePreference::Cpu
+            };
+            if is_gpu {
+                let err = res.unwrap_err();
+                warn!("ONNX text inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...", err);
+                self.set_device(DevicePreference::Cpu);
+                return self.generate_text_embedding_inner(text);
+            }
+        }
+        res
     }
 }
 

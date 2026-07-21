@@ -159,7 +159,7 @@ async fn main() -> Result<(), Error> {
             tag_filter: tag,
             limit,
         },
-        Commands::List { limit, offset } => Request::ListImages { limit, offset },
+        Commands::List { limit, offset } => Request::ListImages { limit, offset, only_favorites: None },
         Commands::Show { image_id } => Request::GetImage { image_id },
         Commands::ValidatePlugin { manifest_path } => {
             Request::ValidatePlugin { manifest_path }
@@ -426,6 +426,9 @@ async fn main() -> Result<(), Error> {
         }
         Response::TagStatisticsResult { .. } => {
             println!("Tag statistics retrieved.");
+        }
+        Response::DashboardInitResult { .. } => {
+            println!("Dashboard init result received.");
         }
     }
 
