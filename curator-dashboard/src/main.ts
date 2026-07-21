@@ -82,7 +82,8 @@ type RequestPayload =
   | { AddTag: { image_id: number; tag: string; category: string } }
   | { RemoveTag: { image_id: number; tag: string } }
   | { Search: { query_text: string | null; query_image_path: string | null; tag_filter: string | null; limit: number } }
-  | { ListImages: { limit: number; offset: number } }
+  | { ListImages: { limit: number; offset: number; only_favorites?: boolean | null } }
+  | { SetFavorite: { image_id: number; favorite: boolean } }
   | { GetImage: { image_id: number } }
   | { ValidatePlugin: { manifest_path: string } }
   | { TagImage: { image_id: number; threshold: number | null; force: boolean | null } }
@@ -112,6 +113,7 @@ interface ImageDetails {
   created_at: string;
   tags: TagSummary[];
   vector_state: string;
+  favorite: boolean;
 }
 
 interface TagSummary {
@@ -166,6 +168,8 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
     formattedReq = { Search: request.Search };
   } else if ("ListImages" in request) {
     formattedReq = { ListImages: request.ListImages };
+  } else if ("SetFavorite" in request) {
+    formattedReq = { SetFavorite: request.SetFavorite };
   } else if ("GetImage" in request) {
     formattedReq = { GetImage: request.GetImage };
   } else if ("ValidatePlugin" in request) {
@@ -343,6 +347,7 @@ function setupNavigation() {
   const subtitles: Record<string, { title: string; sub: string }> = {
     dashboard: { title: "Dashboard", sub: "Overview of your local vector store and image library." },
     gallery: { title: "Gallery", sub: "Browse all your imported digital images." },
+    favorites: { title: "Favorites", sub: "Browse your favorited images." },
     import: { title: "Import Images", sub: "Register and index new images locally." },
     search: { title: "Semantic Search", sub: "Perform neural and tag-based image retrieval." },
     plugins: { title: "Plugins", sub: "Verify and manage sandboxed plugin modules." },
@@ -382,6 +387,8 @@ function setupNavigation() {
         refreshDashboard();
       } else if (view === "gallery") {
         refreshGallery();
+      } else if (view === "favorites") {
+        refreshFavorites();
       } else if (view === "logs") {
         refreshLogs();
       } else if (view === "tagstats") {
@@ -403,6 +410,19 @@ function setupNavigation() {
   document.getElementById("gallery-next-btn")?.addEventListener("click", () => {
     galleryPage++;
     refreshGallery();
+  });
+
+  // Favorites Pagination Setup
+  document.getElementById("favorites-prev-btn")?.addEventListener("click", () => {
+    if (favoritesPage > 0) {
+      favoritesPage--;
+      refreshFavorites();
+    }
+  });
+
+  document.getElementById("favorites-next-btn")?.addEventListener("click", () => {
+    favoritesPage++;
+    refreshFavorites();
   });
 
   // Logs buttons setup
@@ -752,6 +772,9 @@ function renderFeaturedDay(featured: ImageDetails) {
   container.innerHTML = `
     <div class="featured-layout">
       <div class="image-card featured-card" data-image-id="${featured.id}">
+        <div class="star-btn ${featured.favorite ? 'favorite' : ''}" data-id="${featured.id}">
+          <i class="bi ${featured.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
+        </div>
         <div class="image-preview featured-preview">
           <img src="${srcUrl}" alt="Featured Image" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
           <span style="display: none;"><i class="bi bi-image"></i></span>
@@ -776,6 +799,43 @@ function renderFeaturedDay(featured: ImageDetails) {
       </div>
     </div>
   `;
+
+  const starBtn = container.querySelector(".star-btn");
+  if (starBtn) {
+    starBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const newFav = !starBtn.classList.contains("favorite");
+      try {
+        const resp = await callService({ SetFavorite: { image_id: featured.id, favorite: newFav } });
+        if ("Success" in resp) {
+          featured.favorite = newFav;
+          if (newFav) {
+            starBtn.classList.add("favorite");
+            starBtn.querySelector("i")?.setAttribute("class", "bi bi-star-fill");
+          } else {
+            starBtn.classList.remove("favorite");
+            starBtn.querySelector("i")?.setAttribute("class", "bi bi-star");
+          }
+          // Sync with any other matching cards on the page (e.g. in latest imports list)
+          document.querySelectorAll(`[data-image-id="${featured.id}"] .star-btn`).forEach(btn => {
+            if (newFav) {
+              btn.classList.add("favorite");
+              btn.querySelector("i")?.setAttribute("class", "bi bi-star-fill");
+            } else {
+              btn.classList.remove("favorite");
+              btn.querySelector("i")?.setAttribute("class", "bi bi-star");
+            }
+          });
+          const activeNav = document.querySelector(".nav-item.active");
+          if (activeNav && activeNav.getAttribute("data-view") === "favorites" && !newFav) {
+            refreshFavorites();
+          }
+        }
+      } catch (err) {
+        console.error("Failed to update favorite status:", err);
+      }
+    });
+  }
 
   const previewDiv = container.querySelector(".featured-preview");
   if (previewDiv) {
@@ -964,6 +1024,35 @@ async function refreshGallery() {
   }
 }
 
+let favoritesPage = 0;
+
+async function refreshFavorites() {
+  try {
+    const resp = await callService({ ListImages: { limit: IMAGES_PER_PAGE, offset: favoritesPage * IMAGES_PER_PAGE, only_favorites: true } });
+    if ("ListResult" in resp) {
+      const images = resp.ListResult.images;
+      renderImages(images, "favorites-grid");
+      
+      const indicator = document.getElementById("favorites-page-indicator");
+      if (indicator) {
+        indicator.textContent = `Page ${favoritesPage + 1}`;
+      }
+      
+      const prevBtn = document.getElementById("favorites-prev-btn") as HTMLButtonElement;
+      if (prevBtn) {
+        prevBtn.disabled = favoritesPage === 0;
+      }
+      
+      const nextBtn = document.getElementById("favorites-next-btn") as HTMLButtonElement;
+      if (nextBtn) {
+        nextBtn.disabled = images.length < IMAGES_PER_PAGE;
+      }
+    }
+  } catch (e) {
+    console.error("Failed to refresh favorites: ", e);
+  }
+}
+
 // Track double-click confirmation states for auto-tag overwrite
 let overwriteTargetId: number | null = null;
 
@@ -1059,6 +1148,9 @@ function renderImages(images: ImageDetails[], gridId: string) {
                     (extraCount > 0 ? `<span class="tag-pill" style="background-color: #f0f0f0; color: #555555; font-style: italic;">+${extraCount} more</span>` : "");
 
     card.innerHTML = `
+      <div class="star-btn ${img.favorite ? 'favorite' : ''}" data-id="${img.id}">
+        <i class="bi ${img.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
+      </div>
       <div class="image-preview">
         <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
@@ -1079,6 +1171,33 @@ function renderImages(images: ImageDetails[], gridId: string) {
         </div>
       </div>
     `;
+
+    const starBtn = card.querySelector(".star-btn");
+    if (starBtn) {
+      starBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const newFav = !starBtn.classList.contains("favorite");
+        try {
+          const resp = await callService({ SetFavorite: { image_id: img.id, favorite: newFav } });
+          if ("Success" in resp) {
+            img.favorite = newFav;
+            if (newFav) {
+              starBtn.classList.add("favorite");
+              starBtn.querySelector("i")?.setAttribute("class", "bi bi-star-fill");
+            } else {
+              starBtn.classList.remove("favorite");
+              starBtn.querySelector("i")?.setAttribute("class", "bi bi-star");
+            }
+            const activeNav = document.querySelector(".nav-item.active");
+            if (activeNav && activeNav.getAttribute("data-view") === "favorites" && !newFav) {
+              refreshFavorites();
+            }
+          }
+        } catch (err) {
+          console.error("Failed to update favorite status:", err);
+        }
+      });
+    }
 
     const previewDiv = card.querySelector(".image-preview");
     if (previewDiv) {
@@ -1647,6 +1766,26 @@ function setupSettings() {
   if (pathFoldersInput) {
     pathFoldersInput.addEventListener("change", () => {
       localStorage.setItem("curator-path-vis-folders", pathFoldersInput.value);
+    });
+  }
+
+  // Favorite button visibility setting (localStorage)
+  const favAlwaysShowCheckbox = document.getElementById("settings-favorite-always-show") as HTMLInputElement;
+  if (favAlwaysShowCheckbox) {
+    const savedFavShow = localStorage.getItem("curator-fav-always-show") !== "false";
+    favAlwaysShowCheckbox.checked = savedFavShow;
+    if (!savedFavShow) {
+      document.body.classList.add("hide-favorite-btn");
+    } else {
+      document.body.classList.remove("hide-favorite-btn");
+    }
+    favAlwaysShowCheckbox.addEventListener("change", () => {
+      localStorage.setItem("curator-fav-always-show", favAlwaysShowCheckbox.checked.toString());
+      if (!favAlwaysShowCheckbox.checked) {
+        document.body.classList.add("hide-favorite-btn");
+      } else {
+        document.body.classList.remove("hide-favorite-btn");
+      }
     });
   }
 

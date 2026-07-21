@@ -20,6 +20,7 @@ pub struct Image {
     pub mtime: i64,
     pub created_at: NaiveDateTime,
     pub deleted_at: Option<NaiveDateTime>,
+    pub favorite: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]

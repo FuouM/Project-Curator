@@ -416,6 +416,44 @@ body {
   flex-direction: column;
   position: relative;
 }
+/* Favorite Star Button */
+.star-btn {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #dcdcdc;
+  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s, background-color 0.2s, color 0.2s;
+  color: #a0aec0;
+}
+.image-card:hover .star-btn {
+  opacity: 1;
+}
+.star-btn.favorite {
+  opacity: 1;
+  color: #ecc94b; /* Gold/yellow star */
+  background: rgba(255, 255, 255, 0.95);
+  border-color: #ecc94b;
+}
+body.hide-favorite-btn .star-btn.favorite {
+  opacity: 0;
+}
+body.hide-favorite-btn .image-card:hover .star-btn.favorite {
+  opacity: 1;
+}
+.star-btn:hover {
+  background: #ffffff;
+  color: #ecc94b;
+}
 .image-preview {
   width: 100%;
   height: 130px;

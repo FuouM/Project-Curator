@@ -62,6 +62,12 @@ pub enum Request {
     ListImages {
         limit: usize,
         offset: usize,
+        #[serde(default)]
+        only_favorites: Option<bool>,
+    },
+    SetFavorite {
+        image_id: i64,
+        favorite: bool,
     },
     ValidatePlugin {
         manifest_path: String,
@@ -229,6 +235,7 @@ pub struct ImageDetails {
     pub created_at: String,
     pub tags: Vec<TagSummary>,
     pub vector_state: String,
+    pub favorite: bool,
 }
 
 /// A single predicted or user tag returned.

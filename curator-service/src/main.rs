@@ -467,9 +467,24 @@ async fn handle_request(
             }
         }
 
-        Request::ListImages { limit, offset } => {
-            match list_images_logic(limit, offset, db).await {
+        Request::ListImages { limit, offset, only_favorites } => {
+            match list_images_logic(limit, offset, only_favorites, db).await {
                 Ok(images) => Response::ListResult { images },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+        Request::SetFavorite { image_id, favorite } => {
+            let fav_val = if favorite { 1 } else { 0 };
+            match sqlx::query("UPDATE images SET favorite = ? WHERE id = ?")
+                .bind(fav_val)
+                .bind(image_id)
+                .execute(db)
+                .await
+            {
+                Ok(_) => Response::Success,
                 Err(e) => Response::Error {
                     message: e.to_string(),
                 },
@@ -793,7 +808,7 @@ async fn handle_request(
                         None
                     }
                 },
-                list_images_logic(8, 0, db),
+                list_images_logic(8, 0, None, db),
             );
 
             let featured_images = featured_result.into_iter().collect();
@@ -1367,22 +1382,29 @@ async fn search_logic(
 async fn list_images_logic(
     limit: usize,
     offset: usize,
+    only_favorites: Option<bool>,
     db: &SqlitePool,
 ) -> Result<Vec<ImageDetails>, Error> {
+    let only_favs = only_favorites.unwrap_or(false);
     // Single query: fetch images with their tags in one go (avoids N+1)
     // Subquery ensures LIMIT applies to distinct images, not JOINed rows
-    let rows: Vec<(i64, String, String, i64, String, Option<String>, Option<String>, Option<f32>)> =
+    let rows: Vec<(i64, String, String, i64, String, bool, Option<String>, Option<String>, Option<f32>)> =
         sqlx::query_as(
             r#"
-            SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at,
+            SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite,
                    t.name, t.category, it.confidence
-            FROM (SELECT id FROM images WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?) sub
+            FROM (
+                SELECT id FROM images 
+                WHERE deleted_at IS NULL AND (?1 = 0 OR favorite = 1)
+                ORDER BY created_at DESC LIMIT ?2 OFFSET ?3
+            ) sub
             JOIN images i ON i.id = sub.id
             LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0
             LEFT JOIN tags t ON it.tag_id = t.id
             ORDER BY i.created_at DESC
             "#,
         )
+        .bind(if only_favs { 1i64 } else { 0i64 })
         .bind(limit as i64)
         .bind(offset as i64)
         .fetch_all(db)
@@ -1390,7 +1412,7 @@ async fn list_images_logic(
 
     // Group rows by image
     let mut image_map: std::collections::HashMap<i64, ImageDetails> = std::collections::HashMap::new();
-    for (id, sha256, current_filepath, mtime, created_at, tag_name, tag_category, confidence) in rows {
+    for (id, sha256, current_filepath, mtime, created_at, favorite, tag_name, tag_category, confidence) in rows {
         let entry = image_map.entry(id).or_insert_with(|| ImageDetails {
             id,
             sha256,
@@ -1399,6 +1421,7 @@ async fn list_images_logic(
             created_at,
             tags: Vec::new(),
             vector_state: String::new(),
+            favorite,
         });
         if let (Some(name), Some(category)) = (tag_name, tag_category) {
             entry.tags.push(TagSummary {
@@ -1511,6 +1534,7 @@ async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDetails,
         created_at: img.created_at.to_string(),
         tags: sorted_tags,
         vector_state,
+        favorite: img.favorite,
     })
 }
 

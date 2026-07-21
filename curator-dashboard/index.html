@@ -32,6 +32,9 @@
               <li class="nav-item" data-view="gallery">
                 <span><i class="bi bi-image"></i></span> Gallery
               </li>
+              <li class="nav-item" data-view="favorites">
+                <span><i class="bi bi-star"></i></span> Favorites
+              </li>
               <li class="nav-item" data-view="tagstats">
                 <span><i class="bi bi-tags"></i></span> Tag Statistics
               </li>
@@ -150,6 +153,21 @@
               <button class="win-button" id="gallery-next-btn">Next ▶</button>
             </div>
             <div class="image-grid" id="gallery-grid">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </section>
+
+        <!-- FAVORITES VIEW -->
+        <section class="view-section" id="view-favorites">
+          <div class="group-box">
+            <div class="group-box-title">Favorite Images</div>
+            <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 1rem; gap: 10px;">
+              <span id="favorites-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
+              <button class="win-button" id="favorites-prev-btn" disabled>◀ Prev</button>
+              <button class="win-button" id="favorites-next-btn">Next ▶</button>
+            </div>
+            <div class="image-grid" id="favorites-grid">
               <!-- Dynamically populated -->
             </div>
           </div>
@@ -354,6 +372,12 @@
                   <input type="number" id="settings-path-folders" class="input-field" min="0" max="10" value="1" style="width: 48px; padding: 2px 4px; font-size: 12px;"> folder(s) + filename
                 </label>
               </div>
+            </div>
+            <div class="form-group" style="flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 8px;">
+              <label style="font-weight: 600; min-width: 120px;">Favorites Button Visibility:</label>
+              <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;">
+                <input type="checkbox" id="settings-favorite-always-show" checked> Always show star on favorited images
+              </label>
             </div>
           </div>
 
