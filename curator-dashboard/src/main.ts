@@ -312,31 +312,8 @@ function init() {
     if ("DashboardInitResult" in resp) {
       const d = resp.DashboardInitResult;
 
-      // Status bar
-      const dot = document.getElementById("service-dot");
-      const text = document.getElementById("service-status-text");
-      if (dot && text) { dot.classList.remove("offline"); text.textContent = "Service Online"; }
-
-      // Stats
-      const imgEl = document.getElementById("stat-images");
-      const vecEl = document.getElementById("stat-vectors");
-      const pendEl = document.getElementById("stat-pending");
-      if (imgEl) imgEl.textContent = d.image_count.toString();
-      if (vecEl) vecEl.textContent = d.vector_count.toString();
-      if (pendEl) pendEl.textContent = (d.pending_jobs + d.preprocessing_jobs).toString();
-
-      // Tagger
-      const taggerEl = document.getElementById("stat-tagger");
-      const taggerDetail = document.getElementById("stat-tagger-detail");
-      if (taggerEl) {
-        taggerEl.textContent = d.tagger_loaded ? "Active in RAM" : "Ready to load";
-        if (taggerDetail) {
-          const parts: string[] = [];
-          if (d.tagger_model_path) parts.push(maskPath(d.tagger_model_path));
-          if (d.tagger_total_tags > 0) parts.push(`${d.tagger_total_tags} tags`);
-          taggerDetail.textContent = parts.length > 0 ? parts.join(" | ") : "—";
-        }
-      }
+      updateStatusIndicators({ image_count: d.image_count, vector_count: d.vector_count, pending_jobs: d.pending_jobs, preprocessing_jobs: d.preprocessing_jobs });
+      updateTaggerIndicators({ loaded: d.tagger_loaded, model_path: d.tagger_model_path, total_tags: d.tagger_total_tags });
 
       // Settings
       applySettingsToUI({ SettingsResult: { clip_device: d.clip_device, tagger_device: d.tagger_device, idle_timeout_secs: d.idle_timeout_secs, embedding_model: d.embedding_model } });
@@ -422,31 +399,9 @@ function setupNavigation() {
     });
   });
 
-  // Gallery Pagination Setup
-  document.getElementById("gallery-prev-btn")?.addEventListener("click", () => {
-    if (galleryPage > 0) {
-      galleryPage--;
-      refreshGallery();
-    }
-  });
-
-  document.getElementById("gallery-next-btn")?.addEventListener("click", () => {
-    galleryPage++;
-    refreshGallery();
-  });
-
-  // Favorites Pagination Setup
-  document.getElementById("favorites-prev-btn")?.addEventListener("click", () => {
-    if (favoritesPage > 0) {
-      favoritesPage--;
-      refreshFavorites();
-    }
-  });
-
-  document.getElementById("favorites-next-btn")?.addEventListener("click", () => {
-    favoritesPage++;
-    refreshFavorites();
-  });
+  // Gallery & Favorites Pagination Setup
+  setupPaginationButtons("gallery-prev-btn", "gallery-next-btn", { get value() { return galleryPage; }, set value(v) { galleryPage = v; } }, refreshGallery);
+  setupPaginationButtons("favorites-prev-btn", "favorites-next-btn", { get value() { return favoritesPage; }, set value(v) { favoritesPage = v; } }, refreshFavorites);
 
   // Logs buttons setup
   document.getElementById("refresh-logs-btn")?.addEventListener("click", refreshLogs);
@@ -458,41 +413,48 @@ function setupNavigation() {
   });
 }
 
-// Poll service status and update UI indicators
-function applyStatusUpdate(resp: ResponsePayload) {
+function updateStatusIndicators(data: { image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number }) {
   const dot = document.getElementById("service-dot");
   const text = document.getElementById("service-status-text");
+  if (dot && text) { dot.classList.remove("offline"); text.textContent = "Service Online"; }
 
-  if ("StatusResult" in resp) {
-    if (dot && text) {
-      dot.classList.remove("offline");
-      text.textContent = "Service Online";
+  const imgEl = document.getElementById("stat-images");
+  const vecEl = document.getElementById("stat-vectors");
+  const pendEl = document.getElementById("stat-pending");
+  if (imgEl) imgEl.textContent = data.image_count.toString();
+  if (vecEl) vecEl.textContent = data.vector_count.toString();
+  if (pendEl) pendEl.textContent = (data.pending_jobs + data.preprocessing_jobs).toString();
+}
+
+function updateTaggerIndicators(data: { loaded: boolean; model_path: string; total_tags: number }) {
+  const taggerEl = document.getElementById("stat-tagger");
+  const taggerDetail = document.getElementById("stat-tagger-detail");
+  if (taggerEl) {
+    taggerEl.textContent = data.loaded ? "Active in RAM" : "Ready to load";
+    if (taggerDetail) {
+      const parts: string[] = [];
+      if (data.model_path) parts.push(maskPath(data.model_path));
+      if (data.total_tags > 0) parts.push(`${data.total_tags} tags`);
+      taggerDetail.textContent = parts.length > 0 ? parts.join(" | ") : "—";
     }
-    const { image_count, vector_count, pending_jobs, preprocessing_jobs } = resp.StatusResult;
-    const imgEl = document.getElementById("stat-images");
-    const vecEl = document.getElementById("stat-vectors");
-    const pendEl = document.getElementById("stat-pending");
-    if (imgEl) imgEl.textContent = image_count.toString();
-    if (vecEl) vecEl.textContent = vector_count.toString();
-    if (pendEl) pendEl.textContent = (pending_jobs + preprocessing_jobs).toString();
+  }
+}
+
+// Poll service status and update UI indicators
+function applyStatusUpdate(resp: ResponsePayload) {
+  if ("StatusResult" in resp) {
+    updateStatusIndicators(resp.StatusResult);
   } else if ("Error" in resp) {
     logJS("Status poll returned Error: " + resp.Error.message);
+    const dot = document.getElementById("service-dot");
+    const text = document.getElementById("service-status-text");
     if (dot && text) { dot.classList.add("offline"); text.textContent = "Service Error"; }
   }
 }
 
 function applyTaggerUpdate(resp: ResponsePayload) {
-  const taggerEl = document.getElementById("stat-tagger");
-  const taggerDetail = document.getElementById("stat-tagger-detail");
-  if (taggerEl && "TaggerStatusResult" in resp) {
-    const { loaded, model_path, total_tags } = resp.TaggerStatusResult;
-    taggerEl.textContent = loaded ? "Active in RAM" : "Ready to load";
-    if (taggerDetail) {
-      const parts: string[] = [];
-      if (model_path) parts.push(maskPath(model_path));
-      if (total_tags > 0) parts.push(`${total_tags} tags`);
-      taggerDetail.textContent = parts.length > 0 ? parts.join(" | ") : "—";
-    }
+  if ("TaggerStatusResult" in resp) {
+    updateTaggerIndicators(resp.TaggerStatusResult);
   }
 }
 
@@ -524,52 +486,29 @@ function setupForms() {
   const importMsg = document.getElementById("import-status-msg");
 
   // File & Folder Picker Browse buttons
-  document.getElementById("browse-file-btn")?.addEventListener("click", async () => {
-    try {
-      const selected: string | null = await invoke("select_path", { isDirectory: false });
-      if (selected && importInput) {
-        importInput.value = selected;
-        importInput.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    } catch (err) {
-      console.error("File dialog error: ", err);
-    }
-  });
-
-  document.getElementById("browse-folder-btn")?.addEventListener("click", async () => {
-    try {
-      const selected: string | null = await invoke("select_path", { isDirectory: true });
-      if (selected && importInput) {
-        importInput.value = selected;
-        importInput.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    } catch (err) {
-      console.error("Folder dialog error: ", err);
-    }
-  });
+  if (importInput) {
+    setupBrowseButton("browse-file-btn", importInput, false);
+    setupBrowseButton("browse-folder-btn", importInput, true);
+  }
 
   importForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!importInput || !importMsg) return;
 
-    importMsg.textContent = "Importing image...";
-    importMsg.style.color = "#fbbf24";
+    setStatusMessage(importMsg, "Importing image...", "loading");
 
     try {
       const resp = await callService({ ImportImage: { path: importInput.value } });
       if ("ImportResult" in resp) {
-        importMsg.textContent = `Success! Image imported with ID ${resp.ImportResult.image_id}. SHA256: ${resp.ImportResult.sha256}`;
-        importMsg.style.color = "#10b981";
+        setStatusMessage(importMsg, `Success! Image imported with ID ${resp.ImportResult.image_id}. SHA256: ${resp.ImportResult.sha256}`, "success");
         importInput.value = "";
         importInput.dispatchEvent(new Event('change', { bubbles: true }));
         refreshDashboard();
       } else if ("Error" in resp) {
-        importMsg.textContent = `Error: ${resp.Error.message}`;
-        importMsg.style.color = "#ef4444";
+        setStatusMessage(importMsg, `Error: ${resp.Error.message}`, "error");
       }
     } catch (e) {
-      importMsg.textContent = `IPC Error: ${e}`;
-      importMsg.style.color = "#ef4444";
+      setStatusMessage(importMsg, `IPC Error: ${e}`, "error");
     }
   });
 
@@ -1093,62 +1032,46 @@ function formatDate(dateStr: string): string {
 }
 
 let galleryPage = 0;
+let favoritesPage = 0;
 const IMAGES_PER_PAGE = 12;
 
-async function refreshGallery() {
+async function refreshPaginatedImages(
+  page: number,
+  gridId: string,
+  idPrefix: string,
+  listOpts: { only_favorites?: boolean }
+) {
   try {
-    const resp = await callService({ ListImages: { limit: IMAGES_PER_PAGE, offset: galleryPage * IMAGES_PER_PAGE } });
+    const resp = await callService({ ListImages: { limit: IMAGES_PER_PAGE, offset: page * IMAGES_PER_PAGE, ...listOpts } });
     if ("ListResult" in resp) {
       const images = resp.ListResult.images;
-      renderImages(images, "gallery-grid");
-      
-      const indicator = document.getElementById("gallery-page-indicator");
-      if (indicator) {
-        indicator.textContent = `Page ${galleryPage + 1}`;
-      }
-      
-      const prevBtn = document.getElementById("gallery-prev-btn") as HTMLButtonElement;
-      if (prevBtn) {
-        prevBtn.disabled = galleryPage === 0;
-      }
-      
-      const nextBtn = document.getElementById("gallery-next-btn") as HTMLButtonElement;
-      if (nextBtn) {
-        nextBtn.disabled = images.length < IMAGES_PER_PAGE;
-      }
+      renderImages(images, gridId);
+
+      const indicator = document.getElementById(`${idPrefix}-page-indicator`);
+      if (indicator) indicator.textContent = `Page ${page + 1}`;
+
+      const prevBtn = document.getElementById(`${idPrefix}-prev-btn`) as HTMLButtonElement;
+      if (prevBtn) prevBtn.disabled = page === 0;
+
+      const nextBtn = document.getElementById(`${idPrefix}-next-btn`) as HTMLButtonElement;
+      if (nextBtn) nextBtn.disabled = images.length < IMAGES_PER_PAGE;
     }
   } catch (e) {
-    console.error("Failed to refresh gallery: ", e);
+    console.error(`Failed to refresh ${idPrefix}: `, e);
   }
 }
 
-let favoritesPage = 0;
+function refreshGallery() { return refreshPaginatedImages(galleryPage, "gallery-grid", "gallery", {}); }
+function refreshFavorites() { return refreshPaginatedImages(favoritesPage, "favorites-grid", "favorites", { only_favorites: true }); }
 
-async function refreshFavorites() {
-  try {
-    const resp = await callService({ ListImages: { limit: IMAGES_PER_PAGE, offset: favoritesPage * IMAGES_PER_PAGE, only_favorites: true } });
-    if ("ListResult" in resp) {
-      const images = resp.ListResult.images;
-      renderImages(images, "favorites-grid");
-      
-      const indicator = document.getElementById("favorites-page-indicator");
-      if (indicator) {
-        indicator.textContent = `Page ${favoritesPage + 1}`;
-      }
-      
-      const prevBtn = document.getElementById("favorites-prev-btn") as HTMLButtonElement;
-      if (prevBtn) {
-        prevBtn.disabled = favoritesPage === 0;
-      }
-      
-      const nextBtn = document.getElementById("favorites-next-btn") as HTMLButtonElement;
-      if (nextBtn) {
-        nextBtn.disabled = images.length < IMAGES_PER_PAGE;
-      }
-    }
-  } catch (e) {
-    console.error("Failed to refresh favorites: ", e);
-  }
+function setupPaginationButtons(prevId: string, nextId: string, pageRef: { value: number }, refreshFn: () => Promise<void>) {
+  document.getElementById(prevId)?.addEventListener("click", () => {
+    if (pageRef.value > 0) { pageRef.value--; refreshFn(); }
+  });
+  document.getElementById(nextId)?.addEventListener("click", () => {
+    pageRef.value++;
+    refreshFn();
+  });
 }
 
 // Track double-click confirmation states for auto-tag overwrite
@@ -1335,6 +1258,26 @@ function attachCardEventHandlers(parentEl: Element, imageId: number, filepath: s
   attachCopyToClipboardHandler(parentEl, filepath);
   const previewDiv = parentEl.querySelector(previewSelector);
   if (previewDiv) attachPreviewClickHandler(previewDiv, filepath);
+}
+
+function setupBrowseButton(btnId: string, targetInput: HTMLInputElement, isDirectory: boolean) {
+  document.getElementById(btnId)?.addEventListener("click", async () => {
+    try {
+      const selected: string | null = await invoke("select_path", { isDirectory });
+      if (selected) {
+        targetInput.value = selected;
+        targetInput.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    } catch (err) {
+      console.error(`${isDirectory ? "Folder" : "File"} dialog error: `, err);
+    }
+  });
+}
+
+function setStatusMessage(el: HTMLElement | null, message: string, state: "loading" | "success" | "error") {
+  if (!el) return;
+  el.textContent = message;
+  el.style.color = state === "loading" ? "#fbbf24" : state === "success" ? "#10b981" : "#ef4444";
 }
 
 // Renderers
@@ -1543,6 +1486,29 @@ const ANSI_COLORS: Record<number, string> = {
   94: "#3b8eea", 95: "#d670d6", 96: "#29b8db", 97: "#ffffff",
 };
 
+function ansiCodeReplacer(_match: string, codes: string): string {
+  if (!codes) return "</span>";
+  const parts = codes.split(";");
+  let out = "";
+  for (const p of parts) {
+    const code = parseInt(p, 10);
+    if (code === 0) {
+      out += "</span>";
+    } else if (code === 1) {
+      out += '<span style="font-weight:bold">';
+    } else if (code === 2) {
+      out += '<span style="opacity:0.6">';
+    } else if (code === 3) {
+      out += '<span style="font-style:italic">';
+    } else if (code === 4) {
+      out += '<span style="text-decoration:underline">';
+    } else if (ANSI_COLORS[code]) {
+      out += `<span style="color:${ANSI_COLORS[code]}">`;
+    }
+  }
+  return out;
+}
+
 function ansiToHtml(text: string): string {
   // Escape HTML special chars first
   let result = text
@@ -1550,53 +1516,9 @@ function ansiToHtml(text: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // Parse ANSI escape sequences: ESC[ ... m
-  result = result.replace(/\x1b\[([0-9;]*)m/g, (_match, codes) => {
-    if (!codes) return "</span>";
-    const parts = codes.split(";");
-    let out = "";
-    for (const p of parts) {
-      const code = parseInt(p, 10);
-      if (code === 0) {
-        out += "</span>";
-      } else if (code === 1) {
-        out += '<span style="font-weight:bold">';
-      } else if (code === 2) {
-        out += '<span style="opacity:0.6">';
-      } else if (code === 3) {
-        out += '<span style="font-style:italic">';
-      } else if (code === 4) {
-        out += '<span style="text-decoration:underline">';
-      } else if (ANSI_COLORS[code]) {
-        out += `<span style="color:${ANSI_COLORS[code]}">`;
-      }
-    }
-    return out;
-  });
-
-  // Also handle raw escape bytes that may appear in log files
-  result = result.replace(/\u001b\[([0-9;]*)m/g, (_match, codes) => {
-    if (!codes) return "</span>";
-    const parts = codes.split(";");
-    let out = "";
-    for (const p of parts) {
-      const code = parseInt(p, 10);
-      if (code === 0) {
-        out += "</span>";
-      } else if (code === 1) {
-        out += '<span style="font-weight:bold">';
-      } else if (code === 2) {
-        out += '<span style="opacity:0.6">';
-      } else if (code === 3) {
-        out += '<span style="font-style:italic">';
-      } else if (code === 4) {
-        out += '<span style="text-decoration:underline">';
-      } else if (ANSI_COLORS[code]) {
-        out += `<span style="color:${ANSI_COLORS[code]}">`;
-      }
-    }
-    return out;
-  });
+  // Parse ANSI escape sequences: ESC[ ... m (both \x1b and \u001b forms)
+  result = result.replace(/\x1b\[([0-9;]*)m/g, ansiCodeReplacer);
+  result = result.replace(/\u001b\[([0-9;]*)m/g, ansiCodeReplacer);
 
   // Close any unclosed spans
   const openCount = (result.match(/<span/g) || []).length;
@@ -1941,8 +1863,7 @@ function setupSettings() {
   saveBtn?.addEventListener("click", async () => {
     if (!clipSelect || !taggerSelect || !idleSelect || !statusMsg) return;
 
-    statusMsg.textContent = "Saving...";
-    statusMsg.style.color = "#fbbf24";
+    setStatusMessage(statusMsg, "Saving...", "loading");
 
     try {
       const resp = await callService({
@@ -1955,19 +1876,16 @@ function setupSettings() {
       });
 
       if ("SettingsResult" in resp) {
-        statusMsg.textContent = "Settings saved and applied successfully. If model was changed, reindexing has started.";
-        statusMsg.style.color = "#10b981";
+        setStatusMessage(statusMsg, "Settings saved and applied successfully. If model was changed, reindexing has started.", "success");
         if (embeddingSelect) {
           updateBenchmarkModelHeader(embeddingSelect.value);
         }
         startReindexPolling();
       } else if ("Error" in resp) {
-        statusMsg.textContent = "Failed: " + resp.Error.message;
-        statusMsg.style.color = "#ef4444";
+        setStatusMessage(statusMsg, "Failed: " + resp.Error.message, "error");
       }
     } catch (e: any) {
-      statusMsg.textContent = "Error: " + (e.message || e);
-      statusMsg.style.color = "#ef4444";
+      setStatusMessage(statusMsg, "Error: " + (e.message || e), "error");
     }
   });
 
@@ -1977,21 +1895,17 @@ function setupSettings() {
     if (!confirm("Are you sure you want to reindex all vectors? This will rebuild the vector search index from scratch.")) {
       return;
     }
-    statusMsg.textContent = "Reindexing all images...";
-    statusMsg.style.color = "#fbbf24";
+    setStatusMessage(statusMsg, "Reindexing all images...", "loading");
     try {
       const resp = await callService({ ReindexVectors: null });
       if ("Success" in resp) {
-        statusMsg.textContent = "Reindexing triggered successfully. The background worker is rebuilding the index.";
-        statusMsg.style.color = "#10b981";
+        setStatusMessage(statusMsg, "Reindexing triggered successfully. The background worker is rebuilding the index.", "success");
         startReindexPolling();
       } else if ("Error" in resp) {
-        statusMsg.textContent = "Reindex failed: " + resp.Error.message;
-        statusMsg.style.color = "#ef4444";
+        setStatusMessage(statusMsg, "Reindex failed: " + resp.Error.message, "error");
       }
     } catch (e: any) {
-      statusMsg.textContent = "Error: " + (e.message || e);
-      statusMsg.style.color = "#ef4444";
+      setStatusMessage(statusMsg, "Error: " + (e.message || e), "error");
     }
   });
 
@@ -2009,22 +1923,18 @@ function setupSettings() {
   const backfillStatus = document.getElementById("backfill-status-msg");
   backfillBtn?.addEventListener("click", async () => {
     if (!backfillStatus) return;
-    backfillStatus.textContent = "Backfilling folder assignments...";
-    backfillStatus.style.color = "#fbbf24";
+    setStatusMessage(backfillStatus, "Backfilling folder assignments...", "loading");
     backfillBtn.setAttribute("disabled", "true");
     try {
       const resp = await callService({ BackfillImageFolders: null });
       if ("BackfillResult" in resp) {
         const count = resp.BackfillResult.images_backfilled;
-        backfillStatus.textContent = `Done! ${count} image(s) assigned to folders.`;
-        backfillStatus.style.color = "#10b981";
+        setStatusMessage(backfillStatus, `Done! ${count} image(s) assigned to folders.`, "success");
       } else if ("Error" in resp) {
-        backfillStatus.textContent = "Failed: " + resp.Error.message;
-        backfillStatus.style.color = "#ef4444";
+        setStatusMessage(backfillStatus, "Failed: " + resp.Error.message, "error");
       }
     } catch (e: any) {
-      backfillStatus.textContent = "Error: " + (e.message || e);
-      backfillStatus.style.color = "#ef4444";
+      setStatusMessage(backfillStatus, "Error: " + (e.message || e), "error");
     }
     backfillBtn.removeAttribute("disabled");
   });
