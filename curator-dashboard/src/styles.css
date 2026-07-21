@@ -1045,6 +1045,24 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   text-align: right;
 }
 
+/* --- Image Path Row --- */
+.image-path-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.image-path-row .image-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.image-path-row .image-path:hover {
+  text-decoration: underline;
+}
+
 /* --- Imported Folders Table --- */
 .folders-table {
   width: 100%;

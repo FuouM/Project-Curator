@@ -815,7 +815,12 @@ function renderFeaturedDay(featured: ImageDetails) {
       </div>
       <div class="featured-details">
         <div class="featured-filename" title="${featured.current_filepath}">${featured.current_filepath.split(/[\\/]/).pop()}</div>
-        <div class="image-path" title="${featured.current_filepath}">${maskPath(featured.current_filepath)}</div>
+        <div class="image-path-row">
+          <div class="image-path" title="${featured.current_filepath}">${maskPath(featured.current_filepath)}</div>
+          <button class="win-button image-open-folder-btn" style="display: none; font-size: 10px; padding: 1px 6px; white-space: nowrap;" title="Open containing folder">
+            <i class="bi bi-folder2-open"></i>
+          </button>
+        </div>
         <div class="tag-list" style="margin-top: 6px;">
           ${featured.tags.length > 0 ? featured.tags.map(t => getTagPillHtml(t)).join("") : '<span style="color: #999; font-style: italic; font-size: 11px;">No tags</span>'}
         </div>
@@ -857,6 +862,23 @@ function renderFeaturedDay(featured: ImageDetails) {
       } catch (err) {
         console.error("Failed to update favorite status:", err);
       }
+    });
+  }
+
+  // Path click: reveal open folder button
+  const pathEl = container.querySelector(".image-path");
+  const openFolderBtn = container.querySelector(".image-open-folder-btn") as HTMLButtonElement | null;
+  if (pathEl && openFolderBtn) {
+    pathEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openFolderBtn.style.display = openFolderBtn.style.display === "none" ? "inline-flex" : "none";
+    });
+    openFolderBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const dir = featured.current_filepath.replace(/[\\/][^\\/]+$/, "");
+      invoke("open_file_externally", { path: dir }).catch((err) => {
+        console.error("Failed to open folder:", err);
+      });
     });
   }
 
@@ -1273,7 +1295,12 @@ function renderImages(images: ImageDetails[], gridId: string) {
         <div class="vector-badge ${badgeClass}">${img.vector_state}</div>
       </div>
       <div class="image-info">
-        <div class="image-path" title="${img.current_filepath}">${maskPath(img.current_filepath)}</div>
+        <div class="image-path-row">
+          <div class="image-path" title="${img.current_filepath}">${maskPath(img.current_filepath)}</div>
+          <button class="win-button image-open-folder-btn" style="display: none; font-size: 10px; padding: 1px 6px; white-space: nowrap;" title="Open containing folder">
+            <i class="bi bi-folder2-open"></i>
+          </button>
+        </div>
         <div class="tag-list">
           ${tagHtml}
         </div>
@@ -1312,6 +1339,23 @@ function renderImages(images: ImageDetails[], gridId: string) {
         } catch (err) {
           console.error("Failed to update favorite status:", err);
         }
+      });
+    }
+
+    // Path click: reveal open folder button
+    const pathEl = card.querySelector(".image-path");
+    const openFolderBtn = card.querySelector(".image-open-folder-btn") as HTMLButtonElement | null;
+    if (pathEl && openFolderBtn) {
+      pathEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openFolderBtn.style.display = openFolderBtn.style.display === "none" ? "inline-flex" : "none";
+      });
+      openFolderBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const dir = img.current_filepath.replace(/[\\/][^\\/]+$/, "");
+        invoke("open_file_externally", { path: dir }).catch((err) => {
+          console.error("Failed to open folder:", err);
+        });
       });
     }
 
