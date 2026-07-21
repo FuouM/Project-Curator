@@ -1,6 +1,6 @@
 use anyhow::{Context, Error};
 use clap::{Parser, Subcommand};
-use curator_core::ipc::{Request, Response, ImageDetails, EmbeddingModel};
+use curator_core::ipc::{EmbeddingModel, ImageDetails, Request, Response};
 use std::fs;
 use std::path::PathBuf;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -58,13 +58,9 @@ enum Commands {
         offset: usize,
     },
     /// Get details of a specific image
-    Show {
-        image_id: i64,
-    },
+    Show { image_id: i64 },
     /// Validate a plugin's manifest.json file
-    ValidatePlugin {
-        manifest_path: String,
-    },
+    ValidatePlugin { manifest_path: String },
     /// Auto-tag a single image with Camie Tagger v2
     TagAuto {
         /// ID of the image to tag
@@ -112,10 +108,7 @@ enum TagCommands {
         category: String,
     },
     /// Remove a tag from an image (soft-delete)
-    Remove {
-        image_id: i64,
-        tag: String,
-    },
+    Remove { image_id: i64, tag: String },
 }
 
 #[tokio::main]
@@ -153,17 +146,24 @@ async fn main() -> Result<(), Error> {
             },
             TagCommands::Remove { image_id, tag } => Request::RemoveTag { image_id, tag },
         },
-        Commands::Search { query, image, tag, limit } => Request::Search {
+        Commands::Search {
+            query,
+            image,
+            tag,
+            limit,
+        } => Request::Search {
             query_text: query,
             query_image_path: image,
             tag_filter: tag,
             limit,
         },
-        Commands::List { limit, offset } => Request::ListImages { limit, offset, only_favorites: None },
+        Commands::List { limit, offset } => Request::ListImages {
+            limit,
+            offset,
+            only_favorites: None,
+        },
         Commands::Show { image_id } => Request::GetImage { image_id },
-        Commands::ValidatePlugin { manifest_path } => {
-            Request::ValidatePlugin { manifest_path }
-        }
+        Commands::ValidatePlugin { manifest_path } => Request::ValidatePlugin { manifest_path },
         Commands::TagAuto {
             image_id,
             threshold,
@@ -238,7 +238,7 @@ async fn main() -> Result<(), Error> {
     // but keep read half open. NamedPipeServer loop reads until connection closes.
     // In our architecture, it is a request-response pattern.
     // Let's read until we get the full response packet.
-    
+
     // 6. Read Response
     let mut response_buffer = Vec::new();
     let mut temp_buf = vec![0; 65536];
@@ -253,8 +253,9 @@ async fn main() -> Result<(), Error> {
             break;
         }
     }
-    let response: Response = serde_json::from_slice(&response_buffer)
-        .context("Failed to parse response JSON from service. The buffer may have been truncated.")?;
+    let response: Response = serde_json::from_slice(&response_buffer).context(
+        "Failed to parse response JSON from service. The buffer may have been truncated.",
+    )?;
 
     // 7. Format and Print Response
     match response {
@@ -275,7 +276,11 @@ async fn main() -> Result<(), Error> {
             println!("\nCLIP Vision Model (224x224):");
             println!("  CPU: {:.2} ms/image", clip_cpu_time_ms);
             if let Some(gpu) = clip_gpu_time_ms {
-                println!("  GPU: {:.2} ms/image ({:.2}x speedup)", gpu, clip_cpu_time_ms / gpu);
+                println!(
+                    "  GPU: {:.2} ms/image ({:.2}x speedup)",
+                    gpu,
+                    clip_cpu_time_ms / gpu
+                );
             } else {
                 println!("  GPU: N/A");
             }
@@ -323,19 +328,20 @@ async fn main() -> Result<(), Error> {
                 println!("Search Results ({} matches):", matches.len());
                 for (idx, m) in matches.iter().enumerate() {
                     let info_str = if let Some(dist) = m.hamming_distance {
-                        format!("Match Type: {}, Hamming: {}, Score: {:.4}", m.match_type, dist, m.score)
+                        format!(
+                            "Match Type: {}, Hamming: {}, Score: {:.4}",
+                            m.match_type, dist, m.score
+                        )
                     } else {
                         format!("Match Type: {}, Score: {:.4}", m.match_type, m.score)
                     };
-                    println!(
-                        "{}. [ID: {}] {} ({})",
-                        idx + 1,
-                        m.id,
-                        m.filepath,
-                        info_str
-                    );
+                    println!("{}. [ID: {}] {} ({})", idx + 1, m.id, m.filepath, info_str);
                     if !m.tags.is_empty() {
-                        let tag_strs: Vec<String> = m.tags.iter().map(|t| format!("{}({})", t.tag, t.category)).collect();
+                        let tag_strs: Vec<String> = m
+                            .tags
+                            .iter()
+                            .map(|t| format!("{}({})", t.tag, t.category))
+                            .collect();
                         println!("    Tags: {}", tag_strs.join(", "));
                     }
                 }
@@ -376,9 +382,15 @@ async fn main() -> Result<(), Error> {
             tags,
         } => {
             if skipped {
-                println!("Image {} already has AI tags — skipped (use --force to re-tag).", image_id);
+                println!(
+                    "Image {} already has AI tags — skipped (use --force to re-tag).",
+                    image_id
+                );
             } else {
-                println!("Auto-tagged image {} — {} tags applied:", image_id, tags_applied);
+                println!(
+                    "Auto-tagged image {} — {} tags applied:",
+                    image_id, tags_applied
+                );
                 for t in &tags {
                     println!(
                         "  [{:<12}] {:<40} ({:.2}%)",
@@ -405,9 +417,23 @@ async fn main() -> Result<(), Error> {
             total_tags,
         } => {
             println!("Camie Tagger v2 Status:");
-            println!("  Loaded:     {}", if loaded { "Yes" } else { "No (lazy — loads on first use)" });
+            println!(
+                "  Loaded:     {}",
+                if loaded {
+                    "Yes"
+                } else {
+                    "No (lazy — loads on first use)"
+                }
+            );
             println!("  Model path: {}", model_path);
-            println!("  Tag count:  {}", if total_tags > 0 { total_tags.to_string() } else { "N/A (not loaded)".to_string() });
+            println!(
+                "  Tag count:  {}",
+                if total_tags > 0 {
+                    total_tags.to_string()
+                } else {
+                    "N/A (not loaded)".to_string()
+                }
+            );
         }
         Response::SettingsResult {
             clip_device,
@@ -441,7 +467,11 @@ fn print_image_details(img: &ImageDetails) {
     println!("  SHA256:  {}", img.sha256);
     println!("  Indexed: {}", img.vector_state);
     if !img.tags.is_empty() {
-        let tag_strs: Vec<String> = img.tags.iter().map(|t| format!("{}({})", t.tag, t.category)).collect();
+        let tag_strs: Vec<String> = img
+            .tags
+            .iter()
+            .map(|t| format!("{}({})", t.tag, t.category))
+            .collect();
         println!("  Tags:    {}", tag_strs.join(", "));
     }
     println!("  Created: {}", img.created_at);

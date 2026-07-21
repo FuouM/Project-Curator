@@ -1,8 +1,8 @@
 use anyhow::Error;
 use std::fs;
 use std::path::Path;
-use uuid::Uuid;
 use tracing::info;
+use uuid::Uuid;
 
 pub fn load_or_create_service_key<P: AsRef<Path>>(key_dir: P) -> Result<String, Error> {
     let key_dir = key_dir.as_ref();
@@ -16,10 +16,10 @@ pub fn load_or_create_service_key<P: AsRef<Path>>(key_dir: P) -> Result<String, 
     } else {
         info!("Generating new master service key...");
         let new_key = Uuid::new_v4().to_string();
-        
+
         // Write the key file
         fs::write(&key_file, &new_key)?;
-        
+
         // On Windows, restrict permissions to the owner if possible, or keep it standard.
         // For portability, standard write works and we warn in production.
         info!("New service key saved to {:?}", key_file);

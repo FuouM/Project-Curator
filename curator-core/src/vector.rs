@@ -1,5 +1,5 @@
-use anyhow::{Context, Error};
 use crate::ipc::{DevicePreference, EmbeddingModel};
+use anyhow::{Context, Error};
 use ndarray::{Array2, Array4};
 use ort::{inputs, session::Session, session::builder::SessionBuilder, value::TensorRef};
 use std::fs;
@@ -19,13 +19,18 @@ pub struct VectorIndex {
 impl VectorIndex {
     pub fn new<P: AsRef<Path>>(index_path: P, dimensions: usize) -> Result<Self, Error> {
         let path = index_path.as_ref().to_path_buf();
-        let mut options = IndexOptions::default();
-        options.dimensions = dimensions;
-        options.metric = MetricKind::Cos;
-        options.quantization = ScalarKind::F32;
+        let options = IndexOptions {
+            dimensions,
+            metric: MetricKind::Cos,
+            quantization: ScalarKind::F32,
+            ..Default::default()
+        };
 
-        let index = Index::new(&options).map_err(|e| anyhow::anyhow!("Failed to create Index: {:?}", e))?;
-        index.reserve(1000).map_err(|e| anyhow::anyhow!("Failed to reserve initial capacity: {:?}", e))?;
+        let index =
+            Index::new(&options).map_err(|e| anyhow::anyhow!("Failed to create Index: {:?}", e))?;
+        index
+            .reserve(1000)
+            .map_err(|e| anyhow::anyhow!("Failed to reserve initial capacity: {:?}", e))?;
 
         let mut instance = Self { index, path };
         if instance.path.exists() {
@@ -46,16 +51,23 @@ impl VectorIndex {
         let size = self.index.size();
         let capacity = self.index.capacity();
         if size >= capacity {
-            self.index.reserve(capacity + 1000).map_err(|e| anyhow::anyhow!("Failed to expand capacity: {:?}", e))?;
+            self.index
+                .reserve(capacity + 1000)
+                .map_err(|e| anyhow::anyhow!("Failed to expand capacity: {:?}", e))?;
         }
-        self.index.add(id, vector).map_err(|e| anyhow::anyhow!("Failed to add vector: {:?}", e))?;
+        self.index
+            .add(id, vector)
+            .map_err(|e| anyhow::anyhow!("Failed to add vector: {:?}", e))?;
         self.save()?;
         Ok(())
     }
 
     pub fn search(&self, query: &[f32], limit: usize) -> Result<Vec<(u64, f32)>, Error> {
-        let results = self.index.search(query, limit).map_err(|e| anyhow::anyhow!("Search failed: {:?}", e))?;
-        
+        let results = self
+            .index
+            .search(query, limit)
+            .map_err(|e| anyhow::anyhow!("Search failed: {:?}", e))?;
+
         let mut matches = Vec::new();
         for i in 0..results.keys.len() {
             matches.push((results.keys[i], results.distances[i]));
@@ -65,24 +77,34 @@ impl VectorIndex {
 
     pub fn save(&self) -> Result<(), Error> {
         let path_str = self.path.to_str().context("Invalid index path string")?;
-        self.index.save(path_str).map_err(|e| anyhow::anyhow!("Failed to save index: {:?}", e))?;
+        self.index
+            .save(path_str)
+            .map_err(|e| anyhow::anyhow!("Failed to save index: {:?}", e))?;
         Ok(())
     }
 
     pub fn load(&mut self) -> Result<(), Error> {
         let path_str = self.path.to_str().context("Invalid index path string")?;
-        self.index.load(path_str).map_err(|e| anyhow::anyhow!("Failed to load index: {:?}", e))?;
+        self.index
+            .load(path_str)
+            .map_err(|e| anyhow::anyhow!("Failed to load index: {:?}", e))?;
         Ok(())
     }
 
     pub fn clear(&self) -> Result<(), Error> {
-        self.index.reset().map_err(|e| anyhow::anyhow!("Failed to reset index: {:?}", e))?;
-        self.index.reserve(1000).map_err(|e| anyhow::anyhow!("Failed to reserve capacity: {:?}", e))?;
+        self.index
+            .reset()
+            .map_err(|e| anyhow::anyhow!("Failed to reset index: {:?}", e))?;
+        self.index
+            .reserve(1000)
+            .map_err(|e| anyhow::anyhow!("Failed to reserve capacity: {:?}", e))?;
         if self.path.exists() {
             let _ = fs::remove_file(&self.path);
         }
         let path_str = self.path.to_str().context("Invalid index path string")?;
-        self.index.save(path_str).map_err(|e| anyhow::anyhow!("Failed to save cleared index: {:?}", e))?;
+        self.index
+            .save(path_str)
+            .map_err(|e| anyhow::anyhow!("Failed to save cleared index: {:?}", e))?;
         Ok(())
     }
 }
@@ -127,8 +149,7 @@ impl ModelManager {
 
     /// Return true if ONNX sessions are loaded in memory.
     pub fn is_loaded(&self) -> bool {
-        self.vision_session.lock().unwrap().is_some()
-            && self.text_session.lock().unwrap().is_some()
+        self.vision_session.lock().unwrap().is_some() && self.text_session.lock().unwrap().is_some()
     }
 
     /// Seconds since last inference.
@@ -159,7 +180,10 @@ impl ModelManager {
         let mut vs = self.vision_session.lock().unwrap();
         let mut ts = self.text_session.lock().unwrap();
         if vs.is_some() || ts.is_some() {
-            info!("CLIP: device changed to {:?} — unloading sessions for reload", device);
+            info!(
+                "CLIP: device changed to {:?} — unloading sessions for reload",
+                device
+            );
             *vs = None;
             *ts = None;
         }
@@ -177,13 +201,15 @@ impl ModelManager {
         let mut ts = self.text_session.lock().unwrap();
         let mut tok = self.tokenizer.lock().unwrap();
         if vs.is_some() || ts.is_some() {
-            info!("CLIP: active model changed to {:?} — unloading sessions for reload", model);
+            info!(
+                "CLIP: active model changed to {:?} — unloading sessions for reload",
+                model
+            );
             *vs = None;
             *ts = None;
             *tok = None;
         }
     }
-
 
     /// Ensure both ONNX sessions and tokenizer are loaded. Idempotent.
     fn ensure_loaded(&self) -> Result<(), Error> {
@@ -205,8 +231,14 @@ impl ModelManager {
             ),
             EmbeddingModel::MobileClipS2 => (
                 self.model_dir.join("mobileclip_s2").join("tokenizer.json"),
-                self.model_dir.join("mobileclip_s2").join("onnx").join("vision_model.onnx"),
-                self.model_dir.join("mobileclip_s2").join("onnx").join("text_model.onnx"),
+                self.model_dir
+                    .join("mobileclip_s2")
+                    .join("onnx")
+                    .join("vision_model.onnx"),
+                self.model_dir
+                    .join("mobileclip_s2")
+                    .join("onnx")
+                    .join("text_model.onnx"),
             ),
         };
         let device = self.device.lock().unwrap().clone();
@@ -233,11 +265,10 @@ impl ModelManager {
                     .with_intra_threads(1)
                     .map_err(|e| anyhow::anyhow!("Failed to set vision threads: {:?}", e))?;
                 apply_device_preference(&mut builder, &device, "CLIP Vision");
-                *vs = Some(
-                    builder
-                        .commit_from_file(&vision_path)
-                        .map_err(|e| anyhow::anyhow!("Failed to commit vision session: {:?}", e))?,
-                );
+                *vs =
+                    Some(builder.commit_from_file(&vision_path).map_err(|e| {
+                        anyhow::anyhow!("Failed to commit vision session: {:?}", e)
+                    })?);
             }
         }
 
@@ -335,13 +366,13 @@ impl ModelManager {
                 self.download_if_missing(
                     &text_path,
                     "https://huggingface.co/Xenova/mobileclip_s2/resolve/main/onnx/text_model.onnx",
-                    "Text model"
+                    "Text model",
                 )?;
 
                 self.download_if_missing(
                     &tokenizer_path,
                     "https://huggingface.co/Xenova/mobileclip_s2/resolve/main/tokenizer.json",
-                    "Tokenizer configuration"
+                    "Tokenizer configuration",
                 )?;
             }
         }
@@ -357,7 +388,8 @@ impl ModelManager {
 
         info!("Downloading {} from {} to {:?}", name, url, path);
         let agent = ureq::Agent::new_with_defaults();
-        let mut response = agent.get(url)
+        let mut response = agent
+            .get(url)
             .call()
             .context("Failed to contact download server")?;
 
@@ -372,20 +404,27 @@ impl ModelManager {
     fn generate_image_embedding_inner(&self, image_path: &Path) -> Result<Vec<f32>, Error> {
         self.ensure_loaded()?;
         self.last_used.store(now_secs(), Ordering::Relaxed);
-        let mut session_guard = self.vision_session.lock()
+        let mut session_guard = self
+            .vision_session
+            .lock()
             .map_err(|_| anyhow::anyhow!("Vision mutex poisoned"))?;
-        let _session = session_guard.as_mut().context("Vision model not initialized")?;
-        
+        let _session = session_guard
+            .as_mut()
+            .context("Vision model not initialized")?;
+
         // 1. Decode image — turbojpeg for JPEG, png+zlib-rs for PNG, image crate for others
         let img_ref = image_path;
         let data = std::fs::read(img_ref)?;
         let is_jpeg = data.len() >= 2 && data[0] == 0xFF && data[1] == 0xD8;
-        let is_png = data.len() >= 8
-            && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
+        let is_png = data.len() >= 8 && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
 
         let (rgb_buf, width, height) = if is_jpeg {
             let image = turbojpeg::decompress(&data, turbojpeg::PixelFormat::RGB)?;
-            (image.pixels.to_vec(), image.width as u32, image.height as u32)
+            (
+                image.pixels.to_vec(),
+                image.width as u32,
+                image.height as u32,
+            )
         } else if is_png {
             let decoder = png::Decoder::new(std::io::Cursor::new(&data));
             let mut reader = decoder.read_info()?;
@@ -400,18 +439,29 @@ impl ModelManager {
             let pixels = out_info.buffer_size();
             let rgb: Vec<u8> = match out_info.color_type {
                 png::ColorType::Rgb => raw[..pixels].to_vec(),
-                png::ColorType::Rgba => raw[..pixels].chunks(4).flat_map(|c| [c[0], c[1], c[2]]).collect(),
-                png::ColorType::Grayscale => raw[..pixels].iter().map(|&g| [g, g, g]).flatten().collect(),
-                png::ColorType::GrayscaleAlpha => raw[..pixels].chunks(2).flat_map(|c| [c[0], c[0], c[0]]).collect(),
+                png::ColorType::Rgba => raw[..pixels]
+                    .chunks(4)
+                    .flat_map(|c| [c[0], c[1], c[2]])
+                    .collect(),
+                png::ColorType::Grayscale => {
+                    raw[..pixels].iter().flat_map(|&g| [g, g, g]).collect()
+                }
+                png::ColorType::GrayscaleAlpha => raw[..pixels]
+                    .chunks(2)
+                    .flat_map(|c| [c[0], c[0], c[0]])
+                    .collect(),
                 png::ColorType::Indexed => {
-                    let palette = reader.info().palette.as_deref()
+                    let palette = reader
+                        .info()
+                        .palette
+                        .as_deref()
                         .context("Indexed PNG has no palette")?;
-                    raw[..pixels].iter()
-                        .map(|&idx| {
+                    raw[..pixels]
+                        .iter()
+                        .flat_map(|&idx| {
                             let i = idx as usize * 3;
                             [palette[i], palette[i + 1], palette[i + 2]]
                         })
-                        .flatten()
                         .collect()
                 }
             };
@@ -444,25 +494,31 @@ impl ModelManager {
         };
 
         let crop_ref = fast_image_resize::images::ImageRef::new(
-            size, size, &cropped, fast_image_resize::PixelType::U8x3,
+            size,
+            size,
+            &cropped,
+            fast_image_resize::PixelType::U8x3,
         )?;
         let mut dst_image = fast_image_resize::images::Image::from_vec_u8(
-            target_size, target_size, vec![0u8; (target_size * target_size * 3) as usize], fast_image_resize::PixelType::U8x3,
+            target_size,
+            target_size,
+            vec![0u8; (target_size * target_size * 3) as usize],
+            fast_image_resize::PixelType::U8x3,
         )?;
         let mut resizer = fast_image_resize::Resizer::new();
-        let opts = fast_image_resize::ResizeOptions::new()
-            .resize_alg(fast_image_resize::ResizeAlg::Convolution(
-                fast_image_resize::FilterType::Bilinear,
-            ));
+        let opts = fast_image_resize::ResizeOptions::new().resize_alg(
+            fast_image_resize::ResizeAlg::Convolution(fast_image_resize::FilterType::Bilinear),
+        );
         resizer.resize(&crop_ref, &mut dst_image, Some(&opts))?;
         let resized_buf = dst_image.buffer();
 
         // 4. Construct N-dimensional array in shape [1, 3, target_size, target_size]
-        let mut input_array = Array4::<f32>::zeros((1, 3, target_size as usize, target_size as usize));
+        let mut input_array =
+            Array4::<f32>::zeros((1, 3, target_size as usize, target_size as usize));
         match active {
             EmbeddingModel::ClipVitB32 => {
                 let mean = [0.48145466, 0.4578275, 0.40821073];
-                let std = [0.26862954, 0.26130258, 0.27577711];
+                let std = [0.26862954, 0.261_302_6, 0.275_777_1];
                 for c in 0..3 {
                     for row in 0..224 {
                         for col in 0..224 {
@@ -485,15 +541,18 @@ impl ModelManager {
         }
 
         // 5. Run inference
-        let session = session_guard.as_mut().context("Vision model not initialized")?;
+        let session = session_guard
+            .as_mut()
+            .context("Vision model not initialized")?;
         let outputs = session.run(inputs![TensorRef::from_array_view(&input_array)?])?;
-        
-        let output_tensor = outputs.get("image_embeds")
+
+        let output_tensor = outputs
+            .get("image_embeds")
             .or_else(|| outputs.get("output_0"))
             .context("Failed to get image embeds output from model")?;
 
         let output_ref = output_tensor.try_extract_tensor::<f32>()?;
-        
+
         let mut embedding = output_ref.1.to_vec();
         let norm = (embedding.iter().map(|&x| x * x).sum::<f32>()).sqrt();
         if norm > 0.0 {
@@ -505,17 +564,22 @@ impl ModelManager {
         Ok(embedding)
     }
 
-    pub fn generate_image_embedding<P: AsRef<Path>>(&self, image_path: P) -> Result<Vec<f32>, Error> {
+    pub fn generate_image_embedding<P: AsRef<Path>>(
+        &self,
+        image_path: P,
+    ) -> Result<Vec<f32>, Error> {
         let path = image_path.as_ref();
         let res = self.generate_image_embedding_inner(path);
-        if res.is_err() {
+        if let Err(ref err) = res {
             let is_gpu = {
                 let d = self.device.lock().unwrap();
                 *d != DevicePreference::Cpu
             };
             if is_gpu {
-                let err = res.unwrap_err();
-                warn!("ONNX vision inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...", err);
+                warn!(
+                    "ONNX vision inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...",
+                    err
+                );
                 self.set_device(DevicePreference::Cpu);
                 return self.generate_image_embedding_inner(path);
             }
@@ -523,7 +587,10 @@ impl ModelManager {
         res
     }
 
-    pub fn preprocess_image_batch<P: AsRef<Path>>(&self, image_paths: &[P]) -> Result<Vec<Result<Vec<u8>, Error>>, Error> {
+    pub fn preprocess_image_batch<P: AsRef<Path>>(
+        &self,
+        image_paths: &[P],
+    ) -> Result<Vec<Result<Vec<u8>, Error>>, Error> {
         let active = self.active_model();
         let target_size = match active {
             EmbeddingModel::ClipVitB32 => 224,
@@ -544,12 +611,15 @@ impl ModelManager {
                     let img_ref = path_ref;
                     let data = std::fs::read(img_ref)?;
                     let is_jpeg = data.len() >= 2 && data[0] == 0xFF && data[1] == 0xD8;
-                    let is_png = data.len() >= 8
-                        && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
+                    let is_png = data.len() >= 8 && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
 
                     let (rgb_buf, width, height) = if is_jpeg {
                         let image = turbojpeg::decompress(&data, turbojpeg::PixelFormat::RGB)?;
-                        (image.pixels.to_vec(), image.width as u32, image.height as u32)
+                        (
+                            image.pixels.to_vec(),
+                            image.width as u32,
+                            image.height as u32,
+                        )
                     } else if is_png {
                         let decoder = png::Decoder::new(std::io::Cursor::new(&data));
                         let mut reader = decoder.read_info()?;
@@ -561,18 +631,29 @@ impl ModelManager {
                         let pixels = out_info.buffer_size();
                         let rgb: Vec<u8> = match out_info.color_type {
                             png::ColorType::Rgb => raw[..pixels].to_vec(),
-                            png::ColorType::Rgba => raw[..pixels].chunks(4).flat_map(|c| [c[0], c[1], c[2]]).collect(),
-                            png::ColorType::Grayscale => raw[..pixels].iter().map(|&g| [g, g, g]).flatten().collect(),
-                            png::ColorType::GrayscaleAlpha => raw[..pixels].chunks(2).flat_map(|c| [c[0], c[0], c[0]]).collect(),
+                            png::ColorType::Rgba => raw[..pixels]
+                                .chunks(4)
+                                .flat_map(|c| [c[0], c[1], c[2]])
+                                .collect(),
+                            png::ColorType::Grayscale => {
+                                raw[..pixels].iter().flat_map(|&g| [g, g, g]).collect()
+                            }
+                            png::ColorType::GrayscaleAlpha => raw[..pixels]
+                                .chunks(2)
+                                .flat_map(|c| [c[0], c[0], c[0]])
+                                .collect(),
                             png::ColorType::Indexed => {
-                                let palette = reader.info().palette.as_deref()
+                                let palette = reader
+                                    .info()
+                                    .palette
+                                    .as_deref()
                                     .context("Indexed PNG has no palette")?;
-                                raw[..pixels].iter()
-                                    .map(|&idx| {
+                                raw[..pixels]
+                                    .iter()
+                                    .flat_map(|&idx| {
                                         let i = idx as usize * 3;
                                         [palette[i], palette[i + 1], palette[i + 2]]
                                     })
-                                    .flatten()
                                     .collect()
                             }
                         };
@@ -597,16 +678,23 @@ impl ModelManager {
                     }
 
                     let crop_ref = fast_image_resize::images::ImageRef::new(
-                        size, size, &cropped, fast_image_resize::PixelType::U8x3,
+                        size,
+                        size,
+                        &cropped,
+                        fast_image_resize::PixelType::U8x3,
                     )?;
                     let mut dst_image = fast_image_resize::images::Image::from_vec_u8(
-                        target_size, target_size, vec![0u8; (target_size * target_size * 3) as usize], fast_image_resize::PixelType::U8x3,
+                        target_size,
+                        target_size,
+                        vec![0u8; (target_size * target_size * 3) as usize],
+                        fast_image_resize::PixelType::U8x3,
                     )?;
                     let mut resizer = fast_image_resize::Resizer::new();
-                    let opts = fast_image_resize::ResizeOptions::new()
-                        .resize_alg(fast_image_resize::ResizeAlg::Convolution(
+                    let opts = fast_image_resize::ResizeOptions::new().resize_alg(
+                        fast_image_resize::ResizeAlg::Convolution(
                             fast_image_resize::FilterType::Bilinear,
-                        ));
+                        ),
+                    );
                     resizer.resize(&crop_ref, &mut dst_image, Some(&opts))?;
                     Ok(dst_image.buffer().to_vec())
                 });
@@ -614,17 +702,24 @@ impl ModelManager {
             }
 
             for (idx, handle) in handles {
-                preprocessed[idx] = handle.join().unwrap_or_else(|_| Err(anyhow::anyhow!("Thread panicked")));
+                preprocessed[idx] = handle
+                    .join()
+                    .unwrap_or_else(|_| Err(anyhow::anyhow!("Thread panicked")));
             }
         });
 
         Ok(preprocessed)
     }
 
-    fn run_inference_on_preprocessed_batch_inner(&self, preprocessed: &[Result<Vec<u8>, Error>]) -> Result<Vec<Result<Vec<f32>, Error>>, Error> {
+    fn run_inference_on_preprocessed_batch_inner(
+        &self,
+        preprocessed: &[Result<Vec<u8>, Error>],
+    ) -> Result<Vec<Result<Vec<f32>, Error>>, Error> {
         self.ensure_loaded()?;
         self.last_used.store(now_secs(), Ordering::Relaxed);
-        let mut session_guard = self.vision_session.lock()
+        let mut session_guard = self
+            .vision_session
+            .lock()
             .map_err(|_| anyhow::anyhow!("Vision mutex poisoned"))?;
 
         let active = self.active_model();
@@ -655,19 +750,21 @@ impl ModelManager {
         }
 
         let batch_size = valid_indices.len();
-        let mut input_array = Array4::<f32>::zeros((batch_size, 3, target_size as usize, target_size as usize));
-        
+        let mut input_array =
+            Array4::<f32>::zeros((batch_size, 3, target_size as usize, target_size as usize));
+
         for (batch_idx, &orig_idx) in valid_indices.iter().enumerate() {
             if let Ok(ref resized_buf) = preprocessed[orig_idx] {
                 match active {
                     EmbeddingModel::ClipVitB32 => {
                         let mean = [0.48145466, 0.4578275, 0.40821073];
-                        let std = [0.26862954, 0.26130258, 0.27577711];
+                        let std = [0.26862954, 0.261_302_6, 0.275_777_1];
                         for c in 0..3 {
                             for row in 0..224 {
                                 for col in 0..224 {
                                     let val = resized_buf[(row * 224 + col) * 3 + c] as f32 / 255.0;
-                                    input_array[[batch_idx, c, row, col]] = (val - mean[c]) / std[c];
+                                    input_array[[batch_idx, c, row, col]] =
+                                        (val - mean[c]) / std[c];
                                 }
                             }
                         }
@@ -686,10 +783,13 @@ impl ModelManager {
             }
         }
 
-        let session = session_guard.as_mut().context("Vision model not initialized")?;
+        let session = session_guard
+            .as_mut()
+            .context("Vision model not initialized")?;
         let outputs = session.run(inputs![TensorRef::from_array_view(&input_array)?])?;
-        
-        let output_tensor = outputs.get("image_embeds")
+
+        let output_tensor = outputs
+            .get("image_embeds")
             .or_else(|| outputs.get("output_0"))
             .context("Failed to get image embeds output from model")?;
 
@@ -723,16 +823,21 @@ impl ModelManager {
         Ok(results)
     }
 
-    pub fn run_inference_on_preprocessed_batch(&self, preprocessed: &[Result<Vec<u8>, Error>]) -> Result<Vec<Result<Vec<f32>, Error>>, Error> {
+    pub fn run_inference_on_preprocessed_batch(
+        &self,
+        preprocessed: &[Result<Vec<u8>, Error>],
+    ) -> Result<Vec<Result<Vec<f32>, Error>>, Error> {
         let res = self.run_inference_on_preprocessed_batch_inner(preprocessed);
-        if res.is_err() {
+        if let Err(ref err) = res {
             let is_gpu = {
                 let d = self.device.lock().unwrap();
                 *d != DevicePreference::Cpu
             };
             if is_gpu {
-                let err = res.unwrap_err();
-                warn!("ONNX vision batch inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...", err);
+                warn!(
+                    "ONNX vision batch inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...",
+                    err
+                );
                 self.set_device(DevicePreference::Cpu);
                 return self.run_inference_on_preprocessed_batch_inner(preprocessed);
             }
@@ -740,7 +845,10 @@ impl ModelManager {
         res
     }
 
-    pub fn generate_image_embeddings<P: AsRef<Path>>(&self, image_paths: &[P]) -> Result<Vec<Result<Vec<f32>, Error>>, Error> {
+    pub fn generate_image_embeddings<P: AsRef<Path>>(
+        &self,
+        image_paths: &[P],
+    ) -> Result<Vec<Result<Vec<f32>, Error>>, Error> {
         let preprocessed = self.preprocess_image_batch(image_paths)?;
         self.run_inference_on_preprocessed_batch(&preprocessed)
     }
@@ -748,17 +856,22 @@ impl ModelManager {
     fn generate_text_embedding_inner(&self, text: &str) -> Result<Vec<f32>, Error> {
         self.ensure_loaded()?;
         self.last_used.store(now_secs(), Ordering::Relaxed);
-        let mut session_guard = self.text_session.lock()
+        let mut session_guard = self
+            .text_session
+            .lock()
             .map_err(|_| anyhow::anyhow!("Text mutex poisoned"))?;
-        let _session = session_guard.as_mut().context("Text model not initialized")?;
+        let _session = session_guard
+            .as_mut()
+            .context("Text model not initialized")?;
         let tok_guard = self.tokenizer.lock().unwrap();
         let tokenizer = tok_guard.as_ref().context("Tokenizer not initialized")?;
 
-        let encoding = tokenizer.encode(text, true)
+        let encoding = tokenizer
+            .encode(text, true)
             .map_err(|e| anyhow::anyhow!("Tokenization failed: {:?}", e))?;
-        
+
         let input_ids = encoding.get_ids();
-        
+
         // Pad or truncate to exactly 77 tokens (CLIP standard) to prevent dynamic shape errors in DirectML
         let mut padded_ids = vec![0i64; 77];
         let copy_len = input_ids.len().min(77);
@@ -770,23 +883,26 @@ impl ModelManager {
         } else {
             input_ids[input_ids.len() - 1] as i64
         };
-        for i in copy_len..77 {
-            padded_ids[i] = eos_token;
+        for item in padded_ids.iter_mut().take(77).skip(copy_len) {
+            *item = eos_token;
         }
 
         let input_ids_array = Array2::<i64>::from_shape_fn((1, 77), |(_, j)| padded_ids[j]);
 
-        let session = session_guard.as_mut().context("Text model not initialized")?;
+        let session = session_guard
+            .as_mut()
+            .context("Text model not initialized")?;
         let outputs = session.run(inputs![
             "input_ids" => TensorRef::from_array_view(&input_ids_array)?
         ])?;
 
-        let output_tensor = outputs.get("text_embeds")
+        let output_tensor = outputs
+            .get("text_embeds")
             .or_else(|| outputs.get("output_0"))
             .context("Failed to get text embeds output from model")?;
 
         let output_ref = output_tensor.try_extract_tensor::<f32>()?;
-        
+
         let mut embedding = output_ref.1.to_vec();
         let norm = (embedding.iter().map(|&x| x * x).sum::<f32>()).sqrt();
         if norm > 0.0 {
@@ -800,14 +916,16 @@ impl ModelManager {
 
     pub fn generate_text_embedding(&self, text: &str) -> Result<Vec<f32>, Error> {
         let res = self.generate_text_embedding_inner(text);
-        if res.is_err() {
+        if let Err(ref err) = res {
             let is_gpu = {
                 let d = self.device.lock().unwrap();
                 *d != DevicePreference::Cpu
             };
             if is_gpu {
-                let err = res.unwrap_err();
-                warn!("ONNX text inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...", err);
+                warn!(
+                    "ONNX text inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...",
+                    err
+                );
                 self.set_device(DevicePreference::Cpu);
                 return self.generate_text_embedding_inner(text);
             }
@@ -824,13 +942,19 @@ pub fn apply_device_preference(
 ) {
     match device {
         DevicePreference::Cpu => {
-            info!("{}: forced to CPU — skipping GPU execution providers", model_name);
+            info!(
+                "{}: forced to CPU — skipping GPU execution providers",
+                model_name
+            );
         }
         DevicePreference::Gpu => {
             let mut registered = false;
             #[cfg(target_os = "windows")]
             {
-                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::DirectML::default().build()]) {
+                if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::DirectML::default().build()])
+                {
                     *builder = b;
                     registered = true;
                     info!("{}: using DirectML (GPU)", model_name);
@@ -838,7 +962,10 @@ pub fn apply_device_preference(
             }
             #[cfg(target_os = "macos")]
             {
-                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CoreML::default().build()]) {
+                if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::CoreML::default().build()])
+                {
                     *builder = b;
                     registered = true;
                     info!("{}: using CoreML (GPU)", model_name);
@@ -846,41 +973,62 @@ pub fn apply_device_preference(
             }
             #[cfg(target_os = "linux")]
             {
-                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CUDA::default().build()]) {
+                if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::CUDA::default().build()])
+                {
                     *builder = b;
                     registered = true;
                     info!("{}: using CUDA (GPU)", model_name);
-                } else if let Ok(b) = builder.clone().with_execution_providers([ort::ep::ROCm::default().build()]) {
+                } else if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::ROCm::default().build()])
+                {
                     *builder = b;
                     registered = true;
                     info!("{}: using ROCm (GPU)", model_name);
                 }
             }
             if !registered {
-                warn!("{}: GPU requested but no provider available — falling back to CPU", model_name);
+                warn!(
+                    "{}: GPU requested but no provider available — falling back to CPU",
+                    model_name
+                );
             }
         }
         DevicePreference::Auto => {
             #[cfg(target_os = "windows")]
             {
-                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::DirectML::default().build()]) {
+                if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::DirectML::default().build()])
+                {
                     *builder = b;
                     info!("{}: auto-selected DirectML (GPU)", model_name);
                 }
             }
             #[cfg(target_os = "macos")]
             {
-                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CoreML::default().build()]) {
+                if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::CoreML::default().build()])
+                {
                     *builder = b;
                     info!("{}: auto-selected CoreML (GPU)", model_name);
                 }
             }
             #[cfg(target_os = "linux")]
             {
-                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CUDA::default().build()]) {
+                if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::CUDA::default().build()])
+                {
                     *builder = b;
                     info!("{}: auto-selected CUDA (GPU)", model_name);
-                } else if let Ok(b) = builder.clone().with_execution_providers([ort::ep::ROCm::default().build()]) {
+                } else if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::ROCm::default().build()])
+                {
                     *builder = b;
                     info!("{}: auto-selected ROCm (GPU)", model_name);
                 }
@@ -892,7 +1040,9 @@ pub fn apply_device_preference(
 /// Compute a 64-bit Average Perceptual Hash (aHash) for an image.
 pub fn compute_ahash<P: AsRef<Path>>(image_path: P) -> Result<String, Error> {
     let img = image::open(image_path.as_ref())?;
-    let resized = img.resize_exact(8, 8, image::imageops::FilterType::Nearest).to_luma8();
+    let resized = img
+        .resize_exact(8, 8, image::imageops::FilterType::Nearest)
+        .to_luma8();
     let pixels = resized.as_raw();
     let sum: u64 = pixels.iter().map(|&p| p as u64).sum();
     let avg = (sum / 64) as u8;
@@ -904,4 +1054,3 @@ pub fn compute_ahash<P: AsRef<Path>>(image_path: P) -> Result<String, Error> {
     }
     Ok(format!("{:016x}", hash))
 }
-

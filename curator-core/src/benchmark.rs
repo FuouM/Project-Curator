@@ -1,8 +1,8 @@
-use std::path::Path;
-use std::time::Instant;
 use anyhow::{Context, Result};
 use ndarray::Array4;
 use ort::{inputs, session::Session, value::TensorRef};
+use std::path::Path;
+use std::time::Instant;
 
 const IMAGENET_MEAN: [f32; 3] = [0.485, 0.456, 0.406];
 const IMAGENET_STD: [f32; 3] = [0.229, 0.224, 0.225];
@@ -18,26 +18,31 @@ pub fn benchmark_preprocess(
     let _ = image::open(image_path)?;
 
     let (t_tri_decode, t_tri_resize, t_tri_norm) = bench_resize_method(
-        image_path, target_size, runs,
+        image_path,
+        target_size,
+        runs,
         image::imageops::FilterType::Triangle,
         "image::Triangle",
     )?;
 
     let (t_near_decode, t_near_resize, t_near_norm) = bench_resize_method(
-        image_path, target_size, runs,
+        image_path,
+        target_size,
+        runs,
         image::imageops::FilterType::Nearest,
         "image::Nearest",
     )?;
 
     let (t_cat_decode, t_cat_resize, t_cat_norm) = bench_resize_method(
-        image_path, target_size, runs,
+        image_path,
+        target_size,
+        runs,
         image::imageops::FilterType::CatmullRom,
         "image::CatmullRom",
     )?;
 
-    let (t_fir_decode, t_fir_resize, t_fir_norm) = bench_fast_image_resize(
-        image_path, target_size, runs,
-    )?;
+    let (t_fir_decode, t_fir_resize, t_fir_norm) =
+        bench_fast_image_resize(image_path, target_size, runs)?;
 
     let report = format!(
         "Preprocess benchmark ({}, {}x{}, {} runs):\n\
@@ -46,15 +51,29 @@ pub fn benchmark_preprocess(
          {:<25} decode={:>7.1}ms  resize={:>7.1}ms  normalize={:>7.1}ms  total={:>7.1}ms\n\
          {:<25} decode={:>7.1}ms  resize={:>7.1}ms  normalize={:>7.1}ms  total={:>7.1}ms",
         image_path.file_name().unwrap_or_default().to_string_lossy(),
-        target_size, target_size, runs,
+        target_size,
+        target_size,
+        runs,
         "image::Triangle",
-        t_tri_decode, t_tri_resize, t_tri_norm, t_tri_decode + t_tri_resize + t_tri_norm,
+        t_tri_decode,
+        t_tri_resize,
+        t_tri_norm,
+        t_tri_decode + t_tri_resize + t_tri_norm,
         "image::Nearest",
-        t_near_decode, t_near_resize, t_near_norm, t_near_decode + t_near_resize + t_near_norm,
+        t_near_decode,
+        t_near_resize,
+        t_near_norm,
+        t_near_decode + t_near_resize + t_near_norm,
         "image::CatmullRom",
-        t_cat_decode, t_cat_resize, t_cat_norm, t_cat_decode + t_cat_resize + t_cat_norm,
+        t_cat_decode,
+        t_cat_resize,
+        t_cat_norm,
+        t_cat_decode + t_cat_resize + t_cat_norm,
         "fast_image_resize::Bilinear",
-        t_fir_decode, t_fir_resize, t_fir_norm, t_fir_decode + t_fir_resize + t_fir_norm,
+        t_fir_decode,
+        t_fir_resize,
+        t_fir_norm,
+        t_fir_decode + t_fir_resize + t_fir_norm,
     );
 
     Ok((t_tri_decode, t_tri_resize, t_tri_norm, report))
@@ -137,8 +156,8 @@ fn bench_fast_image_resize(
     target_size: u32,
     runs: usize,
 ) -> Result<(f64, f64, f64)> {
-    use fast_image_resize::{Resizer, ResizeOptions, ResizeAlg, FilterType as FirFilter};
-    use fast_image_resize::images::{ImageRef, Image};
+    use fast_image_resize::images::{Image, ImageRef};
+    use fast_image_resize::{FilterType as FirFilter, ResizeAlg, ResizeOptions, Resizer};
 
     let mut total_decode = 0.0;
     let mut total_resize = 0.0;
@@ -163,7 +182,12 @@ fn bench_fast_image_resize(
 
         let t1 = Instant::now();
         let src_buf = img.as_raw();
-        let src = ImageRef::new(ow, oh, src_buf.as_slice(), fast_image_resize::PixelType::U8x3)?;
+        let src = ImageRef::new(
+            ow,
+            oh,
+            src_buf.as_slice(),
+            fast_image_resize::PixelType::U8x3,
+        )?;
         let dst_buf = vec![0u8; (nw * nh * 3) as usize];
         let mut dst = Image::from_vec_u8(nw, nh, dst_buf, fast_image_resize::PixelType::U8x3)?;
         resizer.resize(&src, &mut dst, Some(&opts))?;
@@ -212,7 +236,10 @@ fn bench_fast_image_resize(
     ))
 }
 
-pub fn run_onnx_benchmark(model_path: &Path, img_size: usize) -> Result<(f64, Option<f64>, Option<String>, bool)> {
+pub fn run_onnx_benchmark(
+    model_path: &Path,
+    img_size: usize,
+) -> Result<(f64, Option<f64>, Option<String>, bool)> {
     if !model_path.exists() {
         anyhow::bail!("Model path does not exist: {:?}", model_path);
     }
@@ -233,7 +260,11 @@ pub fn run_onnx_benchmark(model_path: &Path, img_size: usize) -> Result<(f64, Op
     }
     let cpu_time = start.elapsed().as_secs_f64() * 1000.0 / (runs as f64);
 
-    let has_gpu = cfg!(any(target_os = "windows", target_os = "macos", target_os = "linux"));
+    let has_gpu = cfg!(any(
+        target_os = "windows",
+        target_os = "macos",
+        target_os = "linux"
+    ));
     let mut gpu_time = None;
     let mut gpu_err = None;
 
@@ -244,8 +275,15 @@ pub fn run_onnx_benchmark(model_path: &Path, img_size: usize) -> Result<(f64, Op
 
         #[cfg(target_os = "windows")]
         {
-            if builder.clone().with_execution_providers([ort::ep::DirectML::default().build()]).is_ok() {
-                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::DirectML::default().build()]) {
+            if builder
+                .clone()
+                .with_execution_providers([ort::ep::DirectML::default().build()])
+                .is_ok()
+            {
+                if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::DirectML::default().build()])
+                {
                     builder = b;
                     provider_registered = true;
                 }
@@ -254,8 +292,15 @@ pub fn run_onnx_benchmark(model_path: &Path, img_size: usize) -> Result<(f64, Op
 
         #[cfg(target_os = "macos")]
         {
-            if builder.clone().with_execution_providers([ort::ep::CoreML::default().build()]).is_ok() {
-                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CoreML::default().build()]) {
+            if builder
+                .clone()
+                .with_execution_providers([ort::ep::CoreML::default().build()])
+                .is_ok()
+            {
+                if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::CoreML::default().build()])
+                {
                     builder = b;
                     provider_registered = true;
                 }
@@ -265,16 +310,30 @@ pub fn run_onnx_benchmark(model_path: &Path, img_size: usize) -> Result<(f64, Op
         #[cfg(target_os = "linux")]
         {
             let mut registered = false;
-            if builder.clone().with_execution_providers([ort::ep::CUDA::default().build()]).is_ok() {
-                if let Ok(b) = builder.clone().with_execution_providers([ort::ep::CUDA::default().build()]) {
+            if builder
+                .clone()
+                .with_execution_providers([ort::ep::CUDA::default().build()])
+                .is_ok()
+            {
+                if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::CUDA::default().build()])
+                {
                     builder = b;
                     provider_registered = true;
                     registered = true;
                 }
             }
             if !registered {
-                if builder.clone().with_execution_providers([ort::ep::ROCm::default().build()]).is_ok() {
-                    if let Ok(b) = builder.clone().with_execution_providers([ort::ep::ROCm::default().build()]) {
+                if builder
+                    .clone()
+                    .with_execution_providers([ort::ep::ROCm::default().build()])
+                    .is_ok()
+                {
+                    if let Ok(b) = builder
+                        .clone()
+                        .with_execution_providers([ort::ep::ROCm::default().build()])
+                    {
                         builder = b;
                         provider_registered = true;
                     }
@@ -285,11 +344,17 @@ pub fn run_onnx_benchmark(model_path: &Path, img_size: usize) -> Result<(f64, Op
         if provider_registered {
             match builder.commit_from_file(model_path) {
                 Ok(mut gpu_session) => {
-                    if gpu_session.run(inputs![TensorRef::from_array_view(&dummy_input)?]).is_ok() {
+                    if gpu_session
+                        .run(inputs![TensorRef::from_array_view(&dummy_input)?])
+                        .is_ok()
+                    {
                         let start = Instant::now();
                         let mut success = true;
                         for _ in 0..runs {
-                            if gpu_session.run(inputs![TensorRef::from_array_view(&dummy_input)?]).is_err() {
+                            if gpu_session
+                                .run(inputs![TensorRef::from_array_view(&dummy_input)?])
+                                .is_err()
+                            {
                                 success = false;
                                 break;
                             }

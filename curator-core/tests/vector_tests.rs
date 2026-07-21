@@ -1,5 +1,5 @@
-use curator_core::vector::{ModelManager, VectorIndex};
 use curator_core::ipc::DevicePreference;
+use curator_core::vector::{ModelManager, VectorIndex};
 use tempfile::tempdir;
 
 const IMAGENET_MEAN: [f32; 3] = [0.485, 0.456, 0.406];
@@ -8,9 +8,8 @@ const PAD_COLOR: [u8; 3] = [124, 116, 104];
 
 #[test]
 fn test_decode_benchmark() {
-    let path = std::path::Path::new(
-        r"L:\Convoy\4chan org - Anime & Manga - 289375778\1766273121471.jpg",
-    );
+    let path =
+        std::path::Path::new(r"L:\Convoy\4chan org - Anime & Manga - 289375778\1766273121471.jpg");
     if !path.exists() {
         println!("Test image not found, skipping");
         return;
@@ -40,15 +39,15 @@ fn test_decode_benchmark() {
         path.file_name().unwrap().to_string_lossy(),
         runs,
         image_ms,
-        turbo_ms, image_ms / turbo_ms,
+        turbo_ms,
+        image_ms / turbo_ms,
     );
 }
 
 #[test]
 fn test_full_preprocess_benchmark() {
-    let path = std::path::Path::new(
-        r"L:\Convoy\4chan org - Anime & Manga - 289375778\1766273121471.jpg",
-    );
+    let path =
+        std::path::Path::new(r"L:\Convoy\4chan org - Anime & Manga - 289375778\1766273121471.jpg");
     if !path.exists() {
         println!("Test image not found, skipping");
         return;
@@ -56,7 +55,7 @@ fn test_full_preprocess_benchmark() {
     let data = std::fs::read(path).unwrap();
     let target: u32 = 512;
     let runs = 5;
-    use fast_image_resize::{Resizer, ResizeOptions, ResizeAlg, FilterType as FirFilter};
+    use fast_image_resize::{FilterType as FirFilter, ResizeAlg, ResizeOptions, Resizer};
 
     let _ = image::open(path).unwrap();
 
@@ -82,8 +81,20 @@ fn test_full_preprocess_benchmark() {
         } else {
             ((target as f32 * aspect).round() as u32, target)
         };
-        let src = fast_image_resize::images::ImageRef::new(ow, oh, &buf, fast_image_resize::PixelType::U8x3).unwrap();
-        let mut dst = fast_image_resize::images::Image::from_vec_u8(nw, nh, vec![0u8; (nw * nh * 3) as usize], fast_image_resize::PixelType::U8x3).unwrap();
+        let src = fast_image_resize::images::ImageRef::new(
+            ow,
+            oh,
+            &buf,
+            fast_image_resize::PixelType::U8x3,
+        )
+        .unwrap();
+        let mut dst = fast_image_resize::images::Image::from_vec_u8(
+            nw,
+            nh,
+            vec![0u8; (nw * nh * 3) as usize],
+            fast_image_resize::PixelType::U8x3,
+        )
+        .unwrap();
         resizer.resize(&src, &mut dst, Some(&opts)).unwrap();
     }
     let t_c = std::time::Instant::now();
@@ -107,9 +118,12 @@ fn test_full_preprocess_benchmark() {
          D) image crate + FIR Bilinear:          {:.1} ms  ({:.1}x)",
         runs,
         ms_a,
-        ms_b, ms_a / ms_b,
-        ms_c, ms_a / ms_c,
-        ms_d, ms_a / ms_d,
+        ms_b,
+        ms_a / ms_b,
+        ms_c,
+        ms_a / ms_c,
+        ms_d,
+        ms_a / ms_d,
     );
 }
 
@@ -148,7 +162,8 @@ fn preprocess_b_turbo_img_resize(data: &[u8], target: u32) {
 }
 
 fn preprocess_c_turbo_fir(
-    data: &[u8], target: u32,
+    data: &[u8],
+    target: u32,
     resizer: &mut fast_image_resize::Resizer,
     opts: &fast_image_resize::ResizeOptions,
 ) {
@@ -159,14 +174,23 @@ fn preprocess_c_turbo_fir(
     } else {
         ((target as f32 * aspect).round() as u32, target)
     };
-    let src = fast_image_resize::images::ImageRef::new(ow, oh, &buf, fast_image_resize::PixelType::U8x3).unwrap();
-    let mut dst = fast_image_resize::images::Image::from_vec_u8(nw, nh, vec![0u8; (nw * nh * 3) as usize], fast_image_resize::PixelType::U8x3).unwrap();
+    let src =
+        fast_image_resize::images::ImageRef::new(ow, oh, &buf, fast_image_resize::PixelType::U8x3)
+            .unwrap();
+    let mut dst = fast_image_resize::images::Image::from_vec_u8(
+        nw,
+        nh,
+        vec![0u8; (nw * nh * 3) as usize],
+        fast_image_resize::PixelType::U8x3,
+    )
+    .unwrap();
     resizer.resize(&src, &mut dst, Some(opts)).unwrap();
     build_tensor(dst.buffer(), target, nw, nh);
 }
 
 fn preprocess_d_image_fir(
-    path: &std::path::Path, target: u32,
+    path: &std::path::Path,
+    target: u32,
     resizer: &mut fast_image_resize::Resizer,
     opts: &fast_image_resize::ResizeOptions,
 ) {
@@ -180,8 +204,20 @@ fn preprocess_d_image_fir(
         ((target as f32 * aspect).round() as u32, target)
     };
     let src_buf = rgb.as_raw();
-    let src = fast_image_resize::images::ImageRef::new(ow, oh, src_buf.as_slice(), fast_image_resize::PixelType::U8x3).unwrap();
-    let mut dst = fast_image_resize::images::Image::from_vec_u8(nw, nh, vec![0u8; (nw * nh * 3) as usize], fast_image_resize::PixelType::U8x3).unwrap();
+    let src = fast_image_resize::images::ImageRef::new(
+        ow,
+        oh,
+        src_buf.as_slice(),
+        fast_image_resize::PixelType::U8x3,
+    )
+    .unwrap();
+    let mut dst = fast_image_resize::images::Image::from_vec_u8(
+        nw,
+        nh,
+        vec![0u8; (nw * nh * 3) as usize],
+        fast_image_resize::PixelType::U8x3,
+    )
+    .unwrap();
     resizer.resize(&src, &mut dst, Some(opts)).unwrap();
     build_tensor(dst.buffer(), target, nw, nh);
 }
@@ -223,25 +259,33 @@ async fn test_vector_indexing_and_clip_inference() {
     let index_path = temp_dir.path().join("vector_index.usearch");
 
     let model_manager = ModelManager::new(&model_dir, DevicePreference::Auto);
-    model_manager.init().expect("Failed to initialize CLIP models");
+    model_manager
+        .init()
+        .expect("Failed to initialize CLIP models");
 
     assert!(model_dir.join("vision_model.onnx").exists());
     assert!(model_dir.join("text_model.onnx").exists());
     assert!(model_dir.join("tokenizer.json").exists());
 
     let test_image_path = ".\\test_images\\augh.png";
-    let image_embedding = model_manager.generate_image_embedding(test_image_path)
+    let image_embedding = model_manager
+        .generate_image_embedding(test_image_path)
         .expect("Failed to generate image embedding");
     assert_eq!(image_embedding.len(), 512);
 
-    let text_embedding = model_manager.generate_text_embedding("a picture of a cat")
+    let text_embedding = model_manager
+        .generate_text_embedding("a picture of a cat")
         .expect("Failed to generate text embedding");
     assert_eq!(text_embedding.len(), 512);
 
     let index = VectorIndex::new(&index_path, 512).expect("Failed to initialize vector index");
-    index.add(42, &image_embedding).expect("Failed to add vector to index");
+    index
+        .add(42, &image_embedding)
+        .expect("Failed to add vector to index");
 
-    let search_results = index.search(&text_embedding, 1).expect("Failed to search index");
+    let search_results = index
+        .search(&text_embedding, 1)
+        .expect("Failed to search index");
     assert_eq!(search_results.len(), 1);
     assert_eq!(search_results[0].0, 42);
 }

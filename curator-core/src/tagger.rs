@@ -4,9 +4,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result};
 use crate::ipc::DevicePreference;
 use crate::vector::apply_device_preference;
+use anyhow::{Context, Result};
 
 use ndarray::Array4;
 use ort::{inputs, session::Session, value::TensorRef};
@@ -135,7 +135,10 @@ impl TaggerEngine {
         }
         let mut guard = self.inner.lock().unwrap();
         if guard.is_some() {
-            info!("Camie Tagger: device changed to {:?} — unloading model for reload", device);
+            info!(
+                "Camie Tagger: device changed to {:?} — unloading model for reload",
+                device
+            );
             *guard = None;
         }
     }
@@ -149,16 +152,13 @@ impl TaggerEngine {
         Ok(())
     }
 
-    fn tag_image_inner(
-        &self,
-        image_path: &Path,
-        threshold: f32,
-    ) -> Result<Vec<TagPrediction>> {
+    fn tag_image_inner(&self, image_path: &Path, threshold: f32) -> Result<Vec<TagPrediction>> {
         let t_total = Instant::now();
 
         // Ensure loaded
         let t0 = Instant::now();
-        {            let guard = self.inner.lock().unwrap();
+        {
+            let guard = self.inner.lock().unwrap();
             if guard.is_none() {
                 drop(guard);
                 self.load()?;
@@ -182,7 +182,7 @@ impl TaggerEngine {
         let t2 = Instant::now();
 
         debug!("Running Camie Tagger inference on {:?}", image_path);
-        
+
         let mut session_guard = inner.session.lock().unwrap();
         let outputs = session_guard
             .run(inputs![TensorRef::from_array_view(&tensor)?])
@@ -238,7 +238,9 @@ impl TaggerEngine {
             if p_a != p_b {
                 p_a.cmp(&p_b)
             } else {
-                b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal)
+                b.confidence
+                    .partial_cmp(&a.confidence)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             }
         });
         let postprocess_ms = t2.elapsed().as_secs_f64() * 1000.0 - inference_ms;
@@ -246,7 +248,11 @@ impl TaggerEngine {
         let total_ms = t_total.elapsed().as_secs_f64() * 1000.0;
         info!(
             "Camie Tagger timing: load={:.1}ms preprocess={:.1}ms inference={:.1}ms postprocess={:.1}ms total={:.1}ms | {} predictions for {:?}",
-            load_ms, preprocess_ms, inference_ms, postprocess_ms, total_ms,
+            load_ms,
+            preprocess_ms,
+            inference_ms,
+            postprocess_ms,
+            total_ms,
             predictions.len(),
             image_path
         );
@@ -261,14 +267,16 @@ impl TaggerEngine {
     ) -> Result<Vec<TagPrediction>> {
         let path = image_path.as_ref();
         let res = self.tag_image_inner(path, threshold);
-        if res.is_err() {
+        if let Err(ref err) = res {
             let is_gpu = {
                 let d = self.device.lock().unwrap();
                 *d != DevicePreference::Cpu
             };
             if is_gpu {
-                let err = res.unwrap_err();
-                warn!("Camie Tagger inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...", err);
+                warn!(
+                    "Camie Tagger inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...",
+                    err
+                );
                 self.set_device(DevicePreference::Cpu);
                 return self.tag_image_inner(path, threshold);
             }
@@ -297,12 +305,15 @@ impl TaggerEngine {
 
         let device = self.device.lock().unwrap().clone();
 
-        info!("Loading Camie Tagger v2 ONNX model from {:?} (device: {:?})", self.model_path, device);
+        info!(
+            "Loading Camie Tagger v2 ONNX model from {:?} (device: {:?})",
+            self.model_path, device
+        );
 
-        let meta_bytes = std::fs::read(&self.metadata_path)
-            .context("Failed to read metadata JSON")?;
-        let meta: MetadataRoot = serde_json::from_slice(&meta_bytes)
-            .context("Failed to parse metadata JSON")?;
+        let meta_bytes =
+            std::fs::read(&self.metadata_path).context("Failed to read metadata JSON")?;
+        let meta: MetadataRoot =
+            serde_json::from_slice(&meta_bytes).context("Failed to parse metadata JSON")?;
 
         let img_size = meta.model_info.img_size;
         let idx_to_tag = meta.dataset_info.tag_mapping.idx_to_tag;
@@ -346,20 +357,28 @@ const IMAGENET_MEAN: [f32; 3] = [0.485, 0.456, 0.406];
 const IMAGENET_STD: [f32; 3] = [0.229, 0.224, 0.225];
 const PAD_COLOR: [u8; 3] = [124, 116, 104];
 
-fn preprocess_image(path: &Path, img_size: u32, resizer: &mut fast_image_resize::Resizer) -> Result<Array4<f32>> {
+fn preprocess_image(
+    path: &Path,
+    img_size: u32,
+    resizer: &mut fast_image_resize::Resizer,
+) -> Result<Array4<f32>> {
     // Fast decode: turbojpeg for JPEG, png+zlib-rs for PNG, image crate fallback
     let data = std::fs::read(path).with_context(|| format!("Cannot read image {:?}", path))?;
     let is_jpeg = data.len() >= 2 && data[0] == 0xFF && data[1] == 0xD8;
-    let is_png = data.len() >= 8
-        && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
+    let is_png = data.len() >= 8 && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
 
     let (rgb_buf, orig_w, orig_h) = if is_jpeg {
         let image = turbojpeg::decompress(&data, turbojpeg::PixelFormat::RGB)
             .with_context(|| format!("turbojpeg decode failed for {:?}", path))?;
-        (image.pixels.to_vec(), image.width as u32, image.height as u32)
+        (
+            image.pixels.to_vec(),
+            image.width as u32,
+            image.height as u32,
+        )
     } else if is_png {
         let decoder = png::Decoder::new(std::io::Cursor::new(&data));
-        let mut reader = decoder.read_info()
+        let mut reader = decoder
+            .read_info()
             .with_context(|| format!("png decode header failed for {:?}", path))?;
         let w = reader.info().width;
         let h = reader.info().height;
@@ -368,23 +387,33 @@ fn preprocess_image(path: &Path, img_size: u32, resizer: &mut fast_image_resize:
         // than required" on next_frame().
         let buf_size = w as usize * h as usize * 4;
         let mut raw = vec![0u8; buf_size];
-        let out_info = reader.next_frame(&mut raw)
+        let out_info = reader
+            .next_frame(&mut raw)
             .with_context(|| format!("png decode failed for {:?}", path))?;
         let pixels = out_info.buffer_size();
         let rgb: Vec<u8> = match out_info.color_type {
             png::ColorType::Rgb => raw[..pixels].to_vec(),
-            png::ColorType::Rgba => raw[..pixels].chunks(4).flat_map(|c| [c[0], c[1], c[2]]).collect(),
-            png::ColorType::Grayscale => raw[..pixels].iter().map(|&g| [g, g, g]).flatten().collect(),
-            png::ColorType::GrayscaleAlpha => raw[..pixels].chunks(2).flat_map(|c| [c[0], c[0], c[0]]).collect(),
+            png::ColorType::Rgba => raw[..pixels]
+                .chunks(4)
+                .flat_map(|c| [c[0], c[1], c[2]])
+                .collect(),
+            png::ColorType::Grayscale => raw[..pixels].iter().flat_map(|&g| [g, g, g]).collect(),
+            png::ColorType::GrayscaleAlpha => raw[..pixels]
+                .chunks(2)
+                .flat_map(|c| [c[0], c[0], c[0]])
+                .collect(),
             png::ColorType::Indexed => {
-                let palette = reader.info().palette.as_deref()
+                let palette = reader
+                    .info()
+                    .palette
+                    .as_deref()
                     .context("Indexed PNG has no palette")?;
-                raw[..pixels].iter()
-                    .map(|&idx| {
+                raw[..pixels]
+                    .iter()
+                    .flat_map(|&idx| {
                         let i = idx as usize * 3;
                         [palette[i], palette[i + 1], palette[i + 2]]
                     })
-                    .flatten()
                     .collect()
             }
         };
@@ -410,16 +439,21 @@ fn preprocess_image(path: &Path, img_size: u32, resizer: &mut fast_image_resize:
 
     // SIMD-accelerated resize via fast_image_resize (resizer reused across calls)
     let src = fast_image_resize::images::ImageRef::new(
-        orig_w, orig_h, &rgb_buf, fast_image_resize::PixelType::U8x3,
+        orig_w,
+        orig_h,
+        &rgb_buf,
+        fast_image_resize::PixelType::U8x3,
     )?;
     let dst_buf = vec![0u8; (new_w * new_h * 3) as usize];
     let mut dst = fast_image_resize::images::Image::from_vec_u8(
-        new_w, new_h, dst_buf, fast_image_resize::PixelType::U8x3,
+        new_w,
+        new_h,
+        dst_buf,
+        fast_image_resize::PixelType::U8x3,
     )?;
-    let opts = fast_image_resize::ResizeOptions::new()
-        .resize_alg(fast_image_resize::ResizeAlg::Convolution(
-            fast_image_resize::FilterType::Bilinear,
-        ));
+    let opts = fast_image_resize::ResizeOptions::new().resize_alg(
+        fast_image_resize::ResizeAlg::Convolution(fast_image_resize::FilterType::Bilinear),
+    );
     resizer.resize(&src, &mut dst, Some(&opts))?;
     let data = dst.buffer();
 

@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 /// Device selection for ONNX model inference.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum DevicePreference {
     /// Try GPU first, fall back to CPU if unavailable.
+    #[default]
     Auto,
     /// Force CPU-only execution.
     Cpu,
@@ -12,27 +14,15 @@ pub enum DevicePreference {
     Gpu,
 }
 
-impl Default for DevicePreference {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
-
 /// Supported embedding models.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum EmbeddingModel {
     #[serde(rename = "clip-vit-b-32")]
+    #[default]
     ClipVitB32,
     #[serde(rename = "mobileclip-s2")]
     MobileClipS2,
 }
-
-impl Default for EmbeddingModel {
-    fn default() -> Self {
-        Self::ClipVitB32
-    }
-}
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Request {

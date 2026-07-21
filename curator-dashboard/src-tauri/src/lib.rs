@@ -1,9 +1,9 @@
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tauri::Emitter;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 
 // We will default to the standard curator data path
 const DEFAULT_DATA_DIR: &str = r".curator";
@@ -12,8 +12,12 @@ fn log_dashboard_event(msg: &str) {
     let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
     let _ = fs::create_dir_all(&data_dir);
     let log_file = data_dir.join("dashboard.log");
-    
-    if let Ok(mut file) = fs::OpenOptions::new().create(true).write(true).append(true).open(log_file) {
+
+    if let Ok(mut file) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_file)
+    {
         use std::io::Write;
         let timestamp = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S");
         let _ = writeln!(file, "[{}] {}", timestamp, msg);
@@ -32,7 +36,7 @@ fn spawn_service() {
         if let Some(dir) = exe_path.parent() {
             // Standard location (release or debug output folder)
             let mut candidate = dir.join("curator-service.exe");
-            
+
             // Fallback for dev mode running from deps/
             if !candidate.exists() {
                 if let Some(parent) = dir.parent() {
@@ -45,17 +49,15 @@ fn spawn_service() {
 
             if candidate.exists() {
                 log_dashboard_event(&format!("Found curator-service at: {:?}", candidate));
-                
+
                 // Open stdout/stderr redirection file
                 if let Ok(log_file) = fs::OpenOptions::new()
                     .create(true)
-                    .write(true)
                     .append(true)
                     .open(&stdout_log_path)
                 {
                     let log_file_err = log_file.try_clone().unwrap_or_else(|_| {
                         fs::OpenOptions::new()
-                            .write(true)
                             .append(true)
                             .open(&stdout_log_path)
                             .unwrap()
@@ -69,17 +71,26 @@ fn spawn_service() {
                         .spawn()
                     {
                         Ok(child) => {
-                            log_dashboard_event(&format!("Successfully spawned curator-service. Child PID: {}", child.id()));
+                            log_dashboard_event(&format!(
+                                "Successfully spawned curator-service. Child PID: {}",
+                                child.id()
+                            ));
                         }
                         Err(e) => {
-                            log_dashboard_event(&format!("Failed to spawn curator-service Command: {:?}", e));
+                            log_dashboard_event(&format!(
+                                "Failed to spawn curator-service Command: {:?}",
+                                e
+                            ));
                         }
                     }
                 } else {
                     log_dashboard_event("Failed to open service_stdout.log for redirection");
                 }
             } else {
-                log_dashboard_event(&format!("curator-service.exe not found at candidate paths under parent of {:?}", dir));
+                log_dashboard_event(&format!(
+                    "curator-service.exe not found at candidate paths under parent of {:?}",
+                    dir
+                ));
             }
         }
     } else {
@@ -173,7 +184,10 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
         let t = match fs::read_to_string(&key_file) {
             Ok(t) => t.trim().to_string(),
             Err(e) => {
-                log_dashboard_event(&format!("Failed to read service.key on first pass: {:?}", e));
+                log_dashboard_event(&format!(
+                    "Failed to read service.key on first pass: {:?}",
+                    e
+                ));
                 spawn_service();
                 tokio::time::sleep(std::time::Duration::from_secs(4)).await;
                 fs::read_to_string(&key_file)
@@ -236,11 +250,17 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
 
     match send_result {
         Ok(response) => {
-            log_dashboard_event(&format!("Successfully received response from service ({} bytes).", response.len()));
+            log_dashboard_event(&format!(
+                "Successfully received response from service ({} bytes).",
+                response.len()
+            ));
             Ok(response)
         }
         Err(e) => {
-            log_dashboard_event(&format!("Request on persistent connection failed ({}). Reconnecting...", e));
+            log_dashboard_event(&format!(
+                "Request on persistent connection failed ({}). Reconnecting...",
+                e
+            ));
             // Drop broken connection, reconnect and retry once
             *conn_guard = None;
             match connect_and_authenticate(pipe_name, &token).await {
@@ -264,42 +284,43 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
                     *conn_guard = Some(client);
                 }
             }
-            let response = send_request_json(conn_guard.as_mut().unwrap(), &request_json).await
+            let response = send_request_json(conn_guard.as_mut().unwrap(), &request_json)
+                .await
                 .map_err(|e2| {
                     let err_msg = format!("Retry also failed: {}", e2);
                     log_dashboard_event(&err_msg);
                     err_msg
                 })?;
-            log_dashboard_event(&format!("Successfully received response from service ({} bytes).", response.len()));
+            log_dashboard_event(&format!(
+                "Successfully received response from service ({} bytes).",
+                response.len()
+            ));
             Ok(response)
         }
     }
 }
 
 async fn connect_and_authenticate(pipe_name: &str, token: &str) -> Result<NamedPipeClient, String> {
-    let mut client = ClientOptions::new().open(pipe_name)
-        .map_err(|e| {
-            let err_msg = format!("Named Pipe connection failed: {:?}", e);
-            log_dashboard_event(&err_msg);
-            err_msg
-        })?;
+    let mut client = ClientOptions::new().open(pipe_name).map_err(|e| {
+        let err_msg = format!("Named Pipe connection failed: {:?}", e);
+        log_dashboard_event(&err_msg);
+        err_msg
+    })?;
 
     log_dashboard_event("Sending token handshake to service...");
 
-    client.write_all(token.as_bytes()).await
-        .map_err(|e| {
-            let err_msg = format!("Handshake write failed: {:?}", e);
-            log_dashboard_event(&err_msg);
-            err_msg
-        })?;
+    client.write_all(token.as_bytes()).await.map_err(|e| {
+        let err_msg = format!("Handshake write failed: {:?}", e);
+        log_dashboard_event(&err_msg);
+        err_msg
+    })?;
 
     let mut auth_buffer = vec![0; 32];
-    let n = client.read(&mut auth_buffer).await
-        .map_err(|e| {
-            let err_msg = format!("Handshake read failed: {:?}", e);
-            log_dashboard_event(&err_msg);
-            err_msg
-        })?;
+    let n = client.read(&mut auth_buffer).await.map_err(|e| {
+        let err_msg = format!("Handshake read failed: {:?}", e);
+        log_dashboard_event(&err_msg);
+        err_msg
+    })?;
 
     let auth_status = String::from_utf8_lossy(&auth_buffer[..n]);
     if auth_status != "AUTH_OK" {
@@ -312,14 +333,21 @@ async fn connect_and_authenticate(pipe_name: &str, token: &str) -> Result<NamedP
     Ok(client)
 }
 
-async fn send_request_json(client: &mut NamedPipeClient, request_json: &str) -> Result<String, String> {
-    client.write_all(request_json.as_bytes()).await
+async fn send_request_json(
+    client: &mut NamedPipeClient,
+    request_json: &str,
+) -> Result<String, String> {
+    client
+        .write_all(request_json.as_bytes())
+        .await
         .map_err(|e| format!("Request send failed: {}", e))?;
 
     let mut accumulated = Vec::new();
     let mut chunk = vec![0u8; 65536];
     loop {
-        let n = client.read(&mut chunk).await
+        let n = client
+            .read(&mut chunk)
+            .await
             .map_err(|e| format!("Response read failed: {}", e))?;
         if n == 0 {
             if accumulated.is_empty() {
@@ -357,7 +385,7 @@ async fn read_logs() -> Result<String, String> {
     let log_file = data_dir.join("dashboard.log");
     match fs::read_to_string(&log_file) {
         Ok(content) => Ok(content),
-        Err(e) => Err(format!("Failed to read log file: {:?}", e))
+        Err(e) => Err(format!("Failed to read log file: {:?}", e)),
     }
 }
 
@@ -367,7 +395,7 @@ async fn read_service_logs() -> Result<String, String> {
     let log_file = data_dir.join("service_stdout.log");
     match fs::read_to_string(&log_file) {
         Ok(content) => Ok(content),
-        Err(e) => Err(format!("Failed to read service log file: {:?}", e))
+        Err(e) => Err(format!("Failed to read service log file: {:?}", e)),
     }
 }
 
@@ -375,16 +403,14 @@ async fn read_service_logs() -> Result<String, String> {
 async fn clear_logs() -> Result<(), String> {
     let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
     let log_file = data_dir.join("dashboard.log");
-    fs::write(&log_file, "")
-        .map_err(|e| format!("Failed to clear logs: {:?}", e))
+    fs::write(&log_file, "").map_err(|e| format!("Failed to clear logs: {:?}", e))
 }
 
 #[tauri::command]
 async fn clear_service_logs() -> Result<(), String> {
     let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
     let log_file = data_dir.join("service_stdout.log");
-    fs::write(&log_file, "")
-        .map_err(|e| format!("Failed to clear service logs: {:?}", e))
+    fs::write(&log_file, "").map_err(|e| format!("Failed to clear service logs: {:?}", e))
 }
 
 #[tauri::command]
@@ -438,7 +464,9 @@ pub fn run() {
                     // Poll for key file instead of blind sleep
                     for _ in 0..40 {
                         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                        if key_file.exists() { break; }
+                        if key_file.exists() {
+                            break;
+                        }
                     }
                 }
 
@@ -459,7 +487,10 @@ pub fn run() {
                             log_dashboard_event("Pre-connect: pipe connection established.");
                         }
                         Err(e) => {
-                            log_dashboard_event(&format!("Pre-connect failed (will retry on first call): {}", e));
+                            log_dashboard_event(&format!(
+                                "Pre-connect failed (will retry on first call): {}",
+                                e
+                            ));
                         }
                     }
                 }
@@ -472,7 +503,10 @@ pub fn run() {
                     match send_request_json(client, &ping_json).await {
                         Ok(_) => log_dashboard_event("Pre-connect: Ping OK, connection warm."),
                         Err(e) => {
-                            log_dashboard_event(&format!("Pre-connect Ping failed ({}), dropping connection.", e));
+                            log_dashboard_event(&format!(
+                                "Pre-connect Ping failed ({}), dropping connection.",
+                                e
+                            ));
                             *conn_guard = None;
                         }
                     }

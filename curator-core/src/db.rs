@@ -6,7 +6,7 @@ pub mod models;
 
 pub async fn init_db<P: AsRef<Path>>(db_path: P) -> Result<SqlitePool, anyhow::Error> {
     let db_path = db_path.as_ref();
-    
+
     // Ensure parent directory exists
     if let Some(parent) = db_path.parent() {
         tokio::fs::create_dir_all(parent).await?;

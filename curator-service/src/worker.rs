@@ -1,12 +1,12 @@
 use curator_core::db::models::Image;
-use curator_core::vector::{ModelManager, VectorIndex};
 use curator_core::ipc::EmbeddingModel;
+use curator_core::vector::{ModelManager, VectorIndex};
+use sha2::Digest;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{error, info, warn};
-use sha2::Digest;
 
 pub struct BackgroundWorker {
     db: SqlitePool,
@@ -60,10 +60,12 @@ impl BackgroundWorker {
                 };
 
                 // Fetch source_id for active model
-                let source_id = match sqlx::query_as::<_, (i64,)>("SELECT id FROM sources WHERE name = ? LIMIT 1")
-                    .bind(source_name)
-                    .fetch_one(&db_pre)
-                    .await
+                let source_id = match sqlx::query_as::<_, (i64,)>(
+                    "SELECT id FROM sources WHERE name = ? LIMIT 1",
+                )
+                .bind(source_name)
+                .fetch_one(&db_pre)
+                .await
                 {
                     Ok(r) => r.0,
                     Err(e) => {
@@ -78,7 +80,7 @@ impl BackgroundWorker {
                     "SELECT i.* FROM images i
                      JOIN image_vectors iv ON i.id = iv.image_id
                      WHERE iv.vector_state = 'pending' AND iv.source_id = ? AND i.deleted_at IS NULL
-                     LIMIT 16"
+                     LIMIT 16",
                 )
                 .bind(source_id)
                 .fetch_all(&db_pre)
@@ -109,7 +111,10 @@ impl BackgroundWorker {
                     query = query.bind(*id);
                 }
                 if let Err(e) = query.execute(&db_pre).await {
-                    error!("Preprocessing task failed to mark vectors as preprocessing: {:?}", e);
+                    error!(
+                        "Preprocessing task failed to mark vectors as preprocessing: {:?}",
+                        e
+                    );
                     sleep(Duration::from_secs(3)).await;
                     continue;
                 }
@@ -118,11 +123,12 @@ impl BackgroundWorker {
 
                 // CPU-bound parallel preprocessing (reading, decoding, cropping, resizing)
                 let mm = mm_pre.clone();
-                let paths: Vec<String> = pending_images.iter().map(|img| img.current_filepath.clone()).collect();
-                let preprocessed_res = tokio::task::spawn_blocking(move || {
-                    mm.preprocess_image_batch(&paths)
-                })
-                .await;
+                let paths: Vec<String> = pending_images
+                    .iter()
+                    .map(|img| img.current_filepath.clone())
+                    .collect();
+                let preprocessed_res =
+                    tokio::task::spawn_blocking(move || mm.preprocess_image_batch(&paths)).await;
 
                 let preprocessed_buffers = match preprocessed_res {
                     Ok(Ok(bufs)) => bufs,
@@ -149,13 +155,14 @@ impl BackgroundWorker {
                 };
 
                 // Push the preprocessed batch to Stage 2
-                if tx.send(PreprocessedBatch {
-                    images: pending_images,
-                    preprocessed_buffers,
-                    source_id,
-                })
-                .await
-                .is_err()
+                if tx
+                    .send(PreprocessedBatch {
+                        images: pending_images,
+                        preprocessed_buffers,
+                        source_id,
+                    })
+                    .await
+                    .is_err()
                 {
                     info!("Preprocessing channel closed. Exiting preprocessing task.");
                     break;
@@ -171,8 +178,11 @@ impl BackgroundWorker {
         tokio::spawn(async move {
             info!("Pipelined indexing/inference stage started.");
             while let Some(batch) = rx.recv().await {
-                info!("Indexing preprocessed batch of {} images...", batch.images.len());
-                
+                info!(
+                    "Indexing preprocessed batch of {} images...",
+                    batch.images.len()
+                );
+
                 let mm = mm_inf.clone();
                 let preprocessed_bufs = batch.preprocessed_buffers;
                 let images = batch.images;
@@ -191,7 +201,10 @@ impl BackgroundWorker {
                                 Ok(embedding) => {
                                     // Save to USearch index
                                     if let Err(e) = vi_inf.add(image.id as u64, &embedding) {
-                                        error!("Failed to index vector in USearch for image {}: {:?}", image.id, e);
+                                        error!(
+                                            "Failed to index vector in USearch for image {}: {:?}",
+                                            image.id, e
+                                        );
                                         let _ = sqlx::query("UPDATE image_vectors SET vector_state = 'failed' WHERE image_id = ? AND source_id = ?")
                                             .bind(image.id)
                                             .bind(source_id)
@@ -201,7 +214,10 @@ impl BackgroundWorker {
                                     }
 
                                     // Compute checksum (simple SHA256 of the embedding floats for auditing)
-                                    let checksum = format!("{:x}", sha2::Sha256::digest(bytemuck::cast_slice(&embedding)));
+                                    let checksum = format!(
+                                        "{:x}",
+                                        sha2::Sha256::digest(bytemuck::cast_slice(&embedding))
+                                    );
 
                                     // Update SQLite database to set state to ready
                                     let update_res = sqlx::query(
@@ -217,11 +233,17 @@ impl BackgroundWorker {
                                     .await;
 
                                     if let Err(e) = update_res {
-                                        error!("Failed to update database vector state for image {}: {:?}", image.id, e);
+                                        error!(
+                                            "Failed to update database vector state for image {}: {:?}",
+                                            image.id, e
+                                        );
                                     }
                                 }
                                 Err(e) => {
-                                    error!("Failed to generate embedding for image {}: {:?}", image.id, e);
+                                    error!(
+                                        "Failed to generate embedding for image {}: {:?}",
+                                        image.id, e
+                                    );
                                     let _ = sqlx::query("UPDATE image_vectors SET vector_state = 'failed' WHERE image_id = ? AND source_id = ?")
                                         .bind(image.id)
                                         .bind(source_id)
