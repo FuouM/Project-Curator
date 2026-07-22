@@ -60,6 +60,9 @@ export function renderTagPill(t: TagSummary, options?: { isDeletable?: boolean; 
       case "meta":
         styleClass = "tag-meta";
         break;
+      case "artist":
+        styleClass = "tag-artist";
+        break;
     }
   }
 
@@ -262,27 +265,209 @@ export interface ComponentMetadata {
 export const componentRegistry: ComponentMetadata[] = [
   {
     name: "System Color Palette",
-    description: "Active theme palette based on the Windows Classic Control Panel style CSS variables.",
+    description: "Complete color reference organized by component. Use this to find and update any color in the stylesheet.",
     variants: [
       {
-        name: "Standard Palette (CSS variables mapped to values)",
+        name: "Theme Variables (CSS Custom Properties)",
         render: () => `
-          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; width: 100%;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; width: 100%;">
             ${[
-              { name: "--sys-control-bg", color: "#ececec" },
-              { name: "--sys-control-text", color: "#000000" },
-              { name: "--sys-window-bg", color: "#ffffff" },
-              { name: "--sys-border-dark", color: "#b0b0b0" },
-              { name: "--sys-border-focus", color: "#0078d7" },
-              { name: "--sys-button-bg", color: "#f0f0f0" },
-              { name: "--sys-button-hover", color: "#e5f1fb" },
-              { name: "--sys-button-active", color: "#cce4f7" }
+              { name: "--sys-control-bg", color: "#ececec", desc: "Main panel background" },
+              { name: "--sys-control-text", color: "#000000", desc: "Default text" },
+              { name: "--sys-window-bg", color: "#ffffff", desc: "Input/card background" },
+              { name: "--sys-window-text", color: "#000000", desc: "Input text" },
+              { name: "--sys-border-light", color: "#ffffff", desc: "Light border" },
+              { name: "--sys-border-dark", color: "#b0b0b0", desc: "Standard border" },
+              { name: "--sys-border-focus", color: "#0078d7", desc: "Focus/active border" },
+              { name: "--sys-highlight-bg", color: "#0078d7", desc: "Selection background" },
+              { name: "--sys-highlight-text", color: "#ffffff", desc: "Selection text" },
+              { name: "--sys-button-bg", color: "#f0f0f0", desc: "Button background" },
+              { name: "--sys-button-border", color: "#707070", desc: "Button border" },
+              { name: "--sys-button-hover", color: "#e5f1fb", desc: "Button hover" },
+              { name: "--sys-button-active", color: "#cce4f7", desc: "Button pressed" },
+              { name: "--sys-status-bg", color: "#f3f3f3", desc: "Status bar bg" },
+              { name: "--sys-status-text", color: "#333333", desc: "Status bar text" },
+              { name: "--sys-menu-bg", color: "#f9f9f9", desc: "Menu background" },
+              { name: "--sys-menu-border", color: "#d0d0d0", desc: "Menu border" }
             ].map(c => `
               <div style="display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--sys-border-dark); background: var(--sys-window-bg);">
-                <div style="width: 24px; height: 24px; border: 1px solid #000; background-color: var(${c.name});"></div>
-                <div>
-                  <div style="font-weight: bold; font-size: 11px;">${c.name}</div>
+                <div style="width: 28px; height: 28px; border: 1px solid #888; background-color: ${c.color}; flex-shrink: 0;"></div>
+                <div style="min-width: 0;">
+                  <div style="font-weight: bold; font-size: 10px; word-break: break-all;">${c.name}</div>
                   <div style="font-size: 10px; color: #666;">${c.color}</div>
+                  <div style="font-size: 9px; color: #999;">${c.desc}</div>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `
+      },
+      {
+        name: "Button Colors",
+        render: () => `
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; width: 100%;">
+            ${[
+              { label: "Normal BG", color: "#f0f0f0", css: "--sys-button-bg" },
+              { label: "Normal Border", color: "#707070", css: "--sys-button-border" },
+              { label: "Hover BG", color: "#e5f1fb", css: "--sys-button-hover" },
+              { label: "Hover Border", color: "#3b78d7", css: "win-button:hover" },
+              { label: "Active BG", color: "#cce4f7", css: "--sys-button-active" },
+              { label: "Active Border", color: "#005499", css: "win-button:active" },
+              { label: "Disabled BG", color: "#e1e1e1", css: "win-button:disabled" },
+              { label: "Disabled Text", color: "#838383", css: "win-button:disabled" },
+              { label: "Primary BG", color: "#0078d7", css: "win-button.primary" },
+              { label: "Primary Hover", color: "#1a86d9", css: "win-button.primary:hover" },
+              { label: "Primary Active", color: "#005499", css: "win-button.primary:active" },
+              { label: "Primary Border", color: "#004578", css: "win-button.primary:hover" },
+              { label: "Danger Text", color: "#a80000", css: "win-button.danger" },
+              { label: "Danger Hover BG", color: "#fde7e9", css: "win-button.danger:hover" },
+              { label: "Danger Hover Border", color: "#a80000", css: "win-button.danger:hover" },
+              { label: "Danger Active BG", color: "#f5c6cb", css: "win-button.danger:active" },
+              { label: "Danger Active Border", color: "#842029", css: "win-button.danger:active" },
+              { label: "Tool Strip Hover", color: "#70adeb", css: "tool-strip-btn:hover" }
+            ].map(c => `
+              <div style="display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--sys-border-dark); background: var(--sys-window-bg);">
+                <div style="width: 24px; height: 24px; border: 1px solid #888; background-color: ${c.color}; flex-shrink: 0;"></div>
+                <div style="min-width: 0;">
+                  <div style="font-weight: 600; font-size: 10px;">${c.label}</div>
+                  <div style="font-size: 10px; color: #666;">${c.color}</div>
+                  <div style="font-size: 9px; color: #999; word-break: break-all;">${c.css}</div>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `
+      },
+      {
+        name: "Tag Pill Colors",
+        render: () => `
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; width: 100%;">
+            ${[
+              { label: "User Tag BG", color: "#fff3cd", css: ".tag-user bg" },
+              { label: "User Tag Border", color: "#ffeeba", css: ".tag-user border" },
+              { label: "User Tag Text", color: "#856404", css: ".tag-user text" },
+              { label: "Character BG", color: "#d1ecf1", css: ".tag-character bg" },
+              { label: "Character Border", color: "#bee5eb", css: ".tag-character border" },
+              { label: "Character Text", color: "#0c5460", css: ".tag-character text" },
+              { label: "Copyright BG", color: "#ebdcf9", css: ".tag-copyright bg" },
+              { label: "Copyright Border", color: "#dcbdf5", css: ".tag-copyright border" },
+              { label: "Copyright Text", color: "#511c74", css: ".tag-copyright text" },
+              { label: "Meta BG", color: "#e2e3e5", css: ".tag-meta bg" },
+              { label: "Meta Border", color: "#d6d8db", css: ".tag-meta border" },
+              { label: "Meta Text", color: "#383d41", css: ".tag-meta text" },
+              { label: "Artist BG", color: "#fff0e6", css: ".tag-artist bg" },
+              { label: "Artist Border", color: "#ffd9c2", css: ".tag-artist border" },
+              { label: "Artist Text", color: "#7c2d12", css: ".tag-artist text" },
+              { label: "Rank-3 BG", color: "#ffffff", css: ".tag-rank-3 bg" },
+              { label: "Rank-3 Border", color: "#e0e0e0", css: ".tag-rank-3 border" },
+              { label: "Rank-3 Text", color: "#4a4a4a", css: ".tag-rank-3 text" },
+              { label: "Concept BG", color: "#cce5ff", css: ".custom-concept bg" },
+              { label: "Concept Border", color: "#b8daff", css: ".custom-concept border" },
+              { label: "Concept Text", color: "#004085", css: ".custom-concept text" },
+              { label: "Concept Spark", color: "#005499", css: ".concept-spark" },
+              { label: "Remove Btn", color: "#a80000", css: ".tag-remove-btn" },
+              { label: "Remove Hover", color: "#e81123", css: ".tag-remove-btn:hover" }
+            ].map(c => `
+              <div style="display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--sys-border-dark); background: var(--sys-window-bg);">
+                <div style="width: 24px; height: 24px; border: 1px solid #888; background-color: ${c.color}; flex-shrink: 0;"></div>
+                <div style="min-width: 0;">
+                  <div style="font-weight: 600; font-size: 10px;">${c.label}</div>
+                  <div style="font-size: 10px; color: #666;">${c.color}</div>
+                  <div style="font-size: 9px; color: #999;">${c.css}</div>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `
+      },
+      {
+        name: "Concept Badge Colors",
+        render: () => `
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; width: 100%;">
+            ${[
+              { label: "Character BG", color: "#d1ecf1", css: ".concept-badge.character" },
+              { label: "Character Border", color: "#bee5eb", css: ".concept-badge.character" },
+              { label: "Character Text", color: "#0c5460", css: ".concept-badge.character" },
+              { label: "Copyright BG", color: "#ebdcf9", css: ".concept-badge.copyright" },
+              { label: "Copyright Border", color: "#dcbdf5", css: ".concept-badge.copyright" },
+              { label: "Copyright Text", color: "#511c74", css: ".concept-badge.copyright" },
+              { label: "General BG", color: "#e2e3e5", css: ".concept-badge.general" },
+              { label: "General Border", color: "#d6d8db", css: ".concept-badge.general" },
+              { label: "General Text", color: "#383d41", css: ".concept-badge.general" },
+              { label: "Artist BG", color: "#fff0e6", css: ".concept-badge.artist" },
+              { label: "Artist Border", color: "#ffd9c2", css: ".concept-badge.artist" },
+              { label: "Artist Text", color: "#7c2d12", css: ".concept-badge.artist" }
+            ].map(c => `
+              <div style="display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--sys-border-dark); background: var(--sys-window-bg);">
+                <div style="width: 24px; height: 24px; border: 1px solid #888; background-color: ${c.color}; flex-shrink: 0;"></div>
+                <div style="min-width: 0;">
+                  <div style="font-weight: 600; font-size: 10px;">${c.label}</div>
+                  <div style="font-size: 10px; color: #666;">${c.color}</div>
+                  <div style="font-size: 9px; color: #999;">${c.css}</div>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `
+      },
+      {
+        name: "Status & Feedback Colors",
+        render: () => `
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; width: 100%;">
+            ${[
+              { label: "Success Green", color: "#107c41", css: ".status-dot, .badge-ready" },
+              { label: "Success Light", color: "#dff6dd", css: ".badge-ready bg" },
+              { label: "Success Alt", color: "#10b981", css: ".copy-btn.copied" },
+              { label: "Warning Yellow", color: "#794c00", css: ".badge-pending text" },
+              { label: "Warning Light", color: "#fff4ce", css: ".badge-pending bg" },
+              { label: "Error Red", color: "#a80000", css: ".status-dot.offline" },
+              { label: "Error Bright", color: "#e81123", css: ".modal-close:hover" },
+              { label: "Error Active", color: "#bf0f1d", css: ".modal-close:active" },
+              { label: "Favorite Gold", color: "#ecc94b", css: ".star-btn.favorite" },
+              { label: "Copy Blue", color: "#3b82f6", css: ".copy-btn:hover" },
+              { label: "Info Blue", color: "#0078d7", css: "var(--sys-border-focus)" },
+              { label: "Spinner Blue", color: "#3b82f6", css: ".spinner-*" }
+            ].map(c => `
+              <div style="display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--sys-border-dark); background: var(--sys-window-bg);">
+                <div style="width: 24px; height: 24px; border: 1px solid #888; background-color: ${c.color}; flex-shrink: 0;"></div>
+                <div style="min-width: 0;">
+                  <div style="font-weight: 600; font-size: 10px;">${c.label}</div>
+                  <div style="font-size: 10px; color: #666;">${c.color}</div>
+                  <div style="font-size: 9px; color: #999;">${c.css}</div>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `
+      },
+      {
+        name: "Text & Background Colors",
+        render: () => `
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; width: 100%;">
+            ${[
+              { label: "Black", color: "#000000", css: "Default text" },
+              { label: "Dark Gray", color: "#333333", css: "Headings, status" },
+              { label: "Medium Gray", color: "#555555", css: "Secondary text" },
+              { label: "Subtle Gray", color: "#666666", css: "Labels, hints" },
+              { label: "Light Gray", color: "#777777", css: "Muted text" },
+              { label: "Muted", color: "#888888", css: "Disabled/hint text" },
+              { label: "Faint", color: "#999999", css: "Very muted" },
+              { label: "White", color: "#ffffff", css: "Window bg, text on dark" },
+              { label: "Off-White", color: "#fafafa", css: "Alt row bg" },
+              { label: "Light BG", color: "#f7f7f7", css: "Image preview bg" },
+              { label: "Control BG", color: "#ececec", css: "Main panel bg" },
+              { label: "Hover BG", color: "#f1f1f1", css: "Nav item hover" },
+              { label: "Border Gray", color: "#d0d0d0", css: "Dividers, rules" },
+              { label: "Input Border", color: "#7a7a7a", css: "Input fields" },
+              { label: "Dark Panel", color: "#1e1e1e", css: "Log viewer, viewer header" },
+              { label: "Log Text", color: "#cccccc", css: "Log content text" }
+            ].map(c => `
+              <div style="display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--sys-border-dark); background: var(--sys-window-bg);">
+                <div style="width: 24px; height: 24px; border: 1px solid #888; background-color: ${c.color}; flex-shrink: 0;"></div>
+                <div style="min-width: 0;">
+                  <div style="font-weight: 600; font-size: 10px;">${c.label}</div>
+                  <div style="font-size: 10px; color: #666;">${c.color}</div>
+                  <div style="font-size: 9px; color: #999;">${c.css}</div>
                 </div>
               </div>
             `).join("")}
@@ -304,6 +489,17 @@ export const componentRegistry: ComponentMetadata[] = [
             ${renderButton("Active State", { style: "background-color: var(--sys-button-active); border-color: #005499;" })}
             ${renderButton("Disabled Button", { disabled: true })}
             ${renderButton("Button with Icon", { icon: "bi bi-play-fill" })}
+          </div>
+        `
+      },
+      {
+        name: "Primary & Danger Variants",
+        render: () => `
+          <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+            ${renderButton("Primary Button", { className: "win-button primary" })}
+            ${renderButton("Primary with Icon", { className: "win-button primary", icon: "bi bi-check-lg" })}
+            ${renderButton("Danger Button", { className: "win-button danger" })}
+            ${renderButton("Danger with Icon", { className: "win-button danger", icon: "bi bi-trash" })}
           </div>
         `
       }
@@ -404,6 +600,7 @@ export const componentRegistry: ComponentMetadata[] = [
               { label: "Character identifier:", tag: { tag: "character_name", category: "character" } },
               { label: "Copyright franchise / series:", tag: { tag: "series_title", category: "copyright" } },
               { label: "System/Meta information:", tag: { tag: "meta_info", category: "meta" } },
+              { label: "Artist tag:", tag: { tag: "artist_name", category: "artist" } },
               { label: "Generic tag (Rank 3):", tag: { tag: "generic_tag", category: "general" } }
             ].map(item => `
               <div style="display: flex; align-items: center; gap: 12px;">
@@ -411,6 +608,23 @@ export const componentRegistry: ComponentMetadata[] = [
                 ${renderTagPill(item.tag, item.opt)}
               </div>
             `).join("")}
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Concept Badges Showcase",
+    description: "Category badges used on concept cards to indicate type (character, copyright, general, artist).",
+    variants: [
+      {
+        name: "All Badge Variants",
+        render: () => `
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+            <span class="concept-badge character">CHARACTER</span>
+            <span class="concept-badge copyright">COPYRIGHT</span>
+            <span class="concept-badge general">GENERAL</span>
+            <span class="concept-badge artist">ARTIST</span>
           </div>
         `
       }

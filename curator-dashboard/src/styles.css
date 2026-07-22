@@ -400,6 +400,32 @@ body {
   border-color: #adadad;
   cursor: not-allowed;
 }
+.win-button.primary {
+  background-color: var(--sys-highlight-bg);
+  color: var(--sys-highlight-text);
+  border-color: #005499;
+}
+.win-button.primary:hover {
+  background-color: #1a86d9;
+  border-color: #004578;
+}
+.win-button.primary:active {
+  background-color: #005499;
+  border-color: #003f7f;
+}
+.win-button.danger {
+  background-color: #f0f0f0;
+  color: #a80000;
+  border-color: #707070;
+}
+.win-button.danger:hover {
+  background-color: #fde7e9;
+  border-color: #a80000;
+}
+.win-button.danger:active {
+  background-color: #f5c6cb;
+  border-color: #842029;
+}
 
 /* Image Grid and Cards */
 .image-grid {
@@ -585,6 +611,12 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   border: 1px solid #d6d8db;
   color: #383d41;
 }
+/* Artist tags: Warm Orange */
+.tag-pill.tag-artist {
+  background-color: #fff0e6;
+  border: 1px solid #ffd9c2;
+  color: #7c2d12;
+}
 /* Rank 3 tags: White/Light Gray */
 .tag-pill.tag-rank-3 {
   background-color: #ffffff;
@@ -614,14 +646,14 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
 }
 .tag-confirm-btn {
   cursor: pointer;
-  color: #00ff66;
+  color: #107c41;
   margin-left: 3px;
   font-size: 11px;
   transition: transform 0.15s ease;
 }
 .tag-confirm-btn:hover {
   transform: scale(1.2);
-  color: #33ff88;
+  color: #0e6b38;
 }
 
 .concepts-grid {
@@ -696,6 +728,12 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   background-color: #e2e3e5;
   border: 1px solid #d6d8db;
   color: #383d41;
+}
+
+.concept-badge.artist {
+  background-color: #fff0e6;
+  border: 1px solid #ffd9c2;
+  color: #7c2d12;
 }
 
 .concept-card-body {
@@ -1061,7 +1099,7 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   padding: 0 4px;
 }
 .image-viewer-close:hover {
-  color: #ff6b6b;
+  color: #e81123;
 }
 
 /* Image preview click hint */
