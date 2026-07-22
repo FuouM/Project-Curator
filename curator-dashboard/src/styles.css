@@ -385,6 +385,13 @@ body {
   justify-content: center;
   gap: 4px;
   user-select: none;
+  line-height: 1;
+}
+.win-button i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
 }
 .win-button:hover {
   background-color: var(--sys-button-hover);
