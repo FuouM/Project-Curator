@@ -157,92 +157,97 @@ fn is_json_complete(s: &str) -> bool {
     false
 }
 
+async fn get_or_obtain_token() -> Result<String, String> {
+    {
+        let cached = get_cached_token().lock().await;
+        if let Some(ref t) = *cached {
+            return Ok(t.clone());
+        }
+    }
+
+    let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
+    let key_file = data_dir.join("service.key");
+
+    if !key_file.exists() {
+        log_dashboard_event("service.key missing, spawning service...");
+        spawn_service();
+    }
+
+    let start = std::time::Instant::now();
+    while start.elapsed() < std::time::Duration::from_secs(3) {
+        if key_file.exists() {
+            if let Ok(t) = fs::read_to_string(&key_file) {
+                let token = t.trim().to_string();
+                if !token.is_empty() {
+                    let mut cached = get_cached_token().lock().await;
+                    *cached = Some(token.clone());
+                    return Ok(token);
+                }
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    log_dashboard_event("Retrying spawn_service after key file timeout...");
+    spawn_service();
+    let start = std::time::Instant::now();
+    while start.elapsed() < std::time::Duration::from_secs(2) {
+        if key_file.exists() {
+            if let Ok(t) = fs::read_to_string(&key_file) {
+                let token = t.trim().to_string();
+                if !token.is_empty() {
+                    let mut cached = get_cached_token().lock().await;
+                    *cached = Some(token.clone());
+                    return Ok(token);
+                }
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    Err("Failed to read service key file within timeout".to_string())
+}
+
+async fn ensure_connected(pipe_name: &str, token: &str) -> Result<NamedPipeClient, String> {
+    if let Ok(client) = connect_and_authenticate(pipe_name, token).await {
+        return Ok(client);
+    }
+
+    spawn_service();
+
+    {
+        let mut cached = get_cached_token().lock().await;
+        *cached = None;
+    }
+
+    let start = std::time::Instant::now();
+    while start.elapsed() < std::time::Duration::from_secs(3) {
+        if let Ok(fresh_token) = get_or_obtain_token().await {
+            if let Ok(client) = connect_and_authenticate(pipe_name, &fresh_token).await {
+                log_dashboard_event("Fast pipe connection established successfully.");
+                return Ok(client);
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    Err("Failed to establish named pipe connection to service".to_string())
+}
+
 #[tauri::command]
 async fn send_to_service(request_json: String) -> Result<String, String> {
-    let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
-
     log_dashboard_event(&format!("send_to_service: {}", request_json));
-
-    // Read or reuse cached service key (no lock needed — token is immutable after first read)
-    let token = {
-        let cached = get_cached_token().lock().await;
-        cached.clone()
-    };
-
-    let token = if let Some(t) = token {
-        t
-    } else {
-        let key_file = data_dir.join("service.key");
-
-        // If key file doesn't exist, we try to spawn the service first to generate it
-        if !key_file.exists() {
-            log_dashboard_event("service.key does not exist, triggering spawn_service...");
-            spawn_service();
-            tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-        }
-
-        let t = match fs::read_to_string(&key_file) {
-            Ok(t) => t.trim().to_string(),
-            Err(e) => {
-                log_dashboard_event(&format!(
-                    "Failed to read service.key on first pass: {:?}",
-                    e
-                ));
-                spawn_service();
-                tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-                fs::read_to_string(&key_file)
-                    .map_err(|err| {
-                        let err_msg = format!("Failed to read service key file: {:?}", err);
-                        log_dashboard_event(&err_msg);
-                        err_msg
-                    })?
-                    .trim()
-                    .to_string()
-            }
-        };
-
-        // Cache the token for future calls
-        {
-            let mut cached = get_cached_token().lock().await;
-            *cached = Some(t.clone());
-        }
-        t
-    };
-
     let pipe_name = r"\\.\pipe\curator_ipc";
 
-    // 2. Try reusing existing connection, or establish a new one
     let conn_mutex = get_pipe_connection();
     let mut conn_guard = conn_mutex.lock().await;
 
     if conn_guard.is_none() {
-        // No existing connection — create and authenticate
-        log_dashboard_event("No persistent pipe connection. Connecting...");
-        match connect_and_authenticate(pipe_name, &token).await {
-            Ok(client) => {
-                *conn_guard = Some(client);
-            }
-            Err(e) => {
-                log_dashboard_event(&format!("{} Spawning service and retrying...", e));
-                spawn_service();
-                // Invalidate cached token — service may have regenerated it
-                {
-                    let mut cached = get_cached_token().lock().await;
-                    *cached = None;
-                }
-                tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-                // Re-read token from disk
-                let key_file = data_dir.join("service.key");
-                let fresh_token = fs::read_to_string(&key_file)
-                    .map(|t| t.trim().to_string())
-                    .map_err(|e| format!("Failed to read service key: {:?}", e))?;
-                let client = connect_and_authenticate(pipe_name, &fresh_token).await?;
-                *conn_guard = Some(client);
-            }
-        }
+        let token = get_or_obtain_token().await?;
+        let client = ensure_connected(pipe_name, &token).await?;
+        *conn_guard = Some(client);
     }
 
-    // 3. Send request on existing connection; reconnect on failure
     let send_result = {
         let client = conn_guard.as_mut().unwrap();
         send_request_json(client, &request_json).await
@@ -261,29 +266,12 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
                 "Request on persistent connection failed ({}). Reconnecting...",
                 e
             ));
-            // Drop broken connection, reconnect and retry once
             *conn_guard = None;
-            match connect_and_authenticate(pipe_name, &token).await {
-                Ok(client) => {
-                    *conn_guard = Some(client);
-                }
-                Err(_) => {
-                    log_dashboard_event("Reconnect failed. Spawning service and retrying...");
-                    spawn_service();
-                    // Invalidate cached token — service may have regenerated it
-                    {
-                        let mut cached = get_cached_token().lock().await;
-                        *cached = None;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-                    let key_file = data_dir.join("service.key");
-                    let fresh_token = fs::read_to_string(&key_file)
-                        .map(|t| t.trim().to_string())
-                        .map_err(|e| format!("Failed to read service key: {:?}", e))?;
-                    let client = connect_and_authenticate(pipe_name, &fresh_token).await?;
-                    *conn_guard = Some(client);
-                }
-            }
+
+            let token = get_or_obtain_token().await?;
+            let client = ensure_connected(pipe_name, &token).await?;
+            *conn_guard = Some(client);
+
             let response = send_request_json(conn_guard.as_mut().unwrap(), &request_json)
                 .await
                 .map_err(|e2| {
@@ -302,34 +290,23 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
 
 async fn connect_and_authenticate(pipe_name: &str, token: &str) -> Result<NamedPipeClient, String> {
     let mut client = ClientOptions::new().open(pipe_name).map_err(|e| {
-        let err_msg = format!("Named Pipe connection failed: {:?}", e);
-        log_dashboard_event(&err_msg);
-        err_msg
+        format!("Named Pipe open failed: {:?}", e)
     })?;
 
-    log_dashboard_event("Sending token handshake to service...");
-
     client.write_all(token.as_bytes()).await.map_err(|e| {
-        let err_msg = format!("Handshake write failed: {:?}", e);
-        log_dashboard_event(&err_msg);
-        err_msg
+        format!("Handshake write failed: {:?}", e)
     })?;
 
     let mut auth_buffer = vec![0; 32];
     let n = client.read(&mut auth_buffer).await.map_err(|e| {
-        let err_msg = format!("Handshake read failed: {:?}", e);
-        log_dashboard_event(&err_msg);
-        err_msg
+        format!("Handshake read failed: {:?}", e)
     })?;
 
     let auth_status = String::from_utf8_lossy(&auth_buffer[..n]);
     if auth_status != "AUTH_OK" {
-        let err_msg = format!("Authentication failed: {}", auth_status);
-        log_dashboard_event(&err_msg);
-        return Err(err_msg);
+        return Err(format!("Authentication failed: {}", auth_status));
     }
 
-    log_dashboard_event("Authentication handshake succeeded. Persistent connection ready.");
     Ok(client)
 }
 
@@ -465,42 +442,22 @@ pub fn run() {
             // so the first IPC call from the frontend is instant.
             let app_handle = _app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                // Ensure service is running
-                let key_file = data_dir.join("service.key");
-                if !key_file.exists() {
-                    log_dashboard_event("Pre-connect: service.key missing, spawning service...");
-                    spawn_service();
-                    // Poll for key file instead of blind sleep
-                    for _ in 0..40 {
-                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                        if key_file.exists() {
-                            break;
-                        }
-                    }
-                }
-
-                // Read and cache token
-                if let Ok(t) = fs::read_to_string(&key_file) {
-                    let token = t.trim().to_string();
-                    {
-                        let mut cached = get_cached_token().lock().await;
-                        *cached = Some(token.clone());
-                    }
-                    // Establish pipe connection
-                    let pipe_name = r"\\.\pipe\curator_ipc";
-                    match connect_and_authenticate(pipe_name, &token).await {
+                let pipe_name = r"\\.\pipe\curator_ipc";
+                log_dashboard_event("Pre-connect: Initializing service connection...");
+                match get_or_obtain_token().await {
+                    Ok(token) => match ensure_connected(pipe_name, &token).await {
                         Ok(client) => {
                             let conn_mutex = get_pipe_connection();
                             let mut conn_guard = conn_mutex.lock().await;
                             *conn_guard = Some(client);
-                            log_dashboard_event("Pre-connect: pipe connection established.");
+                            log_dashboard_event("Pre-connect: Pipe connection ready.");
                         }
                         Err(e) => {
-                            log_dashboard_event(&format!(
-                                "Pre-connect failed (will retry on first call): {}",
-                                e
-                            ));
+                            log_dashboard_event(&format!("Pre-connect pipe failed: {}", e));
                         }
+                    },
+                    Err(e) => {
+                        log_dashboard_event(&format!("Pre-connect token failed: {}", e));
                     }
                 }
 
