@@ -171,6 +171,10 @@ pub enum Response {
     ImportResult {
         image_id: i64,
         sha256: String,
+        #[serde(default)]
+        imported_count: usize,
+        #[serde(default)]
+        folder_id: Option<i64>,
     },
     SearchResult {
         matches: Vec<SearchMatch>,

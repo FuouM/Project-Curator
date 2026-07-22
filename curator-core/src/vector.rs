@@ -587,6 +587,139 @@ impl ModelManager {
         res
     }
 
+pub fn decode_and_resize_single_image(
+    path: &Path,
+    target_size: u32,
+    resizer: &mut fast_image_resize::Resizer,
+) -> Result<Vec<u8>, Error> {
+    let data = std::fs::read(path).with_context(|| format!("Cannot read file {:?}", path))?;
+    if data.len() < 8 {
+        return Err(anyhow::anyhow!("File too small: {:?}", path));
+    }
+
+    let is_jpeg = data[0] == 0xFF && data[1] == 0xD8;
+    let is_png = data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
+
+    let (rgb_buf, width, height) = if is_jpeg {
+        let image = turbojpeg::decompress(&data, turbojpeg::PixelFormat::RGB)
+            .with_context(|| format!("turbojpeg decode failed for {:?}", path))?;
+        (
+            image.pixels.to_vec(),
+            image.width as u32,
+            image.height as u32,
+        )
+    } else if is_png {
+        let decoder = png::Decoder::new(std::io::Cursor::new(&data));
+        let mut reader = decoder
+            .read_info()
+            .with_context(|| format!("png decode header failed for {:?}", path))?;
+        let w = reader.info().width;
+        let h = reader.info().height;
+        let buf_size = w as usize * h as usize * 4;
+        let mut raw = vec![0u8; buf_size];
+        let out_info = reader
+            .next_frame(&mut raw)
+            .with_context(|| format!("png decode failed for {:?}", path))?;
+        let pixels = out_info.buffer_size();
+
+        let mut rgb = vec![0u8; w as usize * h as usize * 3];
+        match out_info.color_type {
+            png::ColorType::Rgb => {
+                let len = pixels.min(rgb.len());
+                rgb[..len].copy_from_slice(&raw[..len]);
+            }
+            png::ColorType::Rgba => {
+                let src = &raw[..pixels];
+                let mut dst_idx = 0;
+                for chunk in src.chunks_exact(4) {
+                    if dst_idx + 2 < rgb.len() {
+                        rgb[dst_idx] = chunk[0];
+                        rgb[dst_idx + 1] = chunk[1];
+                        rgb[dst_idx + 2] = chunk[2];
+                        dst_idx += 3;
+                    }
+                }
+            }
+            png::ColorType::Grayscale => {
+                let src = &raw[..pixels];
+                let mut dst_idx = 0;
+                for &g in src {
+                    if dst_idx + 2 < rgb.len() {
+                        rgb[dst_idx] = g;
+                        rgb[dst_idx + 1] = g;
+                        rgb[dst_idx + 2] = g;
+                        dst_idx += 3;
+                    }
+                }
+            }
+            png::ColorType::GrayscaleAlpha => {
+                let src = &raw[..pixels];
+                let mut dst_idx = 0;
+                for chunk in src.chunks_exact(2) {
+                    if dst_idx + 2 < rgb.len() {
+                        let g = chunk[0];
+                        rgb[dst_idx] = g;
+                        rgb[dst_idx + 1] = g;
+                        rgb[dst_idx + 2] = g;
+                        dst_idx += 3;
+                    }
+                }
+            }
+            png::ColorType::Indexed => {
+                let palette = reader
+                    .info()
+                    .palette
+                    .as_deref()
+                    .context("Indexed PNG has no palette")?;
+                let src = &raw[..pixels];
+                let mut dst_idx = 0;
+                for &idx in src {
+                    let i = idx as usize * 3;
+                    if i + 2 < palette.len() && dst_idx + 2 < rgb.len() {
+                        rgb[dst_idx] = palette[i];
+                        rgb[dst_idx + 1] = palette[i + 1];
+                        rgb[dst_idx + 2] = palette[i + 2];
+                        dst_idx += 3;
+                    }
+                }
+            }
+        }
+        (rgb, w, h)
+    } else {
+        let img = image::open(path).with_context(|| format!("Cannot open image {:?}", path))?;
+        let rgb = img.to_rgb8();
+        let (w, h) = rgb.dimensions();
+        (rgb.into_raw(), w, h)
+    };
+
+    let crop_size = width.min(height);
+    let cx = (width - crop_size) / 2;
+    let cy = (height - crop_size) / 2;
+
+    let src_image = fast_image_resize::images::ImageRef::new(
+        width,
+        height,
+        &rgb_buf,
+        fast_image_resize::PixelType::U8x3,
+    )?;
+
+    let mut dst_image = fast_image_resize::images::Image::from_vec_u8(
+        target_size,
+        target_size,
+        vec![0u8; (target_size * target_size * 3) as usize],
+        fast_image_resize::PixelType::U8x3,
+    )?;
+
+    let opts = fast_image_resize::ResizeOptions::new()
+        .crop(cx as f64, cy as f64, crop_size as f64, crop_size as f64)
+        .resize_alg(fast_image_resize::ResizeAlg::Convolution(
+            fast_image_resize::FilterType::Bilinear,
+        ));
+
+    resizer.resize(&src_image, &mut dst_image, Some(&opts))?;
+    Ok(dst_image.buffer().to_vec())
+}
+
     pub fn preprocess_image_batch<P: AsRef<Path>>(
         &self,
         image_paths: &[P],
@@ -597,114 +730,50 @@ impl ModelManager {
             EmbeddingModel::MobileClipS2 => 256,
         };
 
-        // Preprocess all images in parallel.
+        if image_paths.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let num_threads = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+            .min(image_paths.len());
+
+        let chunk_size = (image_paths.len() + num_threads - 1) / num_threads;
         let mut preprocessed = Vec::with_capacity(image_paths.len());
         for _ in 0..image_paths.len() {
             preprocessed.push(Err(anyhow::anyhow!("Initialization failed")));
         }
 
+        let paths_vec: Vec<&Path> = image_paths.iter().map(|p| p.as_ref()).collect();
+
         std::thread::scope(|s| {
-            let mut handles = Vec::with_capacity(image_paths.len());
-            for (idx, path) in image_paths.iter().enumerate() {
-                let path_ref = path.as_ref();
-                let handle = s.spawn(move || -> Result<Vec<u8>, Error> {
-                    let img_ref = path_ref;
-                    let data = std::fs::read(img_ref)?;
-                    let is_jpeg = data.len() >= 2 && data[0] == 0xFF && data[1] == 0xD8;
-                    let is_png = data.len() >= 8 && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
+            let mut handles = Vec::with_capacity(num_threads);
 
-                    let (rgb_buf, width, height) = if is_jpeg {
-                        let image = turbojpeg::decompress(&data, turbojpeg::PixelFormat::RGB)?;
-                        (
-                            image.pixels.to_vec(),
-                            image.width as u32,
-                            image.height as u32,
-                        )
-                    } else if is_png {
-                        let decoder = png::Decoder::new(std::io::Cursor::new(&data));
-                        let mut reader = decoder.read_info()?;
-                        let w = reader.info().width;
-                        let h = reader.info().height;
-                        let buf_size = w as usize * h as usize * 4;
-                        let mut raw = vec![0u8; buf_size];
-                        let out_info = reader.next_frame(&mut raw)?;
-                        let pixels = out_info.buffer_size();
-                        let rgb: Vec<u8> = match out_info.color_type {
-                            png::ColorType::Rgb => raw[..pixels].to_vec(),
-                            png::ColorType::Rgba => raw[..pixels]
-                                .chunks(4)
-                                .flat_map(|c| [c[0], c[1], c[2]])
-                                .collect(),
-                            png::ColorType::Grayscale => {
-                                raw[..pixels].iter().flat_map(|&g| [g, g, g]).collect()
-                            }
-                            png::ColorType::GrayscaleAlpha => raw[..pixels]
-                                .chunks(2)
-                                .flat_map(|c| [c[0], c[0], c[0]])
-                                .collect(),
-                            png::ColorType::Indexed => {
-                                let palette = reader
-                                    .info()
-                                    .palette
-                                    .as_deref()
-                                    .context("Indexed PNG has no palette")?;
-                                raw[..pixels]
-                                    .iter()
-                                    .flat_map(|&idx| {
-                                        let i = idx as usize * 3;
-                                        [palette[i], palette[i + 1], palette[i + 2]]
-                                    })
-                                    .collect()
-                            }
-                        };
-                        (rgb, w, h)
-                    } else {
-                        let img = image::open(img_ref)?;
-                        let rgb = img.to_rgb8();
-                        let (w, h) = rgb.dimensions();
-                        (rgb.into_raw(), w, h)
-                    };
-
-                    let size = width.min(height);
-                    let cx = (width - size) / 2;
-                    let cy = (height - size) / 2;
-                    let mut cropped = vec![0u8; (size * size * 3) as usize];
-                    for y in 0..size {
-                        let src_row = ((cy + y) * width + cx) as usize * 3;
-                        let dst_row = (y * size) as usize * 3;
-                        let copy_len = (size * 3) as usize;
-                        cropped[dst_row..dst_row + copy_len]
-                            .copy_from_slice(&rgb_buf[src_row..src_row + copy_len]);
-                    }
-
-                    let crop_ref = fast_image_resize::images::ImageRef::new(
-                        size,
-                        size,
-                        &cropped,
-                        fast_image_resize::PixelType::U8x3,
-                    )?;
-                    let mut dst_image = fast_image_resize::images::Image::from_vec_u8(
-                        target_size,
-                        target_size,
-                        vec![0u8; (target_size * target_size * 3) as usize],
-                        fast_image_resize::PixelType::U8x3,
-                    )?;
+            for (thread_idx, chunk) in paths_vec.chunks(chunk_size).enumerate() {
+                let start_idx = thread_idx * chunk_size;
+                let handle = s.spawn(move || -> Vec<(usize, Result<Vec<u8>, Error>)> {
                     let mut resizer = fast_image_resize::Resizer::new();
-                    let opts = fast_image_resize::ResizeOptions::new().resize_alg(
-                        fast_image_resize::ResizeAlg::Convolution(
-                            fast_image_resize::FilterType::Bilinear,
-                        ),
-                    );
-                    resizer.resize(&crop_ref, &mut dst_image, Some(&opts))?;
-                    Ok(dst_image.buffer().to_vec())
+                    let mut results = Vec::with_capacity(chunk.len());
+
+                    for (local_i, &path) in chunk.iter().enumerate() {
+                        let idx = start_idx + local_i;
+                        let res = Self::decode_and_resize_single_image(path, target_size, &mut resizer);
+                        results.push((idx, res));
+                    }
+                    results
                 });
-                handles.push((idx, handle));
+                handles.push(handle);
             }
 
-            for (idx, handle) in handles {
-                preprocessed[idx] = handle
-                    .join()
-                    .unwrap_or_else(|_| Err(anyhow::anyhow!("Thread panicked")));
+            for handle in handles {
+                if let Ok(chunk_results) = handle.join() {
+                    for (idx, res) in chunk_results {
+                        if idx < preprocessed.len() {
+                            preprocessed[idx] = res;
+                        }
+                    }
+                }
             }
         });
 

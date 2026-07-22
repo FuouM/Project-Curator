@@ -155,6 +155,7 @@ async fn main() -> Result<(), Error> {
             query_text: query,
             query_image_path: image,
             tag_filter: tag,
+            concept_id: None,
             limit,
         },
         Commands::List { limit, offset } => Request::ListImages {
@@ -303,10 +304,15 @@ async fn main() -> Result<(), Error> {
                 println!("  Tagger Error: {}", err);
             }
         }
-        Response::ImportResult { image_id, sha256 } => {
-            println!("Successfully imported image:");
-            println!("  ID:     {}", image_id);
-            println!("  SHA256: {}", sha256);
+        Response::ImportResult {
+            image_id,
+            sha256,
+            imported_count,
+            ..
+        } => {
+            println!("Successfully imported image/folder ({} item(s)):", imported_count);
+            println!("  First Image ID: {}", image_id);
+            println!("  SHA256:         {}", sha256);
             println!("  (Background job scheduled for vector embedding generation)");
         }
         Response::StatusResult {

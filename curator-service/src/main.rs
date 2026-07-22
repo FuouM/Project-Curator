@@ -1,8 +1,7 @@
 use anyhow::{Context, Error};
 use clap::Parser;
 use curator_core::concept::{
-    bytes_to_vector, compute_prototype_vector, cosine_similarity, sanitize_concept_name,
-    vector_to_bytes, CustomConcept,
+    bytes_to_vector, sanitize_concept_name, vector_to_bytes, CustomConcept,
 };
 use curator_core::db::init_db;
 use curator_core::ipc::{
@@ -462,9 +461,11 @@ async fn handle_request(
                 s.embedding_model
             };
             match import_image_logic(&path, db, active).await {
-                Ok((id, sha256)) => Response::ImportResult {
+                Ok((id, sha256, count, folder_id)) => Response::ImportResult {
                     image_id: id,
                     sha256,
+                    imported_count: count,
+                    folder_id,
                 },
                 Err(e) => Response::Error {
                     message: e.to_string(),
@@ -1339,7 +1340,7 @@ async fn import_image_logic(
     path_str: &str,
     db: &SqlitePool,
     active: EmbeddingModel,
-) -> Result<(i64, String), Error> {
+) -> Result<(i64, String, usize, Option<i64>), Error> {
     let path = Path::new(path_str);
     if !path.exists() {
         return Err(anyhow::anyhow!(
@@ -1382,29 +1383,151 @@ async fn import_image_logic(
             ));
         }
 
+        let total_count = image_paths.len();
+        let num_threads = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+            .min(image_paths.len());
+
+        let chunk_size = (image_paths.len() + num_threads - 1) / num_threads;
+        let paths_vec: Vec<String> = image_paths
+            .iter()
+            .filter_map(|p| p.to_str().map(|s| s.to_string()))
+            .collect();
+
+        struct PreppedImage {
+            path_str: String,
+            sha256: String,
+            mtime: i64,
+            phash: Option<String>,
+        }
+
+        let mut prepped_images = Vec::with_capacity(paths_vec.len());
+
+        std::thread::scope(|s| {
+            let mut handles = Vec::with_capacity(num_threads);
+
+            for chunk in paths_vec.chunks(chunk_size) {
+                let chunk_paths = chunk.to_vec();
+                let handle = s.spawn(move || {
+                    let mut items = Vec::with_capacity(chunk_paths.len());
+                    for p_str in chunk_paths {
+                        let p = Path::new(&p_str);
+                        if let Ok(metadata) = fs::metadata(p) {
+                            let mtime = metadata
+                                .modified()
+                                .ok()
+                                .and_then(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).ok())
+                                .map(|d| d.as_secs() as i64)
+                                .unwrap_or(0);
+                            if let Ok(data) = fs::read(p) {
+                                let sha256 = format!("{:x}", sha2::Sha256::digest(&data));
+                                items.push(PreppedImage {
+                                    path_str: p_str,
+                                    sha256,
+                                    mtime,
+                                    phash: None,
+                                });
+                            }
+                        }
+                    }
+                    items
+                });
+                handles.push(handle);
+            }
+
+            for handle in handles {
+                if let Ok(items) = handle.join() {
+                    prepped_images.extend(items);
+                }
+            }
+        });
+
+        let source_name = match active {
+            EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
+            EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
+        };
+        let clip_row: (i64,) = sqlx::query_as("SELECT id FROM sources WHERE name = ? LIMIT 1")
+            .bind(source_name)
+            .fetch_one(db)
+            .await?;
+        let clip_source_id = clip_row.0;
+
         let mut first_id = 0;
         let mut first_sha = String::new();
         let mut imported_any = false;
 
-        for img_path in image_paths {
-            if let Some(p_str) = img_path.to_str() {
-                match import_single_image(p_str, db, active, Some(folder_id)).await {
-                    Ok((id, sha)) => {
-                        if !imported_any {
-                            first_id = id;
-                            first_sha = sha;
-                            imported_any = true;
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to import image {:?}: {:?}", img_path, e);
-                    }
+        for item in prepped_images {
+            let existing: Option<(i64, String)> =
+                sqlx::query_as("SELECT id, current_filepath FROM images WHERE sha256 = ?")
+                    .bind(&item.sha256)
+                    .fetch_optional(db)
+                    .await?;
+
+            let img_id = if let Some((id, _old_path)) = existing {
+                let _ = sqlx::query(
+                    "UPDATE images SET current_filepath = ?, mtime = ?, phash = ?, folder_id = COALESCE(folder_id, ?), deleted_at = NULL WHERE id = ?",
+                )
+                .bind(&item.path_str)
+                .bind(item.mtime)
+                .bind(&item.phash)
+                .bind(folder_id)
+                .bind(id)
+                .execute(db)
+                .await;
+
+                let vec_exists: Option<(String,)> = sqlx::query_as(
+                    "SELECT vector_state FROM image_vectors WHERE image_id = ? AND source_id = ? LIMIT 1",
+                )
+                .bind(id)
+                .bind(clip_source_id)
+                .fetch_optional(db)
+                .await
+                .unwrap_or(None);
+
+                if vec_exists.is_none() {
+                    let _ = sqlx::query(
+                        "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
+                    )
+                    .bind(id)
+                    .bind(clip_source_id)
+                    .execute(db)
+                    .await;
                 }
+                id
+            } else {
+                let id = sqlx::query(
+                    "INSERT INTO images (sha256, phash, current_filepath, mtime, folder_id) VALUES (?, ?, ?, ?, ?)",
+                )
+                .bind(&item.sha256)
+                .bind(&item.phash)
+                .bind(&item.path_str)
+                .bind(item.mtime)
+                .bind(Some(folder_id))
+                .execute(db)
+                .await?
+                .last_insert_rowid();
+
+                let _ = sqlx::query(
+                    "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
+                )
+                .bind(id)
+                .bind(clip_source_id)
+                .execute(db)
+                .await;
+
+                id
+            };
+
+            if !imported_any {
+                first_id = img_id;
+                first_sha = item.sha256;
+                imported_any = true;
             }
         }
 
         if imported_any {
-            Ok((first_id, first_sha))
+            Ok((first_id, first_sha, total_count, Some(folder_id)))
         } else {
             Err(anyhow::anyhow!(
                 "Failed to import any images from directory: {}",
@@ -1418,7 +1541,8 @@ async fn import_image_logic(
             .and_then(|p| p.to_str())
             .unwrap_or(path_str);
         let folder_id = get_or_create_folder(parent_dir, db).await?;
-        import_single_image(path_str, db, active, Some(folder_id)).await
+        let (id, sha) = import_single_image(path_str, db, active, Some(folder_id)).await?;
+        Ok((id, sha, 1, Some(folder_id)))
     }
 }
 
@@ -1497,21 +1621,35 @@ async fn import_single_image(
             .fetch_optional(db)
             .await?;
 
-    if let Some((id, old_path)) = existing {
-        if old_path != path_str {
-            sqlx::query(
-                "UPDATE images SET current_filepath = ?, mtime = ?, phash = ?, deleted_at = NULL WHERE id = ?",
+    if let Some((id, _old_path)) = existing {
+        sqlx::query(
+            "UPDATE images SET current_filepath = ?, mtime = ?, phash = ?, folder_id = COALESCE(folder_id, ?), deleted_at = NULL WHERE id = ?",
+        )
+        .bind(path_str)
+        .bind(mtime)
+        .bind(&phash)
+        .bind(folder_id)
+        .bind(id)
+        .execute(db)
+        .await?;
+
+        let vec_exists: Option<(String,)> = sqlx::query_as(
+            "SELECT vector_state FROM image_vectors WHERE image_id = ? AND source_id = ? LIMIT 1",
+        )
+        .bind(id)
+        .bind(clip_source_id)
+        .fetch_optional(db)
+        .await
+        .unwrap_or(None);
+
+        if vec_exists.is_none() {
+            let _ = sqlx::query(
+                "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
             )
-            .bind(path_str)
-            .bind(mtime)
-            .bind(&phash)
             .bind(id)
+            .bind(clip_source_id)
             .execute(db)
             .await?;
-            info!(
-                "Path repair: updated filepath of image ID {} from {} to {}",
-                id, old_path, path_str
-            );
         }
         return Ok((id, sha256));
     }

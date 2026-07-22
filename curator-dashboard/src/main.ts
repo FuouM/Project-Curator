@@ -151,7 +151,7 @@ type ResponsePayload =
   | { Pong: null }
   | { Success: null }
   | { Error: { message: string } }
-  | { ImportResult: { image_id: number; sha256: string } }
+  | { ImportResult: { image_id: number; sha256: string; imported_count?: number; folder_id?: number | null } }
   | { SearchResult: { matches: SearchMatch[] } }
   | { StatusResult: { image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number } }
   | { ImageResult: { image: ImageDetails } }
@@ -465,7 +465,25 @@ async function openTeachConceptModal() {
   const existingGroup = document.getElementById("teach-existing-concept-group");
   const newGroup = document.getElementById("teach-new-concept-group");
   const nameInput = document.getElementById("teach-concept-name") as HTMLInputElement;
+  const catSelect = document.getElementById("teach-concept-category") as HTMLSelectElement;
+  const thRange = document.getElementById("teach-concept-threshold") as HTMLInputElement;
+  const thVal = document.getElementById("teach-th-val");
   const submitBtn = document.getElementById("teach-concept-submit-btn");
+
+  let fetchedConcepts: any[] = [];
+
+  const syncSelectedConceptUI = () => {
+    if (!existingRadio?.checked || !existingSelect) return;
+    const selectedName = existingSelect.value;
+    const concept = fetchedConcepts.find((c: any) => c.name === selectedName);
+    if (concept) {
+      if (catSelect && concept.category) catSelect.value = concept.category;
+      if (thRange && concept.threshold) {
+        thRange.value = concept.threshold.toString();
+        if (thVal) thVal.textContent = parseFloat(concept.threshold).toFixed(2);
+      }
+    }
+  };
 
   const updateModeUI = () => {
     const isExisting = existingRadio?.checked ?? true;
@@ -478,21 +496,26 @@ async function openTeachConceptModal() {
         ? `<i class="bi bi-plus-lg"></i> Add Samples to Concept`
         : `<i class="bi bi-check-lg"></i> Create New Concept`;
     }
+    if (isExisting) {
+      syncSelectedConceptUI();
+    }
   };
 
   existingRadio?.addEventListener("change", updateModeUI);
   newRadio?.addEventListener("change", updateModeUI);
+  existingSelect?.addEventListener("change", syncSelectedConceptUI);
 
   if (existingSelect) {
     try {
       const resp = await callService({ ListConcepts: null });
       if ("ConceptListResult" in resp) {
-        const concepts = resp.ConceptListResult.concepts;
-        if (concepts.length > 0) {
-          existingSelect.innerHTML = concepts
+        fetchedConcepts = resp.ConceptListResult.concepts;
+        if (fetchedConcepts.length > 0) {
+          existingSelect.innerHTML = fetchedConcepts
             .map((c: any) => `<option value="${c.name}">${c.name} [${c.category.toUpperCase()}] (${c.sample_count} samples)</option>`)
             .join("");
           if (existingRadio) existingRadio.checked = true;
+          syncSelectedConceptUI();
         } else {
           existingSelect.innerHTML = `<option value="">No existing concepts found</option>`;
           if (newRadio) newRadio.checked = true;
@@ -609,20 +632,40 @@ function setupForms() {
     e.preventDefault();
     if (!importInput || !importMsg) return;
 
-    setStatusMessage(importMsg, "Importing image(s)... Scanning directory & queuing jobs.", "loading");
-    startImportProgressPolling();
+    setStatusMessage(importMsg, "Scanning directory & queuing import jobs...", "loading");
+
+    // Immediately show progress panel UI with loading state
+    const panel = document.getElementById("import-progress-panel");
+    const title = document.getElementById("import-progress-title");
+    const percent = document.getElementById("import-progress-percent");
+    const bar = document.getElementById("import-progress-bar");
+    const indexedCount = document.getElementById("import-indexed-count");
+    const pendingCount = document.getElementById("import-pending-count");
+
+    if (panel) panel.style.display = "block";
+    if (title) title.textContent = "Scanning Directory & Queuing Import Jobs...";
+    if (bar) bar.style.width = "0%";
+    if (percent) percent.textContent = "0%";
+    if (indexedCount) indexedCount.textContent = "Scanning folder...";
+    if (pendingCount) pendingCount.textContent = "Queuing jobs...";
 
     try {
       const resp = await callService({ ImportImage: { path: importInput.value } });
       if ("ImportResult" in resp) {
-        setStatusMessage(importMsg, `Started import! Processing images...`, "loading");
+        const { imported_count, folder_id } = resp.ImportResult;
+        if (folder_id && imported_count) {
+          setStatusMessage(importMsg, `Started import! Processing ${imported_count} image(s)...`, "loading");
+          startImportProgressPolling(folder_id, imported_count);
+        }
         importInput.value = "";
         importInput.dispatchEvent(new Event('change', { bubbles: true }));
       } else if ("Error" in resp) {
         setStatusMessage(importMsg, `Error: ${resp.Error.message}`, "error");
+        if (panel) panel.style.display = "none";
       }
     } catch (e) {
       setStatusMessage(importMsg, `IPC Error: ${e}`, "error");
+      if (panel) panel.style.display = "none";
     }
   });
 
@@ -1401,7 +1444,7 @@ function updateSelectionUI() {
 
 let importProgressTimer: any = null;
 
-function startImportProgressPolling() {
+function startImportProgressPolling(targetFolderId: number, expectedBatchCount: number) {
   const panel = document.getElementById("import-progress-panel");
   const title = document.getElementById("import-progress-title");
   const percent = document.getElementById("import-progress-percent");
@@ -1412,35 +1455,49 @@ function startImportProgressPolling() {
 
   if (!panel || !bar || !percent) return;
   panel.style.display = "block";
-  if (title) title.textContent = "Processing Import & Vector Indexing...";
+  if (title) title.textContent = `Processing Import & Vector Indexing (${expectedBatchCount} images)...`;
+  bar.style.width = "0%";
+  percent.textContent = "0%";
+  if (indexedCount) indexedCount.textContent = `Indexed Vectors: 0 / Total Images: ${expectedBatchCount}`;
+  if (pendingCount) pendingCount.textContent = `Pending Jobs: ${expectedBatchCount}`;
 
   if (importProgressTimer) clearInterval(importProgressTimer);
 
   importProgressTimer = setInterval(async () => {
     try {
-      const resp = await callService({ GetStatus: null });
-      if ("StatusResult" in resp) {
-        const { image_count, vector_count, pending_jobs, preprocessing_jobs } = resp.StatusResult;
+      const foldersResp = await callService({ GetImportedFolders: null });
+      const statusResp = await callService({ GetStatus: null });
 
-        const activeJobs = pending_jobs + preprocessing_jobs;
-        if (indexedCount) indexedCount.textContent = `Indexed Vectors: ${vector_count} / Total Images: ${image_count}`;
-        if (pendingCount) pendingCount.textContent = `Pending Jobs: ${activeJobs}`;
+      let pendingWorkerJobs = 0;
+      if ("StatusResult" in statusResp) {
+        pendingWorkerJobs = statusResp.StatusResult.pending_jobs + statusResp.StatusResult.preprocessing_jobs;
+      }
 
-        if (image_count > 0) {
-          const pct = Math.min(100, Math.round((vector_count / image_count) * 100));
-          bar.style.width = `${pct}%`;
-          percent.textContent = `${pct}%`;
-        }
+      if ("ImportedFoldersResult" in foldersResp) {
+        const folder = foldersResp.ImportedFoldersResult.folders.find((f: any) => f.id === targetFolderId);
+        if (folder) {
+          const total = folder.image_count || expectedBatchCount;
+          const ready = folder.vector_ready;
 
-        if (activeJobs === 0 && image_count > 0 && vector_count >= image_count) {
-          bar.style.width = "100%";
-          percent.textContent = "100%";
-          if (title) title.textContent = "✓ Import & Vector Indexing Complete!";
-          if (statusMsg) setStatusMessage(statusMsg, `Successfully imported and indexed all ${image_count} images!`, "success");
-          clearInterval(importProgressTimer);
-          importProgressTimer = null;
-          refreshDashboard();
-          refreshGallery();
+          if (indexedCount) indexedCount.textContent = `Indexed Vectors: ${ready} / Total Images: ${total}`;
+          if (pendingCount) pendingCount.textContent = `Pending Jobs: ${pendingWorkerJobs}`;
+
+          if (total > 0) {
+            const pct = Math.min(100, Math.round((ready / total) * 100));
+            bar.style.width = `${pct}%`;
+            percent.textContent = `${pct}%`;
+
+            if (ready >= total && pendingWorkerJobs === 0) {
+              bar.style.width = "100%";
+              percent.textContent = "100%";
+              if (title) title.textContent = "✓ Import & Vector Indexing Complete!";
+              if (statusMsg) setStatusMessage(statusMsg, `Successfully imported and indexed all ${total} images!`, "success");
+              clearInterval(importProgressTimer);
+              importProgressTimer = null;
+              refreshDashboard();
+              refreshGallery();
+            }
+          }
         }
       }
     } catch (e) {

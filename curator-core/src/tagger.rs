@@ -391,30 +391,66 @@ fn preprocess_image(
             .next_frame(&mut raw)
             .with_context(|| format!("png decode failed for {:?}", path))?;
         let pixels = out_info.buffer_size();
-        let rgb: Vec<u8> = match out_info.color_type {
-            png::ColorType::Rgb => raw[..pixels].to_vec(),
-            png::ColorType::Rgba => raw[..pixels]
-                .chunks(4)
-                .flat_map(|c| [c[0], c[1], c[2]])
-                .collect(),
-            png::ColorType::Grayscale => raw[..pixels].iter().flat_map(|&g| [g, g, g]).collect(),
-            png::ColorType::GrayscaleAlpha => raw[..pixels]
-                .chunks(2)
-                .flat_map(|c| [c[0], c[0], c[0]])
-                .collect(),
+        let mut rgb = vec![0u8; w as usize * h as usize * 3];
+        match out_info.color_type {
+            png::ColorType::Rgb => {
+                let len = pixels.min(rgb.len());
+                rgb[..len].copy_from_slice(&raw[..len]);
+            }
+            png::ColorType::Rgba => {
+                let src = &raw[..pixels];
+                let mut dst_idx = 0;
+                for chunk in src.chunks_exact(4) {
+                    if dst_idx + 2 < rgb.len() {
+                        rgb[dst_idx] = chunk[0];
+                        rgb[dst_idx + 1] = chunk[1];
+                        rgb[dst_idx + 2] = chunk[2];
+                        dst_idx += 3;
+                    }
+                }
+            }
+            png::ColorType::Grayscale => {
+                let src = &raw[..pixels];
+                let mut dst_idx = 0;
+                for &g in src {
+                    if dst_idx + 2 < rgb.len() {
+                        rgb[dst_idx] = g;
+                        rgb[dst_idx + 1] = g;
+                        rgb[dst_idx + 2] = g;
+                        dst_idx += 3;
+                    }
+                }
+            }
+            png::ColorType::GrayscaleAlpha => {
+                let src = &raw[..pixels];
+                let mut dst_idx = 0;
+                for chunk in src.chunks_exact(2) {
+                    if dst_idx + 2 < rgb.len() {
+                        let g = chunk[0];
+                        rgb[dst_idx] = g;
+                        rgb[dst_idx + 1] = g;
+                        rgb[dst_idx + 2] = g;
+                        dst_idx += 3;
+                    }
+                }
+            }
             png::ColorType::Indexed => {
                 let palette = reader
                     .info()
                     .palette
                     .as_deref()
                     .context("Indexed PNG has no palette")?;
-                raw[..pixels]
-                    .iter()
-                    .flat_map(|&idx| {
-                        let i = idx as usize * 3;
-                        [palette[i], palette[i + 1], palette[i + 2]]
-                    })
-                    .collect()
+                let src = &raw[..pixels];
+                let mut dst_idx = 0;
+                for &idx in src {
+                    let i = idx as usize * 3;
+                    if i + 2 < palette.len() && dst_idx + 2 < rgb.len() {
+                        rgb[dst_idx] = palette[i];
+                        rgb[dst_idx + 1] = palette[i + 1];
+                        rgb[dst_idx + 2] = palette[i + 2];
+                        dst_idx += 3;
+                    }
+                }
             }
         };
         (rgb, w, h)
