@@ -1,5 +1,9 @@
 use anyhow::{Context, Error};
 use clap::Parser;
+use curator_core::concept::{
+    bytes_to_vector, compute_prototype_vector, cosine_similarity, sanitize_concept_name,
+    vector_to_bytes, CustomConcept,
+};
 use curator_core::db::init_db;
 use curator_core::ipc::{
     DevicePreference, EmbeddingModel, FolderDetails, ImageDetails, Request, Response, SearchMatch,
@@ -45,6 +49,7 @@ type ImageRow = (
     Option<String>,
     Option<String>,
     Option<f32>,
+    Option<String>,
 );
 
 /// Persistent application settings stored in `<data_dir>/settings.json`.
@@ -165,6 +170,14 @@ async fn main() -> Result<(), Error> {
     )
     .execute(&db)
     .await?;
+
+    sqlx::query(
+        "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES ('ai:custom-concepts', 'AI_MODEL', '{}')",
+    )
+    .execute(&db)
+    .await?;
+
+    let _ = sync_all_custom_concept_tags(&db).await;
 
     // 3. Load settings
     let settings = load_settings(&data_dir);
@@ -471,7 +484,6 @@ async fn handle_request(
         },
 
         Request::RemoveTag { image_id, tag } => {
-            // Find the tag ID
             let tag_res: Option<(i64,)> =
                 sqlx::query_as("SELECT id FROM tags WHERE name = ? LIMIT 1")
                     .bind(&tag)
@@ -480,23 +492,41 @@ async fn handle_request(
                     .unwrap_or(None);
 
             if let Some((tag_id,)) = tag_res {
-                // Find the user source ID
-                let user_source: Option<(i64,)> =
-                    sqlx::query_as("SELECT id FROM sources WHERE name = 'user' LIMIT 1")
-                        .fetch_optional(db)
-                        .await
-                        .unwrap_or(None);
+                // Check if any active tag association for this image is an AI tag source (starts with 'ai:')
+                let source_row: Option<(String,)> = sqlx::query_as(
+                    "SELECT s.name FROM image_tags it
+                     JOIN sources s ON it.source_id = s.id
+                     WHERE it.image_id = ? AND it.tag_id = ? AND it.is_deleted = 0
+                     LIMIT 1",
+                )
+                .bind(image_id)
+                .bind(tag_id)
+                .fetch_optional(db)
+                .await
+                .unwrap_or(None);
 
-                if let Some((source_id,)) = user_source {
-                    // Soft-delete: only delete if the association was created by user
-                    match sqlx::query(
-                        "UPDATE image_tags
-                         SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP
-                         WHERE image_id = ? AND tag_id = ? AND source_id = ?",
+                let source_name = source_row.map(|(sname,)| sname).unwrap_or_default();
+                if source_name == "ai:custom-concepts" {
+                    let _ = sqlx::query(
+                        "DELETE FROM image_tags WHERE image_id = ? AND tag_id = ?",
                     )
                     .bind(image_id)
                     .bind(tag_id)
-                    .bind(source_id)
+                    .execute(db)
+                    .await;
+                    Response::Success
+                } else {
+                    let is_ai_source = source_name.starts_with("ai:");
+                    let is_blacklisted_val = if is_ai_source { 1i64 } else { 0i64 };
+
+                    match sqlx::query(
+                        "UPDATE image_tags
+                         SET is_deleted = 1, is_blacklisted = ?, deleted_at = CURRENT_TIMESTAMP
+                         WHERE image_id = ? AND tag_id = ?",
+                    )
+                    .bind(is_blacklisted_val)
+                    .bind(image_id)
+                    .bind(tag_id)
                     .execute(db)
                     .await
                     {
@@ -505,15 +535,38 @@ async fn handle_request(
                             message: e.to_string(),
                         },
                     }
-                } else {
-                    Response::Error {
-                        message: "User source not found".to_string(),
-                    }
                 }
             } else {
-                Response::Error {
-                    message: "Tag not found".to_string(),
+                Response::Success
+            }
+        }
+
+        Request::UnblacklistTag { image_id, tag } => {
+            let tag_res: Option<(i64,)> =
+                sqlx::query_as("SELECT id FROM tags WHERE name = ? LIMIT 1")
+                    .bind(&tag)
+                    .fetch_optional(db)
+                    .await
+                    .unwrap_or(None);
+
+            if let Some((tag_id,)) = tag_res {
+                match sqlx::query(
+                    "UPDATE image_tags
+                     SET is_deleted = 0, is_blacklisted = 0, deleted_at = NULL
+                     WHERE image_id = ? AND tag_id = ?",
+                )
+                .bind(image_id)
+                .bind(tag_id)
+                .execute(db)
+                .await
+                {
+                    Ok(_) => Response::Success,
+                    Err(e) => Response::Error {
+                        message: e.to_string(),
+                    },
                 }
+            } else {
+                Response::Success
             }
         }
 
@@ -521,12 +574,14 @@ async fn handle_request(
             query_text,
             query_image_path,
             tag_filter,
+            concept_id,
             limit,
         } => {
             match search_logic(
                 query_text,
                 query_image_path,
                 tag_filter,
+                concept_id,
                 limit,
                 db,
                 model_manager,
@@ -845,55 +900,8 @@ async fn handle_request(
             let tagger_status = tagger.status();
             let settings_val = settings_result;
 
-            // Compute featured image: stable per day, stored in a file
-            let today_str = {
-                let secs = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-                let day_number = secs / 86400;
-                format!("day_{}", day_number)
-            };
-
-            let featured_file = data_dir.join("featured_of_the_day.txt");
-            let featured_id: Option<i64> = fs::read_to_string(&featured_file).ok().and_then(|s| {
-                let parts: Vec<&str> = s.trim().splitn(2, '|').collect();
-                if parts.len() == 2 && parts[0] == today_str {
-                    parts[1].parse::<i64>().ok()
-                } else {
-                    None
-                }
-            });
-
-            let featured_id = if let Some(id) = featured_id {
-                id
-            } else {
-                // Pick a new featured image for today
-                let all_ids: Result<Vec<(i64,)>, _> = sqlx::query_as(
-                    "SELECT id FROM images WHERE deleted_at IS NULL ORDER BY RANDOM() LIMIT 1",
-                )
-                .fetch_all(db)
-                .await;
-
-                let new_id = all_ids
-                    .map(|rows| rows.first().map(|r| r.0).unwrap_or(0))
-                    .unwrap_or(0);
-
-                if new_id > 0 {
-                    let _ = fs::write(&featured_file, format!("{}|{}", today_str, new_id));
-                }
-                new_id
-            };
-
-            // Fetch the featured image by ID, and latest images
             let (featured_result, latest_resp) = tokio::join!(
-                async {
-                    if featured_id > 0 {
-                        get_image_logic(featured_id, db).await.ok()
-                    } else {
-                        None
-                    }
-                },
+                get_featured_image(db, &data_dir),
                 list_images_logic(8, 0, None, db),
             );
 
@@ -932,6 +940,90 @@ async fn handle_request(
                 message: e.to_string(),
             },
         },
+
+        Request::CreateConcept {
+            name,
+            category,
+            threshold,
+            sample_image_ids,
+        } => match create_concept_logic(
+            db,
+            &name,
+            &category,
+            threshold,
+            &sample_image_ids,
+            &model_manager,
+        )
+        .await {
+            Ok(concept) => Response::ConceptResult { concept },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
+        Request::ListConcepts => match list_concepts_logic(db).await {
+            Ok(concepts) => Response::ConceptListResult { concepts },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
+        Request::UpdateConcept {
+            id,
+            threshold,
+            category,
+        } => match update_concept_logic(db, id, threshold, category).await {
+            Ok(concept) => Response::ConceptResult { concept },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
+        Request::DeleteConcept { id } => match delete_concept_logic(db, id).await {
+            Ok(_) => Response::Success,
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
+        Request::AddConceptSamples {
+            concept_id,
+            image_ids,
+        } => match add_concept_samples_logic(db, concept_id, &image_ids, &model_manager).await {
+            Ok(concept) => Response::ConceptResult { concept },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
+        Request::RemoveConceptSample {
+            concept_id,
+            image_id,
+        } => match remove_concept_sample_logic(db, concept_id, image_id, &model_manager).await {
+            Ok(concept) => Response::ConceptResult { concept },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
+        Request::RescanConcept { concept_id } => match rescan_concept_logic(db, concept_id, &model_manager, vector_index).await {
+            Ok(count) => Response::ConceptRescannedResult {
+                concept_id,
+                tagged_count: count,
+            },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
+        Request::GetConceptSamples { concept_id } => {
+            match get_concept_samples_logic(db, concept_id).await {
+                Ok(samples) => Response::ConceptSamplesResult { concept_id, samples },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
     }
 }
 
@@ -977,8 +1069,8 @@ async fn tag_image_logic(
 
     if let Some((camie_source_id,)) = camie_source {
         if force {
-            // Wipe existing Camie tags (hard delete to allow clean overwrite)
-            sqlx::query("DELETE FROM image_tags WHERE image_id = ? AND source_id = ?")
+            // Wipe existing active Camie tags (preserve blacklisted negative samples!)
+            sqlx::query("DELETE FROM image_tags WHERE image_id = ? AND source_id = ? AND is_blacklisted = 0")
                 .bind(image_id)
                 .bind(camie_source_id)
                 .execute(db)
@@ -1032,10 +1124,28 @@ async fn tag_image_logic(
     // 5. Generate a shared transaction_id for this tagging run (enables future undo)
     let transaction_id = uuid::Uuid::new_v4().to_string();
 
+    // Fetch blacklisted tag names for this image so AI auto-tagging NEVER re-applies negative samples
+    let blacklisted_rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT t.name FROM image_tags it
+         JOIN tags t ON it.tag_id = t.id
+         WHERE it.image_id = ? AND it.is_blacklisted = 1",
+    )
+    .bind(image_id)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    let blacklisted_names: std::collections::HashSet<String> =
+        blacklisted_rows.into_iter().map(|(name,)| name).collect();
+
     // 6. Persist each predicted tag
     let mut tag_summaries: Vec<TagSummary> = Vec::with_capacity(predictions.len());
 
     for pred in &predictions {
+        if blacklisted_names.contains(&pred.tag) {
+            info!("Skipping blacklisted AI tag '{}' for image {}", pred.tag, image_id);
+            continue;
+        }
         // Ensure tag exists in tags table
         sqlx::query("INSERT OR IGNORE INTO tags (name, category) VALUES (?, ?)")
             .bind(&pred.tag)
@@ -1049,9 +1159,9 @@ async fn tag_image_logic(
             .await?;
         let tag_id = tag_row.0;
 
-        // Insert with confidence and transaction tracking
+        // Insert or replace with confidence and transaction tracking (resets is_deleted to 0 if previously soft-deleted)
         sqlx::query(
-            "INSERT OR IGNORE INTO image_tags
+            "INSERT OR REPLACE INTO image_tags
              (image_id, tag_id, source_id, confidence, is_deleted, transaction_id)
              VALUES (?, ?, ?, ?, 0, ?)",
         )
@@ -1067,6 +1177,8 @@ async fn tag_image_logic(
             tag: pred.tag.clone(),
             category: pred.category.clone(),
             confidence: pred.confidence,
+            source_name: Some(curator_core::constants::SOURCE_CAMIE.to_string()),
+            is_blacklisted: false,
         });
     }
 
@@ -1467,6 +1579,7 @@ async fn search_logic(
     query_text: Option<String>,
     query_image_path: Option<String>,
     tag_filter: Option<String>,
+    concept_id: Option<i64>,
     limit: usize,
     db: &SqlitePool,
     model_manager: &ModelManager,
@@ -1476,6 +1589,135 @@ async fn search_logic(
     let mut vector_scores: std::collections::HashMap<i64, f32> = std::collections::HashMap::new();
     let mut exact_matches = std::collections::HashSet::new();
     let mut perceptual_matches = std::collections::HashMap::new();
+
+    // Custom Concept Vector Prototype Search (matches both tagged & untagged candidate images)
+    if let Some(c_id) = concept_id {
+        if let Ok(concept) = get_custom_concept_by_id(db, c_id).await {
+            let active_model = model_manager.active_model();
+            let source_name = match active_model {
+                EmbeddingModel::ClipVitB32 => curator_core::constants::SOURCE_CLIP,
+                EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
+            };
+            let source_row: Option<(i64,)> = sqlx::query_as("SELECT id FROM sources WHERE name = ? LIMIT 1")
+                .bind(source_name)
+                .fetch_optional(db)
+                .await?;
+            if let Some((source_id,)) = source_row {
+                let vec_row: Option<(Vec<u8>,)> = sqlx::query_as(
+                    "SELECT vector FROM custom_concept_vectors WHERE concept_id = ? AND source_id = ? LIMIT 1",
+                )
+                .bind(c_id)
+                .bind(source_id)
+                .fetch_optional(db)
+                .await?;
+
+                if let Some((blob,)) = vec_row {
+                    let proto_vec = bytes_to_vector(&blob);
+                    if !proto_vec.is_empty() {
+                        let mut ids = std::collections::HashSet::new();
+
+                        // Fetch Camie Tagger V2 logit probability vector profile for this concept's ground-truth samples
+                        let sample_camie_logits: Vec<(i64, f64)> = sqlx::query_as(
+                            "SELECT it.tag_id, AVG(it.confidence) as avg_conf
+                             FROM image_tags it
+                             JOIN custom_concept_samples ccs ON it.image_id = ccs.image_id
+                             JOIN sources s ON it.source_id = s.id
+                             WHERE ccs.concept_id = ? AND s.name = 'ai:camie-tagger-v2' AND it.is_deleted = 0
+                             GROUP BY it.tag_id",
+                        )
+                        .bind(c_id)
+                        .fetch_all(db)
+                        .await
+                        .unwrap_or_default();
+
+                        let results = vector_index.search(&proto_vec, limit.max(500))?;
+                        for (id, dist) in results {
+                            let image_id = id as i64;
+                            let clip_sim = 1.0 - dist;
+
+                            // Compute exact Cosine Similarity in Camie Logit Vector Space
+                            let mut camie_logit_sim = 0.0f32;
+                            let mut has_cand_camie = false;
+                            if !sample_camie_logits.is_empty() {
+                                let candidate_camie_tags: Vec<(i64, f64)> = sqlx::query_as(
+                                    "SELECT it.tag_id, it.confidence
+                                     FROM image_tags it
+                                     JOIN sources s ON it.source_id = s.id
+                                     WHERE it.image_id = ? AND s.name = 'ai:camie-tagger-v2' AND it.is_deleted = 0",
+                                )
+                                .bind(image_id)
+                                .fetch_all(db)
+                                .await
+                                .unwrap_or_default();
+
+                                if !candidate_camie_tags.is_empty() {
+                                    has_cand_camie = true;
+                                    let cand_map: std::collections::HashMap<i64, f64> = candidate_camie_tags.into_iter().collect();
+                                    let mut dot_product = 0.0f64;
+                                    let mut proto_norm_sq = 0.0f64;
+                                    let mut cand_norm_sq = 0.0f64;
+
+                                    for &(tag_id, proto_conf) in &sample_camie_logits {
+                                        proto_norm_sq += proto_conf * proto_conf;
+                                        if let Some(&cand_conf) = cand_map.get(&tag_id) {
+                                            dot_product += proto_conf * cand_conf;
+                                        }
+                                    }
+
+                                    for &cand_conf in cand_map.values() {
+                                        cand_norm_sq += cand_conf * cand_conf;
+                                    }
+
+                                    if proto_norm_sq > 0.0 && cand_norm_sq > 0.0 {
+                                        camie_logit_sim = (dot_product / (proto_norm_sq.sqrt() * cand_norm_sq.sqrt())) as f32;
+                                    }
+                                }
+                            }
+
+                            // Score candidate using Temperature-Scaled Linear SVM Decision Boundary Probability
+                            let svm_score = if clip_sim > 0.55 { (clip_sim - 0.55) / 0.45 } else { 0.0 };
+
+                            let (final_score, is_match) = if has_cand_camie {
+                                if camie_logit_sim > 0.0 {
+                                    let score = 0.50 * svm_score + 0.50 * camie_logit_sim;
+                                    (score, score >= (concept.threshold * 0.60) || camie_logit_sim >= (concept.threshold * 0.60))
+                                } else {
+                                    // Candidate image HAS Camie tags, but 0% overlap with concept Camie tags: exclude!
+                                    (0.0f32, false)
+                                }
+                            } else {
+                                // Candidate image is UNTAGGED by Camie: evaluate using Linear SVM decision score!
+                                (svm_score, svm_score >= (concept.threshold * 0.60))
+                            };
+
+                            if is_match {
+                                ids.insert(image_id);
+                                vector_scores.insert(image_id, final_score);
+                            }
+                        }
+
+                        // Also include any images explicitly tagged with this concept name
+                        let tagged_images: Vec<(i64,)> = sqlx::query_as(
+                            "SELECT DISTINCT it.image_id FROM image_tags it
+                             JOIN tags t ON it.tag_id = t.id
+                             WHERE t.name = ? AND it.is_deleted = 0",
+                        )
+                        .bind(&concept.name)
+                        .fetch_all(db)
+                        .await
+                        .unwrap_or_default();
+
+                        for r in tagged_images {
+                            ids.insert(r.0);
+                            vector_scores.entry(r.0).or_insert(1.0);
+                        }
+
+                        candidate_ids = Some(ids);
+                    }
+                }
+            }
+        }
+    }
 
     if let Some(img_path) = query_image_path {
         let path = std::path::Path::new(&img_path);
@@ -1651,16 +1893,17 @@ async fn list_images_logic(
     let rows: Vec<ImageRow> = sqlx::query_as(
         r#"
             SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite,
-                   t.name, t.category, it.confidence
+                   t.name, t.category, it.confidence, s.name as source_name
             FROM (
                 SELECT id FROM images 
                 WHERE deleted_at IS NULL AND (?1 = 0 OR favorite = 1)
-                ORDER BY created_at DESC LIMIT ?2 OFFSET ?3
+                ORDER BY created_at DESC, id DESC LIMIT ?2 OFFSET ?3
             ) sub
             JOIN images i ON i.id = sub.id
             LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0
             LEFT JOIN tags t ON it.tag_id = t.id
-            ORDER BY i.created_at DESC
+            LEFT JOIN sources s ON it.source_id = s.id
+            ORDER BY i.created_at DESC, i.id DESC
             "#,
     )
     .bind(if only_favs { 1i64 } else { 0i64 })
@@ -1669,7 +1912,8 @@ async fn list_images_logic(
     .fetch_all(db)
     .await?;
 
-    // Group rows by image
+    // Group rows by image while preserving SQL sort order
+    let mut image_order: Vec<i64> = Vec::new();
     let mut image_map: std::collections::HashMap<i64, ImageDetails> =
         std::collections::HashMap::new();
     for (
@@ -1682,8 +1926,12 @@ async fn list_images_logic(
         tag_name,
         tag_category,
         confidence,
+        source_name,
     ) in rows
     {
+        if !image_map.contains_key(&id) {
+            image_order.push(id);
+        }
         let entry = image_map.entry(id).or_insert_with(|| ImageDetails {
             id,
             sha256,
@@ -1691,6 +1939,7 @@ async fn list_images_logic(
             mtime,
             created_at,
             tags: Vec::new(),
+            blacklisted_tags: Vec::new(),
             vector_state: String::new(),
             favorite,
         });
@@ -1699,6 +1948,8 @@ async fn list_images_logic(
                 tag: name,
                 category,
                 confidence: confidence.unwrap_or(0.0),
+                source_name: source_name.clone(),
+                is_blacklisted: false,
             });
         }
     }
@@ -1724,27 +1975,37 @@ async fn list_images_logic(
         }
     }
 
-    let mut images: Vec<ImageDetails> = image_map.into_values().collect();
-    // Sort tags within each image
-    for img in &mut images {
-        img.tags.sort_by(|a, b| {
-            let priority = |cat: &str| -> i32 {
-                match cat {
-                    "user" => 0,
-                    "character" => 1,
-                    "copyright" => 2,
-                    "meta" => 3,
-                    _ => 4,
-                }
-            };
-            priority(&a.category)
-                .cmp(&priority(&b.category))
-                .then_with(|| {
+    let mut images: Vec<ImageDetails> = Vec::with_capacity(image_order.len());
+    for id in image_order {
+        if let Some(mut img) = image_map.remove(&id) {
+            // Sort tags: Rank #1 (custom concepts & user tags), followed by character, copyright, meta, then general.
+            img.tags.sort_by(|a, b| {
+                let priority = |t: &TagSummary| -> i32 {
+                    if t.source_name.as_deref() == Some("ai:custom-concepts") || t.category == "user" {
+                        -1
+                    } else {
+                        match t.category.as_str() {
+                            "character" => 1,
+                            "copyright" => 2,
+                            "meta" => 3,
+                            _ => 4,
+                        }
+                    }
+                };
+
+                let p_a = priority(a);
+                let p_b = priority(b);
+
+                if p_a != p_b {
+                    p_a.cmp(&p_b)
+                } else {
                     b.confidence
                         .partial_cmp(&a.confidence)
                         .unwrap_or(std::cmp::Ordering::Equal)
-                })
-        });
+                }
+            });
+            images.push(img);
+        }
     }
     Ok(images)
 }
@@ -1756,33 +2017,54 @@ async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDetails,
             .fetch_one(db)
             .await?;
 
-    let tags: Vec<TagSummary> = sqlx::query_as(
-        "SELECT t.name as tag, t.category as category, it.confidence as confidence
+    let all_tag_rows: Vec<(String, String, f32, Option<String>, bool)> = sqlx::query_as(
+        "SELECT t.name, t.category, it.confidence, s.name, (it.is_blacklisted = 1)
          FROM image_tags it
          JOIN tags t ON it.tag_id = t.id
-         WHERE it.image_id = ? AND it.is_deleted = 0",
+         LEFT JOIN sources s ON it.source_id = s.id
+         WHERE it.image_id = ? AND (it.is_deleted = 0 OR it.is_blacklisted = 1)",
     )
     .bind(image_id)
     .fetch_all(db)
     .await?;
 
-    // Sort tags: user tags at the absolute top (category == "user"),
-    // followed by character, copyright, meta, then the rest.
-    // Within each category, sort by confidence descending.
-    let mut sorted_tags = tags;
+    let mut active_tags = Vec::new();
+    let mut blacklisted_tags = Vec::new();
+
+    for (tag, category, confidence, source_name, is_blacklisted) in all_tag_rows {
+        let summary = TagSummary {
+            tag,
+            category,
+            confidence,
+            source_name,
+            is_blacklisted,
+        };
+
+        if is_blacklisted {
+            blacklisted_tags.push(summary);
+        } else {
+            active_tags.push(summary);
+        }
+    }
+
+    // Sort tags: Rank #1 (custom concepts & user tags), followed by character, copyright, meta, then general.
+    let mut sorted_tags = active_tags;
     sorted_tags.sort_by(|a, b| {
-        let priority = |cat: &str| -> i32 {
-            match cat {
-                "user" => 0,
-                "character" => 1,
-                "copyright" => 2,
-                "meta" => 3,
-                _ => 4,
+        let priority = |t: &TagSummary| -> i32 {
+            if t.source_name.as_deref() == Some("ai:custom-concepts") || t.category == "user" {
+                -1
+            } else {
+                match t.category.as_str() {
+                    "character" => 1,
+                    "copyright" => 2,
+                    "meta" => 3,
+                    _ => 4,
+                }
             }
         };
 
-        let p_a = priority(&a.category);
-        let p_b = priority(&b.category);
+        let p_a = priority(a);
+        let p_b = priority(b);
 
         if p_a != p_b {
             p_a.cmp(&p_b)
@@ -1809,6 +2091,7 @@ async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDetails,
         mtime: img.mtime,
         created_at: img.created_at.to_string(),
         tags: sorted_tags,
+        blacklisted_tags,
         vector_state,
         favorite: img.favorite,
     })
@@ -1841,4 +2124,506 @@ async fn validate_plugin_logic(manifest_path_str: &str) -> Result<(String, Strin
     }
 
     Ok((name, version))
+}
+
+async fn get_featured_image(db: &SqlitePool, data_dir: &Path) -> Option<ImageDetails> {
+    let today_str = {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let day_number = secs / 86400;
+        format!("day_{}", day_number)
+    };
+
+    let featured_file = data_dir.join("featured_of_the_day.txt");
+
+    // 1. If today's featured image file exists and points to an active image, return it
+    if let Ok(content) = fs::read_to_string(&featured_file) {
+        let parts: Vec<&str> = content.trim().splitn(2, '|').collect();
+        if parts.len() == 2 && parts[0] == today_str {
+            if let Ok(id) = parts[1].parse::<i64>() {
+                if let Ok(img) = get_image_logic(id, db).await {
+                    return Some(img);
+                }
+            }
+        }
+    }
+
+    // 2. Otherwise (file missing, expired, or saved image deleted), pick a random active image for today
+    if let Ok(Some((rand_id,))) = sqlx::query_as::<_, (i64,)>(
+        "SELECT id FROM images WHERE deleted_at IS NULL ORDER BY RANDOM() LIMIT 1",
+    )
+    .fetch_optional(db)
+    .await
+    {
+        if let Ok(img) = get_image_logic(rand_id, db).await {
+            let _ = fs::write(&featured_file, format!("{}|{}", today_str, rand_id));
+            return Some(img);
+        }
+    }
+
+    None
+}
+
+// ---------------------------------------------------------------------------
+// Custom Concept Logic
+// ---------------------------------------------------------------------------
+
+async fn recompute_concept_prototype_logic(
+    db: &SqlitePool,
+    concept_id: i64,
+    model_manager: &ModelManager,
+) -> Result<Vec<f32>, Error> {
+    let concept = get_custom_concept_by_id(db, concept_id).await?;
+
+    let sample_rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT image_id FROM custom_concept_samples WHERE concept_id = ? AND is_negative = 0",
+    )
+    .bind(concept_id)
+    .fetch_all(db)
+    .await?;
+
+    let ids: Vec<i64> = sample_rows.into_iter().map(|(id,)| id).collect();
+    let mut sample_vectors = Vec::new();
+
+    if !ids.is_empty() {
+        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let query_str = format!("SELECT current_filepath FROM images WHERE id IN ({})", placeholders);
+        let mut q = sqlx::query_as::<_, (String,)>(query_str.as_str());
+        for id in &ids {
+            q = q.bind(id);
+        }
+        if let Ok(image_paths) = q.fetch_all(db).await {
+            for (path_str,) in image_paths {
+                let path = Path::new(&path_str);
+                if path.exists() {
+                    if let Ok(vec) = model_manager.generate_image_embedding(path) {
+                        sample_vectors.push(vec);
+                    }
+                }
+            }
+        }
+    }
+
+    // Generate CLIP text prompt embedding for semantic concept grounding
+    let prompt_text = format!("anime artwork of {}", concept.name.replace('_', " "));
+    let text_vec = model_manager.generate_text_embedding(&prompt_text).ok();
+
+    // Fetch a sample of random background library image paths for Linear SVM negative training
+    let neg_rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT current_filepath FROM images WHERE deleted_at IS NULL AND id NOT IN (SELECT image_id FROM custom_concept_samples WHERE concept_id = ?) ORDER BY RANDOM() LIMIT 8",
+    )
+    .bind(concept_id)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    let mut negative_vectors = Vec::new();
+    for (path_str,) in neg_rows {
+        let path = Path::new(&path_str);
+        if path.exists() {
+            if let Ok(vec) = model_manager.generate_image_embedding(path) {
+                negative_vectors.push(vec);
+            }
+        }
+    }
+
+    let (proto_vec, _bias) = curator_core::concept::train_linear_svm_decision_boundary(
+        &sample_vectors,
+        &negative_vectors,
+        text_vec.as_deref(),
+    );
+
+    let blob = vector_to_bytes(&proto_vec);
+
+    let active_model = model_manager.active_model();
+    let source_name = match active_model {
+        EmbeddingModel::ClipVitB32 => curator_core::constants::SOURCE_CLIP,
+        EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
+    };
+    let source_row: (i64,) = sqlx::query_as("SELECT id FROM sources WHERE name = ? LIMIT 1")
+        .bind(source_name)
+        .fetch_one(db)
+        .await?;
+
+    sqlx::query(
+        "INSERT INTO custom_concept_vectors (concept_id, source_id, vector, updated_at)
+         VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(concept_id, source_id) DO UPDATE SET vector = excluded.vector, updated_at = CURRENT_TIMESTAMP"
+    )
+    .bind(concept_id)
+    .bind(source_row.0)
+    .bind(blob)
+    .execute(db)
+    .await?;
+
+    sqlx::query("UPDATE custom_concepts SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(concept_id)
+        .execute(db)
+        .await?;
+
+    Ok(proto_vec)
+}
+
+async fn get_custom_concept_by_id(db: &SqlitePool, concept_id: i64) -> Result<CustomConcept, Error> {
+    let row: (i64, String, String, f64, i64, String, String) = sqlx::query_as(
+        "SELECT c.id, c.name, c.category, c.threshold,
+                (SELECT COUNT(*) FROM custom_concept_samples WHERE concept_id = c.id) as sample_count,
+                c.created_at, c.updated_at
+         FROM custom_concepts c
+         WHERE c.id = ? LIMIT 1",
+    )
+    .bind(concept_id)
+    .fetch_one(db)
+    .await?;
+
+    Ok(CustomConcept {
+        id: row.0,
+        name: row.1,
+        category: row.2,
+        threshold: row.3 as f32,
+        sample_count: row.4 as usize,
+        created_at: row.5,
+        updated_at: row.6,
+    })
+}
+
+async fn apply_concept_tags_to_samples(
+    db: &SqlitePool,
+    concept: &CustomConcept,
+    sample_image_ids: &[i64],
+) -> Result<(), Error> {
+    let concept_source_row: (i64,) = sqlx::query_as(
+        "SELECT id FROM sources WHERE name = 'ai:custom-concepts' LIMIT 1",
+    )
+    .fetch_one(db)
+    .await?;
+    let concept_source_id = concept_source_row.0;
+
+    let tag_row: (i64,) = sqlx::query_as(
+        "INSERT INTO tags (name, category) VALUES (?, ?)
+         ON CONFLICT(name) DO UPDATE SET category = excluded.category
+         RETURNING id",
+    )
+    .bind(&concept.name)
+    .bind(&concept.category)
+    .fetch_one(db)
+    .await?;
+    let tag_id = tag_row.0;
+
+    for &img_id in sample_image_ids {
+        let _ = sqlx::query(
+            "INSERT INTO image_tags (image_id, tag_id, source_id, confidence, is_deleted)
+             VALUES (?, ?, ?, 1.0, 0)
+             ON CONFLICT(image_id, tag_id, source_id, transaction_id) DO UPDATE SET is_deleted = 0, confidence = 1.0",
+        )
+        .bind(img_id)
+        .bind(tag_id)
+        .bind(concept_source_id)
+        .execute(db)
+        .await;
+    }
+    Ok(())
+}
+
+async fn create_concept_logic(
+    db: &SqlitePool,
+    name: &str,
+    category: &str,
+    threshold: f32,
+    sample_image_ids: &[i64],
+    model_manager: &ModelManager,
+) -> Result<CustomConcept, Error> {
+    let clean_name = sanitize_concept_name(name);
+    if clean_name.is_empty() {
+        return Err(anyhow::anyhow!("Concept name cannot be empty"));
+    }
+
+    let existing: Option<(i64,)> = sqlx::query_as("SELECT id FROM custom_concepts WHERE name = ? LIMIT 1")
+        .bind(&clean_name)
+        .fetch_optional(db)
+        .await?;
+
+    let concept_id = match existing {
+        Some((id,)) => {
+            sqlx::query("UPDATE custom_concepts SET category = ?, threshold = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                .bind(category)
+                .bind(threshold as f64)
+                .bind(id)
+                .execute(db)
+                .await?;
+            id
+        }
+        None => {
+            let res = sqlx::query(
+                "INSERT INTO custom_concepts (name, category, threshold) VALUES (?, ?, ?)"
+            )
+            .bind(&clean_name)
+            .bind(category)
+            .bind(threshold as f64)
+            .execute(db)
+            .await?;
+            res.last_insert_rowid()
+        }
+    };
+
+    for &img_id in sample_image_ids {
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO custom_concept_samples (concept_id, image_id) VALUES (?, ?)"
+        )
+        .bind(concept_id)
+        .bind(img_id)
+        .execute(db)
+        .await;
+    }
+
+    recompute_concept_prototype_logic(db, concept_id, model_manager).await?;
+    let concept = get_custom_concept_by_id(db, concept_id).await?;
+
+    // Tag all ground-truth sample images with this concept tag
+    let _ = apply_concept_tags_to_samples(db, &concept, sample_image_ids).await;
+
+    Ok(concept)
+}
+
+async fn list_concepts_logic(db: &SqlitePool) -> Result<Vec<CustomConcept>, Error> {
+    let rows: Vec<(i64, String, String, f64, i64, String, String)> = sqlx::query_as(
+        "SELECT c.id, c.name, c.category, c.threshold,
+                (SELECT COUNT(*) FROM custom_concept_samples WHERE concept_id = c.id) as sample_count,
+                c.created_at, c.updated_at
+         FROM custom_concepts c
+         ORDER BY c.updated_at DESC",
+    )
+    .fetch_all(db)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| CustomConcept {
+            id: r.0,
+            name: r.1,
+            category: r.2,
+            threshold: r.3 as f32,
+            sample_count: r.4 as usize,
+            created_at: r.5,
+            updated_at: r.6,
+        })
+        .collect())
+}
+
+async fn get_concept_samples_logic(
+    db: &SqlitePool,
+    concept_id: i64,
+) -> Result<Vec<ImageDetails>, Error> {
+    let sample_rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT image_id FROM custom_concept_samples WHERE concept_id = ?",
+    )
+    .bind(concept_id)
+    .fetch_all(db)
+    .await?;
+
+    let mut samples = Vec::new();
+    for (img_id,) in sample_rows {
+        if let Ok(details) = get_image_logic(img_id, db).await {
+            samples.push(details);
+        }
+    }
+    Ok(samples)
+}
+
+async fn update_concept_logic(
+    db: &SqlitePool,
+    id: i64,
+    threshold: Option<f32>,
+    category: Option<String>,
+) -> Result<CustomConcept, Error> {
+    if let Some(th) = threshold {
+        sqlx::query("UPDATE custom_concepts SET threshold = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(th as f64)
+            .bind(id)
+            .execute(db)
+            .await?;
+    }
+
+    if let Some(cat) = category {
+        sqlx::query("UPDATE custom_concepts SET category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(&cat)
+            .bind(id)
+            .execute(db)
+            .await?;
+    }
+
+    get_custom_concept_by_id(db, id).await
+}
+
+async fn delete_concept_logic(db: &SqlitePool, id: i64) -> Result<(), Error> {
+    sqlx::query("DELETE FROM custom_concepts WHERE id = ?")
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+async fn add_concept_samples_logic(
+    db: &SqlitePool,
+    concept_id: i64,
+    image_ids: &[i64],
+    model_manager: &ModelManager,
+) -> Result<CustomConcept, Error> {
+    for &img_id in image_ids {
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO custom_concept_samples (concept_id, image_id) VALUES (?, ?)"
+        )
+        .bind(concept_id)
+        .bind(img_id)
+        .execute(db)
+        .await;
+    }
+
+    recompute_concept_prototype_logic(db, concept_id, model_manager).await?;
+    let concept = get_custom_concept_by_id(db, concept_id).await?;
+
+    // Tag the new ground-truth sample images with this concept tag
+    let _ = apply_concept_tags_to_samples(db, &concept, image_ids).await;
+
+    Ok(concept)
+}
+
+async fn remove_concept_sample_logic(
+    db: &SqlitePool,
+    concept_id: i64,
+    image_id: i64,
+    model_manager: &ModelManager,
+) -> Result<CustomConcept, Error> {
+    sqlx::query("DELETE FROM custom_concept_samples WHERE concept_id = ? AND image_id = ?")
+        .bind(concept_id)
+        .bind(image_id)
+        .execute(db)
+        .await?;
+
+    recompute_concept_prototype_logic(db, concept_id, model_manager).await?;
+    get_custom_concept_by_id(db, concept_id).await
+}
+
+async fn sync_all_custom_concept_tags(db: &SqlitePool) -> Result<(), Error> {
+    let concepts = list_concepts_logic(db).await?;
+    for concept in concepts {
+        let sample_rows: Vec<(i64,)> = sqlx::query_as(
+            "SELECT image_id FROM custom_concept_samples WHERE concept_id = ?",
+        )
+        .bind(concept.id)
+        .fetch_all(db)
+        .await?;
+
+        let sample_ids: Vec<i64> = sample_rows.into_iter().map(|r| r.0).collect();
+        if !sample_ids.is_empty() {
+            let _ = apply_concept_tags_to_samples(db, &concept, &sample_ids).await;
+        }
+    }
+    Ok(())
+}
+
+async fn rescan_concept_logic(
+    db: &SqlitePool,
+    concept_id: i64,
+    model_manager: &ModelManager,
+    vector_index: &VectorIndex,
+) -> Result<usize, Error> {
+    let concept = get_custom_concept_by_id(db, concept_id).await?;
+
+    // Tag all ground-truth sample images with this concept tag
+    let sample_rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT image_id FROM custom_concept_samples WHERE concept_id = ?",
+    )
+    .bind(concept_id)
+    .fetch_all(db)
+    .await?;
+    let sample_ids: Vec<i64> = sample_rows.into_iter().map(|r| r.0).collect();
+    if !sample_ids.is_empty() {
+        let _ = apply_concept_tags_to_samples(db, &concept, &sample_ids).await;
+    }
+
+    let active_model = model_manager.active_model();
+    let source_name = match active_model {
+        EmbeddingModel::ClipVitB32 => curator_core::constants::SOURCE_CLIP,
+        EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
+    };
+    let source_row: Option<(i64,)> = sqlx::query_as("SELECT id FROM sources WHERE name = ? LIMIT 1")
+        .bind(source_name)
+        .fetch_optional(db)
+        .await?;
+    let source_id = match source_row {
+        Some((id,)) => id,
+        None => return Ok(0),
+    };
+
+    let vec_row: Option<(Vec<u8>,)> = sqlx::query_as(
+        "SELECT vector FROM custom_concept_vectors WHERE concept_id = ? AND source_id = ? LIMIT 1",
+    )
+    .bind(concept_id)
+    .bind(source_id)
+    .fetch_optional(db)
+    .await?;
+
+    let proto_vec = match vec_row {
+        Some((blob,)) => bytes_to_vector(&blob),
+        None => return Ok(0),
+    };
+
+    if proto_vec.is_empty() {
+        return Ok(0);
+    }
+
+    let concept_source_row: (i64,) = sqlx::query_as(
+        "SELECT id FROM sources WHERE name = 'ai:custom-concepts' LIMIT 1"
+    )
+    .fetch_one(db)
+    .await?;
+    let concept_source_id = concept_source_row.0;
+
+    let tag_row: (i64,) = sqlx::query_as(
+        "INSERT INTO tags (name, category) VALUES (?, ?)
+         ON CONFLICT(name) DO UPDATE SET category = excluded.category
+         RETURNING id",
+    )
+    .bind(&concept.name)
+    .bind(&concept.category)
+    .fetch_one(db)
+    .await?;
+    let tag_id = tag_row.0;
+
+    let results = vector_index.search(&proto_vec, 10000)?;
+    let mut match_count = 0usize;
+    for (id, dist) in results {
+        let image_id = id as i64;
+        let sim = 1.0 - dist;
+        if sim >= concept.threshold {
+            let blacklisted: Option<(i64,)> = sqlx::query_as(
+                "SELECT id FROM image_tags WHERE image_id = ? AND tag_id = ? AND is_blacklisted = 1 LIMIT 1",
+            )
+            .bind(image_id)
+            .bind(tag_id)
+            .fetch_optional(db)
+            .await
+            .unwrap_or_default();
+
+            if blacklisted.is_none() {
+                let _ = sqlx::query(
+                    "INSERT INTO image_tags (image_id, tag_id, source_id, confidence, is_deleted, is_blacklisted)
+                     VALUES (?, ?, ?, ?, 0, 0)
+                     ON CONFLICT(image_id, tag_id, source_id, transaction_id) DO UPDATE SET confidence = excluded.confidence"
+                )
+                .bind(image_id)
+                .bind(tag_id)
+                .bind(concept_source_id)
+                .bind(sim as f64)
+                .execute(db)
+                .await;
+                match_count += 1;
+            }
+        }
+    }
+
+    Ok(match_count)
 }

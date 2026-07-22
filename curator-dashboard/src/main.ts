@@ -4,12 +4,19 @@ import {
   renderTagPill,
   renderGroupBox,
   componentRegistry,
-  maskPath
+  maskPath,
+  renderConceptCardHtml
 } from "./components";
 
 function logJS(msg: string) {
   console.log(msg);
   invoke("log_frontend", { message: msg }).catch(() => {});
+}
+
+function setStatusMessage(el: HTMLElement | null, message: string, state: "loading" | "success" | "error") {
+  if (!el) return;
+  el.textContent = message;
+  el.style.color = state === "loading" ? "#fbbf24" : state === "success" ? "#10b981" : "#ef4444";
 }
 
 // --- Image Click Setting ---
@@ -75,7 +82,7 @@ function setupImageViewer() {
 }
 
 // Define Request/Response payloads to match curator-core::ipc
-type RequestPayload =
+export type RequestPayload =
   | { Ping: null }
   | { GetStatus: null }
   | { ImportImage: { path: string } }
@@ -165,51 +172,20 @@ type ResponsePayload =
   | { ImportedFoldersResult: { folders: FolderDetails[] } }
   | { BackfillResult: { images_backfilled: number } };
 
-// Helpers for invoking the service through Rust Named Pipe bridge
-async function callService(request: RequestPayload): Promise<ResponsePayload> {
-  let formattedReq: any;
-  if ("Ping" in request) {
-    formattedReq = "Ping";
-  } else if ("GetStatus" in request) {
-    formattedReq = "GetStatus";
-  } else if ("ImportImage" in request) {
-    formattedReq = { ImportImage: request.ImportImage };
-  } else if ("AddTag" in request) {
-    formattedReq = { AddTag: request.AddTag };
-  } else if ("RemoveTag" in request) {
-    formattedReq = { RemoveTag: request.RemoveTag };
-  } else if ("Search" in request) {
-    formattedReq = { Search: request.Search };
-  } else if ("ListImages" in request) {
-    formattedReq = { ListImages: request.ListImages };
-  } else if ("SetFavorite" in request) {
-    formattedReq = { SetFavorite: request.SetFavorite };
-  } else if ("GetImage" in request) {
-    formattedReq = { GetImage: request.GetImage };
-  } else if ("ValidatePlugin" in request) {
-    formattedReq = { ValidatePlugin: request.ValidatePlugin };
-  } else if ("TagImage" in request) {
-    formattedReq = { TagImage: request.TagImage };
-  } else if ("TagImageBatch" in request) {
-    formattedReq = { TagImageBatch: request.TagImageBatch };
-  } else if ("GetTaggerStatus" in request) {
-    formattedReq = "GetTaggerStatus";
-  } else if ("RunBenchmark" in request) {
-    formattedReq = { RunBenchmark: request.RunBenchmark };
-  } else if ("GetSettings" in request) {
-    formattedReq = "GetSettings";
-  } else if ("UpdateSettings" in request) {
-    formattedReq = { UpdateSettings: request.UpdateSettings };
-  } else if ("ReindexVectors" in request) {
-    formattedReq = "ReindexVectors";
-  } else if ("GetTagStatistics" in request) {
-    formattedReq = "GetTagStatistics";
-  } else if ("GetDashboardInit" in request) {
-    formattedReq = "GetDashboardInit";
-  } else if ("GetImportedFolders" in request) {
-    formattedReq = "GetImportedFolders";
-  } else if ("BackfillImageFolders" in request) {
-    formattedReq = "BackfillImageFolders";
+async function callService(request: any): Promise<any> {
+  let formattedReq: any = request;
+
+  if (request && typeof request === "object") {
+    const keys = Object.keys(request);
+    if (keys.length === 1) {
+      const key = keys[0];
+      const val = request[key];
+      if (val === null || val === undefined) {
+        formattedReq = key; // Unit enum variants: "Ping", "GetStatus", "ListConcepts", "GetDashboardInit", etc.
+      } else {
+        formattedReq = { [key]: val }; // Struct enum variants
+      }
+    }
   }
 
   try {
@@ -221,26 +197,12 @@ async function callService(request: RequestPayload): Promise<ResponsePayload> {
     
     // Normalize Serde enum structure
     if (typeof parsed === "string") {
-      if (parsed === "Pong") return { Pong: null };
-      if (parsed === "Success") return { Success: null };
+      return { [parsed]: null };
     }
     
-    if (parsed.Error) return { Error: parsed.Error };
-    if (parsed.ImportResult) return { ImportResult: parsed.ImportResult };
-    if (parsed.SearchResult) return { SearchResult: parsed.SearchResult };
-    if (parsed.StatusResult) return { StatusResult: parsed.StatusResult };
-    if (parsed.ImageResult) return { ImageResult: parsed.ImageResult };
-    if (parsed.ListResult) return { ListResult: parsed.ListResult };
-    if (parsed.ValidationResult) return { ValidationResult: parsed.ValidationResult };
-    if (parsed.TagImageResult) return { TagImageResult: parsed.TagImageResult };
-    if (parsed.BatchTagResult) return { BatchTagResult: parsed.BatchTagResult };
-    if (parsed.TaggerStatusResult) return { TaggerStatusResult: parsed.TaggerStatusResult };
-    if (parsed.BenchmarkResult) return { BenchmarkResult: parsed.BenchmarkResult };
-    if (parsed.SettingsResult) return { SettingsResult: parsed.SettingsResult };
-    if (parsed.TagStatisticsResult) return { TagStatisticsResult: parsed.TagStatisticsResult };
-    if (parsed.DashboardInitResult) return { DashboardInitResult: parsed.DashboardInitResult };
-    if (parsed.ImportedFoldersResult) return { ImportedFoldersResult: parsed.ImportedFoldersResult };
-    if (parsed.BackfillResult) return { BackfillResult: parsed.BackfillResult };
+    if (typeof parsed === "object" && parsed !== null) {
+      return parsed;
+    }
 
     throw new Error("Unknown response format: " + respStr);
   } catch (err: any) {
@@ -473,9 +435,76 @@ function startStatusPolling() {
       const text = document.getElementById("service-status-text");
       if (dot && text) { dot.classList.add("offline"); text.textContent = "Service Offline"; }
     }
-  }
+  };
 
   setInterval(check, 5000);
+  loadSearchConceptsDropdown();
+}
+
+async function loadSearchConceptsDropdown() {
+  const select = document.getElementById("search-concept-select") as HTMLSelectElement;
+  if (!select) return;
+
+  try {
+    const resp = await callService({ ListConcepts: null });
+    if ("ConceptListResult" in resp) {
+      const concepts = resp.ConceptListResult.concepts;
+      const optionsHtml = `<option value="">-- All Concepts --</option>` + concepts.map((c: any) =>
+        `<option value="${c.id}">${c.name} (${c.sample_count} samples)</option>`
+      ).join("");
+      select.innerHTML = optionsHtml;
+    }
+  } catch (_) {}
+}
+
+async function openTeachConceptModal() {
+  const teachModal = document.getElementById("teach-concept-modal");
+  const existingSelect = document.getElementById("teach-concept-existing-select") as HTMLSelectElement;
+  const existingRadio = document.getElementById("target-type-existing") as HTMLInputElement;
+  const newRadio = document.getElementById("target-type-new") as HTMLInputElement;
+  const existingGroup = document.getElementById("teach-existing-concept-group");
+  const newGroup = document.getElementById("teach-new-concept-group");
+  const nameInput = document.getElementById("teach-concept-name") as HTMLInputElement;
+  const submitBtn = document.getElementById("teach-concept-submit-btn");
+
+  const updateModeUI = () => {
+    const isExisting = existingRadio?.checked ?? true;
+    if (existingGroup) existingGroup.style.display = isExisting ? "block" : "none";
+    if (newGroup) newGroup.style.display = isExisting ? "none" : "block";
+    if (nameInput) nameInput.required = !isExisting;
+    if (existingSelect) existingSelect.required = isExisting;
+    if (submitBtn) {
+      submitBtn.innerHTML = isExisting
+        ? `<i class="bi bi-plus-lg"></i> Add Samples to Concept`
+        : `<i class="bi bi-check-lg"></i> Create New Concept`;
+    }
+  };
+
+  existingRadio?.addEventListener("change", updateModeUI);
+  newRadio?.addEventListener("change", updateModeUI);
+
+  if (existingSelect) {
+    try {
+      const resp = await callService({ ListConcepts: null });
+      if ("ConceptListResult" in resp) {
+        const concepts = resp.ConceptListResult.concepts;
+        if (concepts.length > 0) {
+          existingSelect.innerHTML = concepts
+            .map((c: any) => `<option value="${c.name}">${c.name} [${c.category.toUpperCase()}] (${c.sample_count} samples)</option>`)
+            .join("");
+          if (existingRadio) existingRadio.checked = true;
+        } else {
+          existingSelect.innerHTML = `<option value="">No existing concepts found</option>`;
+          if (newRadio) newRadio.checked = true;
+        }
+      }
+    } catch (_) {
+      existingSelect.innerHTML = `<option value="">Failed to load concepts</option>`;
+    }
+  }
+
+  updateModeUI();
+  if (teachModal) teachModal.classList.add("active");
 }
 
 // Forms and Actions
@@ -491,19 +520,104 @@ function setupForms() {
     setupBrowseButton("browse-folder-btn", importInput, true);
   }
 
+  // Selection Toolbar Buttons
+  const toggleSelectBtn = document.getElementById("toggle-select-mode-btn");
+  const selectAllBtn = document.getElementById("gallery-select-all-btn");
+  const clearSelectBtn = document.getElementById("gallery-clear-select-btn");
+  const teachConceptBtn = document.getElementById("gallery-teach-concept-btn");
+
+  toggleSelectBtn?.addEventListener("click", () => {
+    isSelectMode = !isSelectMode;
+    toggleSelectBtn.classList.toggle("primary", isSelectMode);
+    if (!isSelectMode) {
+      selectedImageIds.clear();
+      document.querySelectorAll(".image-card.selected").forEach((c) => c.classList.remove("selected"));
+      document.querySelectorAll(".card-select-checkbox").forEach((cb: any) => (cb.checked = false));
+    }
+    updateSelectionUI();
+  });
+
+  selectAllBtn?.addEventListener("click", () => {
+    const cards = document.querySelectorAll("#gallery-grid .image-card");
+    cards.forEach((card: any) => {
+      const id = parseInt(card.dataset.imageId || "0");
+      if (id > 0) {
+        selectedImageIds.add(id);
+        card.classList.add("selected");
+        const cb = card.querySelector(".card-select-checkbox");
+        if (cb) cb.checked = true;
+      }
+    });
+    updateSelectionUI();
+  });
+
+  clearSelectBtn?.addEventListener("click", () => {
+    selectedImageIds.clear();
+    document.querySelectorAll(".image-card.selected").forEach((c) => c.classList.remove("selected"));
+    document.querySelectorAll(".card-select-checkbox").forEach((cb: any) => (cb.checked = false));
+    updateSelectionUI();
+  });
+
+  teachConceptBtn?.addEventListener("click", () => {
+    if (selectedImageIds.size === 0) return;
+    openTeachConceptModal();
+  });
+
+  // Search Results Selection Toolbar Buttons
+  const searchToggleBtn = document.getElementById("search-toggle-select-mode-btn");
+  const searchSelectAllBtn = document.getElementById("search-select-all-btn");
+  const searchClearBtn = document.getElementById("search-clear-select-btn");
+  const searchTeachBtn = document.getElementById("search-teach-concept-btn");
+
+  searchToggleBtn?.addEventListener("click", () => {
+    isSelectMode = !isSelectMode;
+    if (!isSelectMode) {
+      selectedImageIds.clear();
+      document.querySelectorAll(".image-card.selected").forEach((c) => c.classList.remove("selected"));
+      document.querySelectorAll(".card-select-checkbox").forEach((cb: any) => (cb.checked = false));
+    }
+    updateSelectionUI();
+  });
+
+  searchSelectAllBtn?.addEventListener("click", () => {
+    const cards = document.querySelectorAll("#search-results-grid .image-card");
+    cards.forEach((card: any) => {
+      const id = parseInt(card.dataset.imageId || "0");
+      if (id > 0) {
+        selectedImageIds.add(id);
+        card.classList.add("selected");
+        const cb = card.querySelector(".card-select-checkbox");
+        if (cb) cb.checked = true;
+      }
+    });
+    updateSelectionUI();
+  });
+
+  searchClearBtn?.addEventListener("click", () => {
+    selectedImageIds.clear();
+    document.querySelectorAll(".image-card.selected").forEach((c) => c.classList.remove("selected"));
+    document.querySelectorAll(".card-select-checkbox").forEach((cb: any) => (cb.checked = false));
+    updateSelectionUI();
+  });
+
+  searchTeachBtn?.addEventListener("click", () => {
+    if (selectedImageIds.size === 0) return;
+    openTeachConceptModal();
+  });
+
   importForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!importInput || !importMsg) return;
 
-    setStatusMessage(importMsg, "Importing image...", "loading");
+    setStatusMessage(importMsg, "Importing image(s)... Scanning directory & queuing jobs.", "loading");
+    startImportProgressPolling();
 
     try {
       const resp = await callService({ ImportImage: { path: importInput.value } });
       if ("ImportResult" in resp) {
-        setStatusMessage(importMsg, `Success! Image imported with ID ${resp.ImportResult.image_id}. SHA256: ${resp.ImportResult.sha256}`, "success");
+        setStatusMessage(importMsg, `Started import! Processing images...`, "loading");
         importInput.value = "";
         importInput.dispatchEvent(new Event('change', { bubbles: true }));
-        refreshDashboard();
       } else if ("Error" in resp) {
         setStatusMessage(importMsg, `Error: ${resp.Error.message}`, "error");
       }
@@ -580,9 +694,11 @@ function setupForms() {
       const query = queryInput.value.trim() || null;
       const tag = tagInput.value.trim() || null;
       const imagePath = imageInput.value.trim() || null;
+      const conceptSelect = document.getElementById("search-concept-select") as HTMLSelectElement;
+      const conceptIdVal = conceptSelect && conceptSelect.value ? parseInt(conceptSelect.value) : null;
 
       const resp = await callService({
-        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, limit: 20 }
+        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, concept_id: conceptIdVal, limit: 50 }
       });
 
       if ("SearchResult" in resp) {
@@ -1074,9 +1190,6 @@ function setupPaginationButtons(prevId: string, nextId: string, pageRef: { value
   });
 }
 
-// Track double-click confirmation states for auto-tag overwrite
-let overwriteTargetId: number | null = null;
-
 // Open tag modal
 async function openTagModal(imgId: number, path: string) {
   const modal = document.getElementById("add-tag-modal");
@@ -1092,7 +1205,6 @@ async function openTagModal(imgId: number, path: string) {
     autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
     autoTagBtn.style.backgroundColor = "";
   }
-  overwriteTargetId = null; // Reset overwrite state
 
   await refreshModalTags(imgId);
   modal?.classList.add("active");
@@ -1101,54 +1213,6 @@ async function openTagModal(imgId: number, path: string) {
 // Helper to generate a styled tag pill HTML based on category
 function getTagPillHtml(t: TagSummary, isDeletable = false, imageId = 0): string {
   return renderTagPill(t, { isDeletable, imageId });
-}
-
-async function refreshModalTags(imgId: number) {
-  const container = document.getElementById("modal-tag-list");
-  if (!container) return;
-  container.innerHTML = "";
-
-  try {
-    const resp = await callService({ GetImage: { image_id: imgId } });
-    if ("ImageResult" in resp) {
-      const img = resp.ImageResult.image;
-      img.tags.forEach((tag) => {
-        const pillHtml = getTagPillHtml(tag, true, imgId);
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = pillHtml;
-        const pillNode = tempDiv.firstChild;
-        if (pillNode) {
-          container.appendChild(pillNode);
-        }
-      });
-    }
-  } catch (e) {
-    console.error("Failed to load modal tags: ", e);
-  }
-}
-
-async function refreshCardTags(imgId: number) {
-  try {
-    const resp = await callService({ GetImage: { image_id: imgId } });
-    if (!("ImageResult" in resp)) return;
-    const tags = resp.ImageResult.image.tags;
-    const tagHtml = renderTagListHtml(tags);
-    document.querySelectorAll(`[data-image-id="${imgId}"] .tag-list`).forEach((el) => {
-      el.innerHTML = tagHtml;
-    });
-  } catch (e) {
-    console.error("Failed to refresh card tags:", e);
-  }
-}
-
-// Common card data interface
-interface CardImageData {
-  id: number;
-  filepath: string;
-  tags: TagSummary[];
-  favorite?: boolean;
-  badgeHtml?: string;
-  emptyMessage?: string;
 }
 
 // --- Shared Card Event Handlers ---
@@ -1274,10 +1338,115 @@ function setupBrowseButton(btnId: string, targetInput: HTMLInputElement, isDirec
   });
 }
 
-function setStatusMessage(el: HTMLElement | null, message: string, state: "loading" | "success" | "error") {
-  if (!el) return;
-  el.textContent = message;
-  el.style.color = state === "loading" ? "#fbbf24" : state === "success" ? "#10b981" : "#ef4444";
+// Gallery Selection State
+let isSelectMode = false;
+const selectedImageIds = new Set<number>();
+
+function updateSelectionUI() {
+  const countSpan = document.getElementById("gallery-selected-count");
+  const searchCountSpan = document.getElementById("search-selected-count");
+  const teachCountSpan = document.getElementById("teach-select-count");
+  const searchTeachCountSpan = document.getElementById("search-teach-select-count");
+
+  const toggleBtn = document.getElementById("toggle-select-mode-btn");
+  const searchToggleBtn = document.getElementById("search-toggle-select-mode-btn");
+
+  const selectAllBtn = document.getElementById("gallery-select-all-btn");
+  const searchSelectAllBtn = document.getElementById("search-select-all-btn");
+
+  const clearBtn = document.getElementById("gallery-clear-select-btn");
+  const searchClearBtn = document.getElementById("search-clear-select-btn");
+
+  const teachBtn = document.getElementById("gallery-teach-concept-btn");
+  const searchTeachBtn = document.getElementById("search-teach-concept-btn");
+
+  const galleryGrid = document.getElementById("gallery-grid");
+  const searchGrid = document.getElementById("search-results-grid");
+
+  toggleBtn?.classList.toggle("primary", isSelectMode);
+  searchToggleBtn?.classList.toggle("primary", isSelectMode);
+
+  if (isSelectMode) {
+    galleryGrid?.classList.add("select-mode-active");
+    searchGrid?.classList.add("select-mode-active");
+  } else {
+    galleryGrid?.classList.remove("select-mode-active");
+    searchGrid?.classList.remove("select-mode-active");
+  }
+
+  const count = selectedImageIds.size;
+  const countText = `${count} selected`;
+
+  if (countSpan) {
+    countSpan.textContent = countText;
+    countSpan.style.display = isSelectMode ? "inline" : "none";
+  }
+  if (searchCountSpan) {
+    searchCountSpan.textContent = countText;
+    searchCountSpan.style.display = isSelectMode ? "inline" : "none";
+  }
+
+  if (teachCountSpan) teachCountSpan.textContent = count.toString();
+  if (searchTeachCountSpan) searchTeachCountSpan.textContent = count.toString();
+
+  if (selectAllBtn) selectAllBtn.style.display = isSelectMode ? "inline-block" : "none";
+  if (searchSelectAllBtn) searchSelectAllBtn.style.display = isSelectMode ? "inline-block" : "none";
+
+  if (clearBtn) clearBtn.style.display = isSelectMode && count > 0 ? "inline-block" : "none";
+  if (searchClearBtn) searchClearBtn.style.display = isSelectMode && count > 0 ? "inline-block" : "none";
+
+  if (teachBtn) teachBtn.style.display = count > 0 ? "inline-block" : "none";
+  if (searchTeachBtn) searchTeachBtn.style.display = count > 0 ? "inline-block" : "none";
+}
+
+let importProgressTimer: any = null;
+
+function startImportProgressPolling() {
+  const panel = document.getElementById("import-progress-panel");
+  const title = document.getElementById("import-progress-title");
+  const percent = document.getElementById("import-progress-percent");
+  const bar = document.getElementById("import-progress-bar");
+  const indexedCount = document.getElementById("import-indexed-count");
+  const pendingCount = document.getElementById("import-pending-count");
+  const statusMsg = document.getElementById("import-status-msg");
+
+  if (!panel || !bar || !percent) return;
+  panel.style.display = "block";
+  if (title) title.textContent = "Processing Import & Vector Indexing...";
+
+  if (importProgressTimer) clearInterval(importProgressTimer);
+
+  importProgressTimer = setInterval(async () => {
+    try {
+      const resp = await callService({ GetStatus: null });
+      if ("StatusResult" in resp) {
+        const { image_count, vector_count, pending_jobs, preprocessing_jobs } = resp.StatusResult;
+
+        const activeJobs = pending_jobs + preprocessing_jobs;
+        if (indexedCount) indexedCount.textContent = `Indexed Vectors: ${vector_count} / Total Images: ${image_count}`;
+        if (pendingCount) pendingCount.textContent = `Pending Jobs: ${activeJobs}`;
+
+        if (image_count > 0) {
+          const pct = Math.min(100, Math.round((vector_count / image_count) * 100));
+          bar.style.width = `${pct}%`;
+          percent.textContent = `${pct}%`;
+        }
+
+        if (activeJobs === 0 && image_count > 0 && vector_count >= image_count) {
+          bar.style.width = "100%";
+          percent.textContent = "100%";
+          if (title) title.textContent = "✓ Import & Vector Indexing Complete!";
+          if (statusMsg) setStatusMessage(statusMsg, `Successfully imported and indexed all ${image_count} images!`, "success");
+          clearInterval(importProgressTimer);
+          importProgressTimer = null;
+          refreshDashboard();
+          refreshGallery();
+        }
+      }
+    } catch (e) {
+      console.error("Error polling import progress", e);
+    }
+  }, 400);
 }
 
 // Renderers
@@ -1332,13 +1501,14 @@ function renderSearchResults(matches: SearchMatch[]) {
 function renderCards(cards: CardImageData[], grid: HTMLElement) {
   cards.forEach((img) => {
     const card = document.createElement("div");
-    card.className = "image-card";
+    card.className = `image-card ${selectedImageIds.has(img.id) ? 'selected' : ''}`;
     card.dataset.imageId = img.id.toString();
 
     const srcUrl = convertFileSrc(img.filepath);
     const tagHtml = renderTagListHtml(img.tags);
 
     card.innerHTML = `
+      <input type="checkbox" class="card-select-checkbox" data-id="${img.id}" ${selectedImageIds.has(img.id) ? 'checked' : ''} />
       <div class="star-btn ${img.favorite ? 'favorite' : ''}" data-id="${img.id}">
         <i class="bi ${img.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
       </div>
@@ -1369,10 +1539,111 @@ function renderCards(cards: CardImageData[], grid: HTMLElement) {
       </div>
     `;
 
-    attachCardEventHandlers(card, img.id, img.filepath, img);
+    const checkbox = card.querySelector(".card-select-checkbox") as HTMLInputElement;
+    checkbox?.addEventListener("change", (e) => {
+      e.stopPropagation();
+      if (checkbox.checked) {
+        selectedImageIds.add(img.id);
+        card.classList.add("selected");
+      } else {
+        selectedImageIds.delete(img.id);
+        card.classList.remove("selected");
+      }
+      updateSelectionUI();
+    });
+
+    card.addEventListener("click", (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest(".win-button") || target.closest(".star-btn") || target.closest(".copy-btn")) return;
+      if (isSelectMode) {
+        if (selectedImageIds.has(img.id)) {
+          selectedImageIds.delete(img.id);
+          card.classList.remove("selected");
+          if (checkbox) checkbox.checked = false;
+        } else {
+          selectedImageIds.add(img.id);
+          card.classList.add("selected");
+          if (checkbox) checkbox.checked = true;
+        }
+        updateSelectionUI();
+      }
+    });
+
+    attachCardEventHandlers(card, img.id, img.filepath, { favorite: img.favorite ?? false });
 
     grid.appendChild(card);
   });
+}
+
+async function refreshModalTags(imgId: number) {
+  const container = document.getElementById("modal-tag-list");
+  if (!container) {
+    logJS("refreshModalTags error: #modal-tag-list element not found in DOM!");
+    return;
+  }
+
+  try {
+    logJS(`refreshModalTags calling GetImage for image_id=${imgId}...`);
+    const resp = await callService({ GetImage: { image_id: imgId } });
+    logJS(`refreshModalTags GetImage response for image ${imgId}: ` + JSON.stringify(resp));
+
+    if ("ImageResult" in resp) {
+      const img = resp.ImageResult.image;
+      if (!img.tags || img.tags.length === 0) {
+        container.innerHTML = '<span style="color: #999; font-style: italic; font-size: 11px;">No tags assigned yet</span>';
+      } else {
+        container.innerHTML = img.tags
+          .map((tag: any) => getTagPillHtml(tag, true, imgId))
+          .join("");
+      }
+
+      // Render Blacklisted Tags (Negative Samples)
+      const blacklistGroup = document.getElementById("modal-blacklisted-group");
+      const blacklistContainer = document.getElementById("modal-blacklisted-tag-list");
+      if (blacklistGroup && blacklistContainer) {
+        if (img.blacklisted_tags && img.blacklisted_tags.length > 0) {
+          blacklistGroup.style.display = "block";
+          blacklistContainer.innerHTML = img.blacklisted_tags
+            .map((t: any) => `<span class="tag-pill tag-meta" style="background-color: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444;" title="Blacklisted negative sample — AI auto-tagging will skip this tag"><i class="bi bi-slash-circle"></i> ${t.tag.replace(/_/g, '_\u200B')} <i class="bi bi-arrow-counterclockwise" style="cursor: pointer; margin-left: 4px;" title="Restore (Un-blacklist)" onclick="window.unblacklistTag(${imgId}, '${t.tag.replace(/'/g, "\\'")}')"></i></span>`)
+            .join("");
+        } else {
+          blacklistGroup.style.display = "none";
+          blacklistContainer.innerHTML = "";
+        }
+      }
+
+      logJS(`refreshModalTags rendered ${img.tags ? img.tags.length : 0} active tags and ${img.blacklisted_tags ? img.blacklisted_tags.length : 0} blacklisted tags`);
+    } else if ("Error" in resp) {
+      container.innerHTML = `<span style="color: #ef4444; font-size: 11px;">Error: ${resp.Error.message}</span>`;
+    }
+  } catch (e: any) {
+    logJS("refreshModalTags exception: " + (e.message || e));
+    container.innerHTML = `<span style="color: #ef4444; font-size: 11px;">IPC Error: ${e.message || e}</span>`;
+  }
+}
+
+async function refreshCardTags(imgId: number) {
+  try {
+    const resp = await callService({ GetImage: { image_id: imgId } });
+    if (!("ImageResult" in resp)) return;
+    const tags = resp.ImageResult.image.tags;
+    const tagHtml = renderTagListHtml(tags);
+    document.querySelectorAll(`[data-image-id="${imgId}"] .tag-list`).forEach((el) => {
+      el.innerHTML = tagHtml;
+    });
+  } catch (e) {
+    console.error("Failed to refresh card tags:", e);
+  }
+}
+
+// Common card data interface
+interface CardImageData {
+  id: number;
+  filepath: string;
+  tags: TagSummary[];
+  favorite?: boolean;
+  badgeHtml?: string;
+  emptyMessage?: string;
 }
 
 // Action for Modal Auto-Tag
@@ -1382,58 +1653,57 @@ async function handleModalAutoTag() {
   const statusArea = document.getElementById("auto-tag-modal-status");
   const autoTagBtn = document.getElementById("auto-tag-modal-btn");
 
-  if (!idInput || !statusArea || !thresholdSelect || !autoTagBtn) return;
+  if (!idInput || !statusArea || !thresholdSelect || !autoTagBtn) {
+    logJS("handleModalAutoTag error: missing modal DOM elements!");
+    return;
+  }
 
   const imageId = parseInt(idInput.value);
   const threshold = parseFloat(thresholdSelect.value);
 
-  // Check if we are in confirm overwrite phase for this specific image
-  const force = (overwriteTargetId === imageId);
+  if (isNaN(imageId) || imageId <= 0) {
+    statusArea.textContent = "Error: Invalid Image ID";
+    statusArea.style.color = "#ef4444";
+    return;
+  }
 
   statusArea.textContent = "AI Running inference (lazy loading model if first run)...";
   statusArea.style.color = "#fbbf24";
 
   try {
-    const resp = await callService({ TagImage: { image_id: imageId, threshold, force } });
-    if ("TagImageResult" in resp) {
-      const { tags_applied, skipped } = resp.TagImageResult;
-      if (skipped) {
-        // AI tags already exist, trigger overwrite confirmation flow
-        overwriteTargetId = imageId;
-        statusArea.textContent = "Tags already exist. Click Auto-Tag again to overwrite.";
-        statusArea.style.color = "#b7791f";
-        autoTagBtn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Confirm Overwrite?';
-        autoTagBtn.style.backgroundColor = "#ffeb3b";
-      } else {
-        // Success
-        statusArea.textContent = `Applied ${tags_applied} tags successfully!`;
-        statusArea.style.color = "#10b981";
-        autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
-        autoTagBtn.style.backgroundColor = "";
-        overwriteTargetId = null; // Reset
+    logJS(`handleModalAutoTag calling TagImage for imageId=${imageId}, threshold=${threshold}`);
+    const resp = await callService({ TagImage: { image_id: imageId, threshold, force: true } });
+    logJS(`handleModalAutoTag TagImage response: ` + JSON.stringify(resp));
 
-        // Refresh active list in modal
-        await refreshModalTags(imageId);
-        // Update just the tagged card(s) in the background
-        refreshCardTags(imageId);
-      }
+    if ("TagImageResult" in resp) {
+      const { tags_applied } = resp.TagImageResult;
+      statusArea.textContent = `Applied ${tags_applied} tags successfully!`;
+      statusArea.style.color = "#10b981";
+      autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
+      autoTagBtn.style.backgroundColor = "";
+
+      // Refresh active list in modal and background cards
+      await refreshModalTags(imageId);
+      await refreshCardTags(imageId);
+      refreshGallery();
+      refreshDashboard();
     } else if ("Error" in resp) {
       statusArea.textContent = `Failed: ${resp.Error.message}`;
       statusArea.style.color = "#ef4444";
       autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
       autoTagBtn.style.backgroundColor = "";
-      overwriteTargetId = null;
     }
   } catch (e: any) {
     statusArea.textContent = `Error: ${e.message || e}`;
     statusArea.style.color = "#ef4444";
     autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
     autoTagBtn.style.backgroundColor = "";
-    overwriteTargetId = null;
   }
 }
 
 // Expose tag management globally for inline onclick handlers
+(window as any).handleAutoTag = handleModalAutoTag;
+
 (window as any).openTags = (imgId: number, path: string) => {
   openTagModal(imgId, path);
 };
@@ -1466,6 +1736,7 @@ async function handleModalAutoTag() {
     const resp = await callService({ RemoveTag: { image_id: imgId, tag: tagName } });
     if ("Success" in resp) {
       await refreshModalTags(imgId);
+      await refreshCardTags(imgId);
       refreshDashboard();
       if (document.getElementById("view-gallery")?.classList.contains("active")) {
         refreshGallery();
@@ -1475,6 +1746,24 @@ async function handleModalAutoTag() {
     }
   } catch (e: any) {
     alert("Error calling tag removal: " + e.message);
+  }
+};
+
+(window as any).unblacklistTag = async (imgId: number, tagName: string) => {
+  try {
+    const resp = await callService({ UnblacklistTag: { image_id: imgId, tag: tagName } });
+    if ("Success" in resp) {
+      await refreshModalTags(imgId);
+      await refreshCardTags(imgId);
+      refreshDashboard();
+      if (document.getElementById("view-gallery")?.classList.contains("active")) {
+        refreshGallery();
+      }
+    } else if ("Error" in resp) {
+      alert("Failed to un-blacklist tag: " + resp.Error.message);
+    }
+  } catch (e: any) {
+    alert("Error un-blacklisting tag: " + e.message);
   }
 };
 
@@ -1909,13 +2198,111 @@ function setupSettings() {
     }
   });
 
-  // Also refresh settings when the settings view becomes visible
+  // Refresh settings when the settings view becomes visible
   const settingsNav = document.querySelector('.nav-item[data-view="settings"]');
   settingsNav?.addEventListener("click", async () => {
     try {
       const resp = await callService({ GetSettings: null });
       applySettingsToUI(resp);
     } catch (e) {}
+  });
+
+  // Custom Concepts Navigation View & Refresh
+  const conceptsNav = document.querySelector('.nav-item[data-view="concepts"]');
+  conceptsNav?.addEventListener("click", () => {
+    loadConceptsView();
+  });
+
+  document.getElementById("refresh-concepts-btn")?.addEventListener("click", () => {
+    loadConceptsView();
+  });
+
+
+
+  // Teach Concept Modal Trigger from Tag Modal
+  const teachModalBtn = document.getElementById("teach-concept-from-modal-btn");
+  const teachModal = document.getElementById("teach-concept-modal");
+  const closeTeachModal = document.getElementById("close-teach-modal");
+  const cancelTeachModal = document.getElementById("cancel-teach-modal");
+
+  teachModalBtn?.addEventListener("click", () => {
+    const idInput = document.getElementById("tag-image-id") as HTMLInputElement;
+    if (idInput && idInput.value) {
+      openTeachConceptModal();
+    }
+  });
+
+  closeTeachModal?.addEventListener("click", () => teachModal?.classList.remove("active"));
+  cancelTeachModal?.addEventListener("click", () => teachModal?.classList.remove("active"));
+
+  // Teach Concept Form Submit
+  const teachForm = document.getElementById("teach-concept-form") as HTMLFormElement;
+  teachForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const idInput = document.getElementById("tag-image-id") as HTMLInputElement;
+    const existingRadio = document.getElementById("target-type-existing") as HTMLInputElement;
+    const existingSelect = document.getElementById("teach-concept-existing-select") as HTMLSelectElement;
+    const nameInput = document.getElementById("teach-concept-name") as HTMLInputElement;
+    const catSelect = document.getElementById("teach-concept-category") as HTMLSelectElement;
+    const thRange = document.getElementById("teach-concept-threshold") as HTMLInputElement;
+
+    const sampleIds = selectedImageIds.size > 0
+      ? Array.from(selectedImageIds)
+      : (idInput && idInput.value ? [parseInt(idInput.value)] : []);
+
+    if (sampleIds.length === 0) {
+      alert("Please select at least 1 image to teach a concept.");
+      return;
+    }
+
+    const isExisting = existingRadio?.checked ?? true;
+    const name = (isExisting ? existingSelect.value : nameInput.value).trim();
+    if (!name) {
+      alert("Please select an existing concept or enter a new concept name.");
+      return;
+    }
+
+    const category = catSelect.value;
+    const threshold = parseFloat(thRange.value);
+
+    const submitBtn = document.getElementById("teach-concept-submit-btn") as HTMLButtonElement;
+    const cancelBtn = document.getElementById("cancel-teach-modal") as HTMLButtonElement;
+    const statusPanel = document.getElementById("teach-concept-status");
+    const statusText = document.getElementById("teach-concept-status-text");
+
+    if (statusPanel) statusPanel.style.display = "flex";
+    if (statusText) statusText.textContent = `Computing vector prototype & rescanning library...`;
+    if (submitBtn) submitBtn.disabled = true;
+    if (cancelBtn) cancelBtn.disabled = true;
+
+    try {
+      const resp = await callService({
+        CreateConcept: {
+          name,
+          category,
+          threshold,
+          sample_image_ids: sampleIds,
+        },
+      });
+
+      if ("ConceptResult" in resp) {
+        if (statusText) statusText.textContent = `Concept updated successfully!`;
+        setTimeout(() => {
+          teachModal?.classList.remove("active");
+          if (statusPanel) statusPanel.style.display = "none";
+        }, 500);
+        if (sampleIds.length > 0) await refreshModalTags(sampleIds[0]);
+        refreshDashboard();
+        loadSearchConceptsDropdown();
+      } else if ("Error" in resp) {
+        alert("Failed to teach concept: " + resp.Error.message);
+      }
+    } catch (err: any) {
+      alert("Error teaching concept: " + (err.message || err));
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+      if (cancelBtn) cancelBtn.disabled = false;
+    }
   });
 
   // Backfill folders button
@@ -1939,6 +2326,198 @@ function setupSettings() {
     backfillBtn.removeAttribute("disabled");
   });
 }
+
+// Custom Concepts Management View Loader
+async function loadConceptsView() {
+  const container = document.getElementById("concepts-list-container");
+  if (!container) return;
+  container.innerHTML = `<div style="padding: 20px; text-align: center; opacity: 0.7;"><i class="bi bi-hourglass-split"></i> Loading custom concepts...</div>`;
+
+  try {
+    const resp = await callService({ ListConcepts: null });
+    if ("ConceptListResult" in resp) {
+      const concepts = resp.ConceptListResult.concepts;
+      if (concepts.length === 0) {
+        container.innerHTML = `
+          <div style="grid-column: 1 / -1; padding: 40px 20px; text-align: center; background: var(--sys-menu-bg); border: 1px dashed var(--sys-menu-border); border-radius: 6px;">
+            <i class="bi bi-magic" style="font-size: 32px; color: var(--sys-text-subtle); display: block; margin-bottom: 12px;"></i>
+            <h4 style="margin: 0 0 6px 0;">No Custom Concepts Yet</h4>
+            <p style="margin: 0; font-size: 12px; color: var(--sys-text-subtle);">
+              Select images in the Gallery or open an image's Tags modal and click <strong>"Teach Concept"</strong> to create your first concept!
+            </p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = concepts.map((c: any) => renderConceptCardHtml(c)).join("");
+    } else if ("Error" in resp) {
+      container.innerHTML = `<div style="color: #e81123;">Error loading concepts: ${resp.Error.message}</div>`;
+    }
+  } catch (e: any) {
+    container.innerHTML = `<div style="color: #e81123;">Error: ${e.message || e}</div>`;
+  }
+}
+
+// Window global functions for concept actions
+(window as any).confirmConceptTag = async (imgId: number, tagName: string) => {
+  try {
+    const listResp = await callService({ ListConcepts: null });
+    if ("ConceptListResult" in listResp) {
+      const concept = listResp.ConceptListResult.concepts.find((c: any) => c.name === tagName);
+      if (concept) {
+        const addResp = await callService({ AddConceptSamples: { concept_id: concept.id, image_ids: [imgId] } });
+        if ("ConceptResult" in addResp) {
+          alert(`Confirmed! Image added as ground-truth sample for concept "${tagName}".`);
+          await refreshModalTags(imgId);
+          refreshDashboard();
+        } else if ("Error" in addResp) {
+          alert("Failed to confirm tag: " + addResp.Error.message);
+        }
+      } else {
+        alert(`Concept "${tagName}" not found in database.`);
+      }
+    }
+  } catch (e: any) {
+    alert("Error confirming concept tag: " + e.message);
+  }
+};
+
+(window as any).updateConceptThreshold = async (conceptId: number, valStr: string) => {
+  const val = parseFloat(valStr);
+  const display = document.getElementById(`concept-th-val-${conceptId}`);
+  if (display) display.textContent = `${(val * 100).toFixed(0)}% (${val.toFixed(2)})`;
+  try {
+    await callService({ UpdateConcept: { id: conceptId, threshold: val, category: null } });
+  } catch (e: any) {
+    console.error("Failed to update concept threshold", e);
+  }
+};
+
+(window as any).rescanConcept = async (conceptId: number) => {
+  const btn = document.getElementById(`concept-rescan-btn-${conceptId}`) as HTMLButtonElement;
+  const originalHtml = btn ? btn.innerHTML : "";
+  if (!confirm("Rescan all library images against this concept prototype now?")) return;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="bi bi-arrow-clockwise animate-spin"></i> Rescanning...`;
+  }
+
+  try {
+    const resp = await callService({ RescanConcept: { concept_id: conceptId } });
+    if ("ConceptRescannedResult" in resp) {
+      alert(`Rescan complete! Tagged ${resp.ConceptRescannedResult.tagged_count} matching image(s).`);
+      refreshDashboard();
+      if (document.getElementById("view-gallery")?.classList.contains("active")) {
+        refreshGallery();
+      }
+    } else if ("Error" in resp) {
+      alert("Rescan failed: " + resp.Error.message);
+    }
+  } catch (e: any) {
+    alert("Error rescanning concept: " + e.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
+};
+
+(window as any).deleteConcept = async (conceptId: number) => {
+  if (!confirm("Are you sure you want to delete this custom concept?")) return;
+  try {
+    const resp = await callService({ DeleteConcept: { id: conceptId } });
+    if ("Success" in resp) {
+      loadConceptsView();
+    } else if ("Error" in resp) {
+      alert("Delete failed: " + resp.Error.message);
+    }
+  } catch (e: any) {
+    alert("Error deleting concept: " + e.message);
+  }
+};
+
+(window as any).closeConceptSamples = (conceptId: number) => {
+  const panel = document.getElementById(`concept-samples-panel-${conceptId}`);
+  const card = document.getElementById(`concept-card-${conceptId}`);
+  if (panel) panel.style.display = "none";
+  if (card) card.classList.remove("expanded");
+};
+
+(window as any).removeConceptSample = async (conceptId: number, imageId: number) => {
+  if (!confirm("Remove this sample image from the concept ground-truth set?")) return;
+
+  try {
+    const resp = await callService({ RemoveConceptSample: { concept_id: conceptId, image_id: imageId } });
+    if ("ConceptResult" in resp) {
+      await (window as any).viewConceptSamples(conceptId, "", true);
+      loadConceptsView();
+    } else if ("Error" in resp) {
+      alert("Failed to remove sample: " + resp.Error.message);
+    }
+  } catch (e: any) {
+    alert("Error removing sample: " + (e.message || e));
+  }
+};
+
+(window as any).viewConceptSamples = async (conceptId: number, _conceptName: string, forceReload: boolean = false) => {
+  const panel = document.getElementById(`concept-samples-panel-${conceptId}`);
+  const grid = document.getElementById(`concept-samples-grid-${conceptId}`);
+  const card = document.getElementById(`concept-card-${conceptId}`);
+
+  if (!panel || !grid) return;
+
+  // Toggle visibility if already populated (unless forceReload is true)
+  if (!forceReload && panel.style.display !== "none" && grid.children.length > 0 && !grid.innerHTML.includes("Loading")) {
+    panel.style.display = "none";
+    if (card) card.classList.remove("expanded");
+    return;
+  }
+
+  panel.style.display = "block";
+  if (card) card.classList.add("expanded");
+  grid.innerHTML = `<div style="grid-column: 1 / -1; padding: 10px; text-align: center; opacity: 0.7; font-size: 11px;"><i class="bi bi-hourglass-split"></i> Loading samples...</div>`;
+
+  try {
+    const resp = await callService({ GetConceptSamples: { concept_id: conceptId } });
+    if ("ConceptSamplesResult" in resp) {
+      const samples = resp.ConceptSamplesResult.samples;
+      if (samples.length === 0) {
+        grid.innerHTML = `<div style="grid-column: 1 / -1; padding: 8px; text-align: center; color: #888; font-size: 11px;">No sample images found.</div>`;
+        return;
+      }
+
+      renderImages(samples, `concept-samples-grid-${conceptId}`);
+
+      // Append Remove Sample buttons to sample cards
+      const sampleCards = grid.querySelectorAll(".image-card");
+      sampleCards.forEach((cardEl) => {
+        const imgId = cardEl.getAttribute("data-image-id") || cardEl.getAttribute("data-id");
+        if (imgId) {
+          const infoEl = cardEl.querySelector(".image-info");
+          if (infoEl) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "win-button danger";
+            btn.style.cssText = "padding: 2px 6px; font-size: 10px; margin-top: 4px; width: 100%;";
+            btn.innerHTML = `<i class="bi bi-trash"></i> Remove Sample`;
+            btn.onclick = (e) => {
+              e.stopPropagation();
+              (window as any).removeConceptSample(conceptId, parseInt(imgId));
+            };
+            infoEl.appendChild(btn);
+          }
+        }
+      });
+    } else if ("Error" in resp) {
+      grid.innerHTML = `<div style="grid-column: 1 / -1; color: #ef4444; padding: 6px; font-size: 11px;">Error: ${resp.Error.message}</div>`;
+    }
+  } catch (e: any) {
+    grid.innerHTML = `<div style="grid-column: 1 / -1; color: #ef4444; padding: 6px; font-size: 11px;">Error: ${e.message || e}</div>`;
+  }
+};
 
 function refreshComponentStylesheet() {
   const container = document.getElementById("components-showcase-container");

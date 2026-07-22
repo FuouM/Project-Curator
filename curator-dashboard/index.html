@@ -52,6 +52,9 @@
               <li class="nav-item" data-view="search">
                 <span><i class="bi bi-search"></i></span> Semantic Search
               </li>
+              <li class="nav-item" data-view="concepts">
+                <span><i class="bi bi-magic"></i></span> Custom Concepts
+              </li>
             </ul>
           </li>
           <li class="tree-node" style="margin-top: 10px;">
@@ -150,10 +153,23 @@
         <section class="view-section" id="view-gallery">
           <div class="group-box">
             <div class="group-box-title">All Images</div>
-            <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 1rem; gap: 10px;">
-              <span id="gallery-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
-              <button class="win-button" id="gallery-prev-btn" disabled>◀ Prev</button>
-              <button class="win-button" id="gallery-next-btn">Next ▶</button>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="win-button" id="toggle-select-mode-btn">
+                  <i class="bi bi-check2-square"></i> Select Mode
+                </button>
+                <span id="gallery-selected-count" style="font-size: 11px; color: var(--sys-text-subtle); display: none;">0 selected</span>
+                <button type="button" class="win-button" id="gallery-select-all-btn" style="display: none; font-size: 11px;">Select All</button>
+                <button type="button" class="win-button" id="gallery-clear-select-btn" style="display: none; font-size: 11px;">Clear</button>
+                <button type="button" class="win-button primary" id="gallery-teach-concept-btn" style="display: none; font-size: 11px;">
+                  <i class="bi bi-magic"></i> Teach Concept (<span id="teach-select-count">0</span>)
+                </button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="gallery-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
+                <button class="win-button" id="gallery-prev-btn" disabled><i class="bi bi-caret-left-fill"></i> Prev</button>
+                <button class="win-button" id="gallery-next-btn">Next <i class="bi bi-caret-right-fill"></i></button>
+              </div>
             </div>
             <div class="image-grid" id="gallery-grid">
               <!-- Dynamically populated -->
@@ -167,8 +183,8 @@
             <div class="group-box-title">Favorite Images</div>
             <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 1rem; gap: 10px;">
               <span id="favorites-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
-              <button class="win-button" id="favorites-prev-btn" disabled>◀ Prev</button>
-              <button class="win-button" id="favorites-next-btn">Next ▶</button>
+              <button class="win-button" id="favorites-prev-btn" disabled><i class="bi bi-caret-left-fill"></i> Prev</button>
+              <button class="win-button" id="favorites-next-btn">Next <i class="bi bi-caret-right-fill"></i></button>
             </div>
             <div class="image-grid" id="favorites-grid">
               <!-- Dynamically populated -->
@@ -179,8 +195,8 @@
         <!-- TAG STATISTICS VIEW -->
         <section class="view-section" id="view-tagstats">
           <div class="group-box">
-            <div class="group-box-title">Tags by Category</div>
-            <div id="tagstats-content" style="display: flex; flex-direction: column; gap: 16px;">
+            <div class="group-box-title">Tag Distribution & Statistics</div>
+            <div id="tagstats-content">
               <p style="color: #666; font-style: italic;">Loading tag statistics...</p>
             </div>
           </div>
@@ -199,19 +215,49 @@
         <!-- IMPORT VIEW -->
         <section class="view-section" id="view-import">
           <div class="group-box">
-            <div class="group-box-title">Register Image Path</div>
+            <div class="group-box-title"><i class="bi bi-box-arrow-in-down"></i> Import Images / Folders</div>
             <form id="import-form">
               <div class="form-group">
                 <div class="input-wrapper" style="flex: 1; min-width: 250px;">
-                  <input class="input-field has-clear" id="import-path-input" placeholder="Enter path or choose file/folder..." style="width: 100%;" required />
+                  <input class="input-field has-clear" id="import-path-input" placeholder="Enter file or folder path (e.g. C:\Photos)..." style="width: 100%;" required />
                   <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
                 </div>
                 <button type="button" class="win-button" id="browse-file-btn"><i class="bi bi-file-earmark"></i> File...</button>
                 <button type="button" class="win-button" id="browse-folder-btn"><i class="bi bi-folder"></i> Folder...</button>
-                <button type="submit" class="win-button">Import</button>
+                <button type="submit" class="win-button primary" id="start-import-btn"><i class="bi bi-download"></i> Start Import</button>
               </div>
             </form>
-            <p style="font-size: 11px; color: #555555; margin-top: 8px;" id="import-status-msg"></p>
+
+            <div id="import-progress-panel" style="display: none; margin-top: 16px; padding: 14px; background: var(--sys-menu-bg); border: 1px solid var(--sys-menu-border); border-radius: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span id="import-progress-title" style="font-weight: 600; font-size: 13px;">Processing Import & Vector Indexing...</span>
+                <span id="import-progress-percent" style="font-weight: 700; color: #00ffff; font-size: 13px;">0%</span>
+              </div>
+              <div style="width: 100%; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden; margin-bottom: 10px;">
+                <div id="import-progress-bar" style="width: 0%; height: 100%; background-color: var(--sys-primary, #0078d4); transition: width 0.3s ease;"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--sys-text-subtle);">
+                <span id="import-indexed-count">Indexed: 0 / 0</span>
+                <span id="import-pending-count">Pending Jobs: 0</span>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: #555555; margin-top: 10px;" id="import-status-msg"></p>
+          </div>
+        </section>
+
+        <!-- CUSTOM CONCEPTS VIEW -->
+        <section class="view-section" id="view-concepts">
+          <div class="group-box">
+            <div class="group-box-title"><i class="bi bi-magic"></i> Custom Concept Learning (Few-Shot Prototype Tagging)</div>
+            <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+              <p style="margin: 0; font-size: 12px; color: var(--sys-text-subtle);">
+                Teach Curator new characters, copyrights, or series from sample images without model retraining.
+              </p>
+              <button type="button" class="win-button primary" id="refresh-concepts-btn">
+                <i class="bi bi-arrow-clockwise"></i> Refresh Concepts
+              </button>
+            </div>
+            <div id="concepts-list-container" class="concepts-grid"></div>
           </div>
         </section>
 
@@ -226,7 +272,12 @@
                     <input class="input-field has-clear" id="search-text-input" placeholder="Type natural language query (e.g. 'a cute dog sleeping')..." />
                     <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
                   </div>
-                  <div class="input-wrapper" style="width: 200px;">
+                  <div class="input-wrapper" style="width: 180px;">
+                    <select class="input-field" id="search-concept-select" style="width: 100%; height: 24px;">
+                      <option value="">-- All Concepts --</option>
+                    </select>
+                  </div>
+                  <div class="input-wrapper" style="width: 180px;">
                     <input class="input-field has-clear" id="search-tag-input" placeholder="Filter by tag name (optional)..." />
                     <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
                   </div>
@@ -253,6 +304,19 @@
           
           <div class="group-box" style="margin-top: 1.5rem;">
             <div class="group-box-title">Search Results</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="win-button" id="search-toggle-select-mode-btn">
+                  <i class="bi bi-check2-square"></i> Select Mode
+                </button>
+                <span id="search-selected-count" style="font-size: 11px; color: var(--sys-text-subtle); display: none;">0 selected</span>
+                <button type="button" class="win-button" id="search-select-all-btn" style="display: none; font-size: 11px;">Select All</button>
+                <button type="button" class="win-button" id="search-clear-select-btn" style="display: none; font-size: 11px;">Clear</button>
+                <button type="button" class="win-button primary" id="search-teach-concept-btn" style="display: none; font-size: 11px;">
+                  <i class="bi bi-magic"></i> Teach Concept (<span id="search-teach-select-count">0</span>)
+                </button>
+              </div>
+            </div>
             <div class="image-grid" id="search-results-grid">
               <!-- Results dynamically populated -->
             </div>
@@ -593,6 +657,13 @@
               </div>
             </div>
 
+            <div class="group-box" id="modal-blacklisted-group" style="margin: 8px 0 4px 0; padding: 12px 6px 6px 6px; display: none;">
+              <div class="group-box-title" style="color: #ef4444;"><i class="bi bi-slash-circle"></i> Blacklisted Tags (AI Exclusions)</div>
+              <div id="modal-blacklisted-tag-list" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px;">
+                <!-- Blacklisted tags list -->
+              </div>
+            </div>
+
             <div class="form-group" style="margin-top: 8px;">
               <div class="input-wrapper" style="flex: 1;">
                 <input class="input-field has-clear" id="tag-name-input" placeholder="Enter tag name (e.g. meme)..." required />
@@ -615,6 +686,9 @@
                 <button type="button" class="win-button" id="auto-tag-modal-btn" style="font-size: 11px;">
                   <i class="bi bi-stars"></i> Auto-Tag
                 </button>
+                <button type="button" class="win-button primary" id="teach-concept-from-modal-btn" style="font-size: 11px;">
+                  <i class="bi bi-magic"></i> Teach Concept
+                </button>
               </div>
               <p id="auto-tag-modal-status" style="font-size: 11px; margin-top: 4px; color: #555555; min-height: 16px;"></p>
             </div>
@@ -622,5 +696,78 @@
         </form>
       </div>
     </div>
+
+    <!-- Teach Concept Modal Dialog -->
+    <div class="modal" id="teach-concept-modal">
+      <div class="modal-content" style="max-width: 480px;">
+        <div class="modal-header">
+          <span class="modal-title"><i class="bi bi-magic"></i> Teach Custom Concept</span>
+          <span class="modal-close" id="close-teach-modal"><i class="bi bi-x-lg"></i></span>
+        </div>
+        <form id="teach-concept-form">
+          <div class="modal-body">
+            <p style="font-size: 11px; color: var(--sys-text-subtle);">
+              Teach Curator a new concept using the selected sample image(s).
+            </p>
+            <div class="form-group" style="flex-direction: column; align-items: stretch; gap: 12px; margin-top: 10px;">
+              <!-- Target Mode Toggle -->
+              <div style="display: flex; gap: 16px; font-size: 11px; padding: 6px 8px; background-color: var(--sys-control-bg); border: 1px solid var(--sys-border-dark); border-radius: 2px;">
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                  <input type="radio" name="teach-target-type" id="target-type-existing" value="existing" checked />
+                  <span>Add to Existing Concept</span>
+                </label>
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                  <input type="radio" name="teach-target-type" id="target-type-new" value="new" />
+                  <span>Create New Concept</span>
+                </label>
+              </div>
+
+              <!-- Existing Concept Selector -->
+              <div id="teach-existing-concept-group">
+                <label style="font-size: 11px; font-weight: 600;">Target Concept:</label>
+                <select class="input-field" id="teach-concept-existing-select" style="width: 100%; margin-top: 4px; height: 26px;">
+                  <option value="">Loading concepts...</option>
+                </select>
+              </div>
+
+              <!-- New Concept Input -->
+              <div id="teach-new-concept-group" style="display: none;">
+                <label style="font-size: 11px; font-weight: 600;">New Concept Name (Danbooru format):</label>
+                <input class="input-field" id="teach-concept-name" placeholder="e.g. anya_forger or spy_x_family" style="width: 100%; margin-top: 4px;" />
+              </div>
+
+              <div>
+                <label style="font-size: 11px; font-weight: 600;">Category:</label>
+                <select class="input-field" id="teach-concept-category" style="width: 100%; margin-top: 4px;">
+                  <option value="character" selected>Character</option>
+                  <option value="copyright">Copyright / Series</option>
+                  <option value="general">General</option>
+                  <option value="artist">Artist</option>
+                </select>
+              </div>
+
+              <div>
+                <label style="font-size: 11px; font-weight: 600;">Similarity Threshold (0.40 - 0.95):</label>
+                <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px;">
+                  <input type="range" id="teach-concept-threshold" min="0.40" max="0.95" step="0.01" value="0.80" style="flex: 1;" oninput="document.getElementById('teach-th-val').textContent = this.value" />
+                  <span id="teach-th-val" style="font-weight: 600; min-width: 36px;">0.80</span>
+                </div>
+              </div>
+
+              <!-- Progress / Loading Status Panel -->
+              <div id="teach-concept-status" style="display: none; padding: 6px 8px; font-size: 11px; background-color: var(--sys-window-bg); border: 1px solid var(--sys-border-focus); margin-top: 8px; align-items: center;">
+                <i class="bi bi-arrow-clockwise animate-spin" style="margin-right: 6px; color: var(--sys-border-focus); font-size: 13px;"></i>
+                <span id="teach-concept-status-text" style="font-weight: 600;">Updating concept prototype & rescanning library...</span>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="win-button" id="cancel-teach-modal">Cancel</button>
+            <button type="submit" class="win-button primary" id="teach-concept-submit-btn"><i class="bi bi-check-lg"></i> Add Samples to Concept</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
   </body>
 </html>

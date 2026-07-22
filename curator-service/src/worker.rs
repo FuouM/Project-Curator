@@ -237,6 +237,61 @@ impl BackgroundWorker {
                                             "Failed to update database vector state for image {}: {:?}",
                                             image.id, e
                                         );
+                                    } else {
+                                        // Auto-match custom concepts for the newly ready vector
+                                        if let Ok(Some((concept_source_id,))) = sqlx::query_as::<_, (i64,)>(
+                                            "SELECT id FROM sources WHERE name = 'ai:custom-concepts' LIMIT 1"
+                                        )
+                                        .fetch_optional(&db_inf)
+                                        .await
+                                        {
+                                            if let Ok(concept_vectors) = sqlx::query_as::<_, (i64, Vec<u8>)>(
+                                                "SELECT cv.concept_id, cv.vector FROM custom_concept_vectors cv WHERE cv.source_id = ?"
+                                            )
+                                            .bind(source_id)
+                                            .fetch_all(&db_inf)
+                                            .await
+                                            {
+                                                for (concept_id, vec_bytes) in concept_vectors {
+                                                    let proto_vec = curator_core::concept::bytes_to_vector(&vec_bytes);
+                                                    if !proto_vec.is_empty() {
+                                                        let sim = curator_core::concept::cosine_similarity(&embedding, &proto_vec);
+                                                        if let Ok(Some((name, category, threshold))) = sqlx::query_as::<_, (String, String, f64)>(
+                                                            "SELECT name, category, threshold FROM custom_concepts WHERE id = ? LIMIT 1"
+                                                        )
+                                                        .bind(concept_id)
+                                                        .fetch_optional(&db_inf)
+                                                        .await
+                                                        {
+                                                            if (sim as f64) >= threshold {
+                                                                if let Ok(tag_row) = sqlx::query_as::<_, (i64,)>(
+                                                                    "INSERT INTO tags (name, category) VALUES (?, ?)
+                                                                     ON CONFLICT(name) DO UPDATE SET category = excluded.category
+                                                                     RETURNING id"
+                                                                )
+                                                                .bind(&name)
+                                                                .bind(&category)
+                                                                .fetch_one(&db_inf)
+                                                                .await
+                                                                {
+                                                                    let _ = sqlx::query(
+                                                                        "INSERT INTO image_tags (image_id, tag_id, source_id, confidence)
+                                                                         VALUES (?, ?, ?, ?)
+                                                                         ON CONFLICT(image_id, tag_id, source_id, transaction_id) DO UPDATE SET confidence = excluded.confidence"
+                                                                    )
+                                                                    .bind(image.id)
+                                                                    .bind(tag_row.0)
+                                                                    .bind(concept_source_id)
+                                                                    .bind(sim as f64)
+                                                                    .execute(&db_inf)
+                                                                    .await;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                                 Err(e) => {

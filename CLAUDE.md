@@ -42,8 +42,7 @@ Always use the project's dedicated PowerShell scripts for environment configurat
   *(Automates stopping `curator-service`, building service binary, and launching Tauri dev server)*.
 
 * **Python Environment (if needed for scripts or debug validation)**:
-  Use portable PyTorch/CUDA environment at:
-  `J:\REAI\ComfyUI_windows_portable_nvidia_cu128\ComfyUI_windows_portable`
+  Use portable PyTorch/CUDA environment or local ComfyUI python executable if available.
 
 ---
 
@@ -86,7 +85,7 @@ npm run tauri dev
 
 ### 2. ONNX Runtime Dynamic Library Dependency
 * **Problem**: Inference errors or missing DLL crashes when running CLIP embedding models.
-* **Solution**: Ensure `onnxruntime.dll` exists in root (`.\onnxruntime.dll`) and target directories (`target/debug` or `target/release`). Use `.\download_ort.ps1` if missing.
+* **Solution**: Ensure `onnxruntime.dll` exists in project root and target directories (`target/debug` or `target/release`). Use `.\download_ort.ps1` if missing.
 
 ### 3. CLIP Text Tokenization & Padding Rules
 * **Problem**: Semantic search similarity ranking yielding incorrect or uniform scores.
@@ -98,7 +97,37 @@ npm run tauri dev
 
 ---
 
-## 5. Code Style & Standards
+## 5. Code Style & Interaction Mandates
+
+### Workflow & Interaction Speed Mandates
+* **No Unnecessary Build Commands**: The user keeps their local dev build (`dev.ps1` / `npm run dev`) active. DO NOT execute `npm run build` or `cargo build` on minor edits unless explicitly requested or validating backend Rust signature changes.
+* **No Unprompted Feature Over-Engineering**: Implement strictly what the user requests. Never introduce automated background jobs, full-library auto-rescans, or unexpected database mutations.
+* **Database Safety & Concept Integrity**:
+  * **Dynamic Vector Searches**: Concept vector searches must remain 100% dynamic in memory/index search and NEVER write auto-tags into `image_tags` table.
+  * **Explicit Sample Tagging**: Teaching a concept or adding samples ONLY tags the explicitly selected ground-truth sample images.
+  * **User Blacklist Respect**: Deleting a custom concept tag must cleanly delete the row, and NEVER convert custom concept tags into AI exclusions/blacklists.
+* **Concise & Direct Responses**: Keep answers short, direct, and actionable. Avoid unnecessary re-summaries, verbose technical disclaimers, or excessive build output.
+
+### UI & Aesthetic Rules (Modern WinForms Desktop Control Aesthetic)
+* **STRICT DESIGN SYSTEM MANDATE - ALWAYS FOLLOW**:
+  * **Zero Web/Glow Abstractions**: NEVER introduce flashy web gradients (`linear-gradient(...)`), neon cyan/magenta text (`#00ffff`, `#ff007f`), glowing box-shadows (`box-shadow: 0 0 6px...`), rounded floating cards, or radial background blobs.
+  * **Icon System Mandate**:
+    * **NO Unicode Emojis**: NEVER use raw unicode emojis or text symbols (`✨`, `●`, `○`, `▶`, `◀`, etc.) in HTML templates, tag pills, select options, or notifications.
+    * **Bootstrap Icons Only**: ALWAYS use official Bootstrap Icon classes (`<i class="bi bi-stars"></i>`, `<i class="bi bi-caret-left-fill"></i>`, `<i class="bi bi-check-lg"></i>`) across the entire application.
+  * **Native WinForms Control Styling**:
+    * **Containers**: Always wrap sections and cards in native WinForms `.group-box` fieldset containers (`<div class="group-box"><div class="group-box-title">Title</div>...</div>`).
+    * **Buttons & Inputs**: Always use standard `.win-button` (primary, danger), input fields, select dropdowns, and range sliders styled via design system CSS tokens.
+    * **Tag Pills**: Custom Concept pills must strictly use `#cce5ff` background, `#b8daff` border, and `#004085` text (`.tag-pill.custom-concept`). Standard tags use `#fff3cd` (`user`), `#d1ecf1` (`character`), `#ebdcf9` (`copyright`), `#e2e3e5` (`meta`).
+    * **Card & Grid Dimensions**: Image grids must always inherit standard `.image-grid` dimensions (`minmax(200px, 1fr)`). Concept grids use `minmax(460px, 1fr)`. Never force arbitrary tiny thumbnail widths (e.g., 120px).
+    * **Inline Panels Over Modals**: Prefer inline collapsible `.group-box` sub-panels within parent cards over floating popups/modals for secondary details or thumbnail lists.
+  * **Component Sheet Alignment**: Before creating or modifying ANY UI element, inspect the **Component Showcase Sheet view** (`index.html` -> `#view-components`) and `src/components.ts` to ensure exact design token match.
+
+### Frontend Design Skill (`/frontend-design`) Integration
+* **Mandatory Skill Alignment**: ALWAYS adhere to the principles from the **`frontend-design`** skill:
+  * **Intentionality & Restraint**: Avoid generic AI-generated defaults (e.g. random gradients, acid-green highlights, cream backgrounds, scattered web effects). Spend boldness in one deliberate place and keep surrounding elements quiet, disciplined, and cohesive.
+  * **Subject-Grounded Interface**: Ground every design decision in the real product context—a high-performance local AI image curation engine. Every container, label, divider, and control must serve a clear purpose.
+  * **Consistent UX Vocabulary**: Use plain, active-voice verbs ("Save changes", "Teach Concept", "Rescan Library"). Keep terminology consistent through all UI flows and notifications.
+  * **Design System Token Integrity**: Derive every color, padding, and font decision directly from the project's native Modern WinForms desktop token system (`styles.css` & `components.ts`).
 
 * **Rust**:
   * Follow Rust 2021 edition idioms.

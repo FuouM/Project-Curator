@@ -39,10 +39,16 @@ pub enum Request {
         image_id: i64,
         tag: String,
     },
+    UnblacklistTag {
+        image_id: i64,
+        tag: String,
+    },
     Search {
         query_text: Option<String>,
         query_image_path: Option<String>,
         tag_filter: Option<String>,
+        #[serde(default)]
+        concept_id: Option<i64>,
         limit: usize,
     },
     GetStatus,
@@ -107,6 +113,43 @@ pub enum Request {
     GetImportedFolders,
     /// Backfill existing images with their parent folder assignments.
     BackfillImageFolders,
+    /// Create a new custom concept from sample images.
+    CreateConcept {
+        name: String,
+        category: String,
+        threshold: f32,
+        sample_image_ids: Vec<i64>,
+    },
+    /// List all defined custom concepts.
+    ListConcepts,
+    /// Update custom concept settings (threshold, category).
+    UpdateConcept {
+        id: i64,
+        threshold: Option<f32>,
+        category: Option<String>,
+    },
+    /// Delete a custom concept.
+    DeleteConcept {
+        id: i64,
+    },
+    /// Add support sample images to an existing custom concept.
+    AddConceptSamples {
+        concept_id: i64,
+        image_ids: Vec<i64>,
+    },
+    /// Remove a sample image from a custom concept.
+    RemoveConceptSample {
+        concept_id: i64,
+        image_id: i64,
+    },
+    /// Rescan existing library images against a custom concept.
+    RescanConcept {
+        concept_id: i64,
+    },
+    /// Get ground-truth sample images associated with a custom concept.
+    GetConceptSamples {
+        concept_id: i64,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -209,6 +252,24 @@ pub enum Response {
     BackfillResult {
         images_backfilled: i64,
     },
+    /// List of custom concepts.
+    ConceptListResult {
+        concepts: Vec<crate::concept::CustomConcept>,
+    },
+    /// Custom concept creation/update result.
+    ConceptResult {
+        concept: crate::concept::CustomConcept,
+    },
+    /// Result of rescanning library against a custom concept.
+    ConceptRescannedResult {
+        concept_id: i64,
+        tagged_count: usize,
+    },
+    /// Sample images associated with a custom concept.
+    ConceptSamplesResult {
+        concept_id: i64,
+        samples: Vec<ImageDetails>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -236,6 +297,8 @@ pub struct ImageDetails {
     pub mtime: i64,
     pub created_at: String,
     pub tags: Vec<TagSummary>,
+    #[serde(default)]
+    pub blacklisted_tags: Vec<TagSummary>,
     pub vector_state: String,
     pub favorite: bool,
 }
@@ -246,6 +309,12 @@ pub struct TagSummary {
     pub tag: String,
     pub category: String,
     pub confidence: f32,
+    #[serde(default)]
+    #[sqlx(default)]
+    pub source_name: Option<String>,
+    #[serde(default)]
+    #[sqlx(default)]
+    pub is_blacklisted: bool,
 }
 
 /// Folder details with statistics for the Imported Folders tab.

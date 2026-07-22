@@ -416,6 +416,28 @@ body {
   flex-direction: column;
   position: relative;
 }
+.image-card.selected {
+  outline: 2px solid var(--sys-border-focus, #0078d4);
+  border-color: var(--sys-border-focus, #0078d4);
+}
+
+.card-select-checkbox {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 12;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #0078d4;
+  display: none;
+}
+.select-mode-active .card-select-checkbox {
+  display: block;
+}
+.image-card.selected .card-select-checkbox {
+  display: block;
+}
 /* Favorite Star Button */
 .star-btn {
   position: absolute;
@@ -577,6 +599,174 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
 }
 .tag-remove-btn:hover {
   color: #e81123;
+}
+
+/* Custom Concepts Badges & Cards */
+.tag-pill.custom-concept {
+  background-color: #cce5ff;
+  border: 1px solid #b8daff;
+  color: #004085;
+  font-weight: 600;
+}
+.tag-pill.custom-concept .concept-spark {
+  color: #005499;
+  margin-right: 2px;
+}
+.tag-confirm-btn {
+  cursor: pointer;
+  color: #00ff66;
+  margin-left: 3px;
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+.tag-confirm-btn:hover {
+  transform: scale(1.2);
+  color: #33ff88;
+}
+
+.concepts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
+  gap: 18px;
+  margin-top: 14px;
+  width: 100%;
+}
+
+.concept-card.group-box {
+  background-color: var(--sys-control-bg);
+  border: 1px solid var(--sys-border-dark);
+  border-radius: 3px;
+  padding: 18px 16px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+  margin-top: 8px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.concept-card.group-box.expanded {
+  grid-column: 1 / -1;
+  border-color: var(--sys-border-focus, #0078d4);
+}
+
+.concept-card-title {
+  position: absolute;
+  top: -10px;
+  left: 10px;
+  background-color: var(--sys-control-bg);
+  padding: 0 6px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--sys-control-text, #333333);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.concept-sparkle {
+  color: #0078d4;
+  font-size: 13px;
+}
+
+.concept-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.concept-badge.character {
+  background-color: #d1ecf1;
+  border: 1px solid #bee5eb;
+  color: #0c5460;
+}
+
+.concept-badge.copyright {
+  background-color: #ebdcf9;
+  border: 1px solid #dcbdf5;
+  color: #511c74;
+}
+
+.concept-badge.general {
+  background-color: #e2e3e5;
+  border: 1px solid #d6d8db;
+  color: #383d41;
+}
+
+.concept-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 11px;
+}
+
+.concept-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  background-color: var(--sys-window-bg);
+  border: 1px solid var(--sys-border-dark);
+  border-radius: 2px;
+}
+
+.concept-info-label {
+  color: var(--sys-text-subtle, #555555);
+}
+
+.concept-info-val strong {
+  color: var(--sys-border-focus, #0078d4);
+  font-weight: 700;
+}
+
+.concept-threshold-box {
+  background-color: var(--sys-window-bg);
+  border: 1px solid var(--sys-border-dark);
+  padding: 8px;
+  border-radius: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.concept-threshold-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--sys-control-text, #333333);
+}
+
+.concept-threshold-val {
+  font-weight: 700;
+  color: var(--sys-border-focus, #0078d4);
+  font-size: 11px;
+}
+
+.concept-threshold-slider {
+  width: 100%;
+  accent-color: var(--sys-border-focus, #0078d4);
+  cursor: pointer;
+}
+
+.concept-meta-date {
+  font-size: 10px;
+  color: var(--sys-text-subtle, #777777);
+}
+
+.concept-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.concept-card-actions button {
+  flex: 1;
 }
 
 /* Feature of the Day */
@@ -770,6 +960,19 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   gap: 12px;
   overflow-y: auto;
   flex: 1;
+}
+.modal-footer {
+  padding: 12px 16px;
+  background-color: var(--sys-control-bg);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+.modal-footer .win-button {
+  padding: 6px 14px;
+  min-height: 28px;
+  font-size: 11px;
 }
 #modal-tag-list {
   display: flex;

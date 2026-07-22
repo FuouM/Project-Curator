@@ -456,6 +456,9 @@ async fn main() -> Result<(), Error> {
         Response::DashboardInitResult { .. } => {
             println!("Dashboard init result received.");
         }
+        other => {
+            println!("Received response: {:?}", other);
+        }
     }
 
     Ok(())

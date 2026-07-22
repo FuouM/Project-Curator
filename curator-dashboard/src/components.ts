@@ -2,6 +2,7 @@ export interface TagSummary {
   tag: string;
   category: string;
   count?: number;
+  source_name?: string;
 }
 
 // --- Path Visibility ---
@@ -43,29 +44,89 @@ export function maskPath(fullPath: string): string {
 export function renderTagPill(t: TagSummary, options?: { isDeletable?: boolean; imageId?: number }): string {
   let styleClass = "tag-rank-3"; // Default general / rank 3 (white)
   
-  switch (t.category) {
-    case "user":
-      styleClass = "tag-user";
-      break;
-    case "character":
-      styleClass = "tag-character";
-      break;
-    case "copyright":
-      styleClass = "tag-copyright";
-      break;
-    case "meta":
-      styleClass = "tag-meta";
-      break;
+  if (t.source_name === "ai:custom-concepts" || t.source_name === "custom-concept") {
+    styleClass = "custom-concept";
+  } else {
+    switch (t.category) {
+      case "user":
+        styleClass = "tag-user";
+        break;
+      case "character":
+        styleClass = "tag-character";
+        break;
+      case "copyright":
+        styleClass = "tag-copyright";
+        break;
+      case "meta":
+        styleClass = "tag-meta";
+        break;
+    }
   }
 
   const isDeletable = options?.isDeletable ?? false;
   const imageId = options?.imageId ?? 0;
 
-  const deleteBtn = isDeletable && t.category === "user"
-    ? ` <span class="tag-remove-btn" title="Remove user tag" onclick="window.removeTag(${imageId}, '${t.tag}')">&times;</span>`
+  const sparkIcon = styleClass === "custom-concept" ? `<i class="bi bi-stars concept-spark"></i>` : "";
+
+  const deleteBtn = isDeletable && imageId > 0
+    ? ` <span class="tag-remove-btn" title="Remove tag" onclick="window.removeTag(${imageId}, '${t.tag.replace(/'/g, "\\'")}')">&times;</span>`
     : "";
 
-  return `<span class="tag-pill ${styleClass}">${t.tag.replace(/_/g, '_\u200B')}${deleteBtn}</span>`;
+  return `<span class="tag-pill ${styleClass}">${sparkIcon}${t.tag.replace(/_/g, '_\u200B')}${deleteBtn}</span>`;
+}
+
+export interface CustomConceptData {
+  id: number;
+  name: string;
+  category: string;
+  threshold: number;
+  sample_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export function renderConceptCardHtml(c: CustomConceptData): string {
+  const catClass = c.category.toLowerCase();
+  
+  return `
+    <div class="concept-card group-box" id="concept-card-${c.id}" data-concept-id="${c.id}">
+      <div class="group-box-title concept-card-title">
+        <i class="bi bi-stars concept-sparkle"></i> ${c.name}
+        <span class="concept-badge ${catClass}">${c.category}</span>
+      </div>
+      <div class="concept-card-body">
+        <div class="concept-info-row">
+          <span class="concept-info-label"><i class="bi bi-images"></i> Ground-Truth Samples:</span>
+          <span class="concept-info-val"><strong>${c.sample_count}</strong> ${c.sample_count === 1 ? 'sample' : 'samples'}</span>
+        </div>
+        <div class="concept-threshold-box">
+          <div class="concept-threshold-header">
+            <span><i class="bi bi-sliders"></i> Similarity Threshold:</span>
+            <span class="concept-threshold-val" id="concept-th-val-${c.id}">${(c.threshold * 100).toFixed(0)}% (${c.threshold.toFixed(2)})</span>
+          </div>
+          <input type="range" class="concept-threshold-slider" min="0.40" max="0.95" step="0.01" value="${c.threshold.toFixed(2)}" data-concept-id="${c.id}" oninput="const v = parseFloat(this.value); const el = document.getElementById('concept-th-val-${c.id}'); if (el) el.textContent = Math.round(v * 100) + '% (' + v.toFixed(2) + ')';" onchange="window.updateConceptThreshold(${c.id}, this.value)">
+        </div>
+
+        <!-- Inline Collapsible Samples Panel inside GroupBox -->
+        <div class="concept-samples-panel" id="concept-samples-panel-${c.id}" style="display: none; margin-top: 6px; padding: 8px; background-color: var(--sys-window-bg); border: 1px solid var(--sys-border-dark); border-radius: 2px;">
+          <div style="font-size: 11px; font-weight: 600; color: var(--sys-control-text); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+            <span><i class="bi bi-images"></i> Ground-Truth Sample Thumbnails:</span>
+            <span onclick="window.closeConceptSamples(${c.id})" style="cursor: pointer; font-size: 14px; font-weight: bold; color: var(--sys-text-subtle);" title="Close samples">&times;</span>
+          </div>
+          <div id="concept-samples-grid-${c.id}" class="image-grid" style="max-height: 400px; overflow-y: auto; padding: 4px;">
+            <!-- Rendered inline using standard gallery cards -->
+          </div>
+        </div>
+
+        <div class="concept-meta-date"><i class="bi bi-clock-history"></i> Updated: ${c.updated_at.split('.')[0]}</div>
+      </div>
+      <div class="concept-card-actions">
+        <button type="button" class="win-button" onclick="window.viewConceptSamples(${c.id}, '${c.name.replace(/'/g, "\\'")}')"><i class="bi bi-images"></i> Samples (${c.sample_count})</button>
+        <button type="button" class="win-button primary" id="concept-rescan-btn-${c.id}" onclick="window.rescanConcept(${c.id})"><i class="bi bi-search"></i> Rescan</button>
+        <button type="button" class="win-button danger" onclick="window.deleteConcept(${c.id})"><i class="bi bi-trash"></i> Delete</button>
+      </div>
+    </div>
+  `;
 }
 
 // 2. Button Component
@@ -470,7 +531,7 @@ export const componentRegistry: ComponentMetadata[] = [
             <div>
               <div style="font-size: 11px; font-weight: 600; color: #555; margin-bottom: 4px;">Large Progress — 60%</div>
               <div style="width: 100%; height: 16px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden; border: 1px solid #d1d5db;">
-                <div style="width: 60%; height: 100%; background: linear-gradient(90deg, #3b82f6, #60a5fa); transition: width 0.3s ease;"></div>
+                <div style="width: 60%; height: 100%; background-color: var(--sys-primary, #0078d4); transition: width 0.3s ease;"></div>
               </div>
             </div>
             <div>
