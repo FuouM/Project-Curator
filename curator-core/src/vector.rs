@@ -878,14 +878,6 @@ impl ModelManager {
         for i in 0..copy_len {
             padded_ids[i] = input_ids[i] as i64;
         }
-        let eos_token = if input_ids.is_empty() {
-            0
-        } else {
-            input_ids[input_ids.len() - 1] as i64
-        };
-        for item in padded_ids.iter_mut().take(77).skip(copy_len) {
-            *item = eos_token;
-        }
 
         let input_ids_array = Array2::<i64>::from_shape_fn((1, 77), |(_, j)| padded_ids[j]);
 

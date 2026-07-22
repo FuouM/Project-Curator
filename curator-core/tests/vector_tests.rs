@@ -289,3 +289,31 @@ async fn test_vector_indexing_and_clip_inference() {
     assert_eq!(search_results.len(), 1);
     assert_eq!(search_results[0].0, 42);
 }
+
+#[tokio::test]
+async fn test_text_similarity_and_padding_behavior() {
+    use curator_core::ipc::EmbeddingModel;
+    let model_dir = std::path::Path::new(r".curator\models");
+
+    let model_manager = ModelManager::new(&model_dir, DevicePreference::Cpu);
+    model_manager
+        .init()
+        .expect("Failed to initialize CLIP models");
+
+    for model in [EmbeddingModel::ClipVitB32, EmbeddingModel::MobileClipS2] {
+        model_manager.set_active_model(model);
+        model_manager.init().expect("Failed to init model");
+
+        let cat = model_manager.generate_text_embedding("a picture of a cat").unwrap();
+        let kitten = model_manager.generate_text_embedding("a cute kitten").unwrap();
+        let car = model_manager.generate_text_embedding("a sports car on a highway").unwrap();
+
+        let sim_cat_kitten: f32 = cat.iter().zip(&kitten).map(|(a, b)| a * b).sum();
+        let sim_cat_car: f32 = cat.iter().zip(&car).map(|(a, b)| a * b).sum();
+
+        println!("\n=== Text Similarity Test ({:?}) ===", model);
+        println!("Similarity('a picture of a cat', 'a cute kitten'): {:.4}", sim_cat_kitten);
+        println!("Similarity('a picture of a cat', 'a sports car on a highway'): {:.4}", sim_cat_car);
+    }
+}
+
