@@ -166,6 +166,15 @@
                 </button>
               </div>
               <div style="display: flex; align-items: center; gap: 10px;">
+                <label style="font-size: 11px; color: #555555; display: flex; align-items: center; gap: 4px;">
+                  Show:
+                  <select class="input-field" id="gallery-per-page-select" style="width: 60px; height: 22px; font-size: 11px; padding: 1px 4px;">
+                    <option value="12">12</option>
+                    <option value="24">24</option>
+                    <option value="48">48</option>
+                    <option value="96">96</option>
+                  </select>
+                </label>
                 <span id="gallery-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
                 <button class="win-button" id="gallery-prev-btn" disabled><i class="bi bi-caret-left-fill"></i> Prev</button>
                 <button class="win-button" id="gallery-next-btn">Next <i class="bi bi-caret-right-fill"></i></button>
@@ -182,6 +191,15 @@
           <div class="group-box">
             <div class="group-box-title">Favorite Images</div>
             <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 1rem; gap: 10px;">
+              <label style="font-size: 11px; color: #555555; display: flex; align-items: center; gap: 4px;">
+                Show:
+                <select class="input-field" id="favorites-per-page-select" style="width: 60px; height: 22px; font-size: 11px; padding: 1px 4px;">
+                  <option value="12">12</option>
+                  <option value="24">24</option>
+                  <option value="48">48</option>
+                  <option value="96">96</option>
+                </select>
+              </label>
               <span id="favorites-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
               <button class="win-button" id="favorites-prev-btn" disabled><i class="bi bi-caret-left-fill"></i> Prev</button>
               <button class="win-button" id="favorites-next-btn">Next <i class="bi bi-caret-right-fill"></i></button>

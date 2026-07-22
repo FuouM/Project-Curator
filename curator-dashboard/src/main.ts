@@ -30,6 +30,27 @@ function setImageClickAction(action: string) {
   localStorage.setItem(IMAGE_CLICK_KEY, action);
 }
 
+// --- Gallery Per-Page Setting ---
+const IMAGES_PER_PAGE_KEY = "curator-gallery-per-page";
+const DEFAULT_IMAGES_PER_PAGE = 12;
+const PER_PAGE_OPTIONS = [12, 24, 48, 96];
+
+function getImagesPerPage(): number {
+  const stored = localStorage.getItem(IMAGES_PER_PAGE_KEY);
+  if (stored) {
+    const val = parseInt(stored, 10);
+    if (PER_PAGE_OPTIONS.includes(val)) return val;
+  }
+  return DEFAULT_IMAGES_PER_PAGE;
+}
+
+function setImagesPerPage(val: number) {
+  localStorage.setItem(IMAGES_PER_PAGE_KEY, val.toString());
+}
+
+// --- Log Tab State ---
+let currentLogTab: "dashboard" | "service" = "dashboard";
+
 // --- Image Viewer ---
 let currentViewerPath: string | null = null;
 
@@ -364,6 +385,28 @@ function setupNavigation() {
   // Gallery & Favorites Pagination Setup
   setupPaginationButtons("gallery-prev-btn", "gallery-next-btn", { get value() { return galleryPage; }, set value(v) { galleryPage = v; } }, refreshGallery);
   setupPaginationButtons("favorites-prev-btn", "favorites-next-btn", { get value() { return favoritesPage; }, set value(v) { favoritesPage = v; } }, refreshFavorites);
+
+  // Gallery per-page selector
+  const perPageSelect = document.getElementById("gallery-per-page-select") as HTMLSelectElement;
+  if (perPageSelect) {
+    perPageSelect.value = getImagesPerPage().toString();
+    perPageSelect.addEventListener("change", () => {
+      setImagesPerPage(parseInt(perPageSelect.value, 10));
+      galleryPage = 0;
+      refreshGallery();
+    });
+  }
+
+  // Favorites per-page selector
+  const favPerPageSelect = document.getElementById("favorites-per-page-select") as HTMLSelectElement;
+  if (favPerPageSelect) {
+    favPerPageSelect.value = getImagesPerPage().toString();
+    favPerPageSelect.addEventListener("change", () => {
+      setImagesPerPage(parseInt(favPerPageSelect.value, 10));
+      favoritesPage = 0;
+      refreshFavorites();
+    });
+  }
 
   // Logs buttons setup
   document.getElementById("refresh-logs-btn")?.addEventListener("click", refreshLogs);
@@ -1192,7 +1235,6 @@ function formatDate(dateStr: string): string {
 
 let galleryPage = 0;
 let favoritesPage = 0;
-const IMAGES_PER_PAGE = 12;
 
 async function refreshPaginatedImages(
   page: number,
@@ -1200,8 +1242,9 @@ async function refreshPaginatedImages(
   idPrefix: string,
   listOpts: { only_favorites?: boolean }
 ) {
+  const perPage = getImagesPerPage();
   try {
-    const resp = await callService({ ListImages: { limit: IMAGES_PER_PAGE, offset: page * IMAGES_PER_PAGE, ...listOpts } });
+    const resp = await callService({ ListImages: { limit: perPage, offset: page * perPage, ...listOpts } });
     if ("ListResult" in resp) {
       const images = resp.ListResult.images;
       renderImages(images, gridId);
@@ -1213,7 +1256,7 @@ async function refreshPaginatedImages(
       if (prevBtn) prevBtn.disabled = page === 0;
 
       const nextBtn = document.getElementById(`${idPrefix}-next-btn`) as HTMLButtonElement;
-      if (nextBtn) nextBtn.disabled = images.length < IMAGES_PER_PAGE;
+      if (nextBtn) nextBtn.disabled = images.length < perPage;
     }
   } catch (e) {
     console.error(`Failed to refresh ${idPrefix}: `, e);
@@ -1875,9 +1918,6 @@ function ansiToHtml(text: string): string {
 
   return result;
 }
-
-// --- Log Tab State ---
-let currentLogTab: "dashboard" | "service" = "dashboard";
 
 function setupLogTabs() {
   const dashTab = document.getElementById("log-tab-dashboard");
