@@ -286,6 +286,50 @@ body {
   padding: 0 6px;
   font-weight: 600;
   color: #333333;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Collapse Button for GroupBox */
+.group-box-collapse-btn {
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  padding: 0 4px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  color: var(--sys-button-border, #707070);
+  font-size: 10px;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.group-box-collapse-btn:hover {
+  background-color: var(--sys-button-hover, #e5f1fb);
+  border-color: var(--sys-border-dark, #b0b0b0);
+  color: var(--sys-border-focus, #0078d7);
+}
+.group-box-collapse-btn:active {
+  background-color: var(--sys-button-active, #cce4f7);
+  border-color: var(--sys-border-focus, #0078d7);
+}
+.group-box-collapse-btn i {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+.group-box.collapsed .group-box-collapse-btn i {
+  transform: rotate(-90deg);
+}
+.group-box.collapsed .group-box-body {
+  display: none;
+}
+.group-box.collapsed {
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 
 /* Stats Layout */
