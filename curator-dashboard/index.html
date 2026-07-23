@@ -50,10 +50,13 @@
                 <span><i class="bi bi-box-arrow-in-down"></i></span> Import Images
               </li>
               <li class="nav-item" data-view="search">
-                <span><i class="bi bi-search"></i></span> Semantic Search
+                <span><i class="bi bi-search"></i></span> General Search
               </li>
               <li class="nav-item" data-view="concepts">
                 <span><i class="bi bi-magic"></i></span> Custom Concepts
+              </li>
+              <li class="nav-item" data-view="filename-parser">
+                <span><i class="bi bi-regex"></i></span> Filename Parser
               </li>
             </ul>
           </li>
@@ -279,10 +282,159 @@
           </div>
         </section>
 
+        <!-- FILENAME PARSER VIEW -->
+        <section class="view-section" id="view-filename-parser">
+          <div style="display: flex; flex-direction: column; gap: 16px;">
+            <!-- Mode Selection & Rule Config Header -->
+            <div class="group-box">
+              <div class="group-box-title"><i class="bi bi-gear-wide-connected"></i> Rule Engine Configuration</div>
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px;">
+                <button type="button" class="win-button active btn-primary" id="fn-mode-presets-btn">
+                  <i class="bi bi-lightning-charge-fill"></i> Presets Engine
+                </button>
+                <button type="button" class="win-button" id="fn-mode-token-btn">
+                  <i class="bi bi-puzzle-fill"></i> No-Code Token Builder
+                </button>
+                <button type="button" class="win-button" id="fn-mode-regex-btn">
+                  <i class="bi bi-code-slash"></i> Custom Regex Pattern
+                </button>
+              </div>
+
+              <!-- Preset Panel -->
+              <div id="fn-panel-presets" style="display: flex; flex-direction: column; gap: 6px;">
+                <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);">Select Active Preset Extractor Pattern:</label>
+                <select class="input-field" id="fn-preset-select" style="width: 100%; max-width: 480px; font-size: 11px;">
+                  <option value="4chan_timestamp" selected>4chan Unix Timestamps (10, 13, 16 digit dates)</option>
+                  <option value="pixiv_id">Pixiv Artwork ID & Page (illust_123456, artist_p0)</option>
+                  <option value="twitter_key">Twitter Snowflake & Media Keys (media_..., status ID)</option>
+                  <option value="booru_post">Booru Post Extractor (gelbooru_..., yandere_...)</option>
+                  <option value="tagged_string">Bracketed Tagged String ([artist] title (tags))</option>
+                  <option value="anime_screenshot">Anime Screenshot (name + episode)</option>
+                </select>
+              </div>
+
+              <!-- Token Builder Panel -->
+              <div id="fn-panel-token" style="display: none; flex-direction: column; gap: 8px;">
+                <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);">Click building blocks to assemble custom pattern:</label>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;">
+                  <button type="button" class="win-button fn-add-token-btn" data-token-type="artist">+ {Artist}</button>
+                  <button type="button" class="win-button fn-add-token-btn" data-token-type="timestamp_4chan">+ {4chan Timestamp}</button>
+                  <button type="button" class="win-button fn-add-token-btn" data-token-type="pixiv_id">+ {Pixiv ID}</button>
+                  <button type="button" class="win-button fn-add-token-btn" data-token-type="twitter_id">+ {Twitter ID}</button>
+                  <button type="button" class="win-button fn-add-token-btn" data-token-type="number">+ {Number}</button>
+                  <button type="button" class="win-button fn-add-token-btn" data-token-type="delimiter">+ Delimiter (_)</button>
+                  <button type="button" class="win-button fn-add-token-btn" data-token-type="wildcard">+ {Wildcard}</button>
+                  <button type="button" class="win-button fn-add-token-btn" data-token-type="bracketed">+ [Bracketed]</button>
+                  <button type="button" class="win-button fn-add-token-btn" data-token-type="whitespace">+ Space</button>
+                  <button type="button" class="win-button fn-add-token-btn" data-token-type="tag">+ {Tag}</button>
+                </div>
+                <div style="padding: 8px 10px; background-color: var(--sys-window-bg); border: 1px solid var(--sys-border-light);">
+                  <div style="font-size: 11px; font-weight: 600; color: #555; margin-bottom: 6px;">Active Blocks Sequence:</div>
+                  <div id="fn-token-blocks-container" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; align-items: center;"></div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  <div style="font-size: 11px; color: #555;">
+                    Compiled Regex: <code id="fn-compiled-regex-preview" style="font-family: monospace; font-weight: 600; color: #004085; background: #e2e3e5; padding: 2px 6px; border-radius: 2px;"></code>
+                  </div>
+                  <div style="margin-left: auto; display: flex; gap: 4px; align-items: center;">
+                    <label style="font-size: 10px; color: #555;">Type:</label>
+                    <select class="input-field" id="fn-token-match-type-select" style="font-size: 10px; height: 22px; padding: 1px 4px; width: 110px;">
+                      <option value="custom_regex">Custom Regex</option>
+                      <option value="anime_screenshot">Anime Screenshot</option>
+                    </select>
+                    <span id="fn-token-anime-warning" style="font-size: 9px; color: #856404; display: none;"><i class="bi bi-exclamation-triangle"></i> Requires "anime" and "episode" labels</span>
+                    <button type="button" class="win-button" id="fn-token-clear-btn" style="font-size: 10px; padding: 2px 8px;" title="Clear all blocks"><i class="bi bi-trash"></i> Clear</button>
+                    <button type="button" class="win-button" id="fn-token-save-btn" style="font-size: 10px; padding: 2px 8px;" title="Save current pattern"><i class="bi bi-save"></i> Save</button>
+                    <select class="input-field" id="fn-token-load-select" style="font-size: 10px; height: 22px; padding: 1px 4px; width: 120px;" title="Load saved pattern">
+                      <option value="">Load...</option>
+                    </select>
+                    <select class="input-field" id="fn-token-preset-select" style="font-size: 10px; height: 22px; padding: 1px 4px; width: 140px;">
+                      <option value="">Load Preset...</option>
+                      <option value="pixiv_artist_page">Pixiv: artist_p0</option>
+                      <option value="pixiv_illust">Pixiv: illust_ID</option>
+                      <option value="booru_source">Booru: source_ID_tags</option>
+                      <option value="bracketed_title">Bracketed: [source] title</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Custom Regex Panel -->
+              <div id="fn-panel-regex" style="display: none; flex-direction: column; gap: 6px;">
+                <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);">Enter Regular Expression with Named Capture Groups:</label>
+                <input class="input-field" id="fn-regex-input" value="^(?P&lt;artist&gt;[A-Za-z0-9_-]+)_(?P&lt;pixiv_id&gt;\d{7,10})_p(?P&lt;page&gt;\d+)$" placeholder="e.g. ^(?P<artist>\w+)_(?P<timestamp>\d+)$" style="width: 100%; font-family: monospace; font-size: 11px;" />
+                <p style="font-size: 11px; color: #666; margin: 2px 0 0 0;">Supported group names: <code>artist</code>, <code>pixiv_id</code>, <code>twitter_id</code>, <code>timestamp</code>, <code>tag</code>.</p>
+              </div>
+            </div>
+
+            <!-- Live Test Sandbox -->
+            <div class="group-box">
+              <div class="group-box-title"><i class="bi bi-sliders"></i> Live Test Sandbox</div>
+              <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+                  <div style="flex: 1; min-width: 280px;">
+                    <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);">Test Filename (or pick sample):</label>
+                    <input class="input-field" id="fn-sandbox-input" value="1652448237000.jpg" placeholder="Type filename to test pattern..." style="width: 100%; font-family: monospace; font-size: 11px; margin-top: 4px;" />
+                  </div>
+                  <div style="min-width: 280px;">
+                    <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);">Preset Test Samples:</label>
+                    <select class="input-field" id="fn-sandbox-sample-select" style="width: 100%; font-size: 11px; margin-top: 4px;">
+                      <option value="1652448237000.png" selected>4chan Unix Timestamp (1652448237000)</option>
+                      <option value="illust_108521179_20230513_212357.jpg">Pixiv Illust (illust_108521179_...)</option>
+                      <option value="gwitch_suletta_Mineori_108521179_p0.png">Pixiv Page (gwitch_..._p0)</option>
+                      <option value="media_FR49d0XWUAImXfA.jpg_large">Twitter Key (media_FR4...)</option>
+                      <option value="gelbooru_8392014_genshin_impact_furina.png">Gelbooru Post (gelbooru_...)</option>
+                      <option value="[Mineori] Witch from Mercury (Suletta Miorine).jpg">Bracketed Tagged ([Mineori] ...)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Sandbox Live Result -->
+                <div id="fn-sandbox-result"></div>
+              </div>
+            </div>
+
+            <!-- Database Batch Preview & Batch Runner -->
+            <div class="group-box">
+              <div class="group-box-title" style="display: flex; align-items: center; justify-content: space-between;">
+                <span><i class="bi bi-table"></i> Database Batch Preview & Execution</span>
+              </div>
+
+              <!-- Button Bar & Info -->
+              <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--sys-border-light, #d0d0d0);">
+                <span style="font-size: 11px; color: #555;">
+                  Preview match results across database files before applying.
+                </span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <label style="font-size: 11px; color: #555; white-space: nowrap;">Samples:</label>
+                  <input type="number" class="input-field" id="fn-batch-sample-count" value="50" max="5000" style="width: 60px; height: 22px; font-size: 11px; padding: 1px 4px; text-align: center;" />
+                  <span style="font-size: 10px; color: #888;">-1 = unlimited</span>
+                  <label style="font-size: 11px; color: #555; white-space: nowrap;">Sort:</label>
+                  <select class="input-field" id="fn-batch-sort-order" style="width: 100px; height: 22px; font-size: 11px; padding: 1px 4px;">
+                    <option value="match_first">Match First</option>
+                    <option value="id_desc">Newest First</option>
+                    <option value="id_asc">Oldest First</option>
+                    <option value="filename">Filename A-Z</option>
+                  </select>
+                  <button type="button" class="win-button" id="fn-batch-preview-btn" style="padding: 4px 12px;">
+                    <i class="bi bi-arrow-clockwise"></i> Preview DB Files
+                  </button>
+                  <button type="button" class="win-button primary" id="fn-batch-run-btn" style="padding: 4px 12px;">
+                    <i class="bi bi-play-fill"></i> Apply Rules to Entire DB
+                  </button>
+                </div>
+              </div>
+
+              <div id="fn-batch-run-status" style="margin-bottom: 8px;"></div>
+              <div id="fn-batch-preview-container"></div>
+            </div>
+          </div>
+        </section>
+
         <!-- SEARCH VIEW -->
         <section class="view-section" id="view-search">
           <div class="group-box">
-            <div class="group-box-title">AI Semantic & Tag Search</div>
+            <div class="group-box-title">General Search</div>
             <form id="search-form">
               <div class="form-group" style="display: flex; flex-direction: column; gap: 8px; align-items: stretch;">
                 <div style="display: flex; gap: 6px; width: 100%;">
@@ -298,6 +450,28 @@
                   <div class="input-wrapper" style="width: 180px;">
                     <input class="input-field has-clear" id="search-tag-input" placeholder="Filter by tag name (optional)..." />
                     <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
+                  </div>
+                </div>
+                <div style="display: flex; gap: 6px; width: 100%;">
+                  <div class="input-wrapper" style="flex: 1;">
+                    <input class="input-field has-clear" id="search-parse-input" placeholder="Search parsed filename (e.g. 'Ichijyoma', '108521179', 'Erai-raws')..." />
+                    <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
+                  </div>
+                  <button type="button" class="win-button" id="search-parse-help-btn" style="padding: 2px 6px; font-size: 11px;" title="How to search parsed filenames"><i class="bi bi-info-circle"></i></button>
+                  <div class="input-wrapper" style="width: 160px;">
+                    <select class="input-field" id="search-parse-type-select" style="width: 100%; height: 24px;">
+                      <option value="">All Parse Types</option>
+                      <option value="pixiv_id">Pixiv</option>
+                      <option value="twitter_key">Twitter</option>
+                      <option value="4chan_timestamp">4chan</option>
+                      <option value="anime_screenshot">Anime Screenshot</option>
+                      <option value="gelbooru_post">Gelbooru</option>
+                      <option value="yandere_post">Yandere</option>
+                      <option value="danbooru_post">Danbooru</option>
+                      <option value="konachan_post">Konachan</option>
+                      <option value="tagged_string">Tagged String</option>
+                      <option value="anime_screenshot">Anime Screenshot</option>
+                    </select>
                   </div>
                 </div>
                 <div style="display: flex; gap: 6px; width: 100%; align-items: center;">
@@ -318,6 +492,36 @@
                 </div>
               </div>
             </form>
+          </div>
+
+          <!-- Parse Search Help Modal -->
+          <div id="search-parse-help-modal" class="group-box" style="display: none; margin-top: 0.5rem; padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-weight: 600; font-size: 12px;"><i class="bi bi-info-circle"></i> Parsed Filename Search Help</span>
+              <button type="button" class="win-button" id="search-parse-help-close" style="padding: 1px 6px; font-size: 10px;"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div style="font-size: 11px; color: #444; line-height: 1.6;">
+              <p style="margin: 0 0 6px 0;">Searches across all parsed metadata fields stored from the <strong>Filename Parser</strong>.</p>
+              <p style="margin: 0 0 8px 0;"><strong>Chaining:</strong> Space-separated terms are ANDed. Each term can be <code>field:value</code> or plain text.</p>
+              <div style="margin-bottom: 8px; padding: 6px 8px; background: #f8f9fa; border: 1px solid #dee2e6; font-family: monospace; font-size: 11px;">
+                <div style="margin-bottom: 4px; font-weight: 600;">Examples:</div>
+                <div><code>anime:"Ichijyoma Mankitsu Gurashi" episode:09</code> — exact anime name + episode</div>
+                <div><code>anime:Gurashi episode:09</code> — partial match (anime contains "Gurashi")</div>
+                <div><code>Erai-raws anime:Gurashi</code> — group name + anime name</div>
+                <div><code>artist:Mineori</code> — Pixiv images by artist</div>
+                <div><code>108521179</code> — plain text searches all fields</div>
+              </div>
+              <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin-bottom: 8px;">
+                <strong>Artist name</strong> <span>e.g. <code>artist:Ichijyoma</code></span>
+                <strong>Pixiv ID</strong> <span>e.g. <code>pixiv_id:108521179</code> or just <code>108521179</code></span>
+                <strong>Anime name</strong> <span>e.g. <code>anime:Gurashi</code></span>
+                <strong>Episode</strong> <span>e.g. <code>episode:09</code></span>
+                <strong>Source group</strong> <span>e.g. <code>group:Erai-raws</code></span>
+                <strong>Resolution</strong> <span>e.g. <code>resolution:1080p</code></span>
+                <strong>Date</strong> <span>e.g. <code>date:2022-05-14</code></span>
+              </div>
+              <p style="margin: 0; color: #666;">Use the <strong>Type</strong> dropdown to filter by parse type (e.g. only Anime Screenshots). Leave it on "All Parse Types" to search everything.</p>
+            </div>
           </div>
           
           <div class="group-box" style="margin-top: 1.5rem;">

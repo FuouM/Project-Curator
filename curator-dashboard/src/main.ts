@@ -7,6 +7,7 @@ import { setupImport } from "./views/import";
 import { setupSearch } from "./views/search";
 import { setupTags } from "./views/tags";
 import { setupConcepts } from "./views/concepts";
+import { setupFilenameParserView } from "./views/filename-parser";
 import { setupNavigation } from "./views/navigation";
 import { callService } from "./ipc";
 import { updateStatusIndicators, updateTaggerIndicators, applySettingsToUI, startStatusPolling, renderFeaturedDay } from "./views/dashboard";
@@ -20,8 +21,10 @@ function init() {
   setupImageViewer();
   setupLogTabs();
   setupConcepts();
+  setupFilenameParserView();
   setupBenchmark();
   setupSettings();
+
 
   // Phase 1: Fast data (status + tagger + settings)
   callService({ GetDashboardInit: null }).then((resp) => {

@@ -226,15 +226,19 @@ pub async fn list_images_logic(
             blacklisted_tags: Vec::new(),
             vector_state: String::new(),
             favorite,
+            parsed_metadata: None,
         });
         if let (Some(name), Some(category)) = (tag_name, tag_category) {
-            entry.tags.push(TagSummary {
-                tag: name,
-                category,
-                confidence: confidence.unwrap_or(0.0),
-                source_name: source_name.clone(),
-                is_blacklisted: false,
-            });
+            // Skip filename_parser tags from the regular tag list — they're shown in parsed metadata section
+            if source_name.as_deref() != Some("filename_parser") {
+                entry.tags.push(TagSummary {
+                    tag: name,
+                    category,
+                    confidence: confidence.unwrap_or(0.0),
+                    source_name: source_name.clone(),
+                    is_blacklisted: false,
+                });
+            }
         }
     }
 
@@ -253,6 +257,37 @@ pub async fn list_images_logic(
             for (vid, state) in vrows {
                 if let Some(img) = image_map.get_mut(&vid) {
                     img.vector_state = state;
+                }
+            }
+        }
+    }
+
+    // Fetch parsed metadata for all images in batch
+    if !ids.is_empty() {
+        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let pm_query = format!(
+            "SELECT image_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags, raw_matched
+             FROM image_parsed_metadata WHERE image_id IN ({})",
+            placeholders
+        );
+        let mut pm_q = sqlx::query_as::<_, (i64, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, String, String)>(&pm_query);
+        for id in &ids {
+            pm_q = pm_q.bind(id);
+        }
+        if let Ok(pm_rows) = pm_q.fetch_all(db).await {
+            for (img_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags_json, raw_matched) in pm_rows {
+                if let Some(img) = image_map.get_mut(&img_id) {
+                    let extracted_tags: Vec<String> = serde_json::from_str(&extracted_tags_json).unwrap_or_default();
+                    img.parsed_metadata = Some(curator_core::ipc::ParsedMetadata {
+                        match_type,
+                        artist,
+                        pixiv_id,
+                        twitter_id,
+                        timestamp_4chan,
+                        datetime_iso,
+                        extracted_tags,
+                        raw_matched,
+                    });
                 }
             }
         }
@@ -290,6 +325,11 @@ pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDeta
     let mut blacklisted_tags = Vec::new();
 
     for (tag, category, confidence, source_name, is_blacklisted) in all_tag_rows {
+        // Skip filename_parser tags from the regular tag list — they're shown in parsed metadata section
+        if source_name.as_deref() == Some("filename_parser") {
+            continue;
+        }
+
         let summary = TagSummary {
             tag,
             category,
@@ -315,6 +355,28 @@ pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDeta
             .map(|(s,): (String,)| s)
             .unwrap_or_else(|| "unknown".to_string());
 
+    // Fetch parsed metadata from filename parser
+    let parsed_metadata: Option<curator_core::ipc::ParsedMetadata> = sqlx::query_as::<_, (String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, String, String)>(
+        "SELECT match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags, raw_matched
+         FROM image_parsed_metadata WHERE image_id = ? LIMIT 1"
+    )
+    .bind(image_id)
+    .fetch_optional(db)
+    .await?
+    .map(|row| {
+        let extracted_tags: Vec<String> = serde_json::from_str(&row.6).unwrap_or_default();
+        curator_core::ipc::ParsedMetadata {
+            match_type: row.0,
+            artist: row.1,
+            pixiv_id: row.2,
+            twitter_id: row.3,
+            timestamp_4chan: row.4,
+            datetime_iso: row.5,
+            extracted_tags,
+            raw_matched: row.7,
+        }
+    });
+
     Ok(ImageDetails {
         id: img.id,
         sha256: img.sha256,
@@ -325,6 +387,7 @@ pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDeta
         blacklisted_tags,
         vector_state,
         favorite: img.favorite,
+        parsed_metadata,
     })
 }
 

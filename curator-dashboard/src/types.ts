@@ -6,7 +6,8 @@ export type RequestPayload =
   | { ImportImage: { path: string } }
   | { AddTag: { image_id: number; tag: string; category: string } }
   | { RemoveTag: { image_id: number; tag: string } }
-  | { Search: { query_text: string | null; query_image_path: string | null; tag_filter: string | null; limit: number } }
+  | { UnblacklistTag: { image_id: number; tag: string } }
+  | { Search: { query_text: string | null; query_image_path: string | null; tag_filter: string | null; parse_filter: string | null; parse_type: string | null; concept_id: number | null; limit: number } }
   | { ListImages: { limit: number; offset: number; only_favorites?: boolean | null } }
   | { SetFavorite: { image_id: number; favorite: boolean } }
   | { GetImage: { image_id: number } }
@@ -21,7 +22,44 @@ export type RequestPayload =
   | { GetTagStatistics: null }
   | { GetDashboardInit: null }
   | { GetImportedFolders: null }
-  | { BackfillImageFolders: null };
+  | { BackfillImageFolders: null }
+  | { CreateConcept: { name: string; category: string; threshold: number; sample_image_ids: number[] } }
+  | { ListConcepts: null }
+  | { UpdateConcept: { id: number; threshold: number | null; category: string | null } }
+  | { DeleteConcept: { id: number } }
+  | { AddConceptSamples: { concept_id: number; image_ids: number[] } }
+  | { RemoveConceptSample: { concept_id: number; image_id: number } }
+  | { RescanConcept: { concept_id: number } }
+  | { GetConceptSamples: { concept_id: number } }
+  | { TestFilenamePattern: { filename: string; pattern_or_type: string; rule_type: string; token_config: TokenBlock[] | null } }
+  | { CompileTokenBlocks: { token_config: TokenBlock[] } }
+  | { PreviewBatchFilenameParsing: { limit: number; pattern_or_type: string; rule_type: string; token_config: TokenBlock[] | null; output_match_type?: string | null } }
+  | { RunBatchFilenameParsing: { pattern_or_type: string; rule_type: string; token_config: TokenBlock[] | null; output_match_type?: string | null } };
+
+export interface TokenBlock {
+  token_type: string;
+  value?: string;
+  label?: string;
+  enabled?: boolean;
+}
+
+export interface ParsedMetadataResult {
+  match_type: string;
+  raw_matched: string;
+  artist?: string;
+  pixiv_id?: string;
+  twitter_id?: string;
+  timestamp_4chan?: string;
+  datetime_iso?: string;
+  extracted_tags: string[];
+}
+
+export interface BatchPreviewItem {
+  image_id: number;
+  filename: string;
+  filepath: string;
+  match_result?: ParsedMetadataResult;
+}
 
 export interface SearchMatch {
   id: number;
@@ -30,6 +68,7 @@ export interface SearchMatch {
   tags: TagSummary[];
   match_type: string;
   hamming_distance?: number;
+  parsed_metadata?: ParsedMetadata;
 }
 
 export interface ImageDetails {
@@ -41,12 +80,26 @@ export interface ImageDetails {
   tags: TagSummary[];
   vector_state: string;
   favorite: boolean;
+  parsed_metadata?: ParsedMetadata;
+}
+
+export interface ParsedMetadata {
+  match_type: string;
+  artist?: string;
+  pixiv_id?: string;
+  twitter_id?: string;
+  timestamp_4chan?: string;
+  datetime_iso?: string;
+  extracted_tags: string[];
+  raw_matched: string;
 }
 
 export interface TagSummary {
   tag: string;
   category: string;
   confidence: number;
+  source_name?: string;
+  is_blacklisted?: boolean;
 }
 
 export interface TagStat {
@@ -63,6 +116,16 @@ export interface FolderDetails {
   image_count: number;
   vector_ready: number;
   vector_pending: number;
+}
+
+export interface CustomConcept {
+  id: number;
+  name: string;
+  category: string;
+  threshold: number;
+  sample_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export type ResponsePayload =
@@ -88,7 +151,15 @@ export type ResponsePayload =
       featured_images: ImageDetails[]; latest_images: ImageDetails[];
     } }
   | { ImportedFoldersResult: { folders: FolderDetails[] } }
-  | { BackfillResult: { images_backfilled: number } };
+  | { BackfillResult: { images_backfilled: number } }
+  | { ConceptListResult: { concepts: CustomConcept[] } }
+  | { ConceptResult: { concept: CustomConcept } }
+  | { ConceptRescannedResult: { concept_id: number; tagged_count: number } }
+  | { ConceptSamplesResult: { concept_id: number; samples: ImageDetails[] } }
+  | { TestFilenamePatternResult: { result: ParsedMetadataResult | null } }
+  | { CompileTokenBlocksResult: { regex: string } }
+  | { PreviewBatchFilenameParsingResult: { items: BatchPreviewItem[] } }
+  | { RunBatchFilenameParsingResult: { total_processed: number; matched_count: number; tags_created: number } };
 
 // --- Card Rendering Data ---
 
@@ -99,4 +170,5 @@ export interface CardImageData {
   favorite?: boolean;
   badgeHtml?: string;
   emptyMessage?: string;
+  parsedMetadata?: ParsedMetadata;
 }

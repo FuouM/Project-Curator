@@ -3,6 +3,46 @@ use curator_core::concept::bytes_to_vector;
 use curator_core::ipc::{EmbeddingModel, SearchMatch};
 use curator_core::vector::{ModelManager, VectorIndex};
 use sha2::Digest;
+
+/// Parse search terms supporting quoted strings and field:value syntax.
+/// Examples: `anime:"Ichijyoma Mankitsu" episode:09 Erai-raws`
+/// Returns: ["anime:Ichijyoma Mankitsu", "episode:09", "Erai-raws"]
+fn parse_search_terms(input: &str) -> Vec<String> {
+    let mut terms = Vec::new();
+    let mut chars = input.chars().peekable();
+    let mut current = String::new();
+
+    while let Some(&c) = chars.peek() {
+        match c {
+            '"' => {
+                chars.next(); // skip opening quote
+                // Read until closing quote
+                while let Some(&qc) = chars.peek() {
+                    if qc == '"' {
+                        chars.next();
+                        break;
+                    }
+                    current.push(qc);
+                    chars.next();
+                }
+            }
+            ' ' => {
+                chars.next();
+                if !current.is_empty() {
+                    terms.push(std::mem::take(&mut current));
+                }
+            }
+            _ => {
+                current.push(c);
+                chars.next();
+            }
+        }
+    }
+    if !current.is_empty() {
+        terms.push(current);
+    }
+    terms
+}
 use sqlx::SqlitePool;
 
 use super::concepts::get_custom_concept_by_id;
@@ -12,6 +52,8 @@ pub async fn search_logic(
     query_text: Option<String>,
     query_image_path: Option<String>,
     tag_filter: Option<String>,
+    parse_filter: Option<String>,
+    parse_type: Option<String>,
     concept_id: Option<i64>,
     limit: usize,
     db: &SqlitePool,
@@ -206,12 +248,85 @@ pub async fn search_logic(
         }
     }
 
+    // Search by parsed filename metadata (artist, pixiv_id, twitter_id, source site, etc.)
+    // Supports chaining: "anime:ichijyoma episode:09" (space-separated, AND logic)
+    // Each term can be "field:value" (searches extracted_tags) or plain text (searches all fields)
+    let mut parse_matches = std::collections::HashSet::new();
+    let has_parse_query = parse_filter.as_ref().map_or(false, |f| !f.trim().is_empty())
+        || parse_type.as_ref().map_or(false, |t| !t.trim().is_empty());
+
+    if has_parse_query {
+        let mut conditions = Vec::new();
+        let mut bind_values: Vec<String> = Vec::new();
+
+        if let Some(ref filter) = parse_filter {
+            if !filter.trim().is_empty() {
+                // Parse terms: supports "field:value" and "field:"quoted value"" syntax
+                // Space-separated, quoted strings preserved as single terms
+                let terms = parse_search_terms(filter.trim());
+                for term in terms {
+                    if let Some((field, value)) = term.split_once(':') {
+                        if !value.is_empty() {
+                            // field:"value" or field:value — search extracted_tags for "field:value"
+                            let tag_term = format!("{}:{}", field, value);
+                            let pattern = format!("%{}%", tag_term);
+                            bind_values.push(pattern);
+                            conditions.push("extracted_tags LIKE ? COLLATE NOCASE".to_string());
+                        }
+                    } else {
+                        // Plain text — search across all fields (OR within this term)
+                        let pattern = format!("%{}%", term);
+                        bind_values.push(pattern.clone());
+                        bind_values.push(pattern.clone());
+                        bind_values.push(pattern.clone());
+                        bind_values.push(pattern.clone());
+                        bind_values.push(pattern.clone());
+                        bind_values.push(pattern.clone());
+                        conditions.push(
+                            "(artist LIKE ? COLLATE NOCASE
+                              OR pixiv_id LIKE ? COLLATE NOCASE
+                              OR twitter_id LIKE ? COLLATE NOCASE
+                              OR match_type LIKE ? COLLATE NOCASE
+                              OR extracted_tags LIKE ? COLLATE NOCASE
+                              OR raw_matched LIKE ? COLLATE NOCASE)".to_string()
+                        );
+                    }
+                }
+            }
+        }
+
+        if let Some(ref ptype) = parse_type {
+            if !ptype.trim().is_empty() {
+                bind_values.push(ptype.trim().to_string());
+                conditions.push("match_type = ?".to_string());
+            }
+        }
+
+        if !conditions.is_empty() {
+            let where_clause = conditions.join(" AND ");
+            let sql = format!(
+                "SELECT image_id FROM image_parsed_metadata WHERE {}",
+                where_clause
+            );
+            let mut query = sqlx::query_as::<_, (i64,)>(&sql);
+            for val in &bind_values {
+                query = query.bind(val);
+            }
+            let parsed_rows: Vec<(i64,)> = query.fetch_all(db).await.unwrap_or_default();
+
+            for (id,) in parsed_rows {
+                parse_matches.insert(id);
+            }
+        }
+    }
+
     let mut target_set = std::collections::HashSet::new();
     if let Some(c_ids) = candidate_ids {
         target_set.extend(c_ids);
     }
     target_set.extend(exact_matches.iter().copied());
     target_set.extend(perceptual_matches.keys().copied());
+    target_set.extend(parse_matches.iter().copied());
 
     if let Some(tag_name) = tag_filter {
         if !tag_name.trim().is_empty() {
@@ -231,6 +346,7 @@ pub async fn search_logic(
                 && query_text.is_none()
                 && exact_matches.is_empty()
                 && perceptual_matches.is_empty()
+                && parse_matches.is_empty()
             {
                 target_set = tag_set;
             } else {
@@ -243,6 +359,7 @@ pub async fn search_logic(
         && query_text.is_none()
         && exact_matches.is_empty()
         && perceptual_matches.is_empty()
+        && parse_matches.is_empty()
     {
         let latest: Vec<(i64,)> = sqlx::query_as(
             "SELECT id FROM images WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ?",
@@ -278,6 +395,7 @@ pub async fn search_logic(
                 tags: details.tags,
                 match_type,
                 hamming_distance,
+                parsed_metadata: details.parsed_metadata,
             });
         }
     }

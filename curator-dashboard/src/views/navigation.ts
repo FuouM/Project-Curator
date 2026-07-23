@@ -5,13 +5,14 @@ import { refreshLogs, clearLogsData } from "./logs";
 import { refreshTagStats } from "./tagstats";
 import { refreshFolders } from "./folders";
 import { refreshComponentStylesheet } from "./components-view";
+import { refreshBatchPreview } from "./filename-parser";
 
 const subtitles: Record<string, { title: string; sub: string }> = {
   dashboard: { title: "Dashboard", sub: "Overview of your local vector store and image library." },
   gallery: { title: "Gallery", sub: "Browse all your imported digital images." },
   favorites: { title: "Favorites", sub: "Browse your favorited images." },
   import: { title: "Import Images", sub: "Register and index new images locally." },
-  search: { title: "Semantic Search", sub: "Perform neural and tag-based image retrieval." },
+  search: { title: "General Search", sub: "Perform neural, tag-based, and filename-parsed image retrieval." },
   plugins: { title: "Plugins", sub: "Verify and manage sandboxed plugin modules." },
   logs: { title: "System Diagnostic Logs", sub: "View active traces and stderr/stdout logs from the local engine." },
   benchmark: { title: "Hardware Performance Benchmark", sub: "Run latency and throughput comparisons on CPU vs GPU." },
@@ -19,7 +20,8 @@ const subtitles: Record<string, { title: string; sub: string }> = {
   tagstats: { title: "Tag Statistics", sub: "View tag distribution and filter images by tag." },
   folders: { title: "Imported Folders", sub: "Browse folders and view import statistics." },
   components: { title: "Component Stylesheet", sub: "A showcase and reference of the application's UI components and styles." },
-  concepts: { title: "Custom Concepts", sub: "Teach Curator new characters, copyrights, or series from sample images without model retraining." }
+  concepts: { title: "Custom Concepts", sub: "Teach Curator new characters, copyrights, or series from sample images without model retraining." },
+  "filename-parser": { title: "Filename Parser & Tagger", sub: "Extract structured tags, timestamps, artist names, and artwork IDs directly from image filenames." }
 };
 
 export function setupNavigation() {
@@ -66,9 +68,12 @@ export function setupNavigation() {
         refreshFolders();
       } else if (view === "components") {
         refreshComponentStylesheet();
+      } else if (view === "filename-parser") {
+        refreshBatchPreview();
       }
     });
   });
+
 
   // Gallery & Favorites Pagination Setup
   setupPaginationButtons("gallery-prev-btn", "gallery-next-btn", { get value() { return galleryPage; }, set value(v) { setGalleryPage(v); } }, refreshGallery);

@@ -155,6 +155,8 @@ async fn main() -> Result<(), Error> {
             query_text: query,
             query_image_path: image,
             tag_filter: tag,
+            parse_filter: None,
+            parse_type: None,
             concept_id: None,
             limit,
         },

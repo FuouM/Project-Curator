@@ -34,10 +34,23 @@ export function switchToSearchWithTag(tagName: string) {
 }
 
 export function setupSearch() {
+  loadSearchConceptsDropdown();
+
+  // Parse search help modal toggle
+  document.getElementById("search-parse-help-btn")?.addEventListener("click", () => {
+    const modal = document.getElementById("search-parse-help-modal");
+    if (modal) modal.style.display = modal.style.display === "none" ? "block" : "none";
+  });
+  document.getElementById("search-parse-help-close")?.addEventListener("click", () => {
+    const modal = document.getElementById("search-parse-help-modal");
+    if (modal) modal.style.display = "none";
+  });
+
   const searchForm = document.getElementById("search-form");
   const queryInput = document.getElementById("search-text-input") as HTMLInputElement;
   const tagInput = document.getElementById("search-tag-input") as HTMLInputElement;
   const imageInput = document.getElementById("search-image-path-input") as HTMLInputElement;
+  const parseInput = document.getElementById("search-parse-input") as HTMLInputElement;
 
   function updateImagePreview() {
     const container = document.getElementById("search-image-preview-container");
@@ -92,7 +105,7 @@ export function setupSearch() {
       grid.innerHTML = `
         <div class="search-loading-container">
           <i class="bi bi-arrow-clockwise animate-spin" style="font-size: 24px;"></i>
-          <span>Running AI search query...</span>
+          <span>Searching...</span>
         </div>
       `;
     }
@@ -101,11 +114,14 @@ export function setupSearch() {
       const query = queryInput.value.trim() || null;
       const tag = tagInput.value.trim() || null;
       const imagePath = imageInput.value.trim() || null;
+      const parseFilter = parseInput?.value.trim() || null;
+      const parseTypeSelect = document.getElementById("search-parse-type-select") as HTMLSelectElement;
+      const parseType = parseTypeSelect?.value.trim() || null;
       const conceptSelect = document.getElementById("search-concept-select") as HTMLSelectElement;
       const conceptIdVal = conceptSelect && conceptSelect.value ? parseInt(conceptSelect.value) : null;
 
       const resp = await callService({
-        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, concept_id: conceptIdVal, limit: 50 }
+        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, parse_filter: parseFilter, parse_type: parseType, concept_id: conceptIdVal, limit: 50 }
       });
 
       if ("SearchResult" in resp) {

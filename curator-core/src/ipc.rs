@@ -48,6 +48,10 @@ pub enum Request {
         query_image_path: Option<String>,
         tag_filter: Option<String>,
         #[serde(default)]
+        parse_filter: Option<String>,
+        #[serde(default)]
+        parse_type: Option<String>,
+        #[serde(default)]
         concept_id: Option<i64>,
         limit: usize,
     },
@@ -149,6 +153,34 @@ pub enum Request {
     /// Get ground-truth sample images associated with a custom concept.
     GetConceptSamples {
         concept_id: i64,
+    },
+    /// Test filename parsing against a pattern or preset.
+    TestFilenamePattern {
+        filename: String,
+        pattern_or_type: String,
+        rule_type: String,
+        token_config: Option<Vec<crate::filename_parser::TokenBlock>>,
+    },
+    /// Compile token blocks to regex string (for preview).
+    CompileTokenBlocks {
+        token_config: Vec<crate::filename_parser::TokenBlock>,
+    },
+    /// Preview batch filename parsing on library images.
+    PreviewBatchFilenameParsing {
+        limit: usize,
+        pattern_or_type: String,
+        rule_type: String,
+        token_config: Option<Vec<crate::filename_parser::TokenBlock>>,
+        #[serde(default)]
+        output_match_type: Option<String>,
+    },
+    /// Run batch filename parsing and save results/tags to DB.
+    RunBatchFilenameParsing {
+        pattern_or_type: String,
+        rule_type: String,
+        token_config: Option<Vec<crate::filename_parser::TokenBlock>>,
+        #[serde(default)]
+        output_match_type: Option<String>,
     },
 }
 
@@ -274,7 +306,26 @@ pub enum Response {
         concept_id: i64,
         samples: Vec<ImageDetails>,
     },
+    /// Test filename pattern result.
+    TestFilenamePatternResult {
+        result: Option<crate::filename_parser::ParsedMetadataResult>,
+    },
+    /// Compiled regex from token blocks.
+    CompileTokenBlocksResult {
+        regex: String,
+    },
+    /// Preview batch filename parsing result.
+    PreviewBatchFilenameParsingResult {
+        items: Vec<crate::filename_parser::BatchPreviewItem>,
+    },
+    /// Batch filename parsing execution result.
+    RunBatchFilenameParsingResult {
+        total_processed: usize,
+        matched_count: usize,
+        tags_created: usize,
+    },
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct TagStat {
@@ -291,6 +342,8 @@ pub struct SearchMatch {
     pub tags: Vec<TagSummary>,
     pub match_type: String,
     pub hamming_distance: Option<u32>,
+    #[serde(default)]
+    pub parsed_metadata: Option<ParsedMetadata>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -305,6 +358,20 @@ pub struct ImageDetails {
     pub blacklisted_tags: Vec<TagSummary>,
     pub vector_state: String,
     pub favorite: bool,
+    #[serde(default)]
+    pub parsed_metadata: Option<ParsedMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParsedMetadata {
+    pub match_type: String,
+    pub artist: Option<String>,
+    pub pixiv_id: Option<String>,
+    pub twitter_id: Option<String>,
+    pub timestamp_4chan: Option<String>,
+    pub datetime_iso: Option<String>,
+    pub extracted_tags: Vec<String>,
+    pub raw_matched: String,
 }
 
 /// A single predicted or user tag returned.

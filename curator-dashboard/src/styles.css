@@ -1423,3 +1423,47 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
 .folders-row:nth-child(even):hover {
   background-color: var(--sys-button-hover, #e5f1fb);
 }
+
+/* --- Curator Desktop Data Table --- */
+.curator-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  border: 1px solid var(--sys-border-dark, #b0b0b0);
+  background-color: var(--sys-window-bg, #ffffff);
+}
+.curator-table thead {
+  background-color: var(--sys-control-bg, #ececec);
+  border-bottom: 2px solid var(--sys-border-dark, #b0b0b0);
+}
+.curator-table th {
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 11px;
+  color: #333;
+  text-align: left;
+  border-right: 1px solid var(--sys-border-light, #d0d0d0);
+  white-space: nowrap;
+}
+.curator-table th:last-child {
+  border-right: none;
+}
+.curator-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #e0e0e0;
+  border-right: 1px solid #e5e5e5;
+  vertical-align: middle;
+}
+.curator-table td:last-child {
+  border-right: none;
+}
+.curator-table tr:hover {
+  background-color: var(--sys-button-hover, #e5f1fb);
+}
+.curator-table tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+.curator-table tr:nth-child(even):hover {
+  background-color: var(--sys-button-hover, #e5f1fb);
+}
+

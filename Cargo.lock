@@ -1043,13 +1043,17 @@ dependencies = [
 name = "curator-core"
 version = "0.1.0"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "chrono",
  "fast_image_resize",
+ "futures-util",
  "image",
  "ndarray",
  "ort",
  "png 0.18.1",
+ "regex",
+ "regex-automata",
  "serde",
  "serde_json",
  "sqlx",

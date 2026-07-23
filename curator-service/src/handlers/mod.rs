@@ -174,6 +174,8 @@ pub async fn handle_request(
             query_text,
             query_image_path,
             tag_filter,
+            parse_filter,
+            parse_type,
             concept_id,
             limit,
         } => {
@@ -181,6 +183,8 @@ pub async fn handle_request(
                 query_text,
                 query_image_path,
                 tag_filter,
+                parse_filter,
+                parse_type,
                 concept_id,
                 limit,
                 db,
@@ -523,5 +527,76 @@ pub async fn handle_request(
                 },
             }
         }
+
+        Request::TestFilenamePattern {
+            filename,
+            pattern_or_type,
+            rule_type,
+            token_config,
+        } => {
+            let res = curator_core::FilenameParser::test_filename(
+                &filename,
+                &pattern_or_type,
+                &rule_type,
+                token_config.as_deref(),
+            );
+            Response::TestFilenamePatternResult { result: res }
+        }
+
+        Request::CompileTokenBlocks { token_config } => {
+            let regex = curator_core::FilenameParser::compile_token_blocks(&token_config);
+            Response::CompileTokenBlocksResult { regex }
+        }
+
+        Request::PreviewBatchFilenameParsing {
+            limit,
+            pattern_or_type,
+            rule_type,
+            token_config,
+            output_match_type,
+        } => {
+            match curator_core::FilenameParser::preview_batch(
+                db,
+                limit,
+                &pattern_or_type,
+                &rule_type,
+                token_config.as_deref(),
+                output_match_type.as_deref(),
+            )
+            .await
+            {
+                Ok(items) => Response::PreviewBatchFilenameParsingResult { items },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+        Request::RunBatchFilenameParsing {
+            pattern_or_type,
+            rule_type,
+            token_config,
+            output_match_type,
+        } => {
+            match curator_core::FilenameParser::run_batch(
+                db,
+                &pattern_or_type,
+                &rule_type,
+                token_config.as_deref(),
+                output_match_type.as_deref(),
+            )
+            .await
+            {
+                Ok(res) => Response::RunBatchFilenameParsingResult {
+                    total_processed: res.total_processed,
+                    matched_count: res.matched_count,
+                    tags_created: res.tags_created,
+                },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
     }
 }
+

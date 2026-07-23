@@ -1,6 +1,6 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { renderTagPill, maskPath } from "./components";
-import { CardImageData, ImageDetails, SearchMatch, TagSummary } from "./types";
+import { CardImageData, ImageDetails, SearchMatch, TagSummary, ParsedMetadata } from "./types";
 import { imageBytesToPngBlob } from "./utils";
 import { getImageClickAction, isSelectMode, selectedImageIds } from "./state";
 import { openImageViewer } from "./image-viewer";
@@ -17,6 +17,63 @@ export function renderTagListHtml(tags: TagSummary[], maxVisible = 10): string {
   const extraCount = tags.length - maxVisible;
   return display.map(t => getTagPillHtml(t)).join("") +
     (extraCount > 0 ? `<span class="tag-pill" style="background-color: #f0f0f0; color: #555555; font-style: italic;">+${extraCount} more</span>` : "");
+}
+
+function renderParsedMetadataHtml(meta: ParsedMetadata): string {
+  const parts: string[] = [];
+
+  // Anime Screenshot: special merged pill
+  if (meta.match_type === "anime_screenshot") {
+    const animeTag = meta.extracted_tags.find(t => t.toLowerCase().startsWith("anime:"));
+    const epTag = meta.extracted_tags.find(t => t.toLowerCase().startsWith("episode:"));
+    const animeName = animeTag ? animeTag.split(":").slice(1).join(":") : "Unknown";
+    const epNum = epTag ? epTag.split(":").slice(1).join(":") : "?";
+    parts.push(`<span class="tag-pill tag-copyright" style="font-size: 10px; font-weight: 600;"><i class="bi bi-film"></i> Anime Screenshot: ${animeName} - ${epNum}</span>`);
+  } else {
+    // Build a single pill per type: "type: value"
+    if (meta.datetime_iso) {
+      parts.push(`<span class="tag-pill tag-meta" style="font-size: 10px;"><i class="bi bi-clock"></i> 4chan: ${meta.datetime_iso}</span>`);
+    } else if (meta.artist) {
+      parts.push(`<span class="tag-pill tag-artist" style="font-size: 10px;"><i class="bi bi-person"></i> artist: ${meta.artist}</span>`);
+    }
+  }
+
+  if (meta.pixiv_id) {
+    const pageTag = meta.extracted_tags.find(t => t.startsWith("page:"));
+    const pageStr = pageTag ? ` ${pageTag}` : "";
+    parts.push(`<span class="tag-pill tag-copyright" style="font-size: 10px;"><i class="bi bi-image"></i> pixiv: <a href="https://www.pixiv.net/en/artworks/${meta.pixiv_id}" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline; font-size: inherit;" onmouseover="this.style.textDecoration='none'" onmouseout="this.style.textDecoration='underline'">${meta.pixiv_id}</a>${pageStr}</span>`);
+  }
+  if (meta.twitter_id) parts.push(`<span class="tag-pill tag-character" style="font-size: 10px;"><i class="bi bi-twitter"></i> twitter: ${meta.twitter_id}</span>`);
+
+  // Show remaining extracted tags not already represented
+  const fieldTags = new Set<string>();
+  if (meta.artist) fieldTags.add(`artist:${meta.artist}`);
+  if (meta.pixiv_id) fieldTags.add(`pixiv:${meta.pixiv_id}`);
+  if (meta.twitter_id) fieldTags.add(`twitter:${meta.twitter_id}`);
+  if (meta.datetime_iso) fieldTags.add(`date:${meta.datetime_iso.split(' ')[0]}`);
+  if (meta.match_type === "anime_screenshot") {
+    const a = meta.extracted_tags.find(t => t.toLowerCase().startsWith("anime:"));
+    const e = meta.extracted_tags.find(t => t.toLowerCase().startsWith("episode:"));
+    if (a) fieldTags.add(a);
+    if (e) fieldTags.add(e);
+  }
+
+  for (const tag of meta.extracted_tags) {
+    if (fieldTags.has(tag)) continue;
+    if (tag.startsWith('artist:') || tag.startsWith('pixiv:') || tag.startsWith('twitter:')) continue;
+    if (tag.startsWith('page:')) continue;
+    const tl = tag.toLowerCase();
+    if (tl.startsWith('anime:') || tl.startsWith('episode:')) continue;
+
+    let tagClass = "tag-rank-3";
+    if (tag.startsWith("date:")) tagClass = "tag-meta";
+    else if (tag.startsWith("source:") || tag.startsWith("site:")) tagClass = "tag-meta";
+    else if (tag.startsWith("group:")) tagClass = "tag-character";
+    else if (tag.startsWith("resolution:")) tagClass = "tag-meta";
+    parts.push(`<span class="tag-pill ${tagClass}" style="font-size: 10px; font-family: monospace;">${tag}</span>`);
+  }
+
+  return parts.join(" ");
 }
 
 // --- Card Event Handlers ---
@@ -148,6 +205,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
 
     const srcUrl = convertFileSrc(img.filepath);
     const tagHtml = renderTagListHtml(img.tags);
+    const parsedHtml = img.parsedMetadata ? renderParsedMetadataHtml(img.parsedMetadata) : "";
 
     card.innerHTML = `
       <input type="checkbox" class="card-select-checkbox" data-id="${img.id}" ${selectedImageIds.has(img.id) ? 'checked' : ''} />
@@ -167,6 +225,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
             <i class="bi bi-folder2-open"></i>
           </button>
         </div>
+        ${parsedHtml ? `<div class="tag-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
         <div class="tag-list">
           ${tagHtml}
         </div>
@@ -233,6 +292,7 @@ export function renderImages(images: ImageDetails[], gridId: string) {
     tags: img.tags,
     favorite: img.favorite,
     badgeHtml: `<div class="vector-badge ${img.vector_state === "ready" ? "badge-ready" : "badge-pending"}">${img.vector_state}</div>`,
+    parsedMetadata: img.parsed_metadata,
   }));
 
   renderCards(cards, grid);
@@ -259,6 +319,7 @@ export function renderSearchResults(matches: SearchMatch[]) {
       tags: m.tags,
       badgeHtml: `<div class="vector-badge" style="background-color: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor};">${scoreBadgeText}</div>`,
       emptyMessage: "No matching results found.",
+      parsedMetadata: m.parsed_metadata,
     };
   });
 
