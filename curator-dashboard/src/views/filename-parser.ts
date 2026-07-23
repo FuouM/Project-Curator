@@ -109,6 +109,58 @@ export function setupFilenameParserView() {
     refreshBatchPreview();
   });
 
+  // Token builder: Export (copy block sequence to clipboard)
+  document.getElementById("fn-token-export-btn")?.addEventListener("click", async () => {
+    if (currentTokenBlocks.length === 0) return;
+    const json = JSON.stringify(currentTokenBlocks, null, 2);
+    try {
+      await navigator.clipboard.writeText(json);
+      const btn = document.getElementById("fn-token-export-btn");
+      if (btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<i class="bi bi-check-lg"></i> Copied';
+        setTimeout(() => { btn.innerHTML = orig; }, 1500);
+      }
+    } catch {
+      prompt("Copy this block sequence:", json);
+    }
+  });
+
+  // Token builder: Import (paste block sequence from clipboard or text)
+  document.getElementById("fn-token-import-btn")?.addEventListener("click", async () => {
+    let text = "";
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      // Clipboard API blocked — fall back to prompt
+    }
+    if (!text) {
+      text = prompt("Paste a block sequence (JSON array of token blocks):", "") || "";
+    }
+    if (!text.trim()) return;
+    try {
+      const parsed = JSON.parse(text);
+      const blocks: TokenBlock[] = Array.isArray(parsed) ? parsed : (parsed.blocks || parsed);
+      if (!Array.isArray(blocks) || blocks.length === 0) {
+        alert("Invalid block sequence: expected a non-empty JSON array.");
+        return;
+      }
+      // Validate each block has token_type
+      for (const b of blocks) {
+        if (!b.token_type) {
+          alert("Invalid block: missing 'token_type' field.");
+          return;
+        }
+      }
+      currentTokenBlocks = blocks;
+      renderTokenBlocks();
+      runSandboxTest();
+      refreshBatchPreview();
+    } catch {
+      alert("Invalid JSON. Expected a JSON array of token blocks.");
+    }
+  });
+
   // Token builder: Save
   document.getElementById("fn-token-save-btn")?.addEventListener("click", () => {
     if (currentTokenBlocks.length === 0) return;
