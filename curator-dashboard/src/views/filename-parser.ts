@@ -109,35 +109,21 @@ export function setupFilenameParserView() {
     refreshBatchPreview();
   });
 
-  // Token builder: Export (copy block sequence to clipboard)
-  document.getElementById("fn-token-export-btn")?.addEventListener("click", async () => {
+  // Token builder: Export (fill text field with block sequence JSON)
+  document.getElementById("fn-token-export-btn")?.addEventListener("click", () => {
     if (currentTokenBlocks.length === 0) return;
-    const json = JSON.stringify(currentTokenBlocks, null, 2);
-    try {
-      await navigator.clipboard.writeText(json);
-      const btn = document.getElementById("fn-token-export-btn");
-      if (btn) {
-        const orig = btn.innerHTML;
-        btn.innerHTML = '<i class="bi bi-check-lg"></i> Copied';
-        setTimeout(() => { btn.innerHTML = orig; }, 1500);
-      }
-    } catch {
-      prompt("Copy this block sequence:", json);
+    const input = document.getElementById("fn-token-seq-input") as HTMLInputElement;
+    if (input) {
+      input.value = JSON.stringify(currentTokenBlocks);
+      input.select();
     }
   });
 
-  // Token builder: Import (paste block sequence from clipboard or text)
-  document.getElementById("fn-token-import-btn")?.addEventListener("click", async () => {
-    let text = "";
-    try {
-      text = await navigator.clipboard.readText();
-    } catch {
-      // Clipboard API blocked — fall back to prompt
-    }
-    if (!text) {
-      text = prompt("Paste a block sequence (JSON array of token blocks):", "") || "";
-    }
-    if (!text.trim()) return;
+  // Token builder: Import (parse block sequence from text field)
+  document.getElementById("fn-token-import-btn")?.addEventListener("click", () => {
+    const input = document.getElementById("fn-token-seq-input") as HTMLInputElement;
+    const text = input?.value.trim() || "";
+    if (!text) return;
     try {
       const parsed = JSON.parse(text);
       const blocks: TokenBlock[] = Array.isArray(parsed) ? parsed : (parsed.blocks || parsed);
@@ -145,7 +131,6 @@ export function setupFilenameParserView() {
         alert("Invalid block sequence: expected a non-empty JSON array.");
         return;
       }
-      // Validate each block has token_type
       for (const b of blocks) {
         if (!b.token_type) {
           alert("Invalid block: missing 'token_type' field.");
