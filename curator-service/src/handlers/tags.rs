@@ -49,8 +49,9 @@ pub async fn remove_tag_logic(
             .unwrap_or(None);
 
     if let Some((tag_id,)) = tag_res {
-        let source_row: Option<(String,)> = sqlx::query_as(
-            "SELECT s.name FROM image_tags it
+        // Find which source owns this active tag for this image
+        let source_row: Option<(i64, String)> = sqlx::query_as(
+            "SELECT s.id, s.name FROM image_tags it
              JOIN sources s ON it.source_id = s.id
              WHERE it.image_id = ? AND it.tag_id = ? AND it.is_deleted = 0
              LIMIT 1",
@@ -61,29 +62,34 @@ pub async fn remove_tag_logic(
         .await
         .unwrap_or(None);
 
-        let source_name = source_row.map(|(sname,)| sname).unwrap_or_default();
-        if source_name == "ai:custom-concepts" {
-            let _ = sqlx::query(
-                "DELETE FROM image_tags WHERE image_id = ? AND tag_id = ?",
-            )
-            .bind(image_id)
-            .bind(tag_id)
-            .execute(db)
-            .await;
-        } else {
-            let is_ai_source = source_name.starts_with("ai:");
-            let is_blacklisted_val = if is_ai_source { 1i64 } else { 0i64 };
+        if let Some((source_id, source_name)) = source_row {
+            if source_name == "ai:custom-concepts" {
+                // Hard-delete concept tags
+                let _ = sqlx::query(
+                    "DELETE FROM image_tags WHERE image_id = ? AND tag_id = ? AND source_id = ?",
+                )
+                .bind(image_id)
+                .bind(tag_id)
+                .bind(source_id)
+                .execute(db)
+                .await;
+            } else {
+                let is_ai_source = source_name.starts_with("ai:");
+                let is_blacklisted_val = if is_ai_source { 1i64 } else { 0i64 };
 
-            sqlx::query(
-                "UPDATE image_tags
-                 SET is_deleted = 1, is_blacklisted = ?, deleted_at = CURRENT_TIMESTAMP
-                 WHERE image_id = ? AND tag_id = ?",
-            )
-            .bind(is_blacklisted_val)
-            .bind(image_id)
-            .bind(tag_id)
-            .execute(db)
-            .await?;
+                // Only mark this source's row as deleted — don't touch other sources
+                sqlx::query(
+                    "UPDATE image_tags
+                     SET is_deleted = 1, is_blacklisted = ?, deleted_at = CURRENT_TIMESTAMP
+                     WHERE image_id = ? AND tag_id = ? AND source_id = ?",
+                )
+                .bind(is_blacklisted_val)
+                .bind(image_id)
+                .bind(tag_id)
+                .bind(source_id)
+                .execute(db)
+                .await?;
+            }
         }
     }
     Ok(())
@@ -102,15 +108,30 @@ pub async fn unblacklist_tag_logic(
             .unwrap_or(None);
 
     if let Some((tag_id,)) = tag_res {
-        sqlx::query(
-            "UPDATE image_tags
-             SET is_deleted = 0, is_blacklisted = 0, deleted_at = NULL
-             WHERE image_id = ? AND tag_id = ?",
+        // Find the source that blacklisted this tag
+        let source_row: Option<(i64,)> = sqlx::query_as(
+            "SELECT source_id FROM image_tags
+             WHERE image_id = ? AND tag_id = ? AND is_blacklisted = 1
+             LIMIT 1",
         )
         .bind(image_id)
         .bind(tag_id)
-        .execute(db)
-        .await?;
+        .fetch_optional(db)
+        .await
+        .unwrap_or(None);
+
+        if let Some((source_id,)) = source_row {
+            sqlx::query(
+                "UPDATE image_tags
+                 SET is_deleted = 0, is_blacklisted = 0, deleted_at = NULL
+                 WHERE image_id = ? AND tag_id = ? AND source_id = ?",
+            )
+            .bind(image_id)
+            .bind(tag_id)
+            .bind(source_id)
+            .execute(db)
+            .await?;
+        }
     }
     Ok(())
 }

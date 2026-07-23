@@ -1,5 +1,6 @@
 import { callService } from "../ipc";
-import { TokenBlock, ParsedMetadataResult, BatchPreviewItem } from "../types";
+import { TokenBlock, ParsedMetadata, BatchPreviewItem } from "../types";
+import { escapeHtml } from "../utils";
 
 let currentTokenBlocks: TokenBlock[] = [
   { token_type: "artist" },
@@ -378,7 +379,7 @@ export async function runSandboxTest() {
     });
 
     if (res && "TestFilenamePatternResult" in res) {
-      const match: ParsedMetadataResult | null = res.TestFilenamePatternResult.result;
+      const match: ParsedMetadata | null = res.TestFilenamePatternResult.result;
       renderSandboxResult(match, filename);
     } else {
       resultContainer.innerHTML = `<div style="color: #721c24; font-size: 11px;">Error executing test.</div>`;
@@ -388,7 +389,7 @@ export async function runSandboxTest() {
   }
 }
 
-function renderSandboxResult(match: ParsedMetadataResult | null, filename: string) {
+function renderSandboxResult(match: ParsedMetadata | null, filename: string) {
   const container = document.getElementById("fn-sandbox-result");
   if (!container) return;
 
@@ -607,14 +608,5 @@ export async function runBatchParsing() {
   } catch (err) {
     if (statusEl) statusEl.innerHTML = `<span style="color: #721c24; font-size: 11px;">Error: ${err}</span>`;
   }
-}
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }
 

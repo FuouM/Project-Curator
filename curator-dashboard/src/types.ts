@@ -43,7 +43,7 @@ export interface TokenBlock {
   enabled?: boolean;
 }
 
-export interface ParsedMetadataResult {
+export interface ParsedMetadata {
   match_type: string;
   raw_matched: string;
   artist?: string;
@@ -58,7 +58,7 @@ export interface BatchPreviewItem {
   image_id: number;
   filename: string;
   filepath: string;
-  match_result?: ParsedMetadataResult;
+  match_result?: ParsedMetadata;
 }
 
 export interface SearchMatch {
@@ -81,17 +81,6 @@ export interface ImageDetails {
   vector_state: string;
   favorite: boolean;
   parsed_metadata?: ParsedMetadata;
-}
-
-export interface ParsedMetadata {
-  match_type: string;
-  artist?: string;
-  pixiv_id?: string;
-  twitter_id?: string;
-  timestamp_4chan?: string;
-  datetime_iso?: string;
-  extracted_tags: string[];
-  raw_matched: string;
 }
 
 export interface TagSummary {
@@ -156,7 +145,7 @@ export type ResponsePayload =
   | { ConceptResult: { concept: CustomConcept } }
   | { ConceptRescannedResult: { concept_id: number; tagged_count: number } }
   | { ConceptSamplesResult: { concept_id: number; samples: ImageDetails[] } }
-  | { TestFilenamePatternResult: { result: ParsedMetadataResult | null } }
+  | { TestFilenamePatternResult: { result: ParsedMetadata | null } }
   | { CompileTokenBlocksResult: { regex: string } }
   | { PreviewBatchFilenameParsingResult: { items: BatchPreviewItem[] } }
   | { RunBatchFilenameParsingResult: { total_processed: number; matched_count: number; tags_created: number } };

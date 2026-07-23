@@ -225,7 +225,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
             <i class="bi bi-folder2-open"></i>
           </button>
         </div>
-        ${parsedHtml ? `<div class="tag-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
+        ${parsedHtml ? `<div class="parsed-metadata-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
         <div class="tag-list">
           ${tagHtml}
         </div>

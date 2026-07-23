@@ -308,7 +308,7 @@ pub enum Response {
     },
     /// Test filename pattern result.
     TestFilenamePatternResult {
-        result: Option<crate::filename_parser::ParsedMetadataResult>,
+        result: Option<crate::filename_parser::ParsedMetadata>,
     },
     /// Compiled regex from token blocks.
     CompileTokenBlocksResult {
@@ -362,17 +362,8 @@ pub struct ImageDetails {
     pub parsed_metadata: Option<ParsedMetadata>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ParsedMetadata {
-    pub match_type: String,
-    pub artist: Option<String>,
-    pub pixiv_id: Option<String>,
-    pub twitter_id: Option<String>,
-    pub timestamp_4chan: Option<String>,
-    pub datetime_iso: Option<String>,
-    pub extracted_tags: Vec<String>,
-    pub raw_matched: String,
-}
+// ParsedMetadata is defined in filename_parser and re-used here
+pub use crate::filename_parser::ParsedMetadata;
 
 /// A single predicted or user tag returned.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

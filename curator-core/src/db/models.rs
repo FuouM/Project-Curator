@@ -63,18 +63,6 @@ pub struct Folder {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct FilenameParserRule {
-    pub id: i64,
-    pub name: String,
-    pub rule_type: String,
-    pub pattern: Option<String>,
-    pub token_config: Option<String>,
-    pub is_enabled: i64,
-    pub priority: i64,
-    pub created_at: NaiveDateTime,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ImageParsedMetadata {
     pub id: i64,
     pub image_id: i64,

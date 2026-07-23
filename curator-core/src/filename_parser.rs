@@ -3,13 +3,12 @@ use aho_corasick::AhoCorasick;
 use chrono::{DateTime, Utc};
 use futures_util::stream::TryStreamExt;
 use regex::Regex;
-use regex_automata::meta::Regex as DfaRegex;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ParsedMetadataResult {
+pub struct ParsedMetadata {
     pub match_type: String,
     pub raw_matched: String,
     pub artist: Option<String>,
@@ -33,22 +32,11 @@ pub struct TokenBlock {
 fn default_true() -> bool { true }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RulePayload {
-    pub id: Option<i64>,
-    pub name: String,
-    pub rule_type: String, // "preset", "custom_regex", "token_builder"
-    pub pattern: Option<String>,
-    pub token_config: Option<Vec<TokenBlock>>,
-    pub is_enabled: bool,
-    pub priority: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchPreviewItem {
     pub image_id: i64,
     pub filename: String,
     pub filepath: String,
-    pub match_result: Option<ParsedMetadataResult>,
+    pub match_result: Option<ParsedMetadata>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,11 +46,18 @@ pub struct BatchExecutionResult {
     pub tags_created: usize,
 }
 
+struct BatchParseState {
+    source_id: i64,
+    tag_cache: std::collections::HashMap<String, i64>,
+    matched_count: usize,
+    tags_created: usize,
+}
+
 pub struct FilenameParser;
 
 impl FilenameParser {
     /// Test a single filename against built-in presets or custom patterns
-    pub fn test_filename(filename: &str, pattern_or_type: &str, rule_type: &str, token_config: Option<&[TokenBlock]>) -> Option<ParsedMetadataResult> {
+    pub fn test_filename(filename: &str, pattern_or_type: &str, rule_type: &str, token_config: Option<&[TokenBlock]>) -> Option<ParsedMetadata> {
         let clean_filename = std::path::Path::new(filename)
             .file_stem()
             .and_then(|s| s.to_str())
@@ -83,8 +78,8 @@ impl FilenameParser {
         }
     }
 
-    /// Quick prefix filter using Aho-Corasick to skip filenames that can't match a preset
-    fn quick_reject(filename: &str, preset_id: &str) -> bool {
+    /// Returns true if the filename might match a given preset (Aho-Corasick substring check)
+    fn might_match(filename: &str, preset_id: &str) -> bool {
         static AC_PIXIV: OnceLock<AhoCorasick> = OnceLock::new();
         static AC_BOORU: OnceLock<AhoCorasick> = OnceLock::new();
         static AC_TWITTER: OnceLock<AhoCorasick> = OnceLock::new();
@@ -107,60 +102,50 @@ impl FilenameParser {
                 let ac = AC_TAGGED.get_or_init(|| AhoCorasick::new([r"["]).unwrap());
                 ac.find(filename).is_some()
             }
-            _ => true, // 4chan_timestamp: no quick reject
+            _ => true, // 4chan_timestamp, anime_screenshot: no quick reject
         }
     }
 
     /// Run built-in preset test
-    pub fn test_preset(filename: &str, preset_id: &str) -> Option<ParsedMetadataResult> {
-        let clean = std::path::Path::new(filename)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or(filename);
-
+    pub fn test_preset(filename: &str, preset_id: &str) -> Option<ParsedMetadata> {
         match preset_id {
-            "4chan_timestamp" => Self::parse_4chan_timestamp(clean),
+            "4chan_timestamp" => Self::parse_4chan_timestamp(filename),
             "pixiv_id" => {
-                if Self::quick_reject(clean, "pixiv_id") {
-                    Self::parse_pixiv_id(clean)
+                if Self::might_match(filename, "pixiv_id") {
+                    Self::parse_pixiv_id(filename)
                 } else {
                     None
                 }
             }
             "twitter_key" => {
-                if Self::quick_reject(clean, "twitter_key") {
-                    Self::parse_twitter_key(clean)
+                if Self::might_match(filename, "twitter_key") {
+                    Self::parse_twitter_key(filename)
                 } else {
                     None
                 }
             }
             "booru_post" => {
-                if Self::quick_reject(clean, "booru_post") {
-                    Self::parse_booru_post(clean)
+                if Self::might_match(filename, "booru_post") {
+                    Self::parse_booru_post(filename)
                 } else {
                     None
                 }
             }
             "tagged_string" => {
-                if Self::quick_reject(clean, "tagged_string") {
-                    Self::parse_tagged_string(clean)
+                if Self::might_match(filename, "tagged_string") {
+                    Self::parse_tagged_string(filename)
                 } else {
                     None
                 }
             }
-            "anime_screenshot" => Self::parse_anime_screenshot(clean),
+            "anime_screenshot" => Self::parse_anime_screenshot(filename),
             _ => None,
         }
     }
 
     /// 4chan timestamp extractor (10, 13, 16 digits)
-    fn parse_4chan_timestamp(filename: &str) -> Option<ParsedMetadataResult> {
-        let clean = std::path::Path::new(filename)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or(filename);
-
-        let parts: Vec<&str> = clean.split(['_', '-', ' ']).collect();
+    fn parse_4chan_timestamp(filename: &str) -> Option<ParsedMetadata> {
+        let parts: Vec<&str> = filename.split(['_', '-', ' ']).collect();
         for part in parts {
             if part.chars().all(|c| c.is_ascii_digit()) {
                 let len = part.len();
@@ -178,7 +163,7 @@ impl FilenameParser {
                         if (2003..=2030).contains(&year) {
                             let iso = dt.format("%Y-%m-%d %H:%M:%S UTC").to_string();
                             let date_tag = format!("date:{}", dt.format("%Y-%m-%d"));
-                            return Some(ParsedMetadataResult {
+                            return Some(ParsedMetadata {
                                 match_type: "4chan_timestamp".to_string(),
                                 raw_matched: filename.to_string(),
                                 artist: None,
@@ -197,15 +182,10 @@ impl FilenameParser {
     }
 
     /// Pixiv post extractor (illust_123456_..., ..._p0)
-    fn parse_pixiv_id(filename: &str) -> Option<ParsedMetadataResult> {
-        let clean = std::path::Path::new(filename)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or(filename);
-
+    fn parse_pixiv_id(filename: &str) -> Option<ParsedMetadata> {
         static RE_ILLUST: OnceLock<Regex> = OnceLock::new();
         let re_illust = RE_ILLUST.get_or_init(|| Regex::new(r"illust_(\d+)(?:_(\d{8})_(\d{6}))?").unwrap());
-        if let Some(caps) = re_illust.captures(clean) {
+        if let Some(caps) = re_illust.captures(filename) {
             let pid = caps.get(1)?.as_str().to_string();
             let mut tags = vec![format!("pixiv:{}", pid)];
             let mut iso = None;
@@ -216,7 +196,7 @@ impl FilenameParser {
                     iso = Some(format!("{}-{}-{} {}", &date_str[0..4], &date_str[4..6], &date_str[6..8], t.as_str()));
                 }
             }
-            return Some(ParsedMetadataResult {
+            return Some(ParsedMetadata {
                 match_type: "pixiv_id".to_string(),
                 raw_matched: filename.to_string(),
                 artist: None,
@@ -230,7 +210,7 @@ impl FilenameParser {
 
         static RE_PAGE: OnceLock<Regex> = OnceLock::new();
         let re_page = RE_PAGE.get_or_init(|| Regex::new(r"^(?:(.+)_)?(\d{7,10})_p(\d+)(?:[\s_](.+))?$").unwrap());
-        if let Some(caps) = re_page.captures(clean) {
+        if let Some(caps) = re_page.captures(filename) {
             let artist = caps.get(1).map(|m| m.as_str().trim().to_string());
             let pid = caps.get(2)?.as_str().to_string();
             let page = caps.get(3)?.as_str().to_string();
@@ -240,7 +220,7 @@ impl FilenameParser {
                     tags.push(format!("artist:{}", a));
                 }
             }
-            return Some(ParsedMetadataResult {
+            return Some(ParsedMetadata {
                 match_type: "pixiv_id".to_string(),
                 raw_matched: filename.to_string(),
                 artist,
@@ -256,7 +236,7 @@ impl FilenameParser {
     }
 
     /// Twitter key extractor (media_..., snowflake IDs)
-    fn parse_twitter_key(filename: &str) -> Option<ParsedMetadataResult> {
+    fn parse_twitter_key(filename: &str) -> Option<ParsedMetadata> {
         static RE_TW: OnceLock<Regex> = OnceLock::new();
         let re_tw = RE_TW.get_or_init(|| Regex::new(r"(?:media_|status_)?([A-Za-z0-9_-]{15,25})").unwrap());
         static RE_SNOWFLAKE: OnceLock<Regex> = OnceLock::new();
@@ -264,7 +244,7 @@ impl FilenameParser {
 
         if let Some(caps) = re_snowflake.captures(filename) {
             let match_str = caps.get(1)?.as_str().to_string();
-            return Some(ParsedMetadataResult {
+            return Some(ParsedMetadata {
                 match_type: "twitter_key".to_string(),
                 raw_matched: filename.to_string(),
                 artist: None,
@@ -279,7 +259,7 @@ impl FilenameParser {
         if let Some(caps) = re_tw.captures(filename) {
             let key = caps.get(1)?.as_str().to_string();
             if key.len() >= 15 {
-                return Some(ParsedMetadataResult {
+                return Some(ParsedMetadata {
                     match_type: "twitter_key".to_string(),
                     raw_matched: filename.to_string(),
                     artist: None,
@@ -296,7 +276,7 @@ impl FilenameParser {
     }
 
     /// Booru post extractor (gelbooru_..., yandere_...)
-    fn parse_booru_post(filename: &str) -> Option<ParsedMetadataResult> {
+    fn parse_booru_post(filename: &str) -> Option<ParsedMetadata> {
         static RE_BOORU: OnceLock<Regex> = OnceLock::new();
         let re_booru = RE_BOORU.get_or_init(|| Regex::new(r"(gelbooru|yandere|danbooru|konachan)_(\d+)(?:_(.+))?").unwrap());
         if let Some(caps) = re_booru.captures(filename) {
@@ -313,7 +293,7 @@ impl FilenameParser {
                 }
             }
 
-            return Some(ParsedMetadataResult {
+            return Some(ParsedMetadata {
                 match_type: format!("{}_post", site),
                 raw_matched: filename.to_string(),
                 artist: None,
@@ -328,7 +308,7 @@ impl FilenameParser {
     }
 
     /// Tagged string extractor `[artist] title (tag1 tag2)`
-    fn parse_tagged_string(filename: &str) -> Option<ParsedMetadataResult> {
+    fn parse_tagged_string(filename: &str) -> Option<ParsedMetadata> {
         static RE_BRACKET: OnceLock<Regex> = OnceLock::new();
         let re_bracket = RE_BRACKET.get_or_init(|| Regex::new(r"^\[([^\]]+)\]\s*(.*?)(?:\s*\(([^)]+)\))?$").unwrap());
         if let Some(caps) = re_bracket.captures(filename) {
@@ -346,7 +326,7 @@ impl FilenameParser {
                 }
             }
 
-            return Some(ParsedMetadataResult {
+            return Some(ParsedMetadata {
                 match_type: "tagged_string".to_string(),
                 raw_matched: filename.to_string(),
                 artist,
@@ -362,19 +342,18 @@ impl FilenameParser {
 
     /// Anime screenshot extractor — tries multiple common patterns
     /// Mandatory fields: anime_name, episode. The pill shows "Anime Screenshot: [name] - [ep]"
-    fn parse_anime_screenshot(filename: &str) -> Option<ParsedMetadataResult> {
+    fn parse_anime_screenshot(filename: &str) -> Option<ParsedMetadata> {
         static RE_EPISODE: OnceLock<Regex> = OnceLock::new();
         let re_ep = RE_EPISODE.get_or_init(|| {
             Regex::new(r"(?:[-_\s](?:E(?:P)?|EP|ep)?(\d{1,4})|[-_\s](\d{1,4})[-_\s])").unwrap()
         });
 
-        // Pattern 1: [Group] Anime Name - 03 ... .mkv_snapshot_HH.MM.SSS.jpg
-        // Pattern 2: [Group] Anime Name - 03 (1080p) ...
-        // Pattern 3: Anime Name - 03 [1080p] ...
-        // Pattern 4: Anime.Name.E03.1080p ...
-        // Extract: everything before the episode number is the anime name
+        static RE_RESOLUTION: OnceLock<Regex> = OnceLock::new();
+        let re_res = RE_RESOLUTION.get_or_init(|| Regex::new(r"(?i)(\d{3,4}p)").unwrap());
 
-        // Strip file extension
+        static RE_GROUP_BRACKET: OnceLock<Regex> = OnceLock::new();
+        let re_grp = RE_GROUP_BRACKET.get_or_init(|| Regex::new(r"^\[([^\]]+)\]").unwrap());
+
         let stem = std::path::Path::new(filename)
             .file_stem()
             .and_then(|s| s.to_str())
@@ -388,11 +367,11 @@ impl FilenameParser {
         let ep_start = ep_caps.get(0).unwrap().start();
 
         // Extract anime name: everything before the episode match, stripped of leading brackets/groups
-        let before_ep = &stem[..ep_start].trim_end_matches(|c: char| c == '-' || c == '_' || c == ' ' || c == '.');
+        let before_ep = &stem[..ep_start].trim_end_matches(['-', '_', ' ', '.']);
 
         // Remove leading [Group] tags
         let name_clean = before_ep
-            .trim_start_matches(|c: char| c == '[' || c == '(')
+            .trim_start_matches(['[', '('])
             .trim_start();
         let name_clean = if let Some(end) = name_clean.find(']') {
             name_clean[end + 1..].trim()
@@ -421,16 +400,16 @@ impl FilenameParser {
         ];
 
         // Look for resolution
-        if let Some(res) = Regex::new(r"(?i)(\d{3,4}p)").ok().and_then(|r| r.find(after_ep).or_else(|| Regex::new(r"(?i)(\d{3,4}p)").ok().and_then(|r| r.find(stem)))) {
+        if let Some(res) = re_res.find(after_ep).or_else(|| re_res.find(stem)) {
             extracted_tags.push(format!("resolution:{}", res.as_str().to_lowercase()));
         }
 
         // Look for source group in brackets
-        if let Some(grp) = Regex::new(r"^\[([^\]]+)\]").ok().and_then(|r| r.captures(stem)).and_then(|c| c.get(1)) {
+        if let Some(grp) = re_grp.captures(stem).and_then(|c| c.get(1)) {
             extracted_tags.push(format!("group:{}", grp.as_str()));
         }
 
-        Some(ParsedMetadataResult {
+        Some(ParsedMetadata {
             match_type: "anime_screenshot".to_string(),
             raw_matched: filename.to_string(),
             artist: None,
@@ -442,46 +421,18 @@ impl FilenameParser {
         })
     }
 
-    /// Quick pre-filter: check if filename contains a run of N+ consecutive digits
-    fn has_digit_run(filename: &str, min_len: usize) -> bool {
-        let mut run = 0;
-        for c in filename.chars() {
-            if c.is_ascii_digit() {
-                run += 1;
-                if run >= min_len {
-                    return true;
-                }
-            } else {
-                run = 0;
-            }
-        }
-        false
-    }
-
     /// Test Regex pattern with named capture groups
-    pub fn test_regex(filename: &str, pattern: &str) -> Option<ParsedMetadataResult> {
-        // Quick pre-filter: if the pattern requires digit runs, check first
-        if pattern.contains(r"\d{7,") || pattern.contains(r"\d{6,") || pattern.contains(r"\d{5,") {
-            if !Self::has_digit_run(filename, 5) {
-                return None;
-            }
-        }
-
-        // Use DFA for fast match check, then NFA for captures only if matched
-        static DFA_CACHE: OnceLock<std::sync::Mutex<std::collections::HashMap<String, DfaRegex>>> = OnceLock::new();
-        let cache = DFA_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-        let is_match = {
+    pub fn test_regex(filename: &str, pattern: &str) -> Option<ParsedMetadata> {
+        // Cache compiled NFA regexes for reuse across batch calls
+        static NFA_CACHE: OnceLock<std::sync::Mutex<std::collections::HashMap<String, Regex>>> = OnceLock::new();
+        let cache = NFA_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+        let re = {
             let mut guard = cache.lock().unwrap();
-            let dfa = guard.entry(pattern.to_string()).or_insert_with(|| {
-                DfaRegex::new(pattern).unwrap_or_else(|_| DfaRegex::new("a^").unwrap())
-            });
-            dfa.is_match(filename.as_bytes())
+            guard.entry(pattern.to_string())
+                .or_insert_with(|| Regex::new(pattern).unwrap_or_else(|_| Regex::new("a^").unwrap()))
+                .clone()
         };
-        if !is_match {
-            return None;
-        }
 
-        let re = Regex::new(pattern).ok()?;
         if let Some(caps) = re.captures(filename) {
             let mut artist = None;
             let mut pixiv_id = None;
@@ -535,7 +486,7 @@ impl FilenameParser {
                 }
             }
 
-            return Some(ParsedMetadataResult {
+            return Some(ParsedMetadata {
                 match_type: "custom_regex".to_string(),
                 raw_matched: filename.to_string(),
                 artist,
@@ -611,6 +562,13 @@ impl FilenameParser {
         regex_str
     }
 
+    fn apply_match_type_override(result: ParsedMetadata, override_type: Option<&str>) -> ParsedMetadata {
+        match override_type {
+            Some(t) => ParsedMetadata { match_type: t.to_string(), ..result },
+            None => result,
+        }
+    }
+
     /// Preview batch parsing results on database images
     pub async fn preview_batch(
         pool: &SqlitePool,
@@ -635,15 +593,9 @@ impl FilenameParser {
                 .unwrap_or(&current_filepath)
                 .to_string();
 
-            let match_res = Self::test_filename(&filename, pattern_or_type, rule_type, token_config);
+            let match_res = Self::test_filename(&filename, pattern_or_type, rule_type, token_config)
+                .map(|m| Self::apply_match_type_override(m, output_match_type));
 
-            // Override match_type if output_match_type is specified
-            let match_res = match_res.map(|mut m| {
-                if let Some(override_type) = output_match_type {
-                    m.match_type = override_type.to_string();
-                }
-                m
-            });
             items.push(BatchPreviewItem {
                 image_id: id,
                 filename,
@@ -688,19 +640,22 @@ impl FilenameParser {
         .fetch(pool);
 
         let mut total_processed: usize = 0;
-        let mut matched_count: usize = 0;
-        let mut tags_created: usize = 0;
-
-        // In-memory tag cache: tag_name -> tag_id
-        let mut tag_cache: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
 
         // Pre-load existing tags into cache
+        let mut tag_cache: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
         let existing_tags: Vec<(i64, String)> = sqlx::query_as("SELECT id, name FROM tags")
             .fetch_all(pool)
             .await?;
         for (id, name) in existing_tags {
             tag_cache.insert(name, id);
         }
+
+        let mut state = BatchParseState {
+            source_id,
+            tag_cache,
+            matched_count: 0,
+            tags_created: 0,
+        };
 
         // Process in transaction batches of 500
         const BATCH_SIZE: usize = 500;
@@ -711,19 +666,19 @@ impl FilenameParser {
             total_processed += 1;
 
             if batch.len() >= BATCH_SIZE {
-                Self::flush_batch(pool, &mut batch, pattern_or_type, rule_type, token_config, source_id, &mut tag_cache, &mut matched_count, &mut tags_created, output_match_type).await?;
+                Self::flush_batch(pool, &mut batch, pattern_or_type, rule_type, token_config, &mut state, output_match_type).await?;
             }
         }
 
         // Flush remaining
         if !batch.is_empty() {
-            Self::flush_batch(pool, &mut batch, pattern_or_type, rule_type, token_config, source_id, &mut tag_cache, &mut matched_count, &mut tags_created, output_match_type).await?;
+            Self::flush_batch(pool, &mut batch, pattern_or_type, rule_type, token_config, &mut state, output_match_type).await?;
         }
 
         Ok(BatchExecutionResult {
             total_processed,
-            matched_count,
-            tags_created,
+            matched_count: state.matched_count,
+            tags_created: state.tags_created,
         })
     }
 
@@ -734,34 +689,23 @@ impl FilenameParser {
         pattern_or_type: &str,
         rule_type: &str,
         token_config: Option<&[TokenBlock]>,
-        source_id: i64,
-        tag_cache: &mut std::collections::HashMap<String, i64>,
-        matched_count: &mut usize,
-        tags_created: &mut usize,
+        state: &mut BatchParseState,
         output_match_type: Option<&str>,
     ) -> Result<()> {
         let mut tx = pool.begin().await?;
 
         for (img_id, current_filepath) in batch.drain(..) {
-            let path_buf = std::path::PathBuf::from(&current_filepath);
-            let filename = path_buf
+            let filename = std::path::Path::new(&current_filepath)
                 .file_name()
                 .and_then(|f| f.to_str())
                 .unwrap_or(&current_filepath)
                 .to_string();
 
-            let match_res = Self::test_filename(&filename, pattern_or_type, rule_type, token_config);
-
-            // Override match_type if output_match_type is specified
-            let match_res = match_res.map(|mut m| {
-                if let Some(override_type) = output_match_type {
-                    m.match_type = override_type.to_string();
-                }
-                m
-            });
+            let match_res = Self::test_filename(&filename, pattern_or_type, rule_type, token_config)
+                .map(|m| Self::apply_match_type_override(m, output_match_type));
 
             if let Some(res) = match_res {
-                *matched_count += 1;
+                state.matched_count += 1;
                 let extracted_json = serde_json::to_string(&res.extracted_tags).ok();
 
                 sqlx::query(
@@ -806,7 +750,7 @@ impl FilenameParser {
                     };
 
                     // Use cache or insert and cache
-                    let tag_id = if let Some(&cached_id) = tag_cache.get(&tag_name) {
+                    let tag_id = if let Some(&cached_id) = state.tag_cache.get(&tag_name) {
                         cached_id
                     } else {
                         sqlx::query("INSERT OR IGNORE INTO tags (name, category) VALUES (?, ?)")
@@ -820,7 +764,7 @@ impl FilenameParser {
                             .fetch_one(&mut *tx)
                             .await?;
 
-                        tag_cache.insert(tag_name.clone(), tag_row.0);
+                        state.tag_cache.insert(tag_name.clone(), tag_row.0);
                         tag_row.0
                     };
 
@@ -833,12 +777,12 @@ impl FilenameParser {
                     )
                     .bind(img_id)
                     .bind(tag_id)
-                    .bind(source_id)
+                    .bind(state.source_id)
                     .execute(&mut *tx)
                     .await?;
 
                     if res_link.rows_affected() > 0 {
-                        *tags_created += 1;
+                        state.tags_created += 1;
                     }
                 }
             }
@@ -855,7 +799,7 @@ mod tests {
 
     #[test]
     fn test_4chan_timestamp_extractor() {
-        let res = FilenameParser::parse_4chan_timestamp("1652448237000.png").unwrap();
+        let res = FilenameParser::parse_4chan_timestamp("1652448237000").unwrap();
         assert_eq!(res.match_type, "4chan_timestamp");
         assert_eq!(res.timestamp_4chan.as_deref(), Some("1652448237000"));
         assert!(res.extracted_tags.iter().any(|t| t.starts_with("date:")));
@@ -863,18 +807,18 @@ mod tests {
 
     #[test]
     fn test_pixiv_extractor() {
-        let res = FilenameParser::parse_pixiv_id("illust_108521179_20230513_212357.jpg").unwrap();
+        let res = FilenameParser::parse_pixiv_id("illust_108521179_20230513_212357").unwrap();
         assert_eq!(res.match_type, "pixiv_id");
         assert_eq!(res.pixiv_id.as_deref(), Some("108521179"));
 
-        let res_page = FilenameParser::parse_pixiv_id("gwitch_suletta_Mineori_108521179_p0.png").unwrap();
+        let res_page = FilenameParser::parse_pixiv_id("gwitch_suletta_Mineori_108521179_p0").unwrap();
         assert_eq!(res_page.match_type, "pixiv_id");
         assert_eq!(res_page.pixiv_id.as_deref(), Some("108521179"));
     }
 
     #[test]
     fn test_twitter_key_extractor() {
-        let res = FilenameParser::parse_twitter_key("media_FR49d0XWUAImXfA.jpg_large").unwrap();
+        let res = FilenameParser::parse_twitter_key("media_FR49d0XWUAImXfA").unwrap();
         assert_eq!(res.match_type, "twitter_key");
         assert_eq!(res.twitter_id.as_deref(), Some("FR49d0XWUAImXfA"));
     }
@@ -882,9 +826,9 @@ mod tests {
     #[test]
     fn test_token_builder_compiler() {
         let blocks = vec![
-            TokenBlock { token_type: "artist".to_string(), value: None },
-            TokenBlock { token_type: "delimiter".to_string(), value: Some("_".to_string()) },
-            TokenBlock { token_type: "pixiv_id".to_string(), value: None },
+            TokenBlock { token_type: "artist".to_string(), value: None, label: None, enabled: true },
+            TokenBlock { token_type: "delimiter".to_string(), value: Some("_".to_string()), label: None, enabled: true },
+            TokenBlock { token_type: "pixiv_id".to_string(), value: None, label: None, enabled: true },
         ];
 
         let compiled = FilenameParser::compile_token_blocks(&blocks);
@@ -957,7 +901,7 @@ mod tests {
 
         // Benchmark 4: token_builder (pre-compiled regex via compile_token_blocks)
         let token_config = vec![
-            TokenBlock { token_type: "pixiv_id".to_string(), value: None },
+            TokenBlock { token_type: "pixiv_id".to_string(), value: None, label: None, enabled: true },
         ];
         let compiled_token_regex = FilenameParser::compile_token_blocks(&token_config);
         let start = Instant::now();
@@ -993,4 +937,3 @@ mod tests {
         println!("  Matches:    {} / {}", match_count_tb, filenames.len());
     }
 }
-
