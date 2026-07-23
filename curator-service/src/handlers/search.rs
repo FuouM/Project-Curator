@@ -369,7 +369,9 @@ pub async fn search_logic(
         .await?;
         latest.into_iter().map(|r| r.0).collect()
     } else {
-        target_set.into_iter().collect::<Vec<i64>>()
+        let mut ids: Vec<i64> = target_set.into_iter().collect();
+        ids.sort_unstable(); // deterministic order for non-neural result sets
+        ids
     };
 
     let mut matches = Vec::new();
@@ -416,6 +418,7 @@ pub async fn search_logic(
             b.score
                 .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.id.cmp(&b.id))
         }
     });
     matches.truncate(limit);
