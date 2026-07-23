@@ -307,7 +307,7 @@
                   <option value="4chan_timestamp" selected>4chan Unix Timestamps (10, 13, 16 digit dates)</option>
                   <option value="pixiv_id">Pixiv Artwork ID & Page (illust_123456, artist_p0)</option>
                   <option value="twitter_key">Twitter Snowflake & Media Keys (media_..., status ID)</option>
-                  <option value="booru_post">Booru Post Extractor (gelbooru_..., yandere_...)</option>
+                  <option value="danbooru">Danbooru (SlimTags + Artist + Hash)</option>
                   <option value="tagged_string">Bracketed Tagged String ([artist] title (tags))</option>
                   <option value="anime_screenshot">Anime Screenshot (name + episode)</option>
                 </select>
@@ -322,6 +322,7 @@
                   <button type="button" class="win-button fn-add-token-btn" data-token-type="pixiv_id">+ {Pixiv ID}</button>
                   <button type="button" class="win-button fn-add-token-btn" data-token-type="twitter_id">+ {Twitter ID}</button>
                   <button type="button" class="win-button fn-add-token-btn" data-token-type="number">+ {Number}</button>
+                  <button type="button" class="win-button fn-add-token-btn" data-token-type="md5_hash">+ {MD5 Hash}</button>
                   <button type="button" class="win-button fn-add-token-btn" data-token-type="delimiter">+ Delimiter (_)</button>
                   <button type="button" class="win-button fn-add-token-btn" data-token-type="wildcard">+ {Wildcard}</button>
                   <button type="button" class="win-button fn-add-token-btn" data-token-type="bracketed">+ [Bracketed]</button>
@@ -332,18 +333,22 @@
                   <div style="font-size: 11px; font-weight: 600; color: #555; margin-bottom: 6px;">Active Blocks Sequence:</div>
                   <div id="fn-token-blocks-container" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; align-items: center;"></div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
                   <div style="font-size: 11px; color: #555;">
                     Compiled Regex: <code id="fn-compiled-regex-preview" style="font-family: monospace; font-weight: 600; color: #004085; background: #e2e3e5; padding: 2px 6px; border-radius: 2px;"></code>
                   </div>
-                  <div style="margin-left: auto; display: flex; gap: 4px; align-items: center;">
-                    <label style="font-size: 10px; color: #555;">Type:</label>
-                    <select class="input-field" id="fn-token-match-type-select" style="font-size: 10px; height: 22px; padding: 1px 4px; width: 110px;">
-                      <option value="custom_regex">Custom Regex</option>
-                      <option value="anime_screenshot">Anime Screenshot</option>
-                    </select>
-                    <span id="fn-token-anime-warning" style="font-size: 9px; color: #856404; display: none;"><i class="bi bi-exclamation-triangle"></i> Requires "anime" and "episode" labels</span>
-                    <button type="button" class="win-button" id="fn-token-clear-btn" style="font-size: 10px; padding: 2px 8px;" title="Clear all blocks"><i class="bi bi-trash"></i> Clear</button>
+                  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                      <label style="font-size: 10px; color: #555;">Type:</label>
+                      <select class="input-field" id="fn-token-match-type-select" style="font-size: 10px; height: 22px; padding: 1px 4px; width: 110px;">
+                        <option value="custom_regex">Custom Regex</option>
+                        <option value="anime_screenshot">Anime Screenshot</option>
+                        <option value="danbooru">Danbooru</option>
+                      </select>
+                      <span id="fn-token-anime-warning" style="font-size: 9px; color: #856404; display: none;"><i class="bi bi-exclamation-triangle"></i> <span id="fn-token-warning-text"></span></span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                      <button type="button" class="win-button" id="fn-token-clear-btn" style="font-size: 10px; padding: 2px 8px;" title="Clear all blocks"><i class="bi bi-trash"></i> Clear</button>
                     <button type="button" class="win-button" id="fn-token-save-btn" style="font-size: 10px; padding: 2px 8px;" title="Save current pattern"><i class="bi bi-save"></i> Save</button>
                     <select class="input-field" id="fn-token-load-select" style="font-size: 10px; height: 22px; padding: 1px 4px; width: 120px;" title="Load saved pattern">
                       <option value="">Load...</option>
@@ -358,6 +363,7 @@
                     <button type="button" class="win-button" id="fn-token-export-btn" style="font-size: 10px; padding: 2px 8px;" title="Export block sequence to text field"><i class="bi bi-arrow-up-right"></i> Export</button>
                     <input type="text" id="fn-token-seq-input" class="input-field" style="font-size: 10px; font-family: monospace; height: 22px; padding: 1px 4px; width: 220px;" placeholder="Block sequence JSON..." title="Paste a block sequence here, then click Import" />
                     <button type="button" class="win-button" id="fn-token-import-btn" style="font-size: 10px; padding: 2px 8px;" title="Import block sequence from text field"><i class="bi bi-arrow-down-left"></i> Import</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -386,7 +392,7 @@
                       <option value="illust_108521179_20230513_212357.jpg">Pixiv Illust (illust_108521179_...)</option>
                       <option value="gwitch_suletta_Mineori_108521179_p0.png">Pixiv Page (gwitch_..._p0)</option>
                       <option value="media_FR49d0XWUAImXfA.jpg_large">Twitter Key (media_FR4...)</option>
-                      <option value="gelbooru_8392014_genshin_impact_furina.png">Gelbooru Post (gelbooru_...)</option>
+                      <option value="__hiroi_kikuri_and_rupa_bocchi_the_rock_and_1_more_drawn_by_poop_frog__eda85cef4365c0b4f25c1cedb9abbe31.jpg">Danbooru (__...__hash)</option>
                       <option value="[Mineori] Witch from Mercury (Suletta Miorine).jpg">Bracketed Tagged ([Mineori] ...)</option>
                     </select>
                   </div>
@@ -468,10 +474,7 @@
                       <option value="twitter_key">Twitter</option>
                       <option value="4chan_timestamp">4chan</option>
                       <option value="anime_screenshot">Anime Screenshot</option>
-                      <option value="gelbooru_post">Gelbooru</option>
-                      <option value="yandere_post">Yandere</option>
-                      <option value="danbooru_post">Danbooru</option>
-                      <option value="konachan_post">Konachan</option>
+                      <option value="danbooru">Danbooru</option>
                       <option value="tagged_string">Tagged String</option>
                     </select>
                   </div>

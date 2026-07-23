@@ -28,7 +28,16 @@ function renderParsedMetadataHtml(meta: ParsedMetadata): string {
     const epTag = meta.extracted_tags.find(t => t.toLowerCase().startsWith("episode:"));
     const animeName = animeTag ? animeTag.split(":").slice(1).join(":") : "Unknown";
     const epNum = epTag ? epTag.split(":").slice(1).join(":") : "?";
-    parts.push(`<span class="tag-pill tag-copyright" style="font-size: 10px; font-weight: 600;"><i class="bi bi-film"></i> Anime Screenshot: ${animeName} - ${epNum}</span>`);
+    const partialBadge = meta.partial ? ' <span style="font-size: 9px; color: #856404;">(partial)</span>' : "";
+    parts.push(`<span class="tag-pill tag-copyright" style="font-size: 10px; font-weight: 600;"><i class="bi bi-film"></i> Anime Screenshot: ${animeName} - ${epNum}${partialBadge}</span>`);
+  } else if (meta.match_type === "danbooru") {
+    const hashTag = meta.extracted_tags.find(t => t.toLowerCase().startsWith("hash:"));
+    const artistTag = meta.extracted_tags.find(t => t.toLowerCase().startsWith("artist:"));
+    const hash = hashTag ? hashTag.split(":").slice(1).join(":") : "";
+    const artist = artistTag ? artistTag.split(":").slice(1).join(":") : "?";
+    const hashDisplay = hash.length > 8 ? `${hash.slice(0, 4)}...${hash.slice(-4)}` : hash;
+    const hashLink = hash ? `<a href="https://danbooru.donmai.us/posts?tags=md5%3A${hash}" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline; font-size: inherit;" onmouseover="this.style.textDecoration='none'" onmouseout="this.style.textDecoration='underline'" title="${hash}">${hashDisplay}</a>` : "?";
+    parts.push(`<span class="tag-pill tag-copyright" style="font-size: 10px; font-weight: 600;"><i class="bi bi-grid-3x3-gap"></i> ${artist} - ${hashLink}</span>`);
   } else {
     // Build a single pill per type: "type: value"
     if (meta.datetime_iso) {

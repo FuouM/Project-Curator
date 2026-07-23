@@ -17,16 +17,20 @@ pub struct ParsedMetadata {
     pub timestamp_4chan: Option<String>,
     pub datetime_iso: Option<String>,
     pub extracted_tags: Vec<String>,
+    #[serde(default)]
+    pub partial: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenBlock {
-    pub token_type: String, // "artist", "timestamp_4chan", "pixiv_id", "twitter_id", "number", "delimiter", "wildcard", "tag", "bracketed"
+    pub token_type: String,
     pub value: Option<String>,
     #[serde(default)]
     pub label: Option<String>,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default)]
+    pub optional_prefix: Option<String>,
 }
 
 fn default_true() -> bool { true }
@@ -81,17 +85,12 @@ impl FilenameParser {
     /// Returns true if the filename might match a given preset (Aho-Corasick substring check)
     fn might_match(filename: &str, preset_id: &str) -> bool {
         static AC_PIXIV: OnceLock<AhoCorasick> = OnceLock::new();
-        static AC_BOORU: OnceLock<AhoCorasick> = OnceLock::new();
         static AC_TWITTER: OnceLock<AhoCorasick> = OnceLock::new();
         static AC_TAGGED: OnceLock<AhoCorasick> = OnceLock::new();
 
         match preset_id {
             "pixiv_id" => {
                 let ac = AC_PIXIV.get_or_init(|| AhoCorasick::new(["illust_", "_p0", "_p1", "_p2", "_p3"]).unwrap());
-                ac.find(filename).is_some()
-            }
-            "booru_post" => {
-                let ac = AC_BOORU.get_or_init(|| AhoCorasick::new(["gelbooru_", "yandere_", "danbooru_", "konachan_"]).unwrap());
                 ac.find(filename).is_some()
             }
             "twitter_key" => {
@@ -102,7 +101,7 @@ impl FilenameParser {
                 let ac = AC_TAGGED.get_or_init(|| AhoCorasick::new([r"["]).unwrap());
                 ac.find(filename).is_some()
             }
-            _ => true, // 4chan_timestamp, anime_screenshot: no quick reject
+            _ => true, // 4chan_timestamp, anime_screenshot, danbooru: no quick reject
         }
     }
 
@@ -124,13 +123,7 @@ impl FilenameParser {
                     None
                 }
             }
-            "booru_post" => {
-                if Self::might_match(filename, "booru_post") {
-                    Self::parse_booru_post(filename)
-                } else {
-                    None
-                }
-            }
+            "danbooru" => Self::parse_danbooru(filename),
             "tagged_string" => {
                 if Self::might_match(filename, "tagged_string") {
                     Self::parse_tagged_string(filename)
@@ -172,6 +165,7 @@ impl FilenameParser {
                                 timestamp_4chan: Some(part.to_string()),
                                 datetime_iso: Some(iso),
                                 extracted_tags: vec![date_tag],
+                                partial: false,
                             });
                         }
                     }
@@ -205,6 +199,7 @@ impl FilenameParser {
                 timestamp_4chan: None,
                 datetime_iso: iso,
                 extracted_tags: tags,
+                partial: false,
             });
         }
 
@@ -229,6 +224,7 @@ impl FilenameParser {
                 timestamp_4chan: None,
                 datetime_iso: None,
                 extracted_tags: tags,
+                partial: false,
             });
         }
 
@@ -253,6 +249,7 @@ impl FilenameParser {
                 timestamp_4chan: None,
                 datetime_iso: None,
                 extracted_tags: vec![format!("twitter:{}", match_str)],
+                partial: false,
             });
         }
 
@@ -268,6 +265,7 @@ impl FilenameParser {
                     timestamp_4chan: None,
                     datetime_iso: None,
                     extracted_tags: vec![format!("twitter:{}", key)],
+                    partial: false,
                 });
             }
         }
@@ -275,35 +273,8 @@ impl FilenameParser {
         None
     }
 
-    /// Booru post extractor (gelbooru_..., yandere_...)
-    fn parse_booru_post(filename: &str) -> Option<ParsedMetadata> {
-        static RE_BOORU: OnceLock<Regex> = OnceLock::new();
-        let re_booru = RE_BOORU.get_or_init(|| Regex::new(r"(gelbooru|yandere|danbooru|konachan)_(\d+)(?:_(.+))?").unwrap());
-        if let Some(caps) = re_booru.captures(filename) {
-            let site = caps.get(1)?.as_str().to_string();
-            let id = caps.get(2)?.as_str().to_string();
-            let mut tags = vec![format!("site:{}", site), format!("post_id:{}", id)];
-            
-            if let Some(extra) = caps.get(3) {
-                let tag_tokens: Vec<&str> = extra.as_str().split(['_', ' ']).collect();
-                for t in tag_tokens {
-                    if !t.is_empty() && t.len() > 2 {
-                        tags.push(t.to_string());
-                    }
-                }
-            }
-
-            return Some(ParsedMetadata {
-                match_type: format!("{}_post", site),
-                raw_matched: filename.to_string(),
-                artist: None,
-                pixiv_id: None,
-                twitter_id: None,
-                timestamp_4chan: None,
-                datetime_iso: None,
-                extracted_tags: tags,
-            });
-        }
+    /// Danbooru post extractor — placeholder, patterns defined by user
+    fn parse_danbooru(_filename: &str) -> Option<ParsedMetadata> {
         None
     }
 
@@ -335,13 +306,14 @@ impl FilenameParser {
                 timestamp_4chan: None,
                 datetime_iso: None,
                 extracted_tags: tags,
+                partial: false,
             });
         }
         None
     }
 
     /// Anime screenshot extractor — tries multiple common patterns
-    /// Mandatory fields: anime_name, episode. The pill shows "Anime Screenshot: [name] - [ep]"
+    /// Returns partial match if some fields found (partial: true)
     fn parse_anime_screenshot(filename: &str) -> Option<ParsedMetadata> {
         static RE_EPISODE: OnceLock<Regex> = OnceLock::new();
         let re_ep = RE_EPISODE.get_or_init(|| {
@@ -360,53 +332,63 @@ impl FilenameParser {
             .unwrap_or(filename);
 
         // Try to find episode number
-        let ep_caps = re_ep.captures(stem)?;
+        let ep_caps = re_ep.captures(stem);
+        let ep_str = ep_caps.as_ref().and_then(|c| c.get(1).or_else(|| c.get(2)));
+        let ep_num = ep_str.map(|m| m.as_str());
+        let ep_start = ep_caps.as_ref().and_then(|c| c.get(0).map(|m| m.start()));
 
-        let ep_str = ep_caps.get(1).or_else(|| ep_caps.get(2))?;
-        let ep_num = ep_str.as_str();
-        let ep_start = ep_caps.get(0).unwrap().start();
+        let mut extracted_tags = Vec::new();
+        let mut partial = false;
 
-        // Extract anime name: everything before the episode match, stripped of leading brackets/groups
-        let before_ep = &stem[..ep_start].trim_end_matches(['-', '_', ' ', '.']);
+        if let (Some(ep_num), Some(ep_start)) = (ep_num, ep_start) {
+            // Extract anime name: everything before the episode match
+            let before_ep = &stem[..ep_start].trim_end_matches(['-', '_', ' ', '.']);
 
-        // Remove leading [Group] tags
-        let name_clean = before_ep
-            .trim_start_matches(['[', '('])
-            .trim_start();
-        let name_clean = if let Some(end) = name_clean.find(']') {
-            name_clean[end + 1..].trim()
-        } else if let Some(end) = name_clean.find(')') {
-            name_clean[end + 1..].trim()
+            // Remove leading [Group] tags
+            let name_clean = before_ep
+                .trim_start_matches(['[', '('])
+                .trim_start();
+            let name_clean = if let Some(end) = name_clean.find(']') {
+                name_clean[end + 1..].trim()
+            } else if let Some(end) = name_clean.find(')') {
+                name_clean[end + 1..].trim()
+            } else {
+                name_clean.trim()
+            };
+
+            // Clean up common separators in anime names
+            let anime_name = name_clean
+                .replace('_', " ")
+                .replace('.', " ")
+                .trim()
+                .to_string();
+
+            if !anime_name.is_empty() {
+                extracted_tags.push(format!("anime:{}", anime_name));
+                extracted_tags.push(format!("episode:{}", ep_num));
+            } else {
+                partial = true;
+                extracted_tags.push(format!("episode:{}", ep_num));
+            }
+
+            // Extract remaining info after episode
+            let after_ep = &stem[ep_caps.as_ref().unwrap().get(0).unwrap().end()..];
+
+            // Look for resolution
+            if let Some(res) = re_res.find(after_ep).or_else(|| re_res.find(stem)) {
+                extracted_tags.push(format!("resolution:{}", res.as_str().to_lowercase()));
+            }
         } else {
-            name_clean.trim()
-        };
-
-        // Clean up common separators in anime names
-        let anime_name = name_clean
-            .replace('_', " ")
-            .replace('.', " ")
-            .trim()
-            .to_string();
-
-        if anime_name.is_empty() {
-            return None;
-        }
-
-        // Extract remaining info after episode
-        let after_ep = &stem[ep_caps.get(0).unwrap().end()..];
-        let mut extracted_tags = vec![
-            format!("anime:{}", anime_name),
-            format!("episode:{}", ep_num),
-        ];
-
-        // Look for resolution
-        if let Some(res) = re_res.find(after_ep).or_else(|| re_res.find(stem)) {
-            extracted_tags.push(format!("resolution:{}", res.as_str().to_lowercase()));
+            partial = true;
         }
 
         // Look for source group in brackets
         if let Some(grp) = re_grp.captures(stem).and_then(|c| c.get(1)) {
             extracted_tags.push(format!("group:{}", grp.as_str()));
+        }
+
+        if extracted_tags.is_empty() {
+            return None;
         }
 
         Some(ParsedMetadata {
@@ -418,6 +400,7 @@ impl FilenameParser {
             timestamp_4chan: None,
             datetime_iso: None,
             extracted_tags,
+            partial,
         })
     }
 
@@ -495,6 +478,7 @@ impl FilenameParser {
                 timestamp_4chan,
                 datetime_iso,
                 extracted_tags,
+                partial: false,
             });
         }
         None
@@ -512,6 +496,7 @@ impl FilenameParser {
                 "pixiv_id" => "pixiv_id",
                 "twitter_id" => "twitter_id",
                 "number" => "number",
+                "md5_hash" => "hash",
                 "wildcard" => "wildcard",
                 "tag" => "tag",
                 "bracketed" => "bracketed",
@@ -523,39 +508,25 @@ impl FilenameParser {
             } else {
                 format!("_skip_{}", base_name)
             };
-            match b.token_type.as_str() {
-                "artist" => {
-                    regex_str.push_str(&format!(r"(?P<{}>[A-Za-z0-9_\-\s]+)", group_name));
-                }
-                "timestamp_4chan" => {
-                    regex_str.push_str(&format!(r"(?P<{}>\d{{10,16}})", group_name));
-                }
-                "pixiv_id" => {
-                    regex_str.push_str(&format!(r"(?P<{}>\d{{7,10}})", group_name));
-                }
-                "twitter_id" => {
-                    regex_str.push_str(&format!(r"(?P<{}>[A-Za-z0-9_-]{{15,25}})", group_name));
-                }
-                "number" => {
-                    regex_str.push_str(&format!(r"(?P<{}>\d+)", group_name));
-                }
-                "delimiter" => {
-                    let d = b.value.as_deref().unwrap_or("_");
-                    regex_str.push_str(&regex::escape(d));
-                }
-                "wildcard" => {
-                    regex_str.push_str(&format!(r"(?P<{}>.*?)", group_name));
-                }
-                "tag" => {
-                    regex_str.push_str(&format!(r"(?P<{}>[A-Za-z0-9_\-]+)", group_name));
-                }
-                "bracketed" => {
-                    regex_str.push_str(&format!(r"\[(?P<{}>[^\]]+)\]", group_name));
-                }
-                "whitespace" => {
-                    regex_str.push_str(r"\s*");
-                }
-                _ => {}
+            let inner = match b.token_type.as_str() {
+                "artist" => format!(r"(?P<{}>[A-Za-z0-9_\-\s]+)", group_name),
+                "timestamp_4chan" => format!(r"(?P<{}>\d{{10,16}})", group_name),
+                "pixiv_id" => format!(r"(?P<{}>\d{{7,10}})", group_name),
+                "twitter_id" => format!(r"(?P<{}>[A-Za-z0-9_-]{{15,25}})", group_name),
+                "number" => format!(r"(?P<{}>\d+)", group_name),
+                "md5_hash" => format!(r"(?P<{}>[0-9a-f]{{32}})", group_name),
+                "delimiter" => regex::escape(b.value.as_deref().unwrap_or("_")),
+                "wildcard" => format!(r"(?P<{}>.*?)", group_name),
+                "tag" => format!(r"(?P<{}>[A-Za-z0-9_\-]+)", group_name),
+                "bracketed" => format!(r"\[(?P<{}>[^\]]+)\]", group_name),
+                "whitespace" => r"\s*".to_string(),
+                _ => continue,
+            };
+            if let Some(ref prefix) = b.optional_prefix {
+                let escaped = regex::escape(prefix);
+                regex_str.push_str(&format!("(?:{})?{}", escaped, inner));
+            } else {
+                regex_str.push_str(&inner);
             }
         }
         regex_str.push('$');
@@ -705,6 +676,10 @@ impl FilenameParser {
                 .map(|m| Self::apply_match_type_override(m, output_match_type));
 
             if let Some(res) = match_res {
+                // Skip partial matches in batch run (only save complete matches)
+                if res.partial {
+                    continue;
+                }
                 state.matched_count += 1;
                 let extracted_json = serde_json::to_string(&res.extracted_tags).ok();
 
@@ -826,9 +801,9 @@ mod tests {
     #[test]
     fn test_token_builder_compiler() {
         let blocks = vec![
-            TokenBlock { token_type: "artist".to_string(), value: None, label: None, enabled: true },
-            TokenBlock { token_type: "delimiter".to_string(), value: Some("_".to_string()), label: None, enabled: true },
-            TokenBlock { token_type: "pixiv_id".to_string(), value: None, label: None, enabled: true },
+            TokenBlock { token_type: "artist".to_string(), value: None, label: None, enabled: true, optional_prefix: None },
+            TokenBlock { token_type: "delimiter".to_string(), value: Some("_".to_string()), label: None, enabled: true, optional_prefix: None },
+            TokenBlock { token_type: "pixiv_id".to_string(), value: None, label: None, enabled: true, optional_prefix: None },
         ];
 
         let compiled = FilenameParser::compile_token_blocks(&blocks);
@@ -843,19 +818,19 @@ mod tests {
     fn bench_filename_parser_throughput() {
         use std::time::Instant;
 
-        // Generate realistic filenames: 50K mix of pixiv, twitter, booru, tagged, 4chan, and random
+        // Generate realistic filenames: 50K mix of pixiv, twitter, danbooru, tagged, 4chan, and random
         let mut filenames: Vec<String> = Vec::with_capacity(50_000);
         for i in 0..50_000 {
             match i % 10 {
                 0 => filenames.push(format!("artist_name_{}_p0.png", 10000000 + i)),
                 1 => filenames.push(format!("illust_{}_20230513_212357.jpg", 10000000 + i)),
                 2 => filenames.push(format!("media_FR{}d0XWUAImXfA.jpg", i)),
-                3 => filenames.push(format!("gelbooru_{}_some_tag_another_tag.jpg", i)),
+                3 => filenames.push(format!("__some_tags_and_more__{:032x}.jpg", i)),
                 4 => filenames.push(format!("[Artist Name] Title (tag1 tag2 tag3).png")),
                 5 => filenames.push(format!("{}.png", 1652448237 + i)),
                 6 => filenames.push(format!("random_filename_no_match_{}.jpg", i)),
                 7 => filenames.push(format!("illust_{}.png", 10000000 + i)),
-                8 => filenames.push(format!("danbooru_{}_test.jpg", i)),
+                8 => filenames.push(format!("__danbooru_test_tags__{:032x}.png", i)),
                 9 => filenames.push(format!("[Cool Artist] Amazing Artwork (landscape wallpaper).png")),
                 _ => unreachable!(),
             }
@@ -872,16 +847,16 @@ mod tests {
         let elapsed_pixiv = start.elapsed();
         let throughput_pixiv = filenames.len() as f64 / elapsed_pixiv.as_secs_f64();
 
-        // Benchmark 2: single preset "booru_post"
+        // Benchmark 2: single preset "danbooru"
         let start = Instant::now();
-        let mut match_count_booru = 0u64;
+        let mut match_count_danbooru = 0u64;
         for f in &filenames {
-            if FilenameParser::test_filename(f, "booru_post", "preset", None).is_some() {
-                match_count_booru += 1;
+            if FilenameParser::test_filename(f, "danbooru", "preset", None).is_some() {
+                match_count_danbooru += 1;
             }
         }
-        let elapsed_booru = start.elapsed();
-        let throughput_booru = filenames.len() as f64 / elapsed_booru.as_secs_f64();
+        let elapsed_danbooru = start.elapsed();
+        let throughput_danbooru = filenames.len() as f64 / elapsed_danbooru.as_secs_f64();
 
         // Benchmark 3: pre-compiled custom_regex (pixiv-like pattern that matches some filenames)
         // Strip extensions like test_filename does in production
@@ -901,7 +876,7 @@ mod tests {
 
         // Benchmark 4: token_builder (pre-compiled regex via compile_token_blocks)
         let token_config = vec![
-            TokenBlock { token_type: "pixiv_id".to_string(), value: None, label: None, enabled: true },
+            TokenBlock { token_type: "pixiv_id".to_string(), value: None, label: None, enabled: true, optional_prefix: None },
         ];
         let compiled_token_regex = FilenameParser::compile_token_blocks(&token_config);
         let start = Instant::now();
@@ -921,10 +896,10 @@ mod tests {
         println!("  Throughput: {:.0} files/sec", throughput_pixiv);
         println!("  Matches:    {} / {}", match_count, filenames.len());
         println!();
-        println!("booru_post preset (single pattern, Aho-Corasick filtered):");
-        println!("  Time:       {:.2?}", elapsed_booru);
-        println!("  Throughput: {:.0} files/sec", throughput_booru);
-        println!("  Matches:    {} / {}", match_count_booru, filenames.len());
+        println!("danbooru preset:");
+        println!("  Time:       {:.2?}", elapsed_danbooru);
+        println!("  Throughput: {:.0} files/sec", throughput_danbooru);
+        println!("  Matches:    {} / {}", match_count_danbooru, filenames.len());
         println!();
         println!("custom_regex (pre-compiled, single pass):");
         println!("  Time:       {:.2?}", elapsed_regex);

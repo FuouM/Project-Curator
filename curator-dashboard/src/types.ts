@@ -41,6 +41,7 @@ export interface TokenBlock {
   value?: string;
   label?: string;
   enabled?: boolean;
+  optional_prefix?: string;
 }
 
 export interface ParsedMetadata {
@@ -52,6 +53,7 @@ export interface ParsedMetadata {
   timestamp_4chan?: string;
   datetime_iso?: string;
   extracted_tags: string[];
+  partial?: boolean;
 }
 
 export interface BatchPreviewItem {

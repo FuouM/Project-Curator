@@ -183,7 +183,21 @@ export function setupFilenameParserView() {
   const matchTypeSelect = document.getElementById("fn-token-match-type-select") as HTMLSelectElement;
   const animeWarning = document.getElementById("fn-token-anime-warning");
   matchTypeSelect?.addEventListener("change", () => {
-    if (animeWarning) animeWarning.style.display = matchTypeSelect.value === "anime_screenshot" ? "inline" : "none";
+    const val = matchTypeSelect.value;
+    const warnings: Record<string, string> = {
+      anime_screenshot: 'Requires "anime" and "episode" labels',
+      danbooru: 'Requires "slimtags", "artist", and "hash" labels',
+    };
+    if (animeWarning) {
+      const msg = warnings[val];
+      if (msg) {
+        const textEl = document.getElementById("fn-token-warning-text");
+        if (textEl) textEl.textContent = msg;
+        animeWarning.style.display = "inline";
+      } else {
+        animeWarning.style.display = "none";
+      }
+    }
   });
 
   // Token builder: Load Preset
@@ -314,6 +328,7 @@ function renderTokenBlocks() {
         <button type="button" class="token-toggle-btn win-button" style="padding: 1px 4px; font-size: 9px; ${isEnabled ? 'color: #155724;' : 'color: #999;'}" data-idx="${idx}" title="${isEnabled ? 'Disable' : 'Enable'}"><i class="bi bi-${isEnabled ? 'check-circle-fill' : 'circle'}"></i></button>
         <span style="color: #004085; font-family: monospace; font-weight: 600;">${bracket[0]}${block.token_type}${bracket[1]}</span>
         <input type="text" value="${block.label || ''}" placeholder="label" class="token-label-input input-field" style="width: 90px; padding: 1px 4px; font-size: 10px; font-family: monospace;" data-idx="${idx}" ${!isEnabled ? 'disabled' : ''} />
+        <input type="text" value="${block.optional_prefix || ''}" placeholder="opt. prefix" class="token-prefix-input input-field" style="width: 70px; padding: 1px 4px; font-size: 10px; font-family: monospace; ${block.optional_prefix ? 'color: #856404; background: #fff3cd;' : ''}" data-idx="${idx}" title="Optional prefix to strip (e.g. sample-)" ${!isEnabled ? 'disabled' : ''} />
         <button type="button" class="token-remove-btn win-button" style="padding: 1px 4px; font-size: 10px;" data-idx="${idx}"><i class="bi bi-x-lg"></i></button>
       `;
     }
@@ -340,6 +355,28 @@ function renderTokenBlocks() {
         currentTokenBlocks[idx].enabled = currentTokenBlocks[idx].enabled === false ? true : false;
       }
       renderTokenBlocks();
+      runSandboxTest();
+      refreshBatchPreview();
+    });
+  });
+
+  // Attach optional prefix input handlers
+  container.querySelectorAll(".token-prefix-input").forEach((inp) => {
+    inp.addEventListener("input", (e) => {
+      const inputEl = e.currentTarget as HTMLInputElement;
+      const idx = parseInt(inputEl.getAttribute("data-idx") || "0", 10);
+      if (currentTokenBlocks[idx]) {
+        currentTokenBlocks[idx].optional_prefix = inputEl.value || undefined;
+      }
+      // Update compiled regex preview without re-rendering
+      const regexPreview = document.getElementById("fn-compiled-regex-preview");
+      if (regexPreview && currentTokenBlocks.length > 0) {
+        callService({ CompileTokenBlocks: { token_config: currentTokenBlocks } }).then(res => {
+          if ("CompileTokenBlocksResult" in res && regexPreview) {
+            regexPreview.textContent = res.CompileTokenBlocksResult.regex;
+          }
+        }).catch(() => {});
+      }
       runSandboxTest();
       refreshBatchPreview();
     });

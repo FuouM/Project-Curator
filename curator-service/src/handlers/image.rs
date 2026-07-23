@@ -287,6 +287,7 @@ pub async fn list_images_logic(
                         datetime_iso,
                         extracted_tags,
                         raw_matched,
+                        partial: false,
                     });
                 }
             }
@@ -374,6 +375,7 @@ pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDeta
             datetime_iso: row.5,
             extracted_tags,
             raw_matched: row.7,
+            partial: false,
         }
     });
 
