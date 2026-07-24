@@ -445,23 +445,26 @@
           <div class="group-box">
             <div class="group-box-title">General Search</div>
             <form id="search-form">
-              <div class="form-group" style="display: flex; flex-direction: column; gap: 8px; align-items: stretch;">
-                <div style="display: flex; gap: 6px; width: 100%;">
-                  <div class="input-wrapper" style="flex: 1;">
+              <div style="display: flex; flex-direction: column; gap: 10px; align-items: stretch;">
+                <div class="form-group">
+                  <label for="search-text-input" style="min-width: 80px;">Query:</label>
+                  <div class="input-wrapper" style="flex: 2;">
                     <input class="input-field has-clear" id="search-text-input" placeholder="Type natural language query (e.g. 'a cute dog sleeping')..." />
                     <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
                   </div>
-                  <div class="input-wrapper" style="width: 180px;">
+                  <div class="input-wrapper" style="flex: 1;">
                     <select class="input-field" id="search-concept-select" style="width: 100%; height: 24px;">
                       <option value="">-- All Concepts --</option>
                     </select>
                   </div>
-                  <div class="input-wrapper" style="width: 180px;">
-                    <input class="input-field has-clear" id="search-tag-input" placeholder="Filter by tag name (optional)..." />
+                  <div class="input-wrapper" style="flex: 1; position: relative;">
+                    <input class="input-field has-clear" id="search-tag-input" placeholder="Filter by tag(s), comma-separated..." autocomplete="off" />
                     <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
+                    <div id="search-tag-autocomplete" class="autocomplete-dropdown" style="display: none;"></div>
                   </div>
                 </div>
-                <div style="display: flex; gap: 6px; width: 100%;">
+                <div class="form-group">
+                  <label for="search-parse-input" style="min-width: 80px;">Parsed:</label>
                   <div class="input-wrapper" style="flex: 1;">
                     <input class="input-field has-clear" id="search-parse-input" placeholder="Search parsed filename (e.g. 'Ichijyoma', '108521179', 'Erai-raws')..." />
                     <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
@@ -479,7 +482,8 @@
                     </select>
                   </div>
                 </div>
-                <div style="display: flex; gap: 6px; width: 100%; align-items: center;">
+                <div class="form-group">
+                  <label for="search-image-path-input" style="min-width: 80px;">Image:</label>
                   <div class="input-wrapper" style="flex: 1;">
                     <input class="input-field has-clear" id="search-image-path-input" placeholder="Or select image path for reverse search..." />
                     <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>

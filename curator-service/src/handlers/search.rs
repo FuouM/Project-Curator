@@ -328,29 +328,39 @@ pub async fn search_logic(
     target_set.extend(perceptual_matches.keys().copied());
     target_set.extend(parse_matches.iter().copied());
 
-    if let Some(tag_name) = tag_filter {
-        if !tag_name.trim().is_empty() {
-            let tagged_images: Vec<(i64,)> = sqlx::query_as(
-                "SELECT DISTINCT it.image_id FROM image_tags it
-                 JOIN tags t ON it.tag_id = t.id
-                 WHERE t.name = ? AND it.is_deleted = 0",
-            )
-            .bind(tag_name)
-            .fetch_all(db)
-            .await?;
+    if let Some(tag_filter_raw) = tag_filter {
+        let tag_names: Vec<String> = tag_filter_raw
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
 
-            let tag_set: std::collections::HashSet<i64> =
-                tagged_images.into_iter().map(|row| row.0).collect();
+        let is_tag_only = query_text.is_none()
+            && exact_matches.is_empty()
+            && perceptual_matches.is_empty()
+            && parse_matches.is_empty();
 
-            if target_set.is_empty()
-                && query_text.is_none()
-                && exact_matches.is_empty()
-                && perceptual_matches.is_empty()
-                && parse_matches.is_empty()
-            {
-                target_set = tag_set;
-            } else {
-                target_set = target_set.intersection(&tag_set).cloned().collect();
+        if !tag_names.is_empty() {
+            let mut first = true;
+            for tag_name in &tag_names {
+                let tagged_images: Vec<(i64,)> = sqlx::query_as(
+                    "SELECT DISTINCT it.image_id FROM image_tags it
+                     JOIN tags t ON it.tag_id = t.id
+                     WHERE t.name = ? AND it.is_deleted = 0",
+                )
+                .bind(tag_name)
+                .fetch_all(db)
+                .await?;
+
+                let tag_set: std::collections::HashSet<i64> =
+                    tagged_images.into_iter().map(|row| row.0).collect();
+
+                if first && is_tag_only {
+                    target_set = tag_set;
+                } else {
+                    target_set = target_set.intersection(&tag_set).cloned().collect();
+                }
+                first = false;
             }
         }
     }
