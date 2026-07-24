@@ -41,18 +41,30 @@ fn decode_png_fast(data: &[u8], path: &Path) -> Result<(Vec<u8>, u32, u32)> {
 
     match out_info.color_type {
         png::ColorType::Rgb => {
-            Ok((raw[..pixels].to_vec(), w, h))
+            let mut rgb = vec![0u8; w as usize * h as usize * 3];
+            let len = pixels.min(rgb.len());
+            rgb[..len].copy_from_slice(&raw[..len]);
+            Ok((rgb, w, h))
         }
         png::ColorType::Rgba => {
-            let rgb: Vec<u8> = raw[..pixels].chunks(4).flat_map(|c| [c[0], c[1], c[2]]).collect();
+            let rgb: Vec<u8> = raw[..pixels]
+                .chunks_exact(4)
+                .flat_map(|c| [c[0], c[1], c[2]])
+                .collect();
             Ok((rgb, w, h))
         }
         png::ColorType::Grayscale => {
-            let rgb: Vec<u8> = raw[..pixels].iter().map(|&g| [g, g, g]).flatten().collect();
+            let rgb: Vec<u8> = raw[..pixels]
+                .iter()
+                .flat_map(|&g| [g, g, g])
+                .collect();
             Ok((rgb, w, h))
         }
         png::ColorType::GrayscaleAlpha => {
-            let rgb: Vec<u8> = raw[..pixels].chunks(2).flat_map(|c| [c[0], c[0], c[0]]).collect();
+            let rgb: Vec<u8> = raw[..pixels]
+                .chunks_exact(2)
+                .flat_map(|c| [c[0], c[0], c[0]])
+                .collect();
             Ok((rgb, w, h))
         }
         // Indexed (palette) and any other color types: fall back to the image crate
@@ -64,4 +76,41 @@ fn decode_png_fast(data: &[u8], path: &Path) -> Result<(Vec<u8>, u32, u32)> {
             Ok((rgb.into_raw(), fw, fh))
         }
     }
+}
+
+/// Decode + center-crop to square + SIMD resize to target_size.
+/// Used by `ModelManager::preprocess_image_batch` for batch preprocessing.
+pub fn decode_and_resize_single_image(
+    path: &Path,
+    target_size: u32,
+    resizer: &mut fast_image_resize::Resizer,
+) -> Result<Vec<u8>> {
+    let (rgb_buf, width, height) = decode_rgb(path)?;
+
+    let crop_size = width.min(height);
+    let cx = (width - crop_size) / 2;
+    let cy = (height - crop_size) / 2;
+
+    let src_image = fast_image_resize::images::ImageRef::new(
+        width,
+        height,
+        &rgb_buf,
+        fast_image_resize::PixelType::U8x3,
+    )?;
+
+    let mut dst_image = fast_image_resize::images::Image::from_vec_u8(
+        target_size,
+        target_size,
+        vec![0u8; (target_size * target_size * 3) as usize],
+        fast_image_resize::PixelType::U8x3,
+    )?;
+
+    let opts = fast_image_resize::ResizeOptions::new()
+        .crop(cx as f64, cy as f64, crop_size as f64, crop_size as f64)
+        .resize_alg(fast_image_resize::ResizeAlg::Convolution(
+            fast_image_resize::FilterType::Bilinear,
+        ));
+
+    resizer.resize(&src_image, &mut dst_image, Some(&opts))?;
+    Ok(dst_image.buffer().to_vec())
 }

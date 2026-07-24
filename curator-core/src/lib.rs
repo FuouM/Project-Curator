@@ -3,6 +3,7 @@ pub mod concept;
 pub mod constants;
 pub mod db;
 pub mod filename_parser;
+pub mod image_decode;
 pub mod ipc;
 pub mod tagger;
 pub mod vector;
