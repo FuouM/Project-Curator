@@ -6,11 +6,16 @@ import { ImageDetails } from "../types";
 
 export async function refreshDashboard() {
   try {
-    const statusResp = await callService({ GetStatus: null });
-    if (!("StatusResult" in statusResp)) {
+    const [statusResp, taggerResp] = await Promise.all([
+      callService({ GetStatus: null }),
+      callService({ GetTaggerStatus: null }),
+    ]);
+    if ("StatusResult" in statusResp) {
+      applyStatusUpdate(statusResp);
+    } else {
       throw new Error("Could not reach service");
     }
-    applyStatusUpdate(statusResp);
+    applyTaggerUpdate(taggerResp);
     await loadDashboardImages(statusResp.StatusResult.image_count);
   } catch (e: any) {
     console.error("Failed to refresh dashboard: ", e);
@@ -69,15 +74,20 @@ export function applyTaggerUpdate(resp: any) {
   }
 }
 
+export async function refreshTaggerStatus() {
+  try {
+    const resp = await callService({ GetTaggerStatus: null });
+    applyTaggerUpdate(resp);
+  } catch (e: any) {
+    console.log("refreshTaggerStatus exception: " + (e.message || e));
+  }
+}
+
 export function startStatusPolling() {
   async function check() {
     try {
-      const [statusResp, taggerResp] = await Promise.all([
-        callService({ GetStatus: null }),
-        callService({ GetTaggerStatus: null }),
-      ]);
+      const statusResp = await callService({ GetStatus: null });
       applyStatusUpdate(statusResp);
-      applyTaggerUpdate(taggerResp);
     } catch (e: any) {
       console.log("startStatusPolling exception: " + (e.message || e));
       const dot = document.getElementById("service-dot");

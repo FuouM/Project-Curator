@@ -1,7 +1,7 @@
 import { callService } from "../ipc";
 import { setStatusMessage } from "../utils";
 import { getImageClickAction, setImageClickAction } from "../state";
-import { applySettingsToUI } from "./dashboard";
+import { applySettingsToUI, refreshTaggerStatus } from "./dashboard";
 import { updateBenchmarkModelHeader } from "./benchmark";
 
 export function setupSettings() {
@@ -171,6 +171,7 @@ export function setupSettings() {
           updateBenchmarkModelHeader(embeddingSelect.value);
         }
         startReindexPolling();
+        refreshTaggerStatus();
       } else if ("Error" in resp) {
         setStatusMessage(statusMsg, "Failed: " + resp.Error.message, "error");
       }
@@ -206,6 +207,7 @@ export function setupSettings() {
       const resp = await callService({ GetSettings: null });
       applySettingsToUI(resp);
     } catch (e) {}
+    refreshTaggerStatus();
   });
 
   // Backfill folders button
