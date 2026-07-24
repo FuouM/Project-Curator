@@ -181,14 +181,16 @@ pub async fn handle_request(
             limit,
         } => {
             match search::search_logic(
-                query_text,
-                query_image_path,
-                tag_filter,
-                filename_filter,
-                parse_filter,
-                parse_type,
-                concept_id,
-                limit,
+                search::SearchParams {
+                    query_text,
+                    query_image_path,
+                    tag_filter,
+                    filename_filter,
+                    parse_filter,
+                    parse_type,
+                    concept_id,
+                    limit,
+                },
                 db,
                 model_manager,
                 vector_index,
@@ -339,16 +341,18 @@ pub async fn handle_request(
             embedding_model,
         } => {
             match settings::update_settings_logic(
-                db,
-                model_manager,
-                vector_index,
-                tagger,
-                data_dir,
-                settings,
-                clip_device,
-                tagger_device,
-                idle_timeout_secs,
-                embedding_model,
+                settings::UpdateSettingsParams {
+                    db,
+                    model_manager,
+                    vector_index,
+                    tagger,
+                    data_dir,
+                    settings,
+                    clip_device,
+                    tagger_device,
+                    idle_timeout_secs,
+                    embedding_model,
+                },
             )
             .await
             {

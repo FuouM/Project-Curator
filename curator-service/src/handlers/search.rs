@@ -4,6 +4,17 @@ use curator_core::ipc::{EmbeddingModel, SearchMatch};
 use curator_core::vector::{ModelManager, VectorIndex};
 use sha2::Digest;
 
+pub struct SearchParams {
+    pub query_text: Option<String>,
+    pub query_image_path: Option<String>,
+    pub tag_filter: Option<String>,
+    pub filename_filter: Option<String>,
+    pub parse_filter: Option<String>,
+    pub parse_type: Option<String>,
+    pub concept_id: Option<i64>,
+    pub limit: usize,
+}
+
 /// Parse search terms supporting quoted strings and field:value syntax.
 /// Examples: `anime:"Ichijyoma Mankitsu" episode:09 Erai-raws`
 /// Returns: ["anime:Ichijyoma Mankitsu", "episode:09", "Erai-raws"]
@@ -49,18 +60,21 @@ use super::concepts::get_custom_concept_by_id;
 use super::image::get_image_logic;
 
 pub async fn search_logic(
-    query_text: Option<String>,
-    query_image_path: Option<String>,
-    tag_filter: Option<String>,
-    filename_filter: Option<String>,
-    parse_filter: Option<String>,
-    parse_type: Option<String>,
-    concept_id: Option<i64>,
-    limit: usize,
+    params: SearchParams,
     db: &SqlitePool,
     model_manager: &ModelManager,
     vector_index: &VectorIndex,
 ) -> Result<Vec<SearchMatch>> {
+    let SearchParams {
+        query_text,
+        query_image_path,
+        tag_filter,
+        filename_filter,
+        parse_filter,
+        parse_type,
+        concept_id,
+        limit,
+    } = params;
     let mut candidate_ids: Option<std::collections::HashSet<i64>> = None;
     let mut vector_scores: std::collections::HashMap<i64, f32> = std::collections::HashMap::new();
     let mut exact_matches = std::collections::HashSet::new();
@@ -253,8 +267,8 @@ pub async fn search_logic(
     // Supports chaining: "anime:ichijyoma episode:09" (space-separated, AND logic)
     // Each term can be "field:value" (searches extracted_tags) or plain text (searches all fields)
     let mut parse_matches = std::collections::HashSet::new();
-    let has_parse_query = parse_filter.as_ref().map_or(false, |f| !f.trim().is_empty())
-        || parse_type.as_ref().map_or(false, |t| !t.trim().is_empty());
+    let has_parse_query = parse_filter.as_ref().is_some_and(|f| !f.trim().is_empty())
+        || parse_type.as_ref().is_some_and(|t| !t.trim().is_empty());
 
     if has_parse_query {
         let mut conditions = Vec::new();

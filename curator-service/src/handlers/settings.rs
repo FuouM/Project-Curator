@@ -7,6 +7,19 @@ use tracing::{info, warn};
 use super::common::resolve_source_id;
 use super::AppSettings;
 
+pub struct UpdateSettingsParams<'a> {
+    pub db: &'a SqlitePool,
+    pub model_manager: &'a ModelManager,
+    pub vector_index: &'a VectorIndex,
+    pub tagger: &'a std::sync::Arc<curator_core::tagger::TaggerEngine>,
+    pub data_dir: &'a std::path::Path,
+    pub settings: &'a tokio::sync::Mutex<AppSettings>,
+    pub clip_device: Option<curator_core::ipc::DevicePreference>,
+    pub tagger_device: Option<curator_core::ipc::DevicePreference>,
+    pub idle_timeout_secs: Option<u64>,
+    pub embedding_model: Option<EmbeddingModel>,
+}
+
 pub async fn query_status(
     db: &SqlitePool,
     active: EmbeddingModel,
@@ -42,17 +55,20 @@ pub async fn query_status(
 }
 
 pub async fn update_settings_logic(
-    db: &SqlitePool,
-    model_manager: &ModelManager,
-    vector_index: &VectorIndex,
-    tagger: &std::sync::Arc<curator_core::tagger::TaggerEngine>,
-    data_dir: &std::path::Path,
-    settings: &tokio::sync::Mutex<AppSettings>,
-    clip_device: Option<curator_core::ipc::DevicePreference>,
-    tagger_device: Option<curator_core::ipc::DevicePreference>,
-    idle_timeout_secs: Option<u64>,
-    embedding_model: Option<EmbeddingModel>,
+    params: UpdateSettingsParams<'_>,
 ) -> Result<AppSettings> {
+    let UpdateSettingsParams {
+        db,
+        model_manager,
+        vector_index,
+        tagger,
+        data_dir,
+        settings,
+        clip_device,
+        tagger_device,
+        idle_timeout_secs,
+        embedding_model,
+    } = params;
     let mut model_changed = false;
     let mut s = settings.lock().await;
     if let Some(ref cd) = clip_device {

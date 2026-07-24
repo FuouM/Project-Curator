@@ -30,11 +30,9 @@ pub fn sanitize_concept_name(name: &str) -> String {
         if c.is_alphanumeric() || c == ':' {
             result.push(c);
             last_was_underscore = false;
-        } else if c == ' ' || c == '-' || c == '_' {
-            if !last_was_underscore && !result.is_empty() {
-                result.push('_');
-                last_was_underscore = true;
-            }
+        } else if (c == ' ' || c == '-' || c == '_') && !last_was_underscore && !result.is_empty() {
+            result.push('_');
+            last_was_underscore = true;
         }
     }
 
@@ -183,8 +181,8 @@ pub fn train_linear_svm_decision_boundary(
             }
         }
         if count > 0 {
-            for i in 0..dim {
-                mean[i] /= count as f32;
+            for m in mean.iter_mut().take(dim) {
+                *m /= count as f32;
             }
         }
         Some(mean)
