@@ -80,21 +80,48 @@ pub async fn recompute_concept_prototype_logic(
     .await?;
 
     let ids: Vec<i64> = sample_rows.into_iter().map(|(id,)| id).collect();
-    let mut sample_vectors = Vec::new();
 
+    let active_model = model_manager.active_model();
+    let source_name = match active_model {
+        EmbeddingModel::ClipVitB32 => curator_core::constants::SOURCE_CLIP,
+        EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
+    };
+    let source_id = resolve_source_id(db, source_name).await?;
+
+    let mut sample_vectors = Vec::new();
     if !ids.is_empty() {
         let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let query_str = format!("SELECT current_filepath FROM images WHERE id IN ({})", placeholders);
-        let mut q = sqlx::query_as::<_, (String,)>(query_str.as_str());
+        let query_str = format!(
+            "SELECT vector FROM image_vectors WHERE source_id = ? AND vector_state = 'ready' AND image_id IN ({})",
+            placeholders
+        );
+        let mut q = sqlx::query_as::<_, (Vec<u8>,)>(query_str.as_str()).bind(source_id);
         for id in &ids {
             q = q.bind(id);
         }
-        if let Ok(image_paths) = q.fetch_all(db).await {
-            for (path_str,) in image_paths {
-                let path = Path::new(&path_str);
-                if path.exists() {
-                    if let Ok(vec) = model_manager.generate_image_embedding(path) {
-                        sample_vectors.push(vec);
+        if let Ok(vec_rows) = q.fetch_all(db).await {
+            for (blob,) in vec_rows {
+                let vec = bytes_to_vector(&blob);
+                if !vec.is_empty() {
+                    sample_vectors.push(vec);
+                }
+            }
+        }
+
+        // Fallback for any sample image missing from image_vectors
+        if sample_vectors.len() < ids.len() {
+            let query_str = format!("SELECT current_filepath FROM images WHERE id IN ({})", placeholders);
+            let mut q = sqlx::query_as::<_, (String,)>(query_str.as_str());
+            for id in &ids {
+                q = q.bind(id);
+            }
+            if let Ok(image_paths) = q.fetch_all(db).await {
+                for (path_str,) in image_paths {
+                    let path = Path::new(&path_str);
+                    if path.exists() {
+                        if let Ok(vec) = model_manager.generate_image_embedding(path) {
+                            sample_vectors.push(vec);
+                        }
                     }
                 }
             }
@@ -104,21 +131,24 @@ pub async fn recompute_concept_prototype_logic(
     let prompt_text = format!("anime artwork of {}", concept.name.replace('_', " "));
     let text_vec = model_manager.generate_text_embedding(&prompt_text).ok();
 
-    let neg_rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT current_filepath FROM images WHERE deleted_at IS NULL AND id NOT IN (SELECT image_id FROM custom_concept_samples WHERE concept_id = ?) ORDER BY RANDOM() LIMIT 8",
+    // Fast SQLite vector BLOB pre-fetch for background negative contrast subspace
+    let neg_rows: Vec<(Vec<u8>,)> = sqlx::query_as(
+        "SELECT vector FROM image_vectors
+         WHERE source_id = ? AND vector_state = 'ready'
+           AND image_id NOT IN (SELECT image_id FROM custom_concept_samples WHERE concept_id = ?)
+         ORDER BY RANDOM() LIMIT 32",
     )
+    .bind(source_id)
     .bind(concept_id)
     .fetch_all(db)
     .await
     .unwrap_or_default();
 
     let mut negative_vectors = Vec::new();
-    for (path_str,) in neg_rows {
-        let path = Path::new(&path_str);
-        if path.exists() {
-            if let Ok(vec) = model_manager.generate_image_embedding(path) {
-                negative_vectors.push(vec);
-            }
+    for (blob,) in neg_rows {
+        let vec = bytes_to_vector(&blob);
+        if !vec.is_empty() {
+            negative_vectors.push(vec);
         }
     }
 
@@ -329,6 +359,16 @@ pub async fn remove_concept_sample_logic(
         .execute(db)
         .await?;
 
+    if let Ok(concept) = get_custom_concept_by_id(db, concept_id).await {
+        let _ = sqlx::query(
+            "DELETE FROM image_tags WHERE image_id = ? AND tag_id = (SELECT id FROM tags WHERE name = ?)",
+        )
+        .bind(image_id)
+        .bind(&concept.name)
+        .execute(db)
+        .await;
+    }
+
     recompute_concept_prototype_logic(db, concept_id, model_manager).await?;
     get_custom_concept_by_id(db, concept_id).await
 }
@@ -351,6 +391,48 @@ pub async fn sync_all_custom_concept_tags(db: &SqlitePool) -> Result<()> {
     Ok(())
 }
 
+pub async fn clean_auto_concept_tags_logic(
+    db: &SqlitePool,
+    concept_id: Option<i64>,
+) -> Result<u64> {
+    let rows_affected = match concept_id {
+        Some(c_id) => {
+            let concept = get_custom_concept_by_id(db, c_id).await?;
+            let res = sqlx::query(
+                "DELETE FROM image_tags
+                 WHERE tag_id = (SELECT id FROM tags WHERE name = ?)
+                   AND image_id NOT IN (
+                     SELECT image_id FROM custom_concept_samples WHERE concept_id = ?
+                   )",
+            )
+            .bind(&concept.name)
+            .bind(c_id)
+            .execute(db)
+            .await?;
+            res.rows_affected()
+        }
+        None => {
+            let res = sqlx::query(
+                "DELETE FROM image_tags
+                 WHERE id IN (
+                   SELECT it.id
+                   FROM image_tags it
+                   JOIN tags t ON it.tag_id = t.id
+                   JOIN custom_concepts c ON c.name = t.name
+                   WHERE it.image_id NOT IN (
+                     SELECT image_id FROM custom_concept_samples WHERE concept_id = c.id
+                   )
+                 )",
+            )
+            .execute(db)
+            .await?;
+            res.rows_affected()
+        }
+    };
+
+    Ok(rows_affected)
+}
+
 pub async fn rescan_concept_logic(
     db: &SqlitePool,
     concept_id: i64,
@@ -369,6 +451,9 @@ pub async fn rescan_concept_logic(
     if !sample_ids.is_empty() {
         let _ = apply_concept_tags_to_samples(db, &concept, &sample_ids).await;
     }
+
+    // Clean up any stale auto-tags on non-samples
+    let _ = clean_auto_concept_tags_logic(db, Some(concept_id)).await;
 
     let active_model = model_manager.active_model();
     let source_name = match active_model {
@@ -397,48 +482,12 @@ pub async fn rescan_concept_logic(
         return Ok(0);
     }
 
-    let concept_source_id = resolve_source_id(db, "ai:custom-concepts").await?;
-
-    let tag_row: (i64,) = sqlx::query_as(
-        "INSERT INTO tags (name, category) VALUES (?, ?)
-         ON CONFLICT(name) DO UPDATE SET category = excluded.category
-         RETURNING id",
-    )
-    .bind(&concept.name)
-    .bind(&concept.category)
-    .fetch_one(db)
-    .await?;
-    let tag_id = tag_row.0;
-
     let results = vector_index.search(&proto_vec, 10000)?;
     let mut match_count = 0usize;
-    for (id, dist) in results {
-        let image_id = id as i64;
+    for (_id, dist) in results {
         let sim = 1.0 - dist;
         if sim >= concept.threshold {
-            let blacklisted: Option<(i64,)> = sqlx::query_as(
-                "SELECT id FROM image_tags WHERE image_id = ? AND tag_id = ? AND is_blacklisted = 1 LIMIT 1",
-            )
-            .bind(image_id)
-            .bind(tag_id)
-            .fetch_optional(db)
-            .await
-            .unwrap_or_default();
-
-            if blacklisted.is_none() {
-                let _ = sqlx::query(
-                    "INSERT INTO image_tags (image_id, tag_id, source_id, confidence, is_deleted, is_blacklisted)
-                     VALUES (?, ?, ?, ?, 0, 0)
-                     ON CONFLICT(image_id, tag_id, source_id, transaction_id) DO UPDATE SET confidence = excluded.confidence"
-                )
-                .bind(image_id)
-                .bind(tag_id)
-                .bind(concept_source_id)
-                .bind(sim as f64)
-                .execute(db)
-                .await;
-                match_count += 1;
-            }
+            match_count += 1;
         }
     }
 

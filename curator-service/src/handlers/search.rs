@@ -105,78 +105,20 @@ pub async fn search_logic(
                     if !proto_vec.is_empty() {
                         let mut ids = std::collections::HashSet::new();
 
-                        let sample_camie_logits: Vec<(i64, f64)> = sqlx::query_as(
-                            "SELECT it.tag_id, AVG(it.confidence) as avg_conf
-                             FROM image_tags it
-                             JOIN custom_concept_samples ccs ON it.image_id = ccs.image_id
-                             JOIN sources s ON it.source_id = s.id
-                             WHERE ccs.concept_id = ? AND s.name = 'ai:camie-tagger-v2' AND it.is_deleted = 0
-                             GROUP BY it.tag_id",
-                        )
-                        .bind(c_id)
-                        .fetch_all(db)
-                        .await
-                        .unwrap_or_default();
-
                         let results = vector_index.search(&proto_vec, limit.max(500))?;
                         for (id, dist) in results {
                             let image_id = id as i64;
-                            let clip_sim = 1.0 - dist;
+                            let raw_score = 1.0 - dist;
 
-                            let mut camie_logit_sim = 0.0f32;
-                            let mut has_cand_camie = false;
-                            if !sample_camie_logits.is_empty() {
-                                let candidate_camie_tags: Vec<(i64, f64)> = sqlx::query_as(
-                                    "SELECT it.tag_id, it.confidence
-                                     FROM image_tags it
-                                     JOIN sources s ON it.source_id = s.id
-                                     WHERE it.image_id = ? AND s.name = 'ai:camie-tagger-v2' AND it.is_deleted = 0",
-                                )
-                                .bind(image_id)
-                                .fetch_all(db)
-                                .await
-                                .unwrap_or_default();
-
-                                if !candidate_camie_tags.is_empty() {
-                                    has_cand_camie = true;
-                                    let cand_map: std::collections::HashMap<i64, f64> = candidate_camie_tags.into_iter().collect();
-                                    let mut dot_product = 0.0f64;
-                                    let mut proto_norm_sq = 0.0f64;
-                                    let mut cand_norm_sq = 0.0f64;
-
-                                    for &(tag_id, proto_conf) in &sample_camie_logits {
-                                        proto_norm_sq += proto_conf * proto_conf;
-                                        if let Some(&cand_conf) = cand_map.get(&tag_id) {
-                                            dot_product += proto_conf * cand_conf;
-                                        }
-                                    }
-
-                                    for &cand_conf in cand_map.values() {
-                                        cand_norm_sq += cand_conf * cand_conf;
-                                    }
-
-                                    if proto_norm_sq > 0.0 && cand_norm_sq > 0.0 {
-                                        camie_logit_sim = (dot_product / (proto_norm_sq.sqrt() * cand_norm_sq.sqrt())) as f32;
-                                    }
-                                }
-                            }
-
-                            let svm_score = if clip_sim > 0.55 { (clip_sim - 0.55) / 0.45 } else { 0.0 };
-
-                            let (final_score, is_match) = if has_cand_camie {
-                                if camie_logit_sim > 0.0 {
-                                    let score = 0.50 * svm_score + 0.50 * camie_logit_sim;
-                                    (score, score >= (concept.threshold * 0.60) || camie_logit_sim >= (concept.threshold * 0.60))
-                                } else {
-                                    (0.0f32, false)
-                                }
-                            } else {
-                                (svm_score, svm_score >= (concept.threshold * 0.60))
-                            };
+                            // Include candidates down to reasonable similarity threshold (CLIP cosine space cutoff)
+                            let min_threshold = (concept.threshold * 0.25).max(0.15);
+                            let is_match = raw_score >= min_threshold;
 
                             if is_match {
+                                // Normalize score for display ranking
+                                let normalized_score = ((raw_score - 0.15) / 0.85).clamp(0.0, 1.0);
                                 ids.insert(image_id);
-                                vector_scores.insert(image_id, final_score);
+                                vector_scores.insert(image_id, normalized_score);
                             }
                         }
 

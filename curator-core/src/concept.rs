@@ -153,45 +153,183 @@ pub fn compute_multimodal_prototype_vector(
     compute_cl2n_prototype(sample_vectors, global_mean, text_vector)
 }
 
-/// Trains a discriminative concept decision vector using SimpleShot / Centered L2 Normalization (CL2N),
-/// separating positive concept sample vectors from negative background vectors.
-pub fn train_linear_svm_decision_boundary(
+/// Fuses a CLIP vision embedding with an AI tagger probability vector.
+/// Both input vectors are L2-normalized first. The tagger vector is weighted by `tag_weight`
+/// (default 0.50), concatenated with the CLIP vector, and L2-normalized onto the unit sphere.
+pub fn fuse_clip_and_tag_features(clip_vec: &[f32], tag_vec: &[f32], tag_weight: f32) -> Vec<f32> {
+    if clip_vec.is_empty() {
+        return Vec::new();
+    }
+    if tag_vec.is_empty() {
+        return normalize_vector(clip_vec);
+    }
+
+    let norm_clip = normalize_vector(clip_vec);
+    let norm_tag = normalize_vector(tag_vec);
+
+    let mut fused = Vec::with_capacity(norm_clip.len() + norm_tag.len());
+    fused.extend_from_slice(&norm_clip);
+    for &t in &norm_tag {
+        fused.push(t * tag_weight);
+    }
+
+    normalize_vector(&fused)
+}
+
+/// L2-normalizes a vector onto the unit hypersphere.
+pub fn normalize_vector(v: &[f32]) -> Vec<f32> {
+    let norm_sq: f32 = v.iter().map(|x| x * x).sum();
+    if norm_sq > 0.0 {
+        let norm = norm_sq.sqrt();
+        v.iter().map(|x| x / norm).collect()
+    } else {
+        v.to_vec()
+    }
+}
+
+/// Solves Dual Ridge Regression: w = X^T (X X^T + alpha * I)^(-1) y
+/// where positive samples get target y_i = +1.0 and negative samples get y_i = -1.0.
+pub fn train_ridge_classifier_decision_boundary(
     positive_samples: &[Vec<f32>],
     negative_samples: &[Vec<f32>],
-    text_anchor: Option<&[f32]>,
+    alpha: f32,
 ) -> (Vec<f32>, f32) {
     let dim = if !positive_samples.is_empty() {
         positive_samples[0].len()
-    } else if let Some(ta) = text_anchor {
-        ta.len()
+    } else if !negative_samples.is_empty() {
+        negative_samples[0].len()
     } else {
         return (Vec::new(), 0.0);
     };
 
-    // Calculate background mean if negative samples are provided
-    let global_mean = if !negative_samples.is_empty() {
-        let mut mean = vec![0.0f32; dim];
-        let mut count = 0;
-        for neg in negative_samples {
-            if neg.len() == dim {
-                for i in 0..dim {
-                    mean[i] += neg[i];
-                }
-                count += 1;
-            }
-        }
-        if count > 0 {
-            for m in mean.iter_mut().take(dim) {
-                *m /= count as f32;
-            }
-        }
-        Some(mean)
-    } else {
-        None
-    };
+    let n_pos = positive_samples.len();
+    let n_neg = negative_samples.len();
+    let n_total = n_pos + n_neg;
 
-    let w = compute_cl2n_prototype(positive_samples, global_mean.as_deref(), text_anchor);
-    (w, 0.0)
+    if n_total == 0 {
+        return (Vec::new(), 0.0);
+    }
+
+    let mut samples: Vec<&[f32]> = Vec::with_capacity(n_total);
+    let mut y = vec![0.0f32; n_total];
+
+    for (i, pos) in positive_samples.iter().enumerate() {
+        if pos.len() == dim {
+            samples.push(pos);
+            y[i] = 1.0;
+        }
+    }
+    for (i, neg) in negative_samples.iter().enumerate() {
+        if neg.len() == dim {
+            samples.push(neg);
+            y[n_pos + i] = -1.0;
+        }
+    }
+
+    let n = samples.len();
+    if n == 0 {
+        return (Vec::new(), 0.0);
+    }
+
+    // Compute Kernel Matrix K = X X^T + alpha * I (n x n)
+    let reg = if alpha > 0.0 { alpha } else { 1.0 };
+    let mut k = vec![vec![0.0f32; n]; n];
+
+    for i in 0..n {
+        for j in i..n {
+            let mut dot = 0.0f32;
+            for d in 0..dim {
+                dot += samples[i][d] * samples[j][d];
+            }
+            k[i][j] = dot;
+            k[j][i] = dot;
+        }
+        k[i][i] += reg;
+    }
+
+    // Solve Linear System K * a = y via Gaussian Elimination
+    let a = solve_linear_system(&mut k, &y);
+
+    // Compute weight vector w = sum_i (a_i * sample_i)
+    let mut w = vec![0.0f32; dim];
+    for (i, sample) in samples.iter().enumerate() {
+        let alpha_i = a[i];
+        for d in 0..dim {
+            w[d] += alpha_i * sample[d];
+        }
+    }
+
+    let w_norm = normalize_vector(&w);
+    (w_norm, 0.0)
+}
+
+fn solve_linear_system(k: &mut [Vec<f32>], b: &[f32]) -> Vec<f32> {
+    let n = b.len();
+    let mut a = vec![vec![0.0f32; n + 1]; n];
+
+    for i in 0..n {
+        for j in 0..n {
+            a[i][j] = k[i][j];
+        }
+        a[i][n] = b[i];
+    }
+
+    // Forward elimination with partial pivoting
+    for i in 0..n {
+        let mut max_row = i;
+        for row in (i + 1)..n {
+            if a[row][i].abs() > a[max_row][i].abs() {
+                max_row = row;
+            }
+        }
+        a.swap(i, max_row);
+
+        let pivot = a[i][i];
+        if pivot.abs() < 1e-7 {
+            continue;
+        }
+
+        for j in (i + 1)..n {
+            let factor = a[j][i] / pivot;
+            for col in i..=n {
+                a[j][col] -= factor * a[i][col];
+            }
+        }
+    }
+
+    // Back substitution
+    let mut x = vec![0.0f32; n];
+    for i in (0..n).rev() {
+        let pivot = a[i][i];
+        if pivot.abs() < 1e-7 {
+            x[i] = 0.0;
+            continue;
+        }
+        let mut sum = a[i][n];
+        for j in (i + 1)..n {
+            sum -= a[i][j] * x[j];
+        }
+        x[i] = sum / pivot;
+    }
+
+    x
+}
+
+/// Trains a discriminative concept decision vector using Dual Ridge Classification,
+/// separating positive concept sample vectors from negative background vectors.
+pub fn train_linear_svm_decision_boundary(
+    positive_samples: &[Vec<f32>],
+    negative_samples: &[Vec<f32>],
+    _text_anchor: Option<&[f32]>,
+) -> (Vec<f32>, f32) {
+    if !positive_samples.is_empty() && !negative_samples.is_empty() {
+        train_ridge_classifier_decision_boundary(positive_samples, negative_samples, 1.0)
+    } else if !positive_samples.is_empty() {
+        let w = compute_cl2n_prototype(positive_samples, None, _text_anchor);
+        (w, 0.0)
+    } else {
+        (Vec::new(), 0.0)
+    }
 }
 
 /// Scores a candidate vector against a concept prototype using CL2N (Centered L2 Normalization).
@@ -331,5 +469,31 @@ mod tests {
         for i in 0..2 {
             assert!((proto_batch[i] - proto_online[i]).abs() < 1e-5);
         }
+    }
+
+    #[test]
+    fn test_fuse_clip_and_tag_features() {
+        let clip = vec![1.0, 0.0];
+        let tag = vec![0.0, 1.0];
+        let fused = fuse_clip_and_tag_features(&clip, &tag, 0.5);
+        assert_eq!(fused.len(), 4);
+        assert!((fused[0] - 1.0 / 1.25f32.sqrt()).abs() < 1e-5);
+        assert_eq!(fused[1], 0.0);
+        assert_eq!(fused[2], 0.0);
+        assert!((fused[3] - 0.5 / 1.25f32.sqrt()).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_train_ridge_classifier_decision_boundary() {
+        let pos1 = vec![1.0, 0.0];
+        let pos2 = vec![0.9, 0.1];
+        let neg1 = vec![-1.0, 0.0];
+        let neg2 = vec![-0.9, -0.1];
+
+        let (w, _bias) = train_ridge_classifier_decision_boundary(&[pos1, pos2], &[neg1, neg2], 1.0);
+        assert_eq!(w.len(), 2);
+        // Positives are along +x, negatives along -x; decision weight should point along +x
+        assert!(w[0] > 0.8);
+        assert!(w[1].abs() < 0.2);
     }
 }

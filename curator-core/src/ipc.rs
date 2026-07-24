@@ -156,6 +156,11 @@ pub enum Request {
     GetConceptSamples {
         concept_id: i64,
     },
+    /// Clean automatically applied concept tags from non-sample images.
+    CleanAutoConceptTags {
+        #[serde(default)]
+        concept_id: Option<i64>,
+    },
     /// Test filename parsing against a pattern or preset.
     TestFilenamePattern {
         filename: String,
@@ -307,6 +312,10 @@ pub enum Response {
     ConceptSamplesResult {
         concept_id: i64,
         samples: Vec<ImageDetails>,
+    },
+    /// Result of cleaning auto-concept tags from non-sample images.
+    AutoConceptTagsCleanedResult {
+        cleaned_count: u64,
     },
     /// Test filename pattern result.
     TestFilenamePatternResult {

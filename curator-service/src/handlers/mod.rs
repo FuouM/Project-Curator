@@ -534,6 +534,15 @@ pub async fn handle_request(
             }
         }
 
+        Request::CleanAutoConceptTags { concept_id } => {
+            match concepts::clean_auto_concept_tags_logic(db, concept_id).await {
+                Ok(cleaned_count) => Response::AutoConceptTagsCleanedResult { cleaned_count },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
         Request::TestFilenamePattern {
             filename,
             pattern_or_type,

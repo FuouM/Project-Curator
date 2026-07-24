@@ -274,9 +274,14 @@
               <p style="margin: 0; font-size: 12px; color: var(--sys-text-subtle);">
                 Teach Curator new characters, copyrights, or series from sample images without model retraining.
               </p>
-              <button type="button" class="win-button primary" id="refresh-concepts-btn">
-                <i class="bi bi-arrow-clockwise"></i> Refresh Concepts
-              </button>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="win-button danger" id="clean-auto-concept-tags-btn" title="Remove automatically applied concept tags from non-sample images">
+                  <i class="bi bi-eraser"></i> Clean Auto-Tags
+                </button>
+                <button type="button" class="win-button primary" id="refresh-concepts-btn">
+                  <i class="bi bi-arrow-clockwise"></i> Refresh Concepts
+                </button>
+              </div>
             </div>
             <div id="concepts-list-container" class="concepts-grid"></div>
           </div>
@@ -1004,10 +1009,20 @@
                 </div>
               </div>
 
-              <!-- Progress / Loading Status Panel -->
-              <div id="teach-concept-status" style="display: none; padding: 6px 8px; font-size: 11px; background-color: var(--sys-window-bg); border: 1px solid var(--sys-border-focus); margin-top: 8px; align-items: center;">
-                <i class="bi bi-arrow-clockwise animate-spin" style="margin-right: 6px; color: var(--sys-border-focus); font-size: 13px;"></i>
-                <span id="teach-concept-status-text" style="font-weight: 600;">Updating concept prototype & rescanning library...</span>
+              <!-- Progress / Loading Status Panel with Step Indicators -->
+              <div id="teach-concept-status" style="display: none; flex-direction: column; gap: 6px; padding: 10px 12px; font-size: 11px; background-color: var(--sys-window-bg); border: 1px solid var(--sys-border-focus); border-radius: 4px; margin-top: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span id="teach-concept-status-step" style="font-weight: 600; color: var(--sys-control-text);">
+                    <i class="bi bi-cpu animate-spin" style="margin-right: 6px; color: var(--sys-border-focus);"></i> Initializing concept training...
+                  </span>
+                  <span id="teach-concept-status-pct" style="font-weight: 700; color: var(--sys-border-focus);">0%</span>
+                </div>
+                <div style="height: 6px; background-color: var(--sys-control-bg); border: 1px solid var(--sys-border-dark); border-radius: 3px; overflow: hidden;">
+                  <div id="teach-concept-progress-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, #0078d4, #2b88d8); transition: width 0.25s ease;"></div>
+                </div>
+                <div id="teach-concept-status-desc" style="font-size: 10px; color: var(--sys-text-subtle);">
+                  Preparing ground-truth feature extraction & solver...
+                </div>
               </div>
             </div>
           </div>

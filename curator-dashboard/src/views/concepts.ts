@@ -239,14 +239,26 @@ export function setupConcepts() {
     const submitBtn = document.getElementById("teach-concept-submit-btn") as HTMLButtonElement;
     const cancelBtn = document.getElementById("cancel-teach-modal") as HTMLButtonElement;
     const statusPanel = document.getElementById("teach-concept-status");
-    const statusText = document.getElementById("teach-concept-status-text");
+    const statusStep = document.getElementById("teach-concept-status-step");
+    const statusPct = document.getElementById("teach-concept-status-pct");
+    const statusFill = document.getElementById("teach-concept-progress-fill");
+    const statusDesc = document.getElementById("teach-concept-status-desc");
 
-    if (statusPanel) statusPanel.style.display = "flex";
-    if (statusText) statusText.textContent = `Computing vector prototype & rescanning library...`;
+    const setTeachProgress = (pct: number, stepText: string, descText: string) => {
+      if (statusPanel) statusPanel.style.display = "flex";
+      if (statusStep) statusStep.innerHTML = `<i class="bi bi-cpu animate-spin" style="margin-right: 6px; color: var(--sys-border-focus);"></i> ${stepText}`;
+      if (statusPct) statusPct.textContent = `${pct}%`;
+      if (statusFill) statusFill.style.width = `${pct}%`;
+      if (statusDesc) statusDesc.textContent = descText;
+    };
+
+    setTeachProgress(15, "Step 1/3: Extracting Multimodal Embeddings...", "Processing CLIP vision & AI tagger feature vectors for sample images...");
     if (submitBtn) submitBtn.disabled = true;
     if (cancelBtn) cancelBtn.disabled = true;
 
     try {
+      setTeachProgress(45, "Step 2/3: Solving Dual Ridge Decision Boundary...", "Sampling negative background context & fitting regularized hyper-plane in Rust...");
+
       const resp = await callService({
         CreateConcept: {
           name,
@@ -257,20 +269,27 @@ export function setupConcepts() {
       });
 
       if ("ConceptResult" in resp) {
-        if (statusText) statusText.textContent = `Concept updated successfully!`;
-        setTimeout(() => {
-          teachModal?.classList.remove("active");
-          if (statusPanel) statusPanel.style.display = "none";
-        }, 500);
-        const { refreshModalTags } = await import("./tags");
-        if (sampleIds.length > 0) await refreshModalTags(sampleIds[0]);
-        refreshDashboard();
-        loadSearchConceptsDropdown();
+        setTeachProgress(85, "Step 3/3: Applying Concept Tags & Weight BLOB...", "Persisting decision vector and updating ground-truth sample tags...");
+        
+        setTimeout(async () => {
+          setTeachProgress(100, "Complete!", "Concept trained and saved successfully.");
+          setTimeout(() => {
+            teachModal?.classList.remove("active");
+            if (statusPanel) statusPanel.style.display = "none";
+          }, 400);
+          const { refreshModalTags } = await import("./tags");
+          if (sampleIds.length > 0) await refreshModalTags(sampleIds[0]);
+          loadConceptsView();
+          refreshDashboard();
+          loadSearchConceptsDropdown();
+        }, 300);
       } else if ("Error" in resp) {
         alert("Failed to teach concept: " + resp.Error.message);
+        if (statusPanel) statusPanel.style.display = "none";
       }
     } catch (err: any) {
       alert("Error teaching concept: " + (err.message || err));
+      if (statusPanel) statusPanel.style.display = "none";
     } finally {
       if (submitBtn) submitBtn.disabled = false;
       if (cancelBtn) cancelBtn.disabled = false;
@@ -285,6 +304,35 @@ export function setupConcepts() {
 
   document.getElementById("refresh-concepts-btn")?.addEventListener("click", () => {
     loadConceptsView();
+  });
+
+  document.getElementById("clean-auto-concept-tags-btn")?.addEventListener("click", async () => {
+    if (!confirm("Remove all automatically generated concept tags from non-sample images in your library? Ground-truth sample images will keep their concept tags.")) return;
+
+    const btn = document.getElementById("clean-auto-concept-tags-btn") as HTMLButtonElement;
+    const originalHtml = btn ? btn.innerHTML : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="bi bi-cpu animate-spin"></i> Cleaning...`;
+    }
+
+    try {
+      const resp = await callService({ CleanAutoConceptTags: { concept_id: null } });
+      if ("AutoConceptTagsCleanedResult" in resp) {
+        alert(`Cleaned ${resp.AutoConceptTagsCleanedResult.cleaned_count} auto-generated concept tag(s) from non-sample images!`);
+        refreshDashboard();
+        loadConceptsView();
+      } else if ("Error" in resp) {
+        alert("Clean failed: " + resp.Error.message);
+      }
+    } catch (e: any) {
+      alert("Error cleaning concept tags: " + (e.message || e));
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    }
   });
 
   // Expose window globals for concept actions
@@ -351,12 +399,20 @@ export function setupConcepts() {
 
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = `<i class="bi bi-arrow-clockwise animate-spin"></i> Rescanning...`;
+      btn.innerHTML = `<i class="bi bi-cpu animate-spin"></i> Step 1/2: Rescanning...`;
     }
 
     try {
+      if (btn) btn.innerHTML = `<i class="bi bi-cpu animate-spin"></i> Step 2/2: Scoring vectors & tagging...`;
       const resp = await callService({ RescanConcept: { concept_id: conceptId } });
       if ("ConceptRescannedResult" in resp) {
+        if (btn) btn.innerHTML = `<i class="bi bi-check-lg"></i> Done (${resp.ConceptRescannedResult.tagged_count})`;
+        setTimeout(() => {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+          }
+        }, 1200);
         alert(`Rescan complete! Tagged ${resp.ConceptRescannedResult.tagged_count} matching image(s).`);
         refreshDashboard();
         if (document.getElementById("view-gallery")?.classList.contains("active")) {
@@ -365,10 +421,13 @@ export function setupConcepts() {
         }
       } else if ("Error" in resp) {
         alert("Rescan failed: " + resp.Error.message);
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+        }
       }
     } catch (e: any) {
       alert("Error rescanning concept: " + e.message);
-    } finally {
       if (btn) {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
@@ -400,16 +459,70 @@ export function setupConcepts() {
   (window as any).removeConceptSample = async (conceptId: number, imageId: number) => {
     if (!confirm("Remove this sample image from the concept ground-truth set?")) return;
 
+    // 1. Instant Optimistic DOM Removal: Remove card from samples grid immediately
+    const grid = document.getElementById(`concept-samples-grid-${conceptId}`);
+    if (grid) {
+      const cards = grid.querySelectorAll(".image-card");
+      cards.forEach((c) => {
+        const idAttr = c.getAttribute("data-image-id") || c.getAttribute("data-id") || (c.querySelector("[data-id]") as HTMLElement)?.dataset.id;
+        if (idAttr && parseInt(idAttr) === imageId) {
+          c.remove();
+        }
+      });
+      if (grid.querySelectorAll(".image-card").length === 0) {
+        grid.innerHTML = `<div style="grid-column: 1 / -1; padding: 8px; text-align: center; color: #888; font-size: 11px;">No sample images found.</div>`;
+      }
+    }
+
+    // 2. Instant Optimistic Sample Count Update on Card Header & Button
+    const cardEl = document.getElementById(`concept-card-${conceptId}`);
+    if (cardEl) {
+      const countValEl = cardEl.querySelector(".concept-info-val");
+      const sampleBtnEl = cardEl.querySelector(".concept-card-actions button");
+      const strongEl = countValEl?.querySelector("strong");
+
+      let updatedCount = 0;
+      if (strongEl) {
+        updatedCount = Math.max(0, parseInt(strongEl.textContent || "1") - 1);
+        countValEl!.innerHTML = `<strong>${updatedCount}</strong> ${updatedCount === 1 ? 'sample' : 'samples'}`;
+      }
+      if (sampleBtnEl) {
+        sampleBtnEl.innerHTML = `<i class="bi bi-images"></i> Samples (${updatedCount})`;
+      }
+    }
+
     try {
       const resp = await callService({ RemoveConceptSample: { concept_id: conceptId, image_id: imageId } });
       if ("ConceptResult" in resp) {
+        const concept = resp.ConceptResult.concept;
+
+        // Canonical backend update of sample counts
+        const countValElFinal = document.querySelector(`#concept-card-${conceptId} .concept-info-val`);
+        if (countValElFinal) {
+          countValElFinal.innerHTML = `<strong>${concept.sample_count}</strong> ${concept.sample_count === 1 ? 'sample' : 'samples'}`;
+        }
+
+        const sampleBtnElFinal = document.querySelector(`#concept-card-${conceptId} .concept-card-actions button`);
+        if (sampleBtnElFinal) {
+          sampleBtnElFinal.innerHTML = `<i class="bi bi-images"></i> Samples (${concept.sample_count})`;
+        }
+
+        // Re-sync full sample list cleanly with backend
         await (window as any).viewConceptSamples(conceptId, "", true);
-        loadConceptsView();
+
+        // Refresh tag modal if open
+        const { refreshModalTags } = await import("./tags");
+        refreshModalTags(imageId).catch(() => {});
+
+        refreshDashboard();
+        loadSearchConceptsDropdown();
       } else if ("Error" in resp) {
         alert("Failed to remove sample: " + resp.Error.message);
+        await (window as any).viewConceptSamples(conceptId, "", true);
       }
     } catch (e: any) {
       alert("Error removing sample: " + (e.message || e));
+      await (window as any).viewConceptSamples(conceptId, "", true);
     }
   };
 

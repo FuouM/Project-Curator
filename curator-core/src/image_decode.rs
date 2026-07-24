@@ -13,7 +13,15 @@ pub fn decode_rgb(path: &Path) -> Result<(Vec<u8>, u32, u32)> {
             .with_context(|| format!("turbojpeg decode failed for {:?}", path))?;
         (image.pixels.to_vec(), image.width as u32, image.height as u32)
     } else if is_png {
-        decode_png_fast(&data, path)?
+        match decode_png_fast(&data, path) {
+            Ok(res) => res,
+            Err(_) => {
+                let img = image::open(path).with_context(|| format!("Cannot open PNG image {:?}", path))?;
+                let rgb = img.to_rgb8();
+                let (w, h) = rgb.dimensions();
+                (rgb.into_raw(), w, h)
+            }
+        }
     } else {
         let img = image::open(path).with_context(|| format!("Cannot open image {:?}", path))?;
         let rgb = img.to_rgb8();
@@ -25,14 +33,12 @@ pub fn decode_rgb(path: &Path) -> Result<(Vec<u8>, u32, u32)> {
 }
 
 fn decode_png_fast(data: &[u8], path: &Path) -> Result<(Vec<u8>, u32, u32)> {
-    let decoder = png::Decoder::new(std::io::Cursor::new(data));
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(data));
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     let mut reader = decoder.read_info()
         .with_context(|| format!("png decode header failed for {:?}", path))?;
     let w = reader.info().width;
     let h = reader.info().height;
-    // Always allocate w*h*4 (max RGBA) — output_buffer_size() can underreport
-    // for interlaced or palette-based PNGs, causing "Size of buffer is smaller
-    // than required" on next_frame().
     let buf_size = w as usize * h as usize * 4;
     let mut raw = vec![0u8; buf_size];
     let out_info = reader.next_frame(&mut raw)
@@ -41,39 +47,49 @@ fn decode_png_fast(data: &[u8], path: &Path) -> Result<(Vec<u8>, u32, u32)> {
 
     match out_info.color_type {
         png::ColorType::Rgb => {
-            let mut rgb = vec![0u8; w as usize * h as usize * 3];
-            let len = pixels.min(rgb.len());
-            rgb[..len].copy_from_slice(&raw[..len]);
+            let expected_len = w as usize * h as usize * 3;
+            if pixels < expected_len {
+                anyhow::bail!("PNG RGB buffer too small: expected {}, got {}", expected_len, pixels);
+            }
+            let mut rgb = vec![0u8; expected_len];
+            rgb.copy_from_slice(&raw[..expected_len]);
             Ok((rgb, w, h))
         }
         png::ColorType::Rgba => {
-            let rgb: Vec<u8> = raw[..pixels]
+            let expected_pixels = w as usize * h as usize * 4;
+            if pixels < expected_pixels {
+                anyhow::bail!("PNG RGBA buffer too small: expected {}, got {}", expected_pixels, pixels);
+            }
+            let rgb: Vec<u8> = raw[..expected_pixels]
                 .chunks_exact(4)
                 .flat_map(|c| [c[0], c[1], c[2]])
                 .collect();
             Ok((rgb, w, h))
         }
         png::ColorType::Grayscale => {
-            let rgb: Vec<u8> = raw[..pixels]
+            let expected_pixels = w as usize * h as usize;
+            if pixels < expected_pixels {
+                anyhow::bail!("PNG Grayscale buffer too small: expected {}, got {}", expected_pixels, pixels);
+            }
+            let rgb: Vec<u8> = raw[..expected_pixels]
                 .iter()
                 .flat_map(|&g| [g, g, g])
                 .collect();
             Ok((rgb, w, h))
         }
         png::ColorType::GrayscaleAlpha => {
-            let rgb: Vec<u8> = raw[..pixels]
+            let expected_pixels = w as usize * h as usize * 2;
+            if pixels < expected_pixels {
+                anyhow::bail!("PNG GrayscaleAlpha buffer too small: expected {}, got {}", expected_pixels, pixels);
+            }
+            let rgb: Vec<u8> = raw[..expected_pixels]
                 .chunks_exact(2)
                 .flat_map(|c| [c[0], c[0], c[0]])
                 .collect();
             Ok((rgb, w, h))
         }
-        // Indexed (palette) and any other color types: fall back to the image crate
-        // which handles all conversions correctly via .to_rgb8()
         _ => {
-            let img = image::open(path).with_context(|| format!("Cannot open image {:?}", path))?;
-            let rgb = img.to_rgb8();
-            let (fw, fh) = rgb.dimensions();
-            Ok((rgb.into_raw(), fw, fh))
+            anyhow::bail!("Unsupported PNG color type {:?}", out_info.color_type);
         }
     }
 }
