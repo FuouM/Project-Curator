@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+mod preprocess;
+mod types;
+
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -8,36 +10,11 @@ use crate::ipc::DevicePreference;
 use crate::vector::apply_device_preference;
 use anyhow::{Context, Result};
 
-use ndarray::Array4;
 use ort::{inputs, session::Session, value::TensorRef};
-use serde::Deserialize;
 use tracing::{debug, info, warn};
 
-// ---------------------------------------------------------------------------
-// Metadata structures (mirrors camie-tagger-v2-metadata.json)
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Deserialize)]
-struct MetadataRoot {
-    model_info: ModelInfo,
-    dataset_info: DatasetInfo,
-}
-
-#[derive(Debug, Deserialize)]
-struct ModelInfo {
-    img_size: u32,
-}
-
-#[derive(Debug, Deserialize)]
-struct DatasetInfo {
-    tag_mapping: TagMapping,
-}
-
-#[derive(Debug, Deserialize)]
-struct TagMapping {
-    idx_to_tag: HashMap<String, String>,
-    tag_to_category: HashMap<String, String>,
-}
+pub use types::{TagPrediction, TaggerStatus};
+use types::{MetadataRoot, TaggerInner};
 
 fn now_secs() -> u64 {
     SystemTime::now()
@@ -46,43 +23,12 @@ fn now_secs() -> u64 {
         .as_secs()
 }
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone)]
-pub struct TagPrediction {
-    pub tag: String,
-    pub category: String,
-    pub confidence: f32,
-}
-
-#[derive(Debug, Clone)]
-pub struct TaggerStatus {
-    pub loaded: bool,
-    pub model_path: String,
-    pub total_tags: usize,
-}
-
-// ---------------------------------------------------------------------------
-// TaggerEngine
-// ---------------------------------------------------------------------------
-
 pub struct TaggerEngine {
     model_path: PathBuf,
     metadata_path: PathBuf,
     device: Mutex<DevicePreference>,
     inner: Mutex<Option<TaggerInner>>,
     last_used: AtomicU64,
-}
-
-struct TaggerInner {
-    session: Mutex<Session>,
-    img_size: u32,
-    idx_to_tag: HashMap<String, String>,
-    tag_to_category: HashMap<String, String>,
-    total_tags: usize,
-    resizer: Mutex<fast_image_resize::Resizer>,
 }
 
 impl TaggerEngine {
@@ -173,7 +119,7 @@ impl TaggerEngine {
         // Pre-process image
         let t1 = Instant::now();
         let mut resizer_guard = inner.resizer.lock().unwrap();
-        let tensor = preprocess_image(image_path, inner.img_size, &mut resizer_guard)
+        let tensor = preprocess::preprocess_image(image_path, inner.img_size, &mut resizer_guard)
             .with_context(|| format!("Preprocessing {:?}", image_path))?;
         drop(resizer_guard);
         let preprocess_ms = t1.elapsed().as_secs_f64() * 1000.0;
@@ -198,7 +144,7 @@ impl TaggerEngine {
         let output_ref = output_tensor.try_extract_tensor::<f32>()?;
         let logits = output_ref.1;
 
-        let probs_iter = logits.iter().map(|&x| sigmoid(x));
+        let probs_iter = logits.iter().map(|&x| preprocess::sigmoid(x));
 
         let mut predictions = Vec::new();
         for (idx, prob) in probs_iter.enumerate() {
@@ -284,10 +230,6 @@ impl TaggerEngine {
         res
     }
 
-    // -----------------------------------------------------------------------
-    // Private helpers
-    // -----------------------------------------------------------------------
-
     fn build_inner(&self) -> Result<TaggerInner> {
         if !self.model_path.exists() {
             anyhow::bail!(
@@ -347,91 +289,4 @@ impl TaggerEngine {
             resizer: Mutex::new(fast_image_resize::Resizer::new()),
         })
     }
-}
-
-// ---------------------------------------------------------------------------
-// Image preprocessing
-// ---------------------------------------------------------------------------
-
-const IMAGENET_MEAN: [f32; 3] = [0.485, 0.456, 0.406];
-const IMAGENET_STD: [f32; 3] = [0.229, 0.224, 0.225];
-const PAD_COLOR: [u8; 3] = [124, 116, 104];
-
-fn preprocess_image(
-    path: &Path,
-    img_size: u32,
-    resizer: &mut fast_image_resize::Resizer,
-) -> Result<Array4<f32>> {
-    let (rgb_buf, orig_w, orig_h) = crate::image_decode::decode_rgb(path)?;
-
-    let aspect = orig_w as f32 / orig_h as f32;
-
-    let (new_w, new_h) = if aspect > 1.0 {
-        let nw = img_size;
-        let nh = (img_size as f32 / aspect).round() as u32;
-        (nw, nh)
-    } else {
-        let nh = img_size;
-        let nw = (img_size as f32 * aspect).round() as u32;
-        (nw, nh)
-    };
-
-    // SIMD-accelerated resize via fast_image_resize (resizer reused across calls)
-    let src = fast_image_resize::images::ImageRef::new(
-        orig_w,
-        orig_h,
-        &rgb_buf,
-        fast_image_resize::PixelType::U8x3,
-    )?;
-    let dst_buf = vec![0u8; (new_w * new_h * 3) as usize];
-    let mut dst = fast_image_resize::images::Image::from_vec_u8(
-        new_w,
-        new_h,
-        dst_buf,
-        fast_image_resize::PixelType::U8x3,
-    )?;
-    let opts = fast_image_resize::ResizeOptions::new().resize_alg(
-        fast_image_resize::ResizeAlg::Convolution(fast_image_resize::FilterType::Bilinear),
-    );
-    resizer.resize(&src, &mut dst, Some(&opts))?;
-    let data = dst.buffer();
-
-    let s = img_size as usize;
-    let mut tensor = Array4::<f32>::zeros((1, 3, s, s));
-    let slice = tensor.as_slice_mut().unwrap();
-
-    let paste_x = ((img_size - new_w) / 2) as usize;
-    let paste_y = ((img_size - new_h) / 2) as usize;
-    let nw = new_w as usize;
-    let nh = new_h as usize;
-
-    for c in 0..3usize {
-        let mean = IMAGENET_MEAN[c];
-        let std_dev = IMAGENET_STD[c];
-        let pad_val = (PAD_COLOR[c] as f32 / 255.0 - mean) / std_dev;
-        let dst_base = c * s * s;
-
-        for y in 0..s {
-            let rs = dst_base + y * s;
-            for x in 0..s {
-                slice[rs + x] = pad_val;
-            }
-        }
-
-        for y in 0..nh {
-            let src_row = y * nw * 3 + c;
-            let dst_row = dst_base + (paste_y + y) * s + paste_x;
-            for x in 0..nw {
-                let val = data[src_row + x * 3] as f32 / 255.0;
-                slice[dst_row + x] = (val - mean) / std_dev;
-            }
-        }
-    }
-
-    Ok(tensor)
-}
-
-#[inline]
-fn sigmoid(x: f32) -> f32 {
-    1.0 / (1.0 + (-x).exp())
 }

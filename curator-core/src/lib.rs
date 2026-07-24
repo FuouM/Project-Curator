@@ -5,6 +5,7 @@ pub mod db;
 pub mod filename_parser;
 pub mod image_decode;
 pub mod ipc;
+pub mod preprocess;
 pub mod tagger;
 pub mod vector;
 
