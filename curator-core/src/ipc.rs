@@ -48,6 +48,8 @@ pub enum Request {
         query_image_path: Option<String>,
         tag_filter: Option<String>,
         #[serde(default)]
+        filename_filter: Option<String>,
+        #[serde(default)]
         parse_filter: Option<String>,
         #[serde(default)]
         parse_type: Option<String>,

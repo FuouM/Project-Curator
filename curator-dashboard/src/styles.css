@@ -713,6 +713,34 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   color: #10b981;
   border-color: #10b981;
 }
+
+/* --- Info Button --- */
+.info-btn {
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #dcdcdc;
+  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s, background-color 0.2s, color 0.2s;
+  color: #a0aec0;
+}
+.image-card:hover .info-btn {
+  opacity: 1;
+}
+.info-btn:hover {
+  background: #ffffff;
+  color: #0078d7;
+}
+
 .image-preview {
   width: 100%;
   height: 130px;

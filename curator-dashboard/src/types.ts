@@ -7,7 +7,7 @@ export type RequestPayload =
   | { AddTag: { image_id: number; tag: string; category: string } }
   | { RemoveTag: { image_id: number; tag: string } }
   | { UnblacklistTag: { image_id: number; tag: string } }
-  | { Search: { query_text: string | null; query_image_path: string | null; tag_filter: string | null; parse_filter: string | null; parse_type: string | null; concept_id: number | null; limit: number } }
+  | { Search: { query_text: string | null; query_image_path: string | null; tag_filter: string | null; filename_filter: string | null; parse_filter: string | null; parse_type: string | null; concept_id: number | null; limit: number } }
   | { ListImages: { limit: number; offset: number; only_favorites?: boolean | null } }
   | { SetFavorite: { image_id: number; favorite: boolean } }
   | { GetImage: { image_id: number } }

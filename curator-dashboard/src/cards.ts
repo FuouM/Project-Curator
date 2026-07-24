@@ -180,10 +180,101 @@ function attachPreviewClickHandler(previewEl: Element, filepath: string) {
   });
 }
 
+function attachInfoButtonHandler(parentEl: Element) {
+  const infoBtn = parentEl.querySelector(".info-btn");
+  if (!infoBtn) return;
+  infoBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const imageId = parseInt(infoBtn.getAttribute("data-id") || "0");
+    if (!imageId) return;
+    try {
+      const resp = await callService({ GetImage: { image_id: imageId } });
+      if ("ImageResult" in resp) {
+        openImageInfoModal(resp.ImageResult.image);
+      }
+    } catch (err) {
+      console.error("Failed to load image details:", err);
+    }
+  });
+}
+
+function openImageInfoModal(img: ImageDetails) {
+  const modal = document.getElementById("image-info-modal");
+  const body = document.getElementById("image-info-modal-body");
+  if (!modal || !body) return;
+
+  const sha256Short = img.sha256 ? img.sha256.slice(0, 16) + "..." : "—";
+  const sha256Full = img.sha256 || "";
+  const mtime = img.mtime ? new Date(img.mtime * 1000).toLocaleString() : "—";
+  const createdAt = img.created_at || "—";
+  const tagsCount = img.tags?.length ?? 0;
+  const tagCategories = img.tags?.reduce((acc: Record<string, number>, t) => {
+    acc[t.category] = (acc[t.category] || 0) + 1;
+    return acc;
+  }, {}) ?? {};
+
+  let parsedHtml = "";
+  if (img.parsed_metadata) {
+    const pm = img.parsed_metadata;
+    const fields: [string, string][] = [];
+    fields.push(["Match Type", pm.match_type]);
+    if (pm.artist) fields.push(["Artist", pm.artist]);
+    if (pm.pixiv_id) fields.push(["Pixiv ID", pm.pixiv_id]);
+    if (pm.twitter_id) fields.push(["Twitter ID", pm.twitter_id]);
+    if (pm.datetime_iso) fields.push(["DateTime", pm.datetime_iso]);
+    if (pm.raw_matched) fields.push(["Raw Matched", pm.raw_matched]);
+    if (pm.extracted_tags.length > 0) fields.push(["Extracted Tags", pm.extracted_tags.join(", ")]);
+    if (pm.partial !== undefined) fields.push(["Partial", pm.partial ? "Yes" : "No"]);
+    const rows = fields.map(([k, v]) => `<tr><td style="font-weight:600;width:120px;">${k}</td><td style="word-break:break-all;">${v}</td></tr>`).join("");
+    parsedHtml = '<div class="group-box" style="margin-top:8px;"><div class="group-box-title"><i class="bi bi-file-earmark-code"></i> Parsed Metadata</div><table class="curator-table" style="font-size:11px;"><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  const catBreakdown = Object.entries(tagCategories).map(([cat, count]) => `${cat}: ${count}`).join(", ");
+
+  const tagsHtml = img.tags?.length
+    ? img.tags.map(t => renderTagPill(t)).join(" ")
+    : '<span style="color:#999;font-style:italic;">No tags</span>';
+
+  body.innerHTML =
+    '<table class="curator-table" style="font-size:11px;"><tbody>' +
+    '<tr><td style="font-weight:600;width:120px;">Image ID</td><td>' + img.id + '</td></tr>' +
+    '<tr><td style="font-weight:600;">Filepath</td><td style="word-break:break-all;">' + img.current_filepath + '</td></tr>' +
+    '<tr><td style="font-weight:600;">SHA-256</td><td style="font-family:monospace;display:flex;align-items:center;gap:6px;"><span id="info-sha256-text">' + sha256Short + '</span><button class="win-button" id="info-copy-sha256" title="Copy full SHA-256" style="font-size:10px;padding:2px 6px;"><i class="bi bi-clipboard"></i></button></td></tr>' +
+    '<tr><td style="font-weight:600;">Modified</td><td>' + mtime + '</td></tr>' +
+    '<tr><td style="font-weight:600;">Imported</td><td>' + createdAt + '</td></tr>' +
+    '<tr><td style="font-weight:600;">Vector State</td><td>' + img.vector_state + '</td></tr>' +
+    '<tr><td style="font-weight:600;">Favorite</td><td>' + (img.favorite ? "Yes" : "No") + '</td></tr>' +
+    '<tr><td style="font-weight:600;">Tags (' + tagsCount + ')</td><td>' + (catBreakdown || "—") + '</td></tr>' +
+    '</tbody></table>' +
+    '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">' + tagsHtml + '</div>' +
+    parsedHtml;
+
+  modal.classList.add("active");
+
+  const copySha = body.querySelector("#info-copy-sha256");
+  if (copySha && sha256Full) {
+    copySha.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(sha256Full);
+        copySha.innerHTML = '<i class="bi bi-check-lg"></i>';
+        setTimeout(() => { copySha.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 1200);
+      } catch (err) {
+        console.error("Failed to copy SHA-256:", err);
+      }
+    });
+  }
+
+  const closeBtn = modal.querySelector(".modal-close");
+  const onClose = () => { modal.classList.remove("active"); closeBtn?.removeEventListener("click", onClose); };
+  closeBtn?.addEventListener("click", onClose);
+  modal.addEventListener("click", (e) => { if (e.target === modal) onClose(); }, { once: true });
+}
+
 export function attachCardEventHandlers(parentEl: Element, imageId: number, filepath: string, favState: { favorite: boolean }, previewSelector = ".image-preview", syncCrossCards = false) {
   attachStarButtonHandler(parentEl, imageId, favState, syncCrossCards);
   attachOpenFolderHandler(parentEl, filepath);
   attachCopyToClipboardHandler(parentEl, filepath);
+  attachInfoButtonHandler(parentEl);
   const previewDiv = parentEl.querySelector(previewSelector);
   if (previewDiv) attachPreviewClickHandler(previewDiv, filepath);
 }
@@ -226,6 +317,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
         <span style="display: none;"><i class="bi bi-image"></i></span>
         ${img.badgeHtml || ""}
         <div class="copy-btn" title="Copy image to clipboard"><i class="bi bi-clipboard"></i></div>
+        <div class="info-btn" title="View image details" data-id="${img.id}"><i class="bi bi-info-circle"></i></div>
       </div>
       <div class="image-info">
         <div class="image-path-row">
@@ -264,7 +356,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
 
     card.addEventListener("click", (e) => {
       const target = e.target as HTMLElement;
-      if (target.closest(".win-button") || target.closest(".star-btn") || target.closest(".copy-btn")) return;
+      if (target.closest(".win-button") || target.closest(".star-btn") || target.closest(".copy-btn") || target.closest(".info-btn")) return;
       if (isSelectMode) {
         if (selectedImageIds.has(img.id)) {
           selectedImageIds.delete(img.id);

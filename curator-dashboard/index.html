@@ -464,6 +464,13 @@
                   </div>
                 </div>
                 <div class="form-group">
+                  <label for="search-filename-input" style="min-width: 80px;">Filename:</label>
+                  <div class="input-wrapper" style="flex: 1;">
+                    <input class="input-field has-clear" id="search-filename-input" placeholder="Search by filename (e.g. 'sample', 'artwork_001')..." />
+                    <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
+                  </div>
+                </div>
+                <div class="form-group">
                   <label for="search-parse-input" style="min-width: 80px;">Parsed:</label>
                   <div class="input-wrapper" style="flex: 1;">
                     <input class="input-field has-clear" id="search-parse-input" placeholder="Search parsed filename (e.g. 'Ichijyoma', '108521179', 'Erai-raws')..." />
@@ -866,6 +873,18 @@
       </div>
       <div class="image-viewer-body">
         <img id="image-viewer-img" src="" alt="Full size image" />
+      </div>
+    </div>
+
+    <!-- Image Info Modal -->
+    <div id="image-info-modal" class="modal">
+      <div class="modal-content" style="width: 520px;">
+        <div class="modal-header">
+          <span class="modal-title"><i class="bi bi-info-circle"></i> Image Details</span>
+          <span class="modal-close">&times;</span>
+        </div>
+        <div class="modal-body" id="image-info-modal-body" style="max-height: 70vh; overflow-y: auto;">
+        </div>
       </div>
     </div>
 

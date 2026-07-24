@@ -52,6 +52,7 @@ pub async fn search_logic(
     query_text: Option<String>,
     query_image_path: Option<String>,
     tag_filter: Option<String>,
+    filename_filter: Option<String>,
     parse_filter: Option<String>,
     parse_type: Option<String>,
     concept_id: Option<i64>,
@@ -320,6 +321,24 @@ pub async fn search_logic(
         }
     }
 
+    // Search by filename (current_filepath LIKE %query%)
+    let mut filename_matches = std::collections::HashSet::new();
+    if let Some(ref fname) = filename_filter {
+        if !fname.trim().is_empty() {
+            let pattern = format!("%{}%", fname.trim());
+            let rows: Vec<(i64,)> = sqlx::query_as(
+                "SELECT id FROM images WHERE current_filepath LIKE ? COLLATE NOCASE AND deleted_at IS NULL",
+            )
+            .bind(&pattern)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+            for (id,) in rows {
+                filename_matches.insert(id);
+            }
+        }
+    }
+
     let mut target_set = std::collections::HashSet::new();
     if let Some(c_ids) = candidate_ids {
         target_set.extend(c_ids);
@@ -327,6 +346,7 @@ pub async fn search_logic(
     target_set.extend(exact_matches.iter().copied());
     target_set.extend(perceptual_matches.keys().copied());
     target_set.extend(parse_matches.iter().copied());
+    target_set.extend(filename_matches.iter().copied());
 
     if let Some(tag_filter_raw) = tag_filter {
         let tag_names: Vec<String> = tag_filter_raw

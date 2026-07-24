@@ -117,6 +117,8 @@ export function setupSearch() {
       const query = queryInput.value.trim() || null;
       const tag = tagInput.value.trim() || null;
       const imagePath = imageInput.value.trim() || null;
+      const filenameInput = document.getElementById("search-filename-input") as HTMLInputElement;
+      const filenameFilter = filenameInput?.value.trim() || null;
       const parseFilter = parseInput?.value.trim() || null;
       const parseTypeSelect = document.getElementById("search-parse-type-select") as HTMLSelectElement;
       const parseType = parseTypeSelect?.value.trim() || null;
@@ -124,7 +126,7 @@ export function setupSearch() {
       const conceptIdVal = conceptSelect && conceptSelect.value ? parseInt(conceptSelect.value) : null;
 
       const resp = await callService({
-        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, parse_filter: parseFilter, parse_type: parseType, concept_id: conceptIdVal, limit: 50 }
+        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, filename_filter: filenameFilter, parse_filter: parseFilter, parse_type: parseType, concept_id: conceptIdVal, limit: 50 }
       });
 
       if ("SearchResult" in resp) {
@@ -207,8 +209,9 @@ function setupTagAutocomplete() {
   loadAllTags();
 
   const tagInput = document.getElementById("search-tag-input") as HTMLInputElement;
-  const dropdown = document.getElementById("search-tag-autocomplete");
-  if (!tagInput || !dropdown) return;
+  const dropdownEl = document.getElementById("search-tag-autocomplete");
+  if (!tagInput || !dropdownEl) return;
+  const dropdown = dropdownEl;
 
   let activeIndex = -1;
 
