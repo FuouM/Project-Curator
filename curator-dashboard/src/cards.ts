@@ -19,7 +19,7 @@ export function renderTagListHtml(tags: TagSummary[], maxVisible = 10): string {
     (extraCount > 0 ? `<span class="tag-pill" style="background-color: #f0f0f0; color: #555555; font-style: italic;">+${extraCount} more</span>` : "");
 }
 
-function renderParsedMetadataHtml(meta: ParsedMetadata): string {
+export function renderParsedMetadataHtml(meta: ParsedMetadata): string {
   const parts: string[] = [];
 
   // Anime Screenshot: special merged pill

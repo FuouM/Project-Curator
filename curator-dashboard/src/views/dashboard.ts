@@ -1,7 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { callService } from "../ipc";
 import { maskPath } from "../components";
-import { renderImages, attachCardEventHandlers, getTagPillHtml } from "../cards";
+import { renderImages, attachCardEventHandlers, getTagPillHtml, renderParsedMetadataHtml } from "../cards";
 import { ImageDetails } from "../types";
 
 export async function refreshDashboard() {
@@ -133,6 +133,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
 
   const srcUrl = convertFileSrc(featured.current_filepath);
   const badgeClass = featured.vector_state === "ready" ? "badge-ready" : "badge-pending";
+  const parsedHtml = featured.parsed_metadata ? renderParsedMetadataHtml(featured.parsed_metadata) : "";
 
   container.innerHTML = `
     <div class="featured-layout">
@@ -146,6 +147,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
           <div class="vector-badge ${badgeClass}">${featured.vector_state}</div>
           <div class="featured-badge-overlay"><i class="bi bi-stars"></i> Feature of the Day</div>
           <div class="copy-btn" title="Copy image to clipboard"><i class="bi bi-clipboard"></i></div>
+          <div class="info-btn" title="View image details" data-id="${featured.id}"><i class="bi bi-info-circle"></i></div>
         </div>
         <div style="display: flex; gap: 4px; margin-top: 4px;">
           <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.openTags(${featured.id}, '${featured.current_filepath.replace(/\\/g, '\\\\')}')">
@@ -164,6 +166,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
             <i class="bi bi-folder2-open"></i>
           </button>
         </div>
+        ${parsedHtml ? `<div class="parsed-metadata-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
         <div class="tag-list" style="margin-top: 6px;">
           ${featured.tags.length > 0 ? featured.tags.map(t => getTagPillHtml(t)).join("") : '<span style="color: #999; font-style: italic; font-size: 11px;">No tags</span>'}
         </div>
