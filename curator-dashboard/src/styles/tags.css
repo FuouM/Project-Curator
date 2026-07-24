@@ -1,0 +1,79 @@
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.tag-pill {
+  font-size: 11px;
+  padding: 1px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 2px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 220px;
+}
+.tag-pill.tag-user {
+  background-color: #fff3cd;
+  border: 1px solid #ffeeba;
+  color: #856404;
+  font-weight: 500;
+}
+.tag-pill.tag-character {
+  background-color: #d1ecf1;
+  border: 1px solid #bee5eb;
+  color: #0c5460;
+}
+.tag-pill.tag-copyright {
+  background-color: #ebdcf9;
+  border: 1px solid #dcbdf5;
+  color: #511c74;
+}
+.tag-pill.tag-meta {
+  background-color: #e2e3e5;
+  border: 1px solid #d6d8db;
+  color: #383d41;
+}
+.tag-pill.tag-artist {
+  background-color: #fff0e6;
+  border: 1px solid #ffd9c2;
+  color: #7c2d12;
+}
+.tag-pill.tag-rank-3 {
+  background-color: #ffffff;
+  border: 1px solid #e0e0e0;
+  color: #4a4a4a;
+}
+.tag-remove-btn {
+  cursor: pointer;
+  font-weight: bold;
+  color: #a80000;
+  margin-left: 2px;
+}
+.tag-remove-btn:hover {
+  color: #e81123;
+}
+
+.tag-pill.custom-concept {
+  background-color: #cce5ff;
+  border: 1px solid #b8daff;
+  color: #004085;
+  font-weight: 600;
+}
+.tag-pill.custom-concept .concept-spark {
+  color: #005499;
+  margin-right: 2px;
+}
+.tag-confirm-btn {
+  cursor: pointer;
+  color: #107c41;
+  margin-left: 3px;
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+.tag-confirm-btn:hover {
+  transform: scale(1.2);
+  color: #0e6b38;
+}
