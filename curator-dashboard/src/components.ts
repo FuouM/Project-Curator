@@ -793,5 +793,336 @@ export const componentRegistry: ComponentMetadata[] = [
         `
       }
     ]
+  },
+  {
+    name: "GroupBox Panel",
+    description: "Native WinForms fieldset-style containers with optional collapsible body sections.",
+    variants: [
+      {
+        name: "Standard & Collapsible",
+        render: () => `
+          <div style="display: flex; flex-direction: column; gap: 16px; width: 100%;">
+            <div class="group-box">
+              <div class="group-box-title"><i class="bi bi-folder2-open"></i> Standard GroupBox</div>
+              <div class="group-box-body">
+                <p style="font-size: 11px; color: #555;">This is a standard group-box container with a fixed title bar. Content renders below the title.</p>
+                <div style="display: flex; gap: 8px;">
+                  ${renderButton("Action A")}
+                  ${renderButton("Action B", { className: "win-button primary" })}
+                </div>
+              </div>
+            </div>
+            <div class="group-box collapsed">
+              <div class="group-box-title">
+                <i class="bi bi-gear-wide-connected"></i> Collapsed GroupBox
+                <button type="button" class="group-box-collapse-btn"><i class="bi bi-chevron-down"></i></button>
+              </div>
+              <div class="group-box-body" style="display: none;">
+                <p style="font-size: 11px; color: #555;">This content is hidden when collapsed. Click the chevron to toggle.</p>
+              </div>
+            </div>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Modal Dialog",
+    description: "Standard WinForms-style modal dialog overlay with header, body, and footer action bar.",
+    variants: [
+      {
+        name: "Dialog Structure",
+        render: () => `
+          <div style="width: 100%; max-width: 420px; border: 1px solid #7a7a7a; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2); background-color: var(--sys-control-bg);">
+            <div class="modal-header">
+              <span class="modal-title"><i class="bi bi-info-circle"></i> Sample Dialog</span>
+              <div class="modal-close">&times;</div>
+            </div>
+            <div class="modal-body">
+              <p style="font-size: 12px; color: #333;">This is a modal dialog body. It contains the main content area for forms, messages, or details.</p>
+              <div class="form-group">
+                <label style="font-weight: 600;">Label:</label>
+                ${renderInputField({ placeholder: "Enter value..." })}
+              </div>
+            </div>
+            <div class="modal-footer">
+              ${renderButton("Cancel")}
+              ${renderButton("Confirm", { className: "win-button primary", icon: "bi bi-check-lg" })}
+            </div>
+          </div>
+        `
+      },
+      {
+        name: "Close Button States",
+        render: () => `
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <div style="background-color: #0078d7; color: #fff; padding: 4px 10px; display: flex; align-items: center; gap: 8px;">
+              <span style="font-weight: bold; font-size: 12px;">Title Bar</span>
+              <div class="modal-close" style="margin: -4px -10px; padding: 4px 10px; position: static;">&times;</div>
+            </div>
+            <span style="font-size: 10px; color: #888;">Hover: #e81123 (red)</span>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Image Viewer",
+    description: "Full-screen lightbox overlay for viewing images at full resolution with navigation controls.",
+    variants: [
+      {
+        name: "Viewer Structure",
+        render: () => `
+          <div style="width: 100%; display: flex; flex-direction: column; border: 1px solid #555; background-color: #1e1e1e;">
+            <div class="image-viewer-header">
+              <span class="image-viewer-title"><i class="bi bi-image"></i> sample_image.png — C:\\Users\\demo\\Pictures\\</span>
+              <div class="image-viewer-header-actions">
+                <button class="image-viewer-btn"><i class="bi bi-clipboard"></i> Copy</button>
+                <button class="image-viewer-btn"><i class="bi bi-folder2-open"></i> Open Folder</button>
+                <div class="image-viewer-close">&times;</div>
+              </div>
+            </div>
+            <div class="image-viewer-body" style="height: 200px; background-color: #2d2d2d;">
+              <div style="color: #888; font-size: 12px; text-align: center;">
+                <i class="bi bi-image" style="font-size: 48px; display: block; margin-bottom: 8px;"></i>
+                Image preview area
+              </div>
+            </div>
+          </div>
+        `
+      },
+      {
+        name: "Viewer Buttons",
+        render: () => `
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button class="image-viewer-btn"><i class="bi bi-clipboard"></i> Copy Image</button>
+            <button class="image-viewer-btn"><i class="bi bi-folder2-open"></i> Open Folder</button>
+            <button class="image-viewer-btn"><i class="bi bi-search"></i> Find Similar</button>
+            <div style="width: 1px; height: 20px; background-color: #555;"></div>
+            <div class="image-viewer-close" style="background-color: #333; border: 1px solid #555; padding: 2px 8px;">&times;</div>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Concept Cards",
+    description: "Custom concept definition cards with category badges, threshold sliders, and action buttons.",
+    variants: [
+      {
+        name: "Full Concept Card",
+        render: () => renderConceptCardHtml({
+          id: 1,
+          name: "Sample Concept",
+          category: "character",
+          threshold: 0.75,
+          sample_count: 12,
+          created_at: "2026-01-15T10:30:00",
+          updated_at: "2026-07-20T14:22:00"
+        })
+      },
+      {
+        name: "All Category Badges",
+        render: () => `
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; width: 100%;">
+            ${[
+              { name: "Character Concept", category: "character", threshold: 0.70, sample_count: 8, id: 10 },
+              { name: "Copyright Concept", category: "copyright", threshold: 0.80, sample_count: 5, id: 11 },
+              { name: "General Concept", category: "general", threshold: 0.65, sample_count: 20, id: 12 },
+              { name: "Artist Concept", category: "artist", threshold: 0.85, sample_count: 3, id: 13 }
+            ].map(c => renderConceptCardHtml({
+              ...c,
+              created_at: "2026-01-15T10:30:00",
+              updated_at: "2026-07-20T14:22:00"
+            })).join("")}
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Featured Card",
+    description: "Feature of the Day highlight card with large preview, overlay badge, and action buttons.",
+    variants: [
+      {
+        name: "Featured Layout",
+        render: () => `
+          <div class="featured-layout" style="width: 100%;">
+            <div class="image-card featured-card">
+              <div class="star-btn favorite" style="position: static; opacity: 1;"><i class="bi bi-star-fill"></i></div>
+              <div class="image-preview featured-preview" style="height: 200px; background-color: #f7f7f7; position: relative;">
+                <div style="color: #888; text-align: center;"><i class="bi bi-image" style="font-size: 32px;"></i></div>
+                <div class="vector-badge badge-ready">ready</div>
+                <div class="featured-badge-overlay"><i class="bi bi-stars"></i> Feature of the Day</div>
+                <div class="copy-btn" style="position: absolute; bottom: 1px; left: 1px; opacity: 0;"><i class="bi bi-clipboard"></i></div>
+              </div>
+              <div style="padding: 6px 2px; display: flex; gap: 6px;">
+                <button class="win-button" style="font-size: 11px; flex: 1;"><i class="bi bi-tag"></i> Tags</button>
+                <button class="win-button" style="font-size: 11px; flex: 1;"><i class="bi bi-search"></i> Similar</button>
+              </div>
+            </div>
+            <div class="featured-details">
+              <div class="featured-filename" title="sample_image.png">sample_image.png</div>
+              <div class="image-path-row">
+                <div class="image-path" title="C:\\Users\\demo\\Pictures\\sample_image.png">C:\\...\\sample_image.png</div>
+                <button class="win-button image-open-folder-btn" style="font-size: 10px; padding: 1px 6px;"><i class="bi bi-folder2-open"></i></button>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;">
+                ${renderTagPill({ tag: "character_name", category: "character" })}
+                ${renderTagPill({ tag: "artist_name", category: "artist" })}
+                ${renderTagPill({ tag: "series_title", category: "copyright" })}
+              </div>
+            </div>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Navigation Sidebar",
+    description: "TreeView sidebar with hierarchical navigation items and active state indicators.",
+    variants: [
+      {
+        name: "Sidebar Structure",
+        render: () => `
+          <div class="sidebar" style="width: 220px; height: 280px; position: static;">
+            <ul class="tree-view">
+              <li class="tree-node">
+                <div class="tree-node-title"><i class="bi bi-chevron-down"></i> Library</div>
+                <ul class="tree-leaf-list">
+                  <li class="nav-item active"><i class="bi bi-grid-3x3-gap"></i> Gallery</li>
+                  <li class="nav-item"><i class="bi bi-search"></i> Search</li>
+                  <li class="nav-item"><i class="bi bi-star"></i> Favorites</li>
+                </ul>
+              </li>
+              <li class="tree-node">
+                <div class="tree-node-title"><i class="bi bi-chevron-right"></i> Management</div>
+              </li>
+              <li class="tree-node">
+                <div class="tree-node-title"><i class="bi bi-chevron-right"></i> Tools</div>
+              </li>
+            </ul>
+          </div>
+        `
+      },
+      {
+        name: "Nav Item States",
+        render: () => `
+          <div style="display: flex; flex-direction: column; gap: 2px; width: 200px;">
+            <div class="nav-item"><i class="bi bi-grid-3x3-gap"></i> Default (hover me)</div>
+            <div class="nav-item active"><i class="bi bi-grid-3x3-gap"></i> Active / Selected</div>
+            <div class="nav-item"><i class="bi bi-search"></i> Search</div>
+            <div class="nav-item"><i class="bi bi-star"></i> Favorites</div>
+            <div class="nav-item"><i class="bi bi-folder"></i> Folders</div>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Tag Statistics",
+    description: "Tag frequency display with bar charts, pill lists, and category groupings.",
+    variants: [
+      {
+        name: "Bar Chart View",
+        render: () => `
+          <div class="tagstats-chart" style="max-height: none; width: 100%;">
+            ${[
+              { tag: "1girl", count: 1247, pct: 100, color: "#0078d7" },
+              { tag: "solo", count: 892, pct: 71.5, color: "#107c41" },
+              { tag: "long_hair", count: 634, pct: 50.8, color: "#794c00" },
+              { tag: "white_background", count: 421, pct: 33.8, color: "#a80000" }
+            ].map(t => `
+              <div class="tagstats-bar-row">
+                <span class="tagstats-bar-label" title="${t.tag}">${t.tag}</span>
+                <div class="tagstats-bar-track">
+                  <div class="tagstats-bar-fill" style="width: ${t.pct}%; background: ${t.color};"></div>
+                </div>
+                <span class="tagstats-bar-count">${t.count}</span>
+              </div>
+            `).join("")}
+          </div>
+        `
+      },
+      {
+        name: "Pill List View",
+        render: () => `
+          <div class="tagstats-list" style="max-height: none;">
+            ${[
+              { tag: "1girl", category: "meta", count: 1247 },
+              { tag: "solo", category: "meta", count: 892 },
+              { tag: "character_name", category: "character", count: 312 },
+              { tag: "artist_name", category: "artist", count: 187 },
+              { tag: "series_title", category: "copyright", count: 98 },
+              { tag: "user_tag", category: "user", count: 45 }
+            ].map(t => `
+              <span class="tag-pill tagstats-pill tag-${t.category}" data-tag="${t.tag}" title="${t.tag} (${t.count} images)">
+                ${t.tag.replace(/_/g, '_\u200B')}
+                <span class="tagstats-badge">${t.count}</span>
+              </span>
+            `).join("")}
+          </div>
+        `
+      },
+      {
+        name: "Category Header",
+        render: () => `
+          <div class="tagstats-category">
+            <div class="tagstats-category-header">
+              <span class="tagstats-category-title" style="color: #0078d7;">Meta Tags <span class="tagstats-count">(48)</span></span>
+              <button class="win-button tagstats-chart-toggle" style="font-size: 10px;"><i class="bi bi-bar-chart"></i> Chart</button>
+            </div>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Image Path Row",
+    description: "Image file path display with copy-to-clipboard, open folder, and path masking controls.",
+    variants: [
+      {
+        name: "Path Row with Actions",
+        render: () => `
+          <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+            <div style="padding: 8px; background: var(--sys-window-bg); border: 1px solid var(--sys-border-dark);">
+              <div class="image-path-row">
+                <div class="image-path" title="C:\\Users\\demo\\Pictures\\Artists\\sample_image.png" style="cursor: pointer;">C:\\...\\sample_image.png</div>
+                <button class="win-button image-open-folder-btn" style="font-size: 10px; padding: 1px 6px; white-space: nowrap;">
+                  <i class="bi bi-folder2-open"></i> Open
+                </button>
+              </div>
+            </div>
+            <div style="padding: 8px; background: var(--sys-window-bg); border: 1px solid var(--sys-border-dark);">
+              <div class="image-path-row">
+                <div class="image-path" title="D:\\Gallery\\2026\\vacation_photo.jpg" style="cursor: pointer;">D:\\...\\vacation_photo.jpg</div>
+                <button class="win-button image-open-folder-btn" style="font-size: 10px; padding: 1px 6px; white-space: nowrap;">
+                  <i class="bi bi-folder2-open"></i> Open
+                </button>
+              </div>
+            </div>
+          </div>
+        `
+      },
+      {
+        name: "Copy & Favorite Buttons",
+        render: () => `
+          <div style="display: flex; gap: 16px; align-items: center;">
+            <div style="position: relative; display: inline-flex;">
+              <div class="copy-btn" style="position: static; opacity: 1; background: var(--sys-window-bg); border: 1px solid #dcdcdc;">
+                <i class="bi bi-clipboard"></i>
+              </div>
+              <span style="font-size: 10px; color: #888; margin-left: 6px;">Copy to clipboard</span>
+            </div>
+            <div style="position: relative; display: inline-flex;">
+              <div class="star-btn favorite" style="position: static; opacity: 1;">
+                <i class="bi bi-star-fill"></i>
+              </div>
+              <span style="font-size: 10px; color: #888; margin-left: 6px;">Favorite toggle</span>
+            </div>
+          </div>
+        `
+      }
+    ]
   }
 ];

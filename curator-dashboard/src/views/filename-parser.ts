@@ -471,7 +471,7 @@ function renderSandboxResult(match: ParsedMetadata | null, filename: string) {
     container.innerHTML = `
       <div style="padding: 10px 12px; background-color: var(--sys-window-bg); border: 1px solid var(--sys-border-light); display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span class="tag-pill meta" style="font-weight: 600;"><i class="bi bi-x-circle"></i> No Match</span>
+          <span class="tag-pill tag-meta" style="font-weight: 600;"><i class="bi bi-x-circle"></i> No Match</span>
           <span style="font-family: monospace; font-size: 11px; font-weight: 600; color: #333;">${escapeHtml(filename)}</span>
         </div>
         <span style="font-size: 11px; color: #666;">Default fallback: Unparsed / Random</span>
@@ -483,7 +483,7 @@ function renderSandboxResult(match: ParsedMetadata | null, filename: string) {
   const tagsHtml = match.extracted_tags
     .map(
       (t) =>
-        `<span class="tag-pill general" style="font-family: monospace;">${escapeHtml(t)}</span>`
+        `<span class="tag-pill tag-rank-3" style="font-family: monospace;">${escapeHtml(t)}</span>`
     )
     .join(" ");
 
@@ -602,10 +602,10 @@ function renderBatchTable(items: BatchPreviewItem[]) {
 
       const statusBadge = isMatch
         ? `<span class="tag-pill custom-concept" style="font-size: 10px; font-weight: 600;"><i class="bi bi-check-lg"></i> ${escapeHtml(item.match_result!.match_type)}</span>`
-        : `<span class="tag-pill meta" style="font-size: 10px; font-weight: 600;">No Match</span>`;
+        : `<span class="tag-pill tag-meta" style="font-size: 10px; font-weight: 600;">No Match</span>`;
 
       const tagsHtml = isMatch && item.match_result!.extracted_tags.length > 0
-        ? item.match_result!.extracted_tags.map(t => `<span class="tag-pill general" style="font-size: 10px; font-family: monospace;">${escapeHtml(t)}</span>`).join(" ")
+        ? item.match_result!.extracted_tags.map(t => `<span class="tag-pill tag-rank-3" style="font-size: 10px; font-family: monospace;">${escapeHtml(t)}</span>`).join(" ")
         : `<span style="color: #888; font-size: 11px;">-</span>`;
 
       return `

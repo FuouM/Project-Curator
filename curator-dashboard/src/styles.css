@@ -331,6 +331,96 @@ body {
   padding-top: 12px;
   padding-bottom: 12px;
 }
+.group-box-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Active Mode Button (Filename Parser) */
+.win-button.btn-primary,
+.win-button.active.btn-primary {
+  background-color: var(--sys-highlight-bg);
+  color: var(--sys-highlight-text);
+  border-color: #005499;
+  font-weight: 600;
+}
+.win-button.btn-primary:hover,
+.win-button.active.btn-primary:hover {
+  background-color: #1a86d9;
+  border-color: #004578;
+}
+.win-button.btn-primary:active,
+.win-button.active.btn-primary:active {
+  background-color: #005499;
+  border-color: #003f7f;
+}
+
+/* Token Builder Buttons */
+.token-toggle-btn {
+  min-width: 24px;
+  padding: 1px 4px;
+  font-size: 9px;
+}
+.token-remove-btn {
+  min-width: 24px;
+  padding: 1px 4px;
+  font-size: 10px;
+  color: #a80000;
+}
+.token-remove-btn:hover {
+  background-color: #fde7e9;
+  border-color: #a80000;
+  color: #a80000;
+}
+.token-remove-btn:active {
+  background-color: #f5c6cb;
+  border-color: #842029;
+}
+
+/* Image Open Folder Button */
+.image-open-folder-btn {
+  font-size: 10px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+/* Folders Table Open Button */
+.folders-open-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+/* Parsed Metadata List (image card) */
+.parsed-metadata-list {
+  border-bottom: 1px solid var(--sys-border-light, #d0d0d0);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+
+/* Concept Samples Panel */
+.concept-samples-panel {
+  margin-top: 6px;
+  padding: 8px;
+  background-color: var(--sys-window-bg);
+  border: 1px solid var(--sys-border-dark);
+  border-radius: 2px;
+}
+.concept-samples-panel .concept-samples-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sys-control-text);
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.concept-samples-panel .concept-samples-close {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--sys-text-subtle, #777777);
+}
 
 /* Stats Layout */
 .stats-grid {
