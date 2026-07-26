@@ -137,3 +137,21 @@ npm run tauri dev
   * Keep components modular and single-purpose.
   * Use CSS variables and dark-mode high-contrast UI design system tokens.
   * Ensure user feedback indicators (copy status, star toggle, search loaders) are explicitly updated and reactive.
+
+---
+
+## 6. Critical Safety & Development Mandates (ONNX & Filesystem Safety)
+
+* **First-Principles & Standalone Verification**:
+  * Do not trust legacy code or pre-existing tests when refactoring external libraries (e.g. `ort` / `pykeio`).
+  * Always build standalone subprogram binaries in `curator-core/src/bin/` (e.g. `test_ort_standalone.rs`) to verify library initialization, model loading, and inference step-by-step before modifying `curator-core`.
+  * **DO NOT run existing tests in `curator-core/tests`** unless explicitly requested by the user.
+
+* **Filesystem Safety & Binary Dependency Preservation**:
+  * **NEVER execute destructive deletions** (`Remove-Item -Force`, `rm -rf`, `git clean -fd`) on downloaded binary dependencies (`.dll`, `.lib`, `.onnx`, `.tar.lzma2`, CUDA/DirectML runtime files).
+  * **Always move/preserve files** in dedicated backup folders (e.g. `.curator_ort_dlls_backup/`) before cleaning up workspace root folders.
+  * **PowerShell File Copy Verification**: Always verify that PowerShell file search/copy filters (`Get-ChildItem -Path ".\*"`) match non-zero files and inspect destination folder contents BEFORE removing root copies.
+
+* **Hardware Acceleration Scope**:
+  * WebGPU is currently ignored/disabled. Focus on DirectML and CUDA EPs for local Windows inference.
+
