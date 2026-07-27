@@ -409,10 +409,31 @@ pub async fn get_imported_folders_logic(
     .fetch_all(db)
     .await?;
 
+    // Batch-check file existence for all images to count missing per folder
+    #[derive(Debug, sqlx::FromRow)]
+    struct FolderImage {
+        folder_id: i64,
+        current_filepath: String,
+    }
+
+    let folder_images: Vec<FolderImage> = sqlx::query_as(
+        "SELECT folder_id, current_filepath FROM images WHERE folder_id IS NOT NULL AND deleted_at IS NULL",
+    )
+    .fetch_all(db)
+    .await?;
+
+    let mut missing_per_folder: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+    for fi in &folder_images {
+        if !Path::new(&fi.current_filepath).exists() {
+            *missing_per_folder.entry(fi.folder_id).or_insert(0) += 1;
+        }
+    }
+
     Ok(rows
         .into_iter()
         .map(|r| {
             let is_missing = !Path::new(&r.path).exists();
+            let missing_image_count = missing_per_folder.get(&r.id).copied().unwrap_or(0);
             curator_core::ipc::FolderDetails {
                 id: r.id,
                 path: r.path,
@@ -421,6 +442,7 @@ pub async fn get_imported_folders_logic(
                 image_count: r.image_count,
                 vector_ready: r.vector_ready,
                 vector_pending: r.vector_pending,
+                missing_image_count,
                 is_missing,
             }
         })

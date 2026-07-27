@@ -112,6 +112,7 @@ export interface FolderDetails {
   image_count: number;
   vector_ready: number;
   vector_pending: number;
+  missing_image_count: number;
   is_missing: boolean;
 }
 

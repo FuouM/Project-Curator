@@ -52,7 +52,9 @@ export async function refreshFolders() {
 
       const statusIcon = folder.is_missing
         ? '<i class="bi bi-exclamation-triangle" style="color: #e8912d;" title="Folder missing from disk"></i>'
-        : '<i class="bi bi-check-circle" style="color: #2e7d32;" title="Folder exists"></i>';
+        : folder.missing_image_count > 0
+          ? `<i class="bi bi-exclamation-circle" style="color: #e8912d;" title="${folder.missing_image_count} missing image(s)"></i>`
+          : '<i class="bi bi-check-circle" style="color: #2e7d32;" title="Folder exists"></i>';
 
       const rowClass = folder.is_missing ? 'folders-row missing' : 'folders-row';
 
@@ -60,7 +62,7 @@ export async function refreshFolders() {
         <td style="text-align: center;">${statusIcon}</td>
         <td style="font-weight: 600;">${escapeHtml(folder.name)}</td>
         <td style="font-size: 11px; color: #555; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(folder.path)}">${maskPath(folder.path)}</td>
-        <td style="text-align: right;">${folder.image_count}</td>
+        <td style="text-align: right;">${folder.image_count}${folder.missing_image_count > 0 ? ` <span style="color: #e8912d; font-size: 10px;" title="${folder.missing_image_count} missing">(-${folder.missing_image_count})</span>` : ''}</td>
         <td style="text-align: right;">${vectorText}</td>
         <td style="font-size: 11px; color: #555;">${formatDate(folder.imported_at)}</td>
         <td style="text-align: center; white-space: nowrap;">`;

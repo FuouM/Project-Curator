@@ -435,6 +435,7 @@ pub struct FolderDetails {
     pub image_count: i64,
     pub vector_ready: i64,
     pub vector_pending: i64,
+    pub missing_image_count: i64,
     pub is_missing: bool,
 }
 
