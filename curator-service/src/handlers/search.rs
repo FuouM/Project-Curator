@@ -407,6 +407,10 @@ pub async fn search_logic(
                 .then(a.id.cmp(&b.id))
         }
     });
+
+    // Filter out images whose files are missing from disk
+    matches.retain(|m| std::path::Path::new(&m.filepath).exists());
+
     matches.truncate(limit);
     Ok(matches)
 }

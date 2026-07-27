@@ -175,27 +175,55 @@ pub async fn list_images_logic(
     db: &SqlitePool,
 ) -> Result<Vec<ImageDetails>> {
     let only_favs = only_favorites.unwrap_or(false);
-    let rows: Vec<ImageRow> = sqlx::query_as(
-        r#"
-            SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite,
-                   t.name, t.category, it.confidence, s.name as source_name
-            FROM (
-                SELECT id FROM images 
-                WHERE deleted_at IS NULL AND (?1 = 0 OR favorite = 1)
-                ORDER BY created_at DESC, id DESC LIMIT ?2 OFFSET ?3
-            ) sub
-            JOIN images i ON i.id = sub.id
-            LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0
-            LEFT JOIN tags t ON it.tag_id = t.id
-            LEFT JOIN sources s ON it.source_id = s.id
-            ORDER BY i.created_at DESC, i.id DESC
-            "#,
+
+    // Step 1: Get all image IDs and paths (lightweight, no JOINs)
+    #[derive(Debug, sqlx::FromRow)]
+    struct IdPath {
+        id: i64,
+        current_filepath: String,
+    }
+
+    let all_ids: Vec<IdPath> = sqlx::query_as(
+        "SELECT id, current_filepath FROM images WHERE deleted_at IS NULL AND (?1 = 0 OR favorite = 1) ORDER BY created_at DESC, id DESC",
     )
     .bind(if only_favs { 1i64 } else { 0i64 })
-    .bind(limit as i64)
-    .bind(offset as i64)
     .fetch_all(db)
     .await?;
+
+    // Step 2: Filter by file existence
+    let live_ids: Vec<i64> = all_ids
+        .into_iter()
+        .filter(|r| Path::new(&r.current_filepath).exists())
+        .map(|r| r.id)
+        .collect();
+
+    // Step 3: Apply pagination on the filtered list
+    let page_ids: Vec<i64> = live_ids.into_iter().skip(offset).take(limit).collect();
+
+    if page_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Step 4: Fetch full details for the page of surviving IDs
+    let placeholders = page_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        r#"
+        SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite,
+               t.name, t.category, it.confidence, s.name as source_name
+        FROM images i
+        LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0
+        LEFT JOIN tags t ON it.tag_id = t.id
+        LEFT JOIN sources s ON it.source_id = s.id
+        WHERE i.id IN ({})
+        ORDER BY i.created_at DESC, i.id DESC
+        "#,
+        placeholders
+    );
+    let mut q = sqlx::query_as::<_, ImageRow>(&sql);
+    for id in &page_ids {
+        q = q.bind(id);
+    }
+    let rows: Vec<ImageRow> = q.fetch_all(db).await?;
 
     let mut image_order: Vec<i64> = Vec::new();
     let mut image_map: std::collections::HashMap<i64, ImageDetails> =
@@ -227,9 +255,9 @@ pub async fn list_images_logic(
             vector_state: String::new(),
             favorite,
             parsed_metadata: None,
+            is_missing: false,
         });
         if let (Some(name), Some(category)) = (tag_name, tag_category) {
-            // Skip filename_parser tags from the regular tag list — they're shown in parsed metadata section
             if source_name.as_deref() != Some("filename_parser") {
                 entry.tags.push(TagSummary {
                     tag: name,
@@ -242,6 +270,7 @@ pub async fn list_images_logic(
         }
     }
 
+    // Step 5: Fetch vector states and parsed metadata in batch
     let ids: Vec<i64> = image_map.keys().copied().collect();
     if !ids.is_empty() {
         let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
@@ -260,11 +289,7 @@ pub async fn list_images_logic(
                 }
             }
         }
-    }
 
-    // Fetch parsed metadata for all images in batch
-    if !ids.is_empty() {
-        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let pm_query = format!(
             "SELECT image_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags, raw_matched
              FROM image_parsed_metadata WHERE image_id IN ({})",
@@ -390,6 +415,7 @@ pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDeta
         vector_state,
         favorite: img.favorite,
         parsed_metadata,
+        is_missing: false,
     })
 }
 

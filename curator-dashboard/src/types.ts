@@ -23,6 +23,10 @@ export type RequestPayload =
   | { GetDashboardInit: null }
   | { GetImportedFolders: null }
   | { BackfillImageFolders: null }
+  | { UpdateFolderPath: { id: number; new_path: string } }
+  | { DeleteFolder: { id: number } }
+  | { DetectDuplicateFolders: null }
+  | { MergeFolders: { keep_folder_id: number; merge_folder_id: number } }
   | { CreateConcept: { name: string; category: string; threshold: number; sample_image_ids: number[] } }
   | { ListConcepts: null }
   | { UpdateConcept: { id: number; threshold: number | null; category: string | null } }
@@ -83,6 +87,7 @@ export interface ImageDetails {
   vector_state: string;
   favorite: boolean;
   parsed_metadata?: ParsedMetadata;
+  is_missing: boolean;
 }
 
 export interface TagSummary {
@@ -107,6 +112,20 @@ export interface FolderDetails {
   image_count: number;
   vector_ready: number;
   vector_pending: number;
+  is_missing: boolean;
+}
+
+export interface DuplicateFolderInfo {
+  id: number;
+  path: string;
+  name: string;
+  image_count: number;
+  overlap_count: number;
+}
+
+export interface DuplicateFolderGroup {
+  folders: DuplicateFolderInfo[];
+  shared_image_count: number;
 }
 
 export interface CustomConcept {
@@ -143,6 +162,10 @@ export type ResponsePayload =
     } }
   | { ImportedFoldersResult: { folders: FolderDetails[] } }
   | { BackfillResult: { images_backfilled: number } }
+  | { UpdateFolderPathResult: { success: boolean } }
+  | { DeleteFolderResult: { success: boolean } }
+  | { DuplicateFoldersResult: { groups: DuplicateFolderGroup[] } }
+  | { MergeFoldersResult: { success: boolean; images_moved: number } }
   | { ConceptListResult: { concepts: CustomConcept[] } }
   | { ConceptResult: { concept: CustomConcept } }
   | { ConceptRescannedResult: { concept_id: number; tagged_count: number } }

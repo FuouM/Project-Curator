@@ -119,6 +119,22 @@ pub enum Request {
     GetImportedFolders,
     /// Backfill existing images with their parent folder assignments.
     BackfillImageFolders,
+    /// Update the path of an imported folder.
+    UpdateFolderPath {
+        id: i64,
+        new_path: String,
+    },
+    /// Delete an imported folder record.
+    DeleteFolder {
+        id: i64,
+    },
+    /// Detect folders that share images (potential duplicates).
+    DetectDuplicateFolders,
+    /// Merge images from one folder into another and delete the source folder.
+    MergeFolders {
+        keep_folder_id: i64,
+        merge_folder_id: i64,
+    },
     /// Create a new custom concept from sample images.
     CreateConcept {
         name: String,
@@ -295,6 +311,23 @@ pub enum Response {
     BackfillResult {
         images_backfilled: i64,
     },
+    /// Result of updating a folder path.
+    UpdateFolderPathResult {
+        success: bool,
+    },
+    /// Result of deleting a folder record.
+    DeleteFolderResult {
+        success: bool,
+    },
+    /// Detected duplicate folder groups (folders sharing images by SHA-256).
+    DuplicateFoldersResult {
+        groups: Vec<DuplicateFolderGroup>,
+    },
+    /// Result of merging two folders.
+    MergeFoldersResult {
+        success: bool,
+        images_moved: i64,
+    },
     /// List of custom concepts.
     ConceptListResult {
         concepts: Vec<crate::concept::CustomConcept>,
@@ -371,6 +404,8 @@ pub struct ImageDetails {
     pub favorite: bool,
     #[serde(default)]
     pub parsed_metadata: Option<ParsedMetadata>,
+    #[serde(default)]
+    pub is_missing: bool,
 }
 
 // ParsedMetadata is defined in filename_parser and re-used here
@@ -400,4 +435,25 @@ pub struct FolderDetails {
     pub image_count: i64,
     pub vector_ready: i64,
     pub vector_pending: i64,
+    pub is_missing: bool,
+}
+
+/// A group of folders that share images (potential duplicates).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateFolderGroup {
+    /// The folders in this group, sorted by image count (largest first).
+    pub folders: Vec<DuplicateFolderInfo>,
+    /// Number of shared images between the folders in this group.
+    pub shared_image_count: i64,
+}
+
+/// Info about a folder in a duplicate group.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateFolderInfo {
+    pub id: i64,
+    pub path: String,
+    pub name: String,
+    pub image_count: i64,
+    /// Number of images in this folder that overlap with other folders in the group.
+    pub overlap_count: i64,
 }

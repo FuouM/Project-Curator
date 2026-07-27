@@ -440,6 +440,44 @@ pub async fn handle_request(
             },
         },
 
+        Request::UpdateFolderPath { id, new_path } => {
+            match import::update_folder_path_logic(id, &new_path, db).await {
+                Ok(success) => Response::UpdateFolderPathResult { success },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+        Request::DeleteFolder { id } => match import::delete_folder_logic(id, db).await {
+            Ok(success) => Response::DeleteFolderResult { success },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
+        Request::DetectDuplicateFolders => {
+            match import::detect_duplicate_folders_logic(db).await {
+                Ok(groups) => Response::DuplicateFoldersResult { groups },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+        Request::MergeFolders {
+            keep_folder_id,
+            merge_folder_id,
+        } => match import::merge_folders_logic(keep_folder_id, merge_folder_id, db).await {
+            Ok((success, images_moved)) => Response::MergeFoldersResult {
+                success,
+                images_moved,
+            },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
         Request::CreateConcept {
             name,
             category,

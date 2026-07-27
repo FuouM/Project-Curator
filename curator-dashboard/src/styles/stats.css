@@ -153,6 +153,12 @@
 .folders-row:nth-child(even):hover {
   background-color: var(--sys-button-hover, #e5f1fb);
 }
+.folders-row.missing {
+  border-left: 3px solid #e8912d;
+}
+.folders-row.missing:hover {
+  background-color: #fef8f0;
+}
 
 .curator-table {
   width: 100%;
