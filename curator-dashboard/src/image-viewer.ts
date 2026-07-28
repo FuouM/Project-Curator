@@ -5,7 +5,7 @@ import { getImageClickAction } from "./state";
 
 let currentViewerPath: string | null = null;
 
-export function openImageViewer(filepath: string) {
+export function openImageViewer(filepath: string, _imageId?: number) {
   const modal = document.getElementById("image-viewer-modal");
   const img = document.getElementById("image-viewer-img") as HTMLImageElement;
   const title = document.getElementById("image-viewer-filename");

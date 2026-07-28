@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { renderTagPill, maskPath } from "./components";
 import { CardImageData, ImageDetails, SearchMatch, TagSummary, ParsedMetadata } from "./types";
 import { imageBytesToPngBlob } from "./utils";
@@ -41,18 +41,29 @@ const lazyObserver = new IntersectionObserver((entries) => {
         img.dataset.pending = "0";
         const preview = img.closest(".image-preview") as HTMLElement;
         if (preview) preview.classList.add("thumb-loading");
-        invoke("get_thumbnail", { imageId }).then((data: any) => {
-          if (img.isConnected && data) {
-            const bytes = new Uint8Array(data);
-            const blob = new Blob([bytes], { type: "image/webp" });
-            img.src = URL.createObjectURL(blob);
-            img.classList.add("loaded");
-          }
-        }).catch(() => {}).finally(() => {
+        const fp = img.dataset.filepath || "";
+        const isGif = /\.gif$/i.test(fp);
+
+        if (isGif) {
+          img.src = convertFileSrc(fp);
+          img.classList.add("loaded");
           if (preview) preview.classList.remove("thumb-loading");
           thumbLoaded++;
           updateThumbProgress();
-        });
+        } else {
+          invoke("get_thumbnail", { imageId }).then((data: any) => {
+            if (img.isConnected && data) {
+              const bytes = new Uint8Array(data);
+              const blob = new Blob([bytes], { type: "image/webp" });
+              img.src = URL.createObjectURL(blob);
+              img.classList.add("loaded");
+            }
+          }).catch(() => {}).finally(() => {
+            if (preview) preview.classList.remove("thumb-loading");
+            thumbLoaded++;
+            updateThumbProgress();
+          });
+        }
       }
       lazyObserver.unobserve(img);
     }
@@ -177,7 +188,7 @@ export function setupGridDelegation(grid: HTMLElement) {
       if (getImageClickAction() === "external") {
         invoke("open_file_externally", { path: filepath }).catch(() => {});
       } else {
-        openImageViewer(filepath);
+        openImageViewer(filepath, imageId);
       }
       return;
     }
@@ -247,7 +258,7 @@ export function attachCardEventHandlers(
       if (getImageClickAction() === "external") {
         invoke("open_file_externally", { path: filepath }).catch(() => {});
       } else {
-        openImageViewer(filepath);
+        openImageViewer(filepath, imageId);
       }
       return;
     }
@@ -401,7 +412,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
         <i class="bi ${img.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
       </div>
       <div class="image-preview thumb-loading">
-        <img data-thumb-id="${img.id}" data-pending="1" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" />
+        <img data-thumb-id="${img.id}" data-filepath="${img.filepath}" data-pending="1" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
         ${missingBadge}
         ${img.badgeHtml || ""}
