@@ -345,6 +345,16 @@ pub async fn handle_request(
             }
         }
 
+        Request::ReindexFailedVectors => {
+            let active = model_manager.active_model();
+            match tags::reindex_failed_vectors_logic(db, active).await {
+                Ok(count) => Response::ReindexFailedResult { requeued: count },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
         Request::GetSettings => {
             let s = settings.lock().await;
             Response::SettingsResult {

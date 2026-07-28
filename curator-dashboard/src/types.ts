@@ -21,6 +21,7 @@ export type RequestPayload =
   | { GetSettings: null }
   | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null } }
   | { ReindexVectors: null }
+  | { ReindexFailedVectors: null }
   | { GetTagStatistics: null }
   | { GetDashboardInit: null }
   | { GetImportedFolders: null }
@@ -167,6 +168,7 @@ export type ResponsePayload =
     } }
   | { ImportedFoldersResult: { folders: FolderDetails[] } }
   | { BackfillResult: { images_backfilled: number } }
+  | { ReindexFailedResult: { requeued: number } }
   | { UpdateFolderPathResult: { success: boolean } }
   | { DeleteFolderResult: { success: boolean } }
   | { DuplicateFoldersResult: { groups: DuplicateFolderGroup[] } }

@@ -159,6 +159,27 @@ pub async fn reindex_vectors_logic(
     Ok(())
 }
 
+pub async fn reindex_failed_vectors_logic(
+    db: &SqlitePool,
+    active_model: curator_core::ipc::EmbeddingModel,
+) -> Result<i64> {
+    let source_name = match active_model {
+        curator_core::ipc::EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
+        curator_core::ipc::EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
+    };
+    let source_id = resolve_source_id(db, source_name).await?;
+
+    let result = sqlx::query(
+        "UPDATE image_vectors SET vector_state = 'pending', vector_id = '', vector_checksum = NULL
+         WHERE source_id = ? AND vector_state = 'failed'"
+    )
+    .bind(source_id)
+    .execute(db)
+    .await?;
+
+    Ok(result.rows_affected() as i64)
+}
+
 pub async fn set_favorite_logic(
     image_id: i64,
     favorite: bool,

@@ -122,6 +122,8 @@ pub enum Request {
     },
     /// Reindex all vectors with the active model.
     ReindexVectors,
+    /// Reindex only images that failed vectorization.
+    ReindexFailedVectors,
     /// Get aggregate tag statistics: counts per tag grouped by category.
     GetTagStatistics,
     /// Batch call for dashboard init: returns status, tagger status, settings,
@@ -331,6 +333,10 @@ pub enum Response {
     /// Result of backfilling image folder assignments.
     BackfillResult {
         images_backfilled: i64,
+    },
+    /// Result of reindexing failed vectors.
+    ReindexFailedResult {
+        requeued: i64,
     },
     /// Result of updating a folder path.
     UpdateFolderPathResult {

@@ -200,6 +200,27 @@ export function setupSettings() {
     }
   });
 
+  // Reindex failed vectors
+  const reindexFailedBtn = document.getElementById("reindex-failed-btn");
+  reindexFailedBtn?.addEventListener("click", async () => {
+    if (!statusMsg) return;
+    setStatusMessage(statusMsg, "Retrying failed vectors...", "loading");
+    reindexFailedBtn.setAttribute("disabled", "true");
+    try {
+      const resp = await callService({ ReindexFailedVectors: null });
+      if ("ReindexFailedResult" in resp) {
+        const count = resp.ReindexFailedResult.requeued;
+        setStatusMessage(statusMsg, `Done! ${count} image(s) queued for re-vectorization.`, "success");
+        if (count > 0) startReindexPolling();
+      } else if ("Error" in resp) {
+        setStatusMessage(statusMsg, "Failed: " + resp.Error.message, "error");
+      }
+    } catch (e: any) {
+      setStatusMessage(statusMsg, "Error: " + (e.message || e), "error");
+    }
+    reindexFailedBtn.removeAttribute("disabled");
+  });
+
   // Purge missing thumbnails
   const purgeBtn = document.getElementById("purge-missing-thumbs-btn");
   const purgeStatus = document.getElementById("purge-status-msg");
