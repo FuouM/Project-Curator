@@ -6,10 +6,49 @@ import { getImageClickAction, isSelectMode, selectedImageIds } from "./state";
 import { openImageViewer } from "./image-viewer";
 import { callService } from "./ipc";
 
-// --- Thumbnail Progress ---
+// --- Thumbnail Queue ---
+const MAX_CONCURRENT = 2;
+let generation = 0;
+let activeCount = 0;
 let thumbTotal = 0;
 let thumbLoaded = 0;
 let thumbHideTimer: number | null = null;
+
+interface ThumbJob {
+  imageId: number;
+  img: HTMLImageElement;
+  preview: HTMLElement;
+  gen: number;
+}
+
+const queue: ThumbJob[] = [];
+
+function processQueue() {
+  while (activeCount < MAX_CONCURRENT && queue.length > 0) {
+    const job = queue.shift()!;
+    activeCount++;
+    invokeThumbnail(job);
+  }
+}
+
+function invokeThumbnail(job: ThumbJob) {
+  if (job.gen !== generation) { activeCount--; processQueue(); return; }
+  if (!job.img.isConnected) { activeCount--; thumbLoaded++; updateThumbProgress(); processQueue(); return; }
+
+  invoke("get_thumbnail", { imageId: job.imageId }).then((data: any) => {
+    if (job.gen !== generation || !job.img.isConnected || !data) return;
+    const bytes = new Uint8Array(data);
+    const blob = new Blob([bytes], { type: "image/webp" });
+    job.img.src = URL.createObjectURL(blob);
+    job.img.classList.add("loaded");
+  }).catch(() => {}).finally(() => {
+    if (job.preview) job.preview.classList.remove("thumb-loading");
+    thumbLoaded++;
+    updateThumbProgress();
+    activeCount--;
+    processQueue();
+  });
+}
 
 function updateThumbProgress() {
   const cell = document.getElementById("thumb-progress-cell");
@@ -31,7 +70,7 @@ function updateThumbProgress() {
   }
 }
 
-// --- Lazy Loading via IntersectionObserver ---
+// --- Lazy Loading via IntersectionObserver (queues jobs, does not invoke directly) ---
 const lazyObserver = new IntersectionObserver((entries) => {
   for (const entry of entries) {
     if (entry.isIntersecting) {
@@ -40,29 +79,18 @@ const lazyObserver = new IntersectionObserver((entries) => {
       if (imageId > 0 && img.dataset.pending === "1") {
         img.dataset.pending = "0";
         const preview = img.closest(".image-preview") as HTMLElement;
-        if (preview) preview.classList.add("thumb-loading");
         const fp = img.dataset.filepath || "";
-        const isGif = /\.gif$/i.test(fp);
 
-        if (isGif) {
+        if (/\.gif$/i.test(fp)) {
           img.src = convertFileSrc(fp);
           img.classList.add("loaded");
           if (preview) preview.classList.remove("thumb-loading");
           thumbLoaded++;
           updateThumbProgress();
         } else {
-          invoke("get_thumbnail", { imageId }).then((data: any) => {
-            if (img.isConnected && data) {
-              const bytes = new Uint8Array(data);
-              const blob = new Blob([bytes], { type: "image/webp" });
-              img.src = URL.createObjectURL(blob);
-              img.classList.add("loaded");
-            }
-          }).catch(() => {}).finally(() => {
-            if (preview) preview.classList.remove("thumb-loading");
-            thumbLoaded++;
-            updateThumbProgress();
-          });
+          if (preview) preview.classList.add("thumb-loading");
+          queue.push({ imageId, img, preview, gen: generation });
+          processQueue();
         }
       }
       lazyObserver.unobserve(img);
@@ -446,7 +474,9 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
 
   grid.appendChild(fragment);
 
-  // Reset thumbnail progress and observe all lazy thumbnail images
+  // Clear stale queue, bump generation, reset progress
+  generation++;
+  queue.length = 0;
   if (thumbHideTimer) { clearTimeout(thumbHideTimer); thumbHideTimer = null; }
   thumbTotal = grid.querySelectorAll<HTMLElement>("img[data-thumb-id]").length;
   thumbLoaded = 0;
