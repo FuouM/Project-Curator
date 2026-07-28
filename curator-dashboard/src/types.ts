@@ -11,6 +11,8 @@ export type RequestPayload =
   | { ListImages: { limit: number; offset: number; only_favorites?: boolean | null } }
   | { SetFavorite: { image_id: number; favorite: boolean } }
   | { GetImage: { image_id: number } }
+  | { GetThumbnail: { image_id: number; width?: number } }
+  | { PurgeMissingThumbnails: null }
   | { ValidatePlugin: { manifest_path: string } }
   | { TagImage: { image_id: number; threshold: number | null; force: boolean | null } }
   | { TagImageBatch: { image_ids: number[]; threshold: number | null; force: boolean | null } }
@@ -144,10 +146,12 @@ export type ResponsePayload =
   | { Success: null }
   | { Error: { message: string } }
   | { ImportResult: { image_id: number; sha256: string; imported_count?: number; folder_id?: number | null } }
+  | { ThumbnailResult: { data?: number[]; is_missing: boolean } }
+  | { PurgeResult: { deleted_count: number } }
   | { SearchResult: { matches: SearchMatch[] } }
   | { StatusResult: { image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number } }
   | { ImageResult: { image: ImageDetails } }
-  | { ListResult: { images: ImageDetails[] } }
+  | { ListResult: { images: ImageDetails[]; total_count: number } }
   | { ValidationResult: { name: string; version: string; valid: boolean; error: string | null } }
   | { TagImageResult: { image_id: number; tags_applied: number; skipped: boolean; tags: TagSummary[] } }
   | { BatchTagResult: { processed: number; failed: number; skipped: number } }
@@ -186,4 +190,5 @@ export interface CardImageData {
   badgeHtml?: string;
   emptyMessage?: string;
   parsedMetadata?: ParsedMetadata;
+  isMissing?: boolean;
 }

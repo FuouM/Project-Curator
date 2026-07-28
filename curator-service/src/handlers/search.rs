@@ -3,6 +3,7 @@ use curator_core::concept::bytes_to_vector;
 use curator_core::ipc::{EmbeddingModel, SearchMatch};
 use curator_core::vector::{ModelManager, VectorIndex};
 use sha2::Digest;
+use super::image::batch_get_images_logic;
 
 pub struct SearchParams {
     pub query_text: Option<String>,
@@ -57,7 +58,6 @@ fn parse_search_terms(input: &str) -> Vec<String> {
 use sqlx::SqlitePool;
 
 use super::concepts::get_custom_concept_by_id;
-use super::image::get_image_logic;
 
 pub async fn search_logic(
     params: SearchParams,
@@ -356,36 +356,43 @@ pub async fn search_logic(
         latest.into_iter().map(|r| r.0).collect()
     } else {
         let mut ids: Vec<i64> = target_set.into_iter().collect();
-        ids.sort_unstable(); // deterministic order for non-neural result sets
+        ids.sort_unstable();
         ids
     };
 
-    let mut matches = Vec::new();
-    for id in target_ids {
-        if let Ok(details) = get_image_logic(id, db).await {
-            let (match_type, score, hamming_distance) = if exact_matches.contains(&id) {
-                ("exact".to_string(), 1.0, None)
-            } else if let Some(&dist) = perceptual_matches.get(&id) {
-                (
-                    "perceptual".to_string(),
-                    1.0 - (dist as f32 / 64.0),
-                    Some(dist),
-                )
-            } else {
-                let sem_score = vector_scores.get(&details.id).cloned().unwrap_or(0.0);
-                ("semantic".to_string(), sem_score, None)
-            };
+    let batch_details = batch_get_images_logic(&target_ids, db).await.unwrap_or_default();
+    let details_map: std::collections::HashMap<i64, _> =
+        batch_details.into_iter().map(|d| (d.id, d)).collect();
 
-            matches.push(SearchMatch {
-                id: details.id,
-                filepath: details.current_filepath,
-                score,
-                tags: details.tags,
-                match_type,
-                hamming_distance,
-                parsed_metadata: details.parsed_metadata,
-            });
-        }
+    let mut matches = Vec::new();
+    for id in &target_ids {
+        let details = match details_map.get(id) {
+            Some(d) => d,
+            None => continue,
+        };
+
+        let (match_type, score, hamming_distance) = if exact_matches.contains(id) {
+            ("exact".to_string(), 1.0, None)
+        } else if let Some(&dist) = perceptual_matches.get(id) {
+            (
+                "perceptual".to_string(),
+                1.0 - (dist as f32 / 64.0),
+                Some(dist),
+            )
+        } else {
+            let sem_score = vector_scores.get(id).cloned().unwrap_or(0.0);
+            ("semantic".to_string(), sem_score, None)
+        };
+
+        matches.push(SearchMatch {
+            id: details.id,
+            filepath: details.current_filepath.clone(),
+            score,
+            tags: details.tags.clone(),
+            match_type,
+            hamming_distance,
+            parsed_metadata: details.parsed_metadata.clone(),
+        });
     }
 
     matches.sort_by(|a, b| {
@@ -408,8 +415,13 @@ pub async fn search_logic(
         }
     });
 
-    // Filter out images whose files are missing from disk
-    matches.retain(|m| std::path::Path::new(&m.filepath).exists());
+    matches.retain(|m| {
+        if let Some(details) = details_map.get(&m.id) {
+            !details.is_missing
+        } else {
+            false
+        }
+    });
 
     matches.truncate(limit);
     Ok(matches)

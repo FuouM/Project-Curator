@@ -34,8 +34,12 @@ export function setCurrentLogTab(tab: "dashboard" | "service") { currentLogTab =
 // --- Gallery/Favorites Pagination ---
 export let galleryPage = 0;
 export let favoritesPage = 0;
+export let galleryTotalCount = 0;
+export let favoritesTotalCount = 0;
 export function setGalleryPage(v: number) { galleryPage = v; }
 export function setFavoritesPage(v: number) { favoritesPage = v; }
+export function setGalleryTotalCount(v: number) { galleryTotalCount = v; }
+export function setFavoritesTotalCount(v: number) { favoritesTotalCount = v; }
 
 // --- Selection State ---
 export let isSelectMode = false;

@@ -11,7 +11,7 @@ import { setupFilenameParserView } from "./views/filename-parser";
 import { setupNavigation } from "./views/navigation";
 import { callService } from "./ipc";
 import { updateStatusIndicators, updateTaggerIndicators, applySettingsToUI, startStatusPolling, renderFeaturedDay } from "./views/dashboard";
-import { renderImages } from "./cards";
+import { renderImages, setupGridDelegation } from "./cards";
 
 function init() {
   setupNavigation();
@@ -24,6 +24,14 @@ function init() {
   setupFilenameParserView();
   setupBenchmark();
   setupSettings();
+
+  // Setup event delegation on grids
+  const galleryGrid = document.getElementById("gallery-grid");
+  if (galleryGrid) setupGridDelegation(galleryGrid);
+  const favoritesGrid = document.getElementById("favorites-grid");
+  if (favoritesGrid) setupGridDelegation(favoritesGrid);
+  const searchGrid = document.getElementById("search-results-grid");
+  if (searchGrid) setupGridDelegation(searchGrid);
 
 
   // Phase 1: Fast data (status + tagger + settings)

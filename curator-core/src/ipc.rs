@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+fn default_thumb_width() -> u32 {
+    200
+}
+
 /// Device selection for ONNX model inference.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -71,6 +75,14 @@ pub enum Request {
         image_id: i64,
         favorite: bool,
     },
+    /// Get thumbnail bytes for an image (from cache or generated on demand).
+    GetThumbnail {
+        image_id: i64,
+        #[serde(default = "default_thumb_width")]
+        width: u32,
+    },
+    /// Purge cached thumbnails for images that no longer exist on disk.
+    PurgeMissingThumbnails,
     ValidatePlugin {
         manifest_path: String,
     },
@@ -231,6 +243,14 @@ pub enum Response {
         #[serde(default)]
         folder_id: Option<i64>,
     },
+    ThumbnailResult {
+        #[serde(default)]
+        data: Option<Vec<u8>>,
+        is_missing: bool,
+    },
+    PurgeResult {
+        deleted_count: i64,
+    },
     SearchResult {
         matches: Vec<SearchMatch>,
     },
@@ -245,6 +265,7 @@ pub enum Response {
     },
     ListResult {
         images: Vec<ImageDetails>,
+        total_count: i64,
     },
     ValidationResult {
         name: String,

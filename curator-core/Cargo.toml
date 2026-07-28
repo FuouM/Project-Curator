@@ -21,6 +21,7 @@ fast_image_resize = "5"
 turbojpeg = "1"
 png = { version = "0.18", features = ["zlib-rs"] }
 ndarray = "0.17"
+webp = "0.3"
 ureq = "3"
 tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
 

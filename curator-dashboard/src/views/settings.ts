@@ -200,6 +200,27 @@ export function setupSettings() {
     }
   });
 
+  // Purge missing thumbnails
+  const purgeBtn = document.getElementById("purge-missing-thumbs-btn");
+  const purgeStatus = document.getElementById("purge-status-msg");
+  purgeBtn?.addEventListener("click", async () => {
+    if (!purgeStatus) return;
+    if (!confirm("Remove cached thumbnails for images that no longer exist on disk?")) return;
+    setStatusMessage(purgeStatus, "Purging...", "loading");
+    purgeBtn.setAttribute("disabled", "true");
+    try {
+      const resp = await callService({ PurgeMissingThumbnails: null });
+      if ("PurgeResult" in resp) {
+        setStatusMessage(purgeStatus, `Done! ${resp.PurgeResult.deleted_count} thumbnail(s) removed.`, "success");
+      } else if ("Error" in resp) {
+        setStatusMessage(purgeStatus, "Failed: " + resp.Error.message, "error");
+      }
+    } catch (e: any) {
+      setStatusMessage(purgeStatus, "Error: " + (e.message || e), "error");
+    }
+    purgeBtn.removeAttribute("disabled");
+  });
+
   // Refresh settings when the settings view becomes visible
   const settingsNav = document.querySelector('.nav-item[data-view="settings"]');
   settingsNav?.addEventListener("click", async () => {

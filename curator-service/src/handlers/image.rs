@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use curator_core::ipc::{ImageDetails, TagSummary};
 use curator_core::tagger::TaggerEngine;
+use curator_core::thumbnail::{self, ThumbnailCache};
 use sqlx::SqlitePool;
 use std::fs;
 use std::path::Path;
@@ -168,165 +169,51 @@ pub async fn tag_image_logic(
     })
 }
 
+/// Returns (images, total_count). Uses SQL LIMIT/OFFSET — no full table scan.
 pub async fn list_images_logic(
     limit: usize,
     offset: usize,
     only_favorites: Option<bool>,
     db: &SqlitePool,
-) -> Result<Vec<ImageDetails>> {
+) -> Result<(Vec<ImageDetails>, i64)> {
     let only_favs = only_favorites.unwrap_or(false);
+    let fav_bind = if only_favs { 1i64 } else { 0i64 };
 
-    // Step 1: Get all image IDs and paths (lightweight, no JOINs)
+    let count_row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM images WHERE deleted_at IS NULL AND is_missing = 0 AND (?1 = 0 OR favorite = 1)",
+    )
+    .bind(fav_bind)
+    .fetch_one(db)
+    .await?;
+    let total_count = count_row.0;
+
+    if total_count == 0 || offset as i64 >= total_count {
+        return Ok((Vec::new(), total_count));
+    }
+
     #[derive(Debug, sqlx::FromRow)]
     struct IdPath {
         id: i64,
         current_filepath: String,
     }
 
-    let all_ids: Vec<IdPath> = sqlx::query_as(
-        "SELECT id, current_filepath FROM images WHERE deleted_at IS NULL AND (?1 = 0 OR favorite = 1) ORDER BY created_at DESC, id DESC",
+    let page_ids: Vec<IdPath> = sqlx::query_as(
+        "SELECT id, current_filepath FROM images WHERE deleted_at IS NULL AND is_missing = 0 AND (?1 = 0 OR favorite = 1) ORDER BY created_at DESC, id DESC LIMIT ?2 OFFSET ?3",
     )
-    .bind(if only_favs { 1i64 } else { 0i64 })
+    .bind(fav_bind)
+    .bind(limit as i64)
+    .bind(offset as i64)
     .fetch_all(db)
     .await?;
 
-    // Step 2: Filter by file existence
-    let live_ids: Vec<i64> = all_ids
-        .into_iter()
-        .filter(|r| Path::new(&r.current_filepath).exists())
-        .map(|r| r.id)
-        .collect();
-
-    // Step 3: Apply pagination on the filtered list
-    let page_ids: Vec<i64> = live_ids.into_iter().skip(offset).take(limit).collect();
-
     if page_ids.is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), total_count));
     }
 
-    // Step 4: Fetch full details for the page of surviving IDs
-    let placeholders = page_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let sql = format!(
-        r#"
-        SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite,
-               t.name, t.category, it.confidence, s.name as source_name
-        FROM images i
-        LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0
-        LEFT JOIN tags t ON it.tag_id = t.id
-        LEFT JOIN sources s ON it.source_id = s.id
-        WHERE i.id IN ({})
-        ORDER BY i.created_at DESC, i.id DESC
-        "#,
-        placeholders
-    );
-    let mut q = sqlx::query_as::<_, ImageRow>(&sql);
-    for id in &page_ids {
-        q = q.bind(id);
-    }
-    let rows: Vec<ImageRow> = q.fetch_all(db).await?;
+    let id_list: Vec<i64> = page_ids.iter().map(|r| r.id).collect();
+    let images = fetch_image_details_batch(&id_list, db).await?;
 
-    let mut image_order: Vec<i64> = Vec::new();
-    let mut image_map: std::collections::HashMap<i64, ImageDetails> =
-        std::collections::HashMap::new();
-    for (
-        id,
-        sha256,
-        current_filepath,
-        mtime,
-        created_at,
-        favorite,
-        tag_name,
-        tag_category,
-        confidence,
-        source_name,
-    ) in rows
-    {
-        if !image_map.contains_key(&id) {
-            image_order.push(id);
-        }
-        let entry = image_map.entry(id).or_insert_with(|| ImageDetails {
-            id,
-            sha256,
-            current_filepath,
-            mtime,
-            created_at,
-            tags: Vec::new(),
-            blacklisted_tags: Vec::new(),
-            vector_state: String::new(),
-            favorite,
-            parsed_metadata: None,
-            is_missing: false,
-        });
-        if let (Some(name), Some(category)) = (tag_name, tag_category) {
-            if source_name.as_deref() != Some("filename_parser") {
-                entry.tags.push(TagSummary {
-                    tag: name,
-                    category,
-                    confidence: confidence.unwrap_or(0.0),
-                    source_name: source_name.clone(),
-                    is_blacklisted: false,
-                });
-            }
-        }
-    }
-
-    // Step 5: Fetch vector states and parsed metadata in batch
-    let ids: Vec<i64> = image_map.keys().copied().collect();
-    if !ids.is_empty() {
-        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let query = format!(
-            "SELECT image_id, vector_state FROM image_vectors WHERE image_id IN ({})",
-            placeholders
-        );
-        let mut q = sqlx::query_as::<_, (i64, String)>(&query);
-        for id in &ids {
-            q = q.bind(id);
-        }
-        if let Ok(vrows) = q.fetch_all(db).await {
-            for (vid, state) in vrows {
-                if let Some(img) = image_map.get_mut(&vid) {
-                    img.vector_state = state;
-                }
-            }
-        }
-
-        let pm_query = format!(
-            "SELECT image_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags, raw_matched
-             FROM image_parsed_metadata WHERE image_id IN ({})",
-            placeholders
-        );
-        let mut pm_q = sqlx::query_as::<_, (i64, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, String, String)>(&pm_query);
-        for id in &ids {
-            pm_q = pm_q.bind(id);
-        }
-        if let Ok(pm_rows) = pm_q.fetch_all(db).await {
-            for (img_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags_json, raw_matched) in pm_rows {
-                if let Some(img) = image_map.get_mut(&img_id) {
-                    let extracted_tags: Vec<String> = serde_json::from_str(&extracted_tags_json).unwrap_or_default();
-                    img.parsed_metadata = Some(curator_core::ipc::ParsedMetadata {
-                        match_type,
-                        artist,
-                        pixiv_id,
-                        twitter_id,
-                        timestamp_4chan,
-                        datetime_iso,
-                        extracted_tags,
-                        raw_matched,
-                        partial: false,
-                    });
-                }
-            }
-        }
-    }
-
-    let mut images: Vec<ImageDetails> = Vec::with_capacity(image_order.len());
-    for id in image_order {
-        if let Some(mut img) = image_map.remove(&id) {
-            sort_tags_by_priority(&mut img.tags);
-            images.push(img);
-        }
-    }
-    Ok(images)
+    Ok((images, total_count))
 }
 
 pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDetails> {
@@ -351,7 +238,6 @@ pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDeta
     let mut blacklisted_tags = Vec::new();
 
     for (tag, category, confidence, source_name, is_blacklisted) in all_tag_rows {
-        // Skip filename_parser tags from the regular tag list — they're shown in parsed metadata section
         if source_name.as_deref() == Some("filename_parser") {
             continue;
         }
@@ -381,7 +267,6 @@ pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDeta
             .map(|(s,): (String,)| s)
             .unwrap_or_else(|| "unknown".to_string());
 
-    // Fetch parsed metadata from filename parser
     let parsed_metadata: Option<curator_core::ipc::ParsedMetadata> = sqlx::query_as::<_, (String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, String, String)>(
         "SELECT match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags, raw_matched
          FROM image_parsed_metadata WHERE image_id = ? LIMIT 1"
@@ -415,8 +300,313 @@ pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDeta
         vector_state,
         favorite: img.favorite,
         parsed_metadata,
-        is_missing: false,
+        is_missing: img.is_missing,
     })
+}
+
+/// Batch-fetch full details for multiple image IDs in 4 queries instead of 4N.
+pub async fn batch_get_images_logic(ids: &[i64], db: &SqlitePool) -> Result<Vec<ImageDetails>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+
+    let base_sql = format!(
+        "SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite, i.is_missing
+         FROM images i
+         WHERE i.id IN ({}) AND i.deleted_at IS NULL
+         ORDER BY i.created_at DESC, i.id DESC",
+        placeholders
+    );
+    let mut base_q = sqlx::query_as::<_, (i64, String, String, i64, String, bool, bool)>(&base_sql);
+    for id in ids {
+        base_q = base_q.bind(id);
+    }
+    let base_rows = base_q.fetch_all(db).await?;
+
+    let mut image_order: Vec<i64> = Vec::new();
+    let mut image_map: std::collections::HashMap<i64, ImageDetails> =
+        std::collections::HashMap::new();
+    for (id, sha256, current_filepath, mtime, created_at, favorite, is_missing) in base_rows {
+        image_order.push(id);
+        image_map.insert(
+            id,
+            ImageDetails {
+                id,
+                sha256,
+                current_filepath,
+                mtime,
+                created_at,
+                tags: Vec::new(),
+                blacklisted_tags: Vec::new(),
+                vector_state: String::new(),
+                favorite,
+                parsed_metadata: None,
+                is_missing,
+            },
+        );
+    }
+
+    let tag_sql = format!(
+        "SELECT it.image_id, t.name, t.category, it.confidence, s.name as source_name, it.is_blacklisted
+         FROM image_tags it
+         JOIN tags t ON it.tag_id = t.id
+         LEFT JOIN sources s ON it.source_id = s.id
+         WHERE it.image_id IN ({}) AND it.is_deleted = 0",
+        placeholders
+    );
+    let mut tag_q = sqlx::query_as::<_, (i64, String, String, f32, Option<String>, bool)>(&tag_sql);
+    for id in ids {
+        tag_q = tag_q.bind(id);
+    }
+    if let Ok(tag_rows) = tag_q.fetch_all(db).await {
+        for (image_id, name, category, confidence, source_name, is_blacklisted) in tag_rows {
+            if source_name.as_deref() == Some("filename_parser") {
+                continue;
+            }
+            if let Some(img) = image_map.get_mut(&image_id) {
+                img.tags.push(TagSummary {
+                    tag: name,
+                    category,
+                    confidence,
+                    source_name,
+                    is_blacklisted,
+                });
+            }
+        }
+    }
+
+    let vec_sql = format!(
+        "SELECT image_id, vector_state FROM image_vectors WHERE image_id IN ({})",
+        placeholders
+    );
+    let mut vec_q = sqlx::query_as::<_, (i64, String)>(&vec_sql);
+    for id in ids {
+        vec_q = vec_q.bind(id);
+    }
+    if let Ok(vec_rows) = vec_q.fetch_all(db).await {
+        for (vid, state) in vec_rows {
+            if let Some(img) = image_map.get_mut(&vid) {
+                img.vector_state = state;
+            }
+        }
+    }
+
+    let pm_sql = format!(
+        "SELECT image_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags, raw_matched
+         FROM image_parsed_metadata WHERE image_id IN ({})",
+        placeholders
+    );
+    let mut pm_q = sqlx::query_as::<_, (i64, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, String, String)>(&pm_sql);
+    for id in ids {
+        pm_q = pm_q.bind(id);
+    }
+    if let Ok(pm_rows) = pm_q.fetch_all(db).await {
+        for (img_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags_json, raw_matched) in pm_rows {
+            if let Some(img) = image_map.get_mut(&img_id) {
+                let extracted_tags: Vec<String> = serde_json::from_str(&extracted_tags_json).unwrap_or_default();
+                img.parsed_metadata = Some(curator_core::ipc::ParsedMetadata {
+                    match_type,
+                    artist,
+                    pixiv_id,
+                    twitter_id,
+                    timestamp_4chan,
+                    datetime_iso,
+                    extracted_tags,
+                    raw_matched,
+                    partial: false,
+                });
+            }
+        }
+    }
+
+    let mut images: Vec<ImageDetails> = Vec::with_capacity(image_order.len());
+    for id in image_order {
+        if let Some(mut img) = image_map.remove(&id) {
+            sort_tags_by_priority(&mut img.tags);
+            images.push(img);
+        }
+    }
+    Ok(images)
+}
+
+/// Fetch full details for a batch of image IDs (used by list_images_logic page results).
+async fn fetch_image_details_batch(ids: &[i64], db: &SqlitePool) -> Result<Vec<ImageDetails>> {
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        r#"
+        SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite, i.is_missing,
+               t.name, t.category, it.confidence, s.name as source_name
+        FROM images i
+        LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0
+        LEFT JOIN tags t ON it.tag_id = t.id
+        LEFT JOIN sources s ON it.source_id = s.id
+        WHERE i.id IN ({})
+        ORDER BY i.created_at DESC, i.id DESC
+        "#,
+        placeholders
+    );
+    let mut q = sqlx::query_as::<_, ImageRow>(&sql);
+    for id in ids {
+        q = q.bind(id);
+    }
+    let rows: Vec<ImageRow> = q.fetch_all(db).await?;
+
+    let mut image_order: Vec<i64> = Vec::new();
+    let mut image_map: std::collections::HashMap<i64, ImageDetails> =
+        std::collections::HashMap::new();
+    for (
+        id,
+        sha256,
+        current_filepath,
+        mtime,
+        created_at,
+        favorite,
+        is_missing,
+        tag_name,
+        tag_category,
+        confidence,
+        source_name,
+    ) in rows
+    {
+        if !image_map.contains_key(&id) {
+            image_order.push(id);
+        }
+        let entry = image_map.entry(id).or_insert_with(|| ImageDetails {
+            id,
+            sha256,
+            current_filepath,
+            mtime,
+            created_at,
+            tags: Vec::new(),
+            blacklisted_tags: Vec::new(),
+            vector_state: String::new(),
+            favorite,
+            parsed_metadata: None,
+            is_missing,
+        });
+        if let (Some(name), Some(category)) = (tag_name, tag_category) {
+            if source_name.as_deref() != Some("filename_parser") {
+                entry.tags.push(TagSummary {
+                    tag: name,
+                    category,
+                    confidence: confidence.unwrap_or(0.0),
+                    source_name: source_name.clone(),
+                    is_blacklisted: false,
+                });
+            }
+        }
+    }
+
+    let img_ids: Vec<i64> = image_map.keys().copied().collect();
+    if !img_ids.is_empty() {
+        let ph = img_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+
+        let vq = format!(
+            "SELECT image_id, vector_state FROM image_vectors WHERE image_id IN ({})",
+            ph
+        );
+        let mut vq = sqlx::query_as::<_, (i64, String)>(&vq);
+        for id in &img_ids {
+            vq = vq.bind(id);
+        }
+        if let Ok(vrows) = vq.fetch_all(db).await {
+            for (vid, state) in vrows {
+                if let Some(img) = image_map.get_mut(&vid) {
+                    img.vector_state = state;
+                }
+            }
+        }
+
+        let pm_query = format!(
+            "SELECT image_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags, raw_matched
+             FROM image_parsed_metadata WHERE image_id IN ({})",
+            ph
+        );
+        let mut pm_q = sqlx::query_as::<_, (i64, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, String, String)>(&pm_query);
+        for id in &img_ids {
+            pm_q = pm_q.bind(id);
+        }
+        if let Ok(pm_rows) = pm_q.fetch_all(db).await {
+            for (img_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags_json, raw_matched) in pm_rows {
+                if let Some(img) = image_map.get_mut(&img_id) {
+                    let extracted_tags: Vec<String> = serde_json::from_str(&extracted_tags_json).unwrap_or_default();
+                    img.parsed_metadata = Some(curator_core::ipc::ParsedMetadata {
+                        match_type,
+                        artist,
+                        pixiv_id,
+                        twitter_id,
+                        timestamp_4chan,
+                        datetime_iso,
+                        extracted_tags,
+                        raw_matched,
+                        partial: false,
+                    });
+                }
+            }
+        }
+    }
+
+    let mut images: Vec<ImageDetails> = Vec::with_capacity(image_order.len());
+    for id in image_order {
+        if let Some(mut img) = image_map.remove(&id) {
+            sort_tags_by_priority(&mut img.tags);
+            images.push(img);
+        }
+    }
+    Ok(images)
+}
+
+pub async fn get_thumbnail_logic(
+    image_id: i64,
+    width: u32,
+    cache: &ThumbnailCache,
+    db: &SqlitePool,
+) -> Result<(Option<Vec<u8>>, bool)> {
+    if let Some(cached) = cache.get(image_id).await {
+        return Ok((Some(cached), false));
+    }
+
+    let row: Option<(String, i64, bool)> = sqlx::query_as(
+        "SELECT current_filepath, mtime, is_missing FROM images WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(image_id)
+    .fetch_optional(db)
+    .await?;
+
+    let (filepath, _mtime, is_missing) = match row {
+        Some(r) => r,
+        None => return Ok((None, true)),
+    };
+
+    if is_missing || !Path::new(&filepath).exists() {
+        return Ok((None, true));
+    }
+
+    let thumb_path: std::path::PathBuf = filepath.into();
+    match tokio::task::spawn_blocking(move || thumbnail::generate_thumbnail(&thumb_path, width))
+        .await
+    {
+        Ok(Ok(webp_bytes)) => {
+            let _ = cache.put(image_id, width, &webp_bytes).await;
+            Ok((Some(webp_bytes), false))
+        }
+        _ => Ok((None, true)),
+    }
+}
+
+pub async fn purge_missing_thumbnails_logic(
+    cache: &ThumbnailCache,
+    db: &SqlitePool,
+) -> Result<i64> {
+    let missing_ids: Vec<(i64,)> = sqlx::query_as("SELECT id FROM images WHERE is_missing = 1")
+        .fetch_all(db)
+        .await?;
+
+    let ids: Vec<i64> = missing_ids.into_iter().map(|(id,)| id).collect();
+    let deleted = cache.purge_missing(&ids).await?;
+    Ok(deleted as i64)
 }
 
 pub async fn get_featured_image(db: &SqlitePool, data_dir: &Path) -> Option<ImageDetails> {

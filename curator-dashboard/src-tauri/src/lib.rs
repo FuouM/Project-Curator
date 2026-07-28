@@ -1,9 +1,13 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::{Arc, OnceLock};
 use tauri::Emitter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
+use tokio::sync::OnceCell;
+
+use curator_core::thumbnail::ThumbnailCache;
 
 // We will default to the standard curator data path
 const DEFAULT_DATA_DIR: &str = r".curator";
@@ -98,7 +102,6 @@ fn spawn_service() {
     }
 }
 
-use std::sync::OnceLock;
 use tokio::sync::Mutex;
 
 fn get_pipe_connection() -> &'static Mutex<Option<NamedPipeClient>> {
@@ -110,6 +113,9 @@ fn get_cached_token() -> &'static Mutex<Option<String>> {
     static TOKEN: OnceLock<Mutex<Option<String>>> = OnceLock::new();
     TOKEN.get_or_init(|| Mutex::new(None))
 }
+
+static THUMB_DB_PATH: OnceLock<PathBuf> = OnceLock::new();
+static THUMB_CACHE: OnceCell<Arc<ThumbnailCache>> = OnceCell::const_new();
 
 /// Returns true when `s` appears to contain a complete JSON value
 /// (balanced braces/brackets), accounting for strings and escapes.
@@ -425,6 +431,19 @@ async fn read_image_bytes(path: String) -> Result<Vec<u8>, String> {
     std::fs::read(p).map_err(|e| format!("Failed to read file: {:?}", e))
 }
 
+#[tauri::command]
+async fn get_thumbnail(image_id: i64) -> Result<Vec<u8>, String> {
+    let cache = THUMB_CACHE.get_or_init(|| async {
+        let db_path = THUMB_DB_PATH.get().expect("THUMB_DB_PATH not set");
+        ThumbnailCache::open(db_path).await.expect("Failed to open thumbnail cache")
+    }).await;
+
+    match cache.get(image_id).await {
+        Some(data) => Ok(data),
+        None => Err("Thumbnail not found".to_string()),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -437,6 +456,8 @@ pub fn run() {
             let _ = fs::write(&log_file, "");
             let _ = fs::write(&stdout_log, "");
             log_dashboard_event("Dashboard started. Cleaned log files.");
+
+            let _ = THUMB_DB_PATH.set(data_dir.join("thumbnail-cache.db"));
 
             // Eagerly pre-establish the pipe connection in a background task
             // so the first IPC call from the frontend is instant.
@@ -493,7 +514,8 @@ pub fn run() {
             clear_service_logs,
             log_frontend,
             open_file_externally,
-            read_image_bytes
+            read_image_bytes,
+            get_thumbnail
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -207,6 +207,30 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   border: 1px solid #794c00;
   color: #794c00;
 }
+.badge-missing {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  background-color: #f8d7da;
+  border: 1px solid #dc3545;
+  color: #842029;
+  font-size: 10px;
+  padding: 2px 6px;
+  font-weight: 600;
+  border-radius: 2px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.image-preview img[data-thumb-id] {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.image-preview img.loaded {
+  opacity: 1;
+}
 
 .featured-layout {
   display: flex;

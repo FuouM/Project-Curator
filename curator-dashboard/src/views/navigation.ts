@@ -1,5 +1,5 @@
 import { galleryPage, favoritesPage, setGalleryPage, setFavoritesPage, getImagesPerPage, setImagesPerPage } from "../state";
-import { refreshGallery, refreshFavorites, setupPaginationButtons } from "./gallery";
+import { refreshGallery, refreshFavorites, setupPaginationButtons, setupPageJump } from "./gallery";
 import { refreshDashboard } from "./dashboard";
 import { refreshLogs, clearLogsData } from "./logs";
 import { refreshTagStats } from "./tagstats";
@@ -78,6 +78,10 @@ export function setupNavigation() {
   // Gallery & Favorites Pagination Setup
   setupPaginationButtons("gallery-prev-btn", "gallery-next-btn", { get value() { return galleryPage; }, set value(v) { setGalleryPage(v); } }, refreshGallery);
   setupPaginationButtons("favorites-prev-btn", "favorites-next-btn", { get value() { return favoritesPage; }, set value(v) { setFavoritesPage(v); } }, refreshFavorites);
+
+  // Gallery & Favorites Page Jump
+  setupPageJump("gallery-jump-btn", "gallery-page-jump", { get value() { return galleryPage; }, set value(v) { setGalleryPage(v); } }, refreshGallery);
+  setupPageJump("favorites-jump-btn", "favorites-page-jump", { get value() { return favoritesPage; }, set value(v) { setFavoritesPage(v); } }, refreshFavorites);
 
   // Gallery per-page selector
   const perPageSelect = document.getElementById("gallery-per-page-select") as HTMLSelectElement;

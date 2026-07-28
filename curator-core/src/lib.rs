@@ -7,6 +7,7 @@ pub mod image_decode;
 pub mod ipc;
 pub mod preprocess;
 pub mod tagger;
+pub mod thumbnail;
 pub mod vector;
 
 pub use benchmark::{benchmark_preprocess, run_onnx_benchmark};

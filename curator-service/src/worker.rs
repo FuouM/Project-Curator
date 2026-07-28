@@ -45,6 +45,20 @@ impl BackgroundWorker {
             }
         });
 
+        // Background missing-image reconciler: checks file existence periodically
+        {
+            let db_recon = self.db.clone();
+            tokio::spawn(async move {
+                info!("Missing-image reconciler started.");
+                loop {
+                    sleep(Duration::from_secs(300)).await;
+                    if let Err(e) = reconcile_missing_images(&db_recon).await {
+                        warn!("Missing-image reconciler failed: {:?}", e);
+                    }
+                }
+            });
+        }
+
         let (tx, mut rx) = tokio::sync::mpsc::channel::<PreprocessedBatch>(1);
         let db_pre = self.db.clone();
         let mm_pre = self.model_manager.clone();
@@ -277,4 +291,73 @@ impl BackgroundWorker {
             }
         });
     }
+}
+
+use std::path::Path;
+
+async fn reconcile_missing_images(db: &SqlitePool) -> Result<(), anyhow::Error> {
+    info!("Running missing-image reconciliation...");
+
+    let batch_size: i64 = 1000;
+    let mut offset: i64 = 0;
+
+    loop {
+        let rows: Vec<(i64, String)> = sqlx::query_as(
+            "SELECT id, current_filepath FROM images WHERE is_missing = 0 AND deleted_at IS NULL LIMIT ? OFFSET ?",
+        )
+        .bind(batch_size)
+        .bind(offset)
+        .fetch_all(db)
+        .await?;
+
+        if rows.is_empty() {
+            break;
+        }
+
+        let mut newly_missing = Vec::new();
+        for (id, filepath) in &rows {
+            if !Path::new(filepath).exists() {
+                newly_missing.push(*id);
+            }
+        }
+
+        if !newly_missing.is_empty() {
+            let ph = newly_missing.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!("UPDATE images SET is_missing = 1 WHERE id IN ({})", ph);
+            let mut q = sqlx::query(&sql);
+            for id in &newly_missing {
+                q = q.bind(id);
+            }
+            q.execute(db).await?;
+            info!("Marked {} images as missing", newly_missing.len());
+        }
+
+        offset += batch_size;
+    }
+
+    let recheck_rows: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT id, current_filepath FROM images WHERE is_missing = 1 AND deleted_at IS NULL LIMIT 500",
+    )
+    .fetch_all(db)
+    .await?;
+
+    let mut reappeared = Vec::new();
+    for (id, filepath) in &recheck_rows {
+        if Path::new(filepath).exists() {
+            reappeared.push(id);
+        }
+    }
+
+    if !reappeared.is_empty() {
+        let ph = reappeared.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!("UPDATE images SET is_missing = 0 WHERE id IN ({})", ph);
+        let mut q = sqlx::query(&sql);
+        for id in &reappeared {
+            q = q.bind(id);
+        }
+        q.execute(db).await?;
+        info!("Re-found {} previously missing images", reappeared.len());
+    }
+
+    Ok(())
 }

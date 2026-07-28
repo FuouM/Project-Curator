@@ -20,6 +20,8 @@ export function openImageViewer(filepath: string) {
 
 function closeImageViewer() {
   const modal = document.getElementById("image-viewer-modal");
+  const img = document.getElementById("image-viewer-img") as HTMLImageElement | null;
+  if (img) img.src = "";
   if (modal) modal.classList.remove("active");
   currentViewerPath = null;
 }

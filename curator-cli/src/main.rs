@@ -158,6 +158,7 @@ async fn main() -> Result<(), Error> {
             parse_filter: None,
             parse_type: None,
             concept_id: None,
+            filename_filter: None,
             limit,
         },
         Commands::List { limit, offset } => Request::ListImages {
@@ -355,7 +356,7 @@ async fn main() -> Result<(), Error> {
                 }
             }
         }
-        Response::ListResult { images } => {
+        Response::ListResult { images, .. } => {
             if images.is_empty() {
                 println!("No images imported yet.");
             } else {

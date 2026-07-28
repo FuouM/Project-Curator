@@ -21,6 +21,8 @@ pub struct Image {
     pub created_at: NaiveDateTime,
     pub deleted_at: Option<NaiveDateTime>,
     pub favorite: bool,
+    #[sqlx(default)]
+    pub is_missing: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]

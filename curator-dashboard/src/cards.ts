@@ -1,10 +1,32 @@
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { renderTagPill, maskPath } from "./components";
 import { CardImageData, ImageDetails, SearchMatch, TagSummary, ParsedMetadata } from "./types";
 import { imageBytesToPngBlob } from "./utils";
 import { getImageClickAction, isSelectMode, selectedImageIds } from "./state";
 import { openImageViewer } from "./image-viewer";
 import { callService } from "./ipc";
+
+// --- Lazy Loading via IntersectionObserver ---
+const lazyObserver = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (entry.isIntersecting) {
+      const img = entry.target as HTMLImageElement;
+      const imageId = parseInt(img.dataset.thumbId || "0", 10);
+      if (imageId > 0 && img.dataset.pending === "1") {
+        img.dataset.pending = "0";
+        invoke("get_thumbnail", { imageId }).then((data: any) => {
+          if (img.isConnected && data) {
+            const bytes = new Uint8Array(data);
+            const blob = new Blob([bytes], { type: "image/webp" });
+            img.src = URL.createObjectURL(blob);
+            img.classList.add("loaded");
+          }
+        }).catch(() => {});
+      }
+      lazyObserver.unobserve(img);
+    }
+  }
+}, { rootMargin: "300px" });
 
 // --- Tag Pill Helpers ---
 
@@ -22,7 +44,6 @@ export function renderTagListHtml(tags: TagSummary[], maxVisible = 10): string {
 export function renderParsedMetadataHtml(meta: ParsedMetadata): string {
   const parts: string[] = [];
 
-  // Anime Screenshot: special merged pill
   if (meta.match_type === "anime_screenshot") {
     const animeTag = meta.extracted_tags.find(t => t.toLowerCase().startsWith("anime:"));
     const epTag = meta.extracted_tags.find(t => t.toLowerCase().startsWith("episode:"));
@@ -39,7 +60,6 @@ export function renderParsedMetadataHtml(meta: ParsedMetadata): string {
     const hashLink = hash ? `<a href="https://danbooru.donmai.us/posts?tags=md5%3A${hash}" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline; font-size: inherit;" onmouseover="this.style.textDecoration='none'" onmouseout="this.style.textDecoration='underline'" title="${hash}">${hashDisplay}</a>` : "?";
     parts.push(`<span class="tag-pill tag-copyright" style="font-size: 10px; font-weight: 600;"><i class="bi bi-grid-3x3-gap"></i> ${artist} - ${hashLink}</span>`);
   } else {
-    // Build a single pill per type: "type: value"
     if (meta.datetime_iso) {
       parts.push(`<span class="tag-pill tag-meta" style="font-size: 10px;"><i class="bi bi-clock"></i> 4chan: ${meta.datetime_iso}</span>`);
     } else if (meta.artist) {
@@ -54,7 +74,6 @@ export function renderParsedMetadataHtml(meta: ParsedMetadata): string {
   }
   if (meta.twitter_id) parts.push(`<span class="tag-pill tag-character" style="font-size: 10px;"><i class="bi bi-twitter"></i> twitter: ${meta.twitter_id}</span>`);
 
-  // Show remaining extracted tags not already represented
   const fieldTags = new Set<string>();
   if (meta.artist) fieldTags.add(`artist:${meta.artist}`);
   if (meta.pixiv_id) fieldTags.add(`pixiv:${meta.pixiv_id}`);
@@ -85,117 +104,175 @@ export function renderParsedMetadataHtml(meta: ParsedMetadata): string {
   return parts.join(" ");
 }
 
-// --- Card Event Handlers ---
+// --- Event Delegation (one listener per grid, not per card) ---
 
-function attachStarButtonHandler(parentEl: Element, imageId: number, favState: { favorite: boolean }, syncCrossCards = false) {
-  const starBtn = parentEl.querySelector(".star-btn");
-  if (!starBtn) return;
-  starBtn.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    const newFav = !starBtn.classList.contains("favorite");
-    try {
-      const resp = await callService({ SetFavorite: { image_id: imageId, favorite: newFav } });
-      if ("Success" in resp) {
-        favState.favorite = newFav;
-        if (newFav) {
-          starBtn.classList.add("favorite");
-          starBtn.querySelector("i")?.setAttribute("class", "bi bi-star-fill");
-        } else {
-          starBtn.classList.remove("favorite");
-          starBtn.querySelector("i")?.setAttribute("class", "bi bi-star");
-        }
-        if (syncCrossCards) {
-          document.querySelectorAll(`[data-image-id="${imageId}"] .star-btn`).forEach(btn => {
-            if (newFav) {
-              btn.classList.add("favorite");
-              btn.querySelector("i")?.setAttribute("class", "bi bi-star-fill");
-            } else {
-              btn.classList.remove("favorite");
-              btn.querySelector("i")?.setAttribute("class", "bi bi-star");
-            }
-          });
-        }
-        const activeNav = document.querySelector(".nav-item.active");
-        if (activeNav && activeNav.getAttribute("data-view") === "favorites" && !newFav) {
-          // Lazy import to avoid circular - will be resolved at runtime
-          import("./views/gallery").then(m => m.refreshFavorites());
-        }
-      }
-    } catch (err) {
-      console.error("Failed to update favorite status:", err);
-    }
-  });
-}
-
-function attachOpenFolderHandler(parentEl: Element, filepath: string) {
-  const pathEl = parentEl.querySelector(".image-path");
-  const openFolderBtn = parentEl.querySelector(".image-open-folder-btn") as HTMLButtonElement | null;
-  if (!pathEl || !openFolderBtn) return;
-  pathEl.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openFolderBtn.style.display = openFolderBtn.style.display === "none" ? "inline-flex" : "none";
-  });
-  openFolderBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const dir = filepath.replace(/[\\/][^\\/]+$/, "");
-    invoke("open_file_externally", { path: dir }).catch((err) => {
-      console.error("Failed to open folder:", err);
-    });
-  });
-}
-
-function attachCopyToClipboardHandler(parentEl: Element, filepath: string) {
-  const copyBtn = parentEl.querySelector(".copy-btn");
-  if (!copyBtn) return;
-  copyBtn.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    try {
-      const bytes: number[] = await invoke("read_image_bytes", { path: filepath });
-      const uint8 = new Uint8Array(bytes);
-      const blob = await imageBytesToPngBlob(uint8);
-      await navigator.clipboard.write([
-        new ClipboardItem({ "image/png": blob })
-      ]);
-      copyBtn.classList.add("copied");
-      copyBtn.querySelector("i")?.setAttribute("class", "bi bi-check-lg");
-      setTimeout(() => {
-        copyBtn.classList.remove("copied");
-        copyBtn.querySelector("i")?.setAttribute("class", "bi bi-clipboard");
-      }, 1500);
-    } catch (err) {
-      console.error("Failed to copy image to clipboard:", err);
-    }
-  });
-}
-
-function attachPreviewClickHandler(previewEl: Element, filepath: string) {
-  previewEl.addEventListener("click", () => {
-    if (getImageClickAction() === "external") {
-      invoke("open_file_externally", { path: filepath }).catch((err) => {
-        console.error("Failed to open file externally:", err);
-      });
-    } else {
-      openImageViewer(filepath);
-    }
-  });
-}
-
-function attachInfoButtonHandler(parentEl: Element) {
-  const infoBtn = parentEl.querySelector(".info-btn");
-  if (!infoBtn) return;
-  infoBtn.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    const imageId = parseInt(infoBtn.getAttribute("data-id") || "0");
+export function setupGridDelegation(grid: HTMLElement) {
+  grid.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+    const card = target.closest(".image-card") as HTMLElement;
+    if (!card) return;
+    const imageId = parseInt(card.dataset.imageId || "0", 10);
     if (!imageId) return;
-    try {
-      const resp = await callService({ GetImage: { image_id: imageId } });
-      if ("ImageResult" in resp) {
-        openImageInfoModal(resp.ImageResult.image);
+
+    if (target.closest(".star-btn")) {
+      handleStarClick(card, imageId);
+      return;
+    }
+    if (target.closest(".copy-btn")) {
+      handleCopyClick(card, imageId);
+      return;
+    }
+    if (target.closest(".info-btn")) {
+      handleInfoClick(imageId);
+      return;
+    }
+    if (target.closest(".image-open-folder-btn")) {
+      const filepath = card.dataset.filepath || "";
+      const dir = filepath.replace(/[\\/][^\\/]+$/, "");
+      invoke("open_file_externally", { path: dir }).catch(() => {});
+      return;
+    }
+    if (target.closest(".win-button")) return;
+    if (target.closest(".star-btn")) return;
+
+    if (target.closest(".image-path")) {
+      const openFolderBtn = card.querySelector(".image-open-folder-btn") as HTMLElement;
+      if (openFolderBtn) openFolderBtn.style.display = openFolderBtn.style.display === "none" ? "inline-flex" : "none";
+      return;
+    }
+
+    if (target.closest(".image-preview")) {
+      const filepath = card.dataset.filepath || "";
+      if (getImageClickAction() === "external") {
+        invoke("open_file_externally", { path: filepath }).catch(() => {});
+      } else {
+        openImageViewer(filepath);
       }
-    } catch (err) {
-      console.error("Failed to load image details:", err);
+      return;
+    }
+
+    if (isSelectMode) {
+      const checkbox = card.querySelector(".card-select-checkbox") as HTMLInputElement;
+      if (selectedImageIds.has(imageId)) {
+        selectedImageIds.delete(imageId);
+        card.classList.remove("selected");
+        if (checkbox) checkbox.checked = false;
+      } else {
+        selectedImageIds.add(imageId);
+        card.classList.add("selected");
+        if (checkbox) checkbox.checked = true;
+      }
+      import("./views/gallery").then(m => m.updateSelectionUI());
     }
   });
+
+  grid.addEventListener("change", (e) => {
+    const target = e.target as HTMLElement;
+    if (!target.classList.contains("card-select-checkbox")) return;
+    const card = target.closest(".image-card") as HTMLElement;
+    if (!card) return;
+    const imageId = parseInt(card.dataset.imageId || "0", 10);
+    const checkbox = target as HTMLInputElement;
+    if (checkbox.checked) {
+      selectedImageIds.add(imageId);
+      card.classList.add("selected");
+    } else {
+      selectedImageIds.delete(imageId);
+      card.classList.remove("selected");
+    }
+    import("./views/gallery").then(m => m.updateSelectionUI());
+  });
+}
+
+export function attachCardEventHandlers(
+  container: HTMLElement,
+  imageId: number,
+  filepath: string,
+  _imageData: any,
+  _previewSelector: string,
+  _isFeatured: boolean
+) {
+  container.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+    if (target.closest(".star-btn")) {
+      handleStarClick(container, imageId);
+      return;
+    }
+    if (target.closest(".copy-btn")) {
+      handleCopyClick(container, imageId);
+      return;
+    }
+    if (target.closest(".image-open-folder-btn")) {
+      const dir = filepath.replace(/[\\/][^\\/]+$/, "");
+      invoke("open_file_externally", { path: dir }).catch(() => {});
+      return;
+    }
+    if (target.closest(".image-path")) {
+      const btn = container.querySelector(".image-open-folder-btn") as HTMLElement;
+      if (btn) btn.style.display = btn.style.display === "none" ? "inline-flex" : "none";
+      return;
+    }
+    if (target.closest(".image-preview")) {
+      if (getImageClickAction() === "external") {
+        invoke("open_file_externally", { path: filepath }).catch(() => {});
+      } else {
+        openImageViewer(filepath);
+      }
+      return;
+    }
+  });
+}
+
+function handleStarClick(card: HTMLElement, imageId: number) {
+  const starBtn = card.querySelector(".star-btn");
+  if (!starBtn) return;
+  const newFav = !starBtn.classList.contains("favorite");
+
+  callService({ SetFavorite: { image_id: imageId, favorite: newFav } }).then((resp) => {
+    if ("Success" in resp) {
+      document.querySelectorAll(`[data-image-id="${imageId}"] .star-btn`).forEach(btn => {
+        if (newFav) {
+          btn.classList.add("favorite");
+          btn.querySelector("i")?.setAttribute("class", "bi bi-star-fill");
+        } else {
+          btn.classList.remove("favorite");
+          btn.querySelector("i")?.setAttribute("class", "bi bi-star");
+        }
+      });
+      const activeNav = document.querySelector(".nav-item.active");
+      if (activeNav && activeNav.getAttribute("data-view") === "favorites" && !newFav) {
+        import("./views/gallery").then(m => m.refreshFavorites());
+      }
+    }
+  }).catch(() => {});
+}
+
+function handleCopyClick(card: HTMLElement, _imageId: number) {
+  const copyBtn = card.querySelector(".copy-btn");
+  if (!copyBtn) return;
+  const filepath = card.dataset.filepath || "";
+
+  invoke("read_image_bytes", { path: filepath }).then((bytes: any) => {
+    const uint8 = new Uint8Array(bytes);
+    return imageBytesToPngBlob(uint8);
+  }).then((blob) => {
+    return navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+  }).then(() => {
+    copyBtn.classList.add("copied");
+    copyBtn.querySelector("i")?.setAttribute("class", "bi bi-check-lg");
+    setTimeout(() => {
+      copyBtn.classList.remove("copied");
+      copyBtn.querySelector("i")?.setAttribute("class", "bi bi-clipboard");
+    }, 1500);
+  }).catch(() => {});
+}
+
+function handleInfoClick(imageId: number) {
+  callService({ GetImage: { image_id: imageId } }).then((resp) => {
+    if ("ImageResult" in resp) {
+      openImageInfoModal(resp.ImageResult.image);
+    }
+  }).catch(() => {});
 }
 
 function openImageInfoModal(img: ImageDetails) {
@@ -230,7 +307,6 @@ function openImageInfoModal(img: ImageDetails) {
   }
 
   const catBreakdown = Object.entries(tagCategories).map(([cat, count]) => `${cat}: ${count}`).join(", ");
-
   const tagsHtml = img.tags?.length
     ? img.tags.map(t => renderTagPill(t)).join(" ")
     : '<span style="color:#999;font-style:italic;">No tags</span>';
@@ -258,9 +334,7 @@ function openImageInfoModal(img: ImageDetails) {
         await navigator.clipboard.writeText(sha256Full);
         copySha.innerHTML = '<i class="bi bi-check-lg"></i>';
         setTimeout(() => { copySha.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 1200);
-      } catch (err) {
-        console.error("Failed to copy SHA-256:", err);
-      }
+      } catch (_) {}
     });
   }
 
@@ -270,42 +344,25 @@ function openImageInfoModal(img: ImageDetails) {
   modal.addEventListener("click", (e) => { if (e.target === modal) onClose(); }, { once: true });
 }
 
-export function attachCardEventHandlers(parentEl: Element, imageId: number, filepath: string, favState: { favorite: boolean }, previewSelector = ".image-preview", syncCrossCards = false) {
-  attachStarButtonHandler(parentEl, imageId, favState, syncCrossCards);
-  attachOpenFolderHandler(parentEl, filepath);
-  attachCopyToClipboardHandler(parentEl, filepath);
-  attachInfoButtonHandler(parentEl);
-  const previewDiv = parentEl.querySelector(previewSelector);
-  if (previewDiv) attachPreviewClickHandler(previewDiv, filepath);
-}
-
-// --- Browse Button Helper ---
-
-export function setupBrowseButton(btnId: string, targetInput: HTMLInputElement, isDirectory: boolean) {
-  document.getElementById(btnId)?.addEventListener("click", async () => {
-    try {
-      const selected: string | null = await invoke("select_path", { isDirectory });
-      if (selected) {
-        targetInput.value = selected;
-        targetInput.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-    } catch (err) {
-      console.error(`${isDirectory ? "Folder" : "File"} dialog error: `, err);
-    }
-  });
-}
-
-// --- Card Rendering ---
+// --- Card Rendering (no per-card event handlers) ---
 
 export function renderCards(cards: CardImageData[], grid: HTMLElement) {
+  grid.innerHTML = "";
+
+  const fragment = document.createDocumentFragment();
+
   cards.forEach((img) => {
     const card = document.createElement("div");
     card.className = `image-card ${selectedImageIds.has(img.id) ? 'selected' : ''}`;
     card.dataset.imageId = img.id.toString();
+    card.dataset.filepath = img.filepath;
 
-    const srcUrl = convertFileSrc(img.filepath);
     const tagHtml = renderTagListHtml(img.tags);
     const parsedHtml = img.parsedMetadata ? renderParsedMetadataHtml(img.parsedMetadata) : "";
+
+    const missingBadge = img.isMissing
+      ? '<div class="badge-missing"><i class="bi bi-exclamation-triangle"></i> Missing</div>'
+      : "";
 
     card.innerHTML = `
       <input type="checkbox" class="card-select-checkbox" data-id="${img.id}" ${selectedImageIds.has(img.id) ? 'checked' : ''} />
@@ -313,8 +370,9 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
         <i class="bi ${img.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
       </div>
       <div class="image-preview">
-        <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+        <img data-thumb-id="${img.id}" data-pending="1" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
+        ${missingBadge}
         ${img.badgeHtml || ""}
         <div class="copy-btn" title="Copy image to clipboard"><i class="bi bi-clipboard"></i></div>
         <div class="info-btn" title="View image details" data-id="${img.id}"><i class="bi bi-info-circle"></i></div>
@@ -331,56 +389,31 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
           ${tagHtml}
         </div>
         <div style="display: flex; gap: 4px; margin-top: auto; width: 100%;">
-          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.openTags(${img.id}, '${img.filepath.replace(/\\/g, '\\\\')}')">
+          <button class="win-button" style="font-size: 11px; flex: 1;" data-action="open-tags" data-id="${img.id}" data-filepath="${img.filepath.replace(/\\/g, '\\\\')}">
             <i class="bi bi-tag"></i> Tags
           </button>
-          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.findSimilar('${img.filepath.replace(/\\/g, '\\\\')}')">
+          <button class="win-button" style="font-size: 11px; flex: 1;" data-action="find-similar" data-filepath="${img.filepath.replace(/\\/g, '\\\\')}">
             <i class="bi bi-search"></i> Similar
           </button>
         </div>
       </div>
     `;
 
-    const checkbox = card.querySelector(".card-select-checkbox") as HTMLInputElement;
-    checkbox?.addEventListener("change", (e) => {
-      e.stopPropagation();
-      if (checkbox.checked) {
-        selectedImageIds.add(img.id);
-        card.classList.add("selected");
-      } else {
-        selectedImageIds.delete(img.id);
-        card.classList.remove("selected");
-      }
-      import("./views/gallery").then(m => m.updateSelectionUI());
-    });
+    fragment.appendChild(card);
+  });
 
-    card.addEventListener("click", (e) => {
-      const target = e.target as HTMLElement;
-      if (target.closest(".win-button") || target.closest(".star-btn") || target.closest(".copy-btn") || target.closest(".info-btn")) return;
-      if (isSelectMode) {
-        if (selectedImageIds.has(img.id)) {
-          selectedImageIds.delete(img.id);
-          card.classList.remove("selected");
-          if (checkbox) checkbox.checked = false;
-        } else {
-          selectedImageIds.add(img.id);
-          card.classList.add("selected");
-          if (checkbox) checkbox.checked = true;
-        }
-        import("./views/gallery").then(m => m.updateSelectionUI());
-      }
-    });
+  grid.appendChild(fragment);
 
-    attachCardEventHandlers(card, img.id, img.filepath, { favorite: img.favorite ?? false });
-
-    grid.appendChild(card);
+  // Observe all lazy thumbnail images
+  grid.querySelectorAll<HTMLElement>("img[data-thumb-id]").forEach(img => {
+    lazyObserver.observe(img);
   });
 }
 
 export function renderImages(images: ImageDetails[], gridId: string) {
   const grid = document.getElementById(gridId);
   if (!grid) return;
-  grid.innerHTML = "";
+
 
   if (images.length === 0) {
     grid.innerHTML = "<p style='color: #64748b; font-style: italic;'>No images imported yet.</p>";
@@ -394,6 +427,7 @@ export function renderImages(images: ImageDetails[], gridId: string) {
     favorite: img.favorite,
     badgeHtml: `<div class="vector-badge ${img.vector_state === "ready" ? "badge-ready" : "badge-pending"}">${img.vector_state}</div>`,
     parsedMetadata: img.parsed_metadata,
+    isMissing: img.is_missing,
   }));
 
   renderCards(cards, grid);
@@ -402,7 +436,6 @@ export function renderImages(images: ImageDetails[], gridId: string) {
 export function renderSearchResults(matches: SearchMatch[]) {
   const grid = document.getElementById("search-results-grid");
   if (!grid) return;
-  grid.innerHTML = "";
 
   if (matches.length === 0) {
     grid.innerHTML = "<p style='color: #64748b; font-style: italic;'>No matching results found.</p>";
@@ -425,4 +458,20 @@ export function renderSearchResults(matches: SearchMatch[]) {
   });
 
   renderCards(cards, grid);
+}
+
+// --- Browse Button Helper ---
+
+export function setupBrowseButton(btnId: string, targetInput: HTMLInputElement, isDirectory: boolean) {
+  document.getElementById(btnId)?.addEventListener("click", async () => {
+    try {
+      const selected: string | null = await invoke("select_path", { isDirectory });
+      if (selected) {
+        targetInput.value = selected;
+        targetInput.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    } catch (err) {
+      console.error(`${isDirectory ? "Folder" : "File"} dialog error: `, err);
+    }
+  });
 }

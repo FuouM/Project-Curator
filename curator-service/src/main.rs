@@ -3,6 +3,7 @@ use clap::Parser;
 use curator_core::db::init_db;
 use curator_core::ipc::{Request, Response};
 use curator_core::tagger::TaggerEngine;
+use curator_core::thumbnail::ThumbnailCache;
 use curator_core::vector::{ModelManager, VectorIndex};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -30,6 +31,7 @@ struct ClientContext {
     service_key: Arc<String>,
     data_dir: Arc<PathBuf>,
     settings: Arc<tokio::sync::Mutex<AppSettings>>,
+    thumbnail_cache: Arc<ThumbnailCache>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,6 +183,11 @@ async fn main() -> Result<(), Error> {
     let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone());
     worker.start();
 
+    let thumb_db_path = data_dir.join("thumbnail-cache.db");
+    let thumbnail_cache = ThumbnailCache::open(&thumb_db_path)
+        .await
+        .context("Failed to open thumbnail cache")?;
+
     let settings_arc = Arc::new(tokio::sync::Mutex::new(settings));
 
     {
@@ -216,6 +223,7 @@ async fn main() -> Result<(), Error> {
     let tagger_arc = tagger.clone();
     let key_arc = Arc::new(service_key);
     let data_dir_arc = Arc::new(data_dir);
+    let thumb_arc = thumbnail_cache;
 
     let mut is_first = true;
     loop {
@@ -234,6 +242,7 @@ async fn main() -> Result<(), Error> {
         let key = key_arc.clone();
         let dd = data_dir_arc.clone();
         let st = settings_arc.clone();
+        let tc = thumb_arc.clone();
 
         tokio::spawn(async move {
             let ctx = ClientContext {
@@ -244,6 +253,7 @@ async fn main() -> Result<(), Error> {
                 service_key: key,
                 data_dir: dd,
                 settings: st,
+                thumbnail_cache: tc,
             };
             if let Err(e) = handle_client(server, ctx).await {
                 error!("Error handling IPC client: {:?}", e);
@@ -264,6 +274,7 @@ async fn handle_client(
         service_key,
         data_dir,
         settings,
+        thumbnail_cache,
     } = ctx;
     info!("New client connected to named pipe.");
     let mut buffer = vec![0; 16384];
@@ -310,6 +321,7 @@ async fn handle_client(
             &tagger,
             &data_dir,
             &settings,
+            &thumbnail_cache,
         )
         .await;
 

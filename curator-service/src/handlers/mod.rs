@@ -9,6 +9,7 @@ pub mod tags;
 
 use curator_core::ipc::{EmbeddingModel, Request, Response};
 use curator_core::tagger::TaggerEngine;
+use curator_core::thumbnail::ThumbnailCache;
 use curator_core::vector::{ModelManager, VectorIndex};
 use sqlx::SqlitePool;
 use std::path::Path;
@@ -24,6 +25,7 @@ pub(crate) type ImageRow = (
     i64,
     String,
     bool,
+    bool,
     Option<String>,
     Option<String>,
     Option<f32>,
@@ -38,6 +40,7 @@ pub async fn handle_request(
     tagger: &Arc<TaggerEngine>,
     data_dir: &Path,
     settings: &Arc<tokio::sync::Mutex<AppSettings>>,
+    thumbnail_cache: &ThumbnailCache,
 ) -> Response {
     match request {
         Request::Ping => Response::Pong,
@@ -209,7 +212,7 @@ pub async fn handle_request(
             offset,
             only_favorites,
         } => match image::list_images_logic(limit, offset, only_favorites, db).await {
-            Ok(images) => Response::ListResult { images },
+            Ok((images, total_count)) => Response::ListResult { images, total_count },
             Err(e) => Response::Error {
                 message: e.to_string(),
             },
@@ -218,6 +221,24 @@ pub async fn handle_request(
         Request::SetFavorite { image_id, favorite } => {
             match tags::set_favorite_logic(image_id, favorite, db).await {
                 Ok(_) => Response::Success,
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+        Request::GetThumbnail { image_id, width } => {
+            match image::get_thumbnail_logic(image_id, width, thumbnail_cache, db).await {
+                Ok((data, is_missing)) => Response::ThumbnailResult { data, is_missing },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+        Request::PurgeMissingThumbnails => {
+            match image::purge_missing_thumbnails_logic(thumbnail_cache, db).await {
+                Ok(deleted_count) => Response::PurgeResult { deleted_count },
                 Err(e) => Response::Error {
                     message: e.to_string(),
                 },
@@ -405,7 +426,7 @@ pub async fn handle_request(
             );
 
             let featured_images = featured_result.into_iter().collect();
-            let latest_images = latest_resp.unwrap_or_default();
+            let latest_images = latest_resp.map(|(imgs, _)| imgs).unwrap_or_default();
 
             Response::DashboardInitResult {
                 image_count,

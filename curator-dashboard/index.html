@@ -179,6 +179,8 @@
                   </select>
                 </label>
                 <span id="gallery-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
+                <input type="number" id="gallery-page-jump" min="1" style="width: 50px; font-size: 11px; padding: 2px 4px;" placeholder="#" />
+                <button class="win-button" id="gallery-jump-btn" style="font-size: 11px; padding: 2px 6px;">Go</button>
                 <button class="win-button" id="gallery-prev-btn" disabled><i class="bi bi-caret-left-fill"></i> Prev</button>
                 <button class="win-button" id="gallery-next-btn">Next <i class="bi bi-caret-right-fill"></i></button>
               </div>
@@ -204,6 +206,8 @@
                 </select>
               </label>
               <span id="favorites-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
+              <input type="number" id="favorites-page-jump" min="1" style="width: 50px; font-size: 11px; padding: 2px 4px;" placeholder="#" />
+              <button class="win-button" id="favorites-jump-btn" style="font-size: 11px; padding: 2px 6px;">Go</button>
               <button class="win-button" id="favorites-prev-btn" disabled><i class="bi bi-caret-left-fill"></i> Prev</button>
               <button class="win-button" id="favorites-next-btn">Next <i class="bi bi-caret-right-fill"></i></button>
             </div>
@@ -712,6 +716,17 @@
                 <option value="in-app">Open in App (Image Viewer)</option>
                 <option value="external">Open with Default Application</option>
               </select>
+            </div>
+          </div>
+
+          <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+            <div class="group-box-title">Thumbnail Cache</div>
+            <p style="font-size: 11px; color: #333333;">
+              Purge cached thumbnails for images that are no longer present on disk.
+            </p>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="win-button win-button--danger" id="purge-missing-thumbs-btn"><i class="bi bi-trash"></i> Purge Missing Thumbnails</button>
+              <span id="purge-status-msg" style="font-size: 11px;"></span>
             </div>
           </div>
 
