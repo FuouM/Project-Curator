@@ -26,4 +26,5 @@ curator-core = { path = "../../curator-core" }
 tokio = { version = "1", features = ["full"] }
 chrono = "0.4"
 rfd = "0.15"
+sqlx = { version = "0.8", features = ["sqlite"] }
 

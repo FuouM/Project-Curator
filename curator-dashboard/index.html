@@ -875,6 +875,12 @@
         <div class="status-dot" id="service-dot"></div>
         <span id="service-status-text">Connecting...</span>
       </div>
+      <div class="status-cell" id="thumb-progress-cell" style="display: none; flex: 1; gap: 8px; border-right: none;">
+        <span id="thumb-progress-text" style="font-size: 10px; white-space: nowrap;">0/0</span>
+        <div style="flex: 1; height: 4px; background-color: #e0e0e0; border-radius: 2px; overflow: hidden;">
+          <div id="thumb-progress-fill" style="width: 0%; height: 100%; background-color: #0078d4; transition: width 0.15s ease;"></div>
+        </div>
+      </div>
       <div class="status-cell">
         <span>Ready</span>
       </div>

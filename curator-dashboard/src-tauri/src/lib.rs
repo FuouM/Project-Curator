@@ -6,8 +6,9 @@ use tauri::Emitter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use tokio::sync::OnceCell;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 
-use curator_core::thumbnail::ThumbnailCache;
+use curator_core::thumbnail::{ThumbnailCache, generate_thumbnail};
 
 // We will default to the standard curator data path
 const DEFAULT_DATA_DIR: &str = r".curator";
@@ -116,6 +117,7 @@ fn get_cached_token() -> &'static Mutex<Option<String>> {
 
 static THUMB_DB_PATH: OnceLock<PathBuf> = OnceLock::new();
 static THUMB_CACHE: OnceCell<Arc<ThumbnailCache>> = OnceCell::const_new();
+static IMAGES_DB: OnceCell<SqlitePool> = OnceCell::const_new();
 
 /// Returns true when `s` appears to contain a complete JSON value
 /// (balanced braces/brackets), accounting for strings and escapes.
@@ -240,9 +242,7 @@ async fn ensure_connected(pipe_name: &str, token: &str) -> Result<NamedPipeClien
     Err("Failed to establish named pipe connection to service".to_string())
 }
 
-#[tauri::command]
-async fn send_to_service(request_json: String) -> Result<String, String> {
-    log_dashboard_event(&format!("send_to_service: {}", request_json));
+async fn pipe_request(request_json: &str) -> Result<String, String> {
     let pipe_name = r"\\.\pipe\curator_ipc";
 
     let conn_mutex = get_pipe_connection();
@@ -256,42 +256,27 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
 
     let send_result = {
         let client = conn_guard.as_mut().unwrap();
-        send_request_json(client, &request_json).await
+        send_request_json(client, request_json).await
     };
 
     match send_result {
-        Ok(response) => {
-            log_dashboard_event(&format!(
-                "Successfully received response from service ({} bytes).",
-                response.len()
-            ));
-            Ok(response)
-        }
-        Err(e) => {
-            log_dashboard_event(&format!(
-                "Request on persistent connection failed ({}). Reconnecting...",
-                e
-            ));
+        Ok(response) => Ok(response),
+        Err(_e) => {
             *conn_guard = None;
-
             let token = get_or_obtain_token().await?;
             let client = ensure_connected(pipe_name, &token).await?;
             *conn_guard = Some(client);
-
-            let response = send_request_json(conn_guard.as_mut().unwrap(), &request_json)
+            send_request_json(conn_guard.as_mut().unwrap(), request_json)
                 .await
-                .map_err(|e2| {
-                    let err_msg = format!("Retry also failed: {}", e2);
-                    log_dashboard_event(&err_msg);
-                    err_msg
-                })?;
-            log_dashboard_event(&format!(
-                "Successfully received response from service ({} bytes).",
-                response.len()
-            ));
-            Ok(response)
+                .map_err(|e2| format!("Retry also failed: {}", e2))
         }
     }
+}
+
+#[tauri::command]
+async fn send_to_service(request_json: String) -> Result<String, String> {
+    log_dashboard_event(&format!("send_to_service: {}", request_json));
+    pipe_request(&request_json).await
 }
 
 async fn connect_and_authenticate(pipe_name: &str, token: &str) -> Result<NamedPipeClient, String> {
@@ -438,10 +423,41 @@ async fn get_thumbnail(image_id: i64) -> Result<Vec<u8>, String> {
         ThumbnailCache::open(db_path).await.expect("Failed to open thumbnail cache")
     }).await;
 
-    match cache.get(image_id).await {
-        Some(data) => Ok(data),
-        None => Err("Thumbnail not found".to_string()),
+    // Try cache first
+    if let Some(data) = cache.get(image_id).await {
+        return Ok(data);
     }
+
+    // Cache miss — generate locally
+    let db = IMAGES_DB.get_or_init(|| async {
+        let db_path = THUMB_DB_PATH.get().expect("THUMB_DB_PATH not set");
+        let images_db_path = db_path.parent().unwrap().join("curator.db");
+        let opts = SqliteConnectOptions::new()
+            .filename(&images_db_path)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
+            .create_if_missing(false);
+        SqlitePool::connect_with(opts).await.expect("Failed to open images DB")
+    }).await;
+
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT current_filepath FROM images WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(image_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let filepath = row.map(|r| r.0).ok_or("Image not found")?;
+    let thumb_path: std::path::PathBuf = filepath.into();
+
+    let webp_bytes = tokio::task::spawn_blocking(move || generate_thumbnail(&thumb_path, 200))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+
+    let _ = cache.put(image_id, 200, &webp_bytes).await;
+    Ok(webp_bytes)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

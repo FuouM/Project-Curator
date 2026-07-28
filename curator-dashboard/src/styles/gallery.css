@@ -231,6 +231,19 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
 .image-preview img.loaded {
   opacity: 1;
 }
+.image-preview.thumb-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 25%, rgba(160, 160, 160, 0.15) 50%, transparent 75%);
+  background-size: 200% 100%;
+  animation: thumb-shimmer 1.2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes thumb-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
 .featured-layout {
   display: flex;

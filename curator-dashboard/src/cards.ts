@@ -6,6 +6,31 @@ import { getImageClickAction, isSelectMode, selectedImageIds } from "./state";
 import { openImageViewer } from "./image-viewer";
 import { callService } from "./ipc";
 
+// --- Thumbnail Progress ---
+let thumbTotal = 0;
+let thumbLoaded = 0;
+let thumbHideTimer: number | null = null;
+
+function updateThumbProgress() {
+  const cell = document.getElementById("thumb-progress-cell");
+  const text = document.getElementById("thumb-progress-text");
+  const fill = document.getElementById("thumb-progress-fill");
+  if (!cell || !text || !fill) return;
+
+  if (thumbTotal === 0) {
+    cell.style.display = "none";
+    return;
+  }
+  cell.style.display = "flex";
+  text.textContent = `${thumbLoaded}/${thumbTotal}`;
+  fill.style.width = `${Math.round((thumbLoaded / thumbTotal) * 100)}%`;
+
+  if (thumbLoaded >= thumbTotal) {
+    if (thumbHideTimer) clearTimeout(thumbHideTimer);
+    thumbHideTimer = window.setTimeout(() => { cell.style.display = "none"; }, 1000);
+  }
+}
+
 // --- Lazy Loading via IntersectionObserver ---
 const lazyObserver = new IntersectionObserver((entries) => {
   for (const entry of entries) {
@@ -14,6 +39,8 @@ const lazyObserver = new IntersectionObserver((entries) => {
       const imageId = parseInt(img.dataset.thumbId || "0", 10);
       if (imageId > 0 && img.dataset.pending === "1") {
         img.dataset.pending = "0";
+        const preview = img.closest(".image-preview") as HTMLElement;
+        if (preview) preview.classList.add("thumb-loading");
         invoke("get_thumbnail", { imageId }).then((data: any) => {
           if (img.isConnected && data) {
             const bytes = new Uint8Array(data);
@@ -21,7 +48,11 @@ const lazyObserver = new IntersectionObserver((entries) => {
             img.src = URL.createObjectURL(blob);
             img.classList.add("loaded");
           }
-        }).catch(() => {});
+        }).catch(() => {}).finally(() => {
+          if (preview) preview.classList.remove("thumb-loading");
+          thumbLoaded++;
+          updateThumbProgress();
+        });
       }
       lazyObserver.unobserve(img);
     }
@@ -369,7 +400,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
       <div class="star-btn ${img.favorite ? 'favorite' : ''}" data-id="${img.id}">
         <i class="bi ${img.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
       </div>
-      <div class="image-preview">
+      <div class="image-preview thumb-loading">
         <img data-thumb-id="${img.id}" data-pending="1" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
         ${missingBadge}
@@ -404,7 +435,12 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
 
   grid.appendChild(fragment);
 
-  // Observe all lazy thumbnail images
+  // Reset thumbnail progress and observe all lazy thumbnail images
+  if (thumbHideTimer) { clearTimeout(thumbHideTimer); thumbHideTimer = null; }
+  thumbTotal = grid.querySelectorAll<HTMLElement>("img[data-thumb-id]").length;
+  thumbLoaded = 0;
+  updateThumbProgress();
+
   grid.querySelectorAll<HTMLElement>("img[data-thumb-id]").forEach(img => {
     lazyObserver.observe(img);
   });
