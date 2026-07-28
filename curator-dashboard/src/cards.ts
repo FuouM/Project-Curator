@@ -202,6 +202,19 @@ export function setupGridDelegation(grid: HTMLElement) {
       invoke("open_file_externally", { path: dir }).catch(() => {});
       return;
     }
+
+    const actionBtn = target.closest("[data-action]") as HTMLElement;
+    if (actionBtn) {
+      const action = actionBtn.dataset.action;
+      const fp = card.dataset.filepath || "";
+      if (action === "open-tags") {
+        (window as any).openTags(imageId, fp);
+      } else if (action === "find-similar") {
+        (window as any).findSimilar(fp);
+      }
+      return;
+    }
+
     if (target.closest(".win-button")) return;
     if (target.closest(".star-btn")) return;
 

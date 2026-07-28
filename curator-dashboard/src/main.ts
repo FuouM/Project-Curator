@@ -32,6 +32,8 @@ function init() {
   if (favoritesGrid) setupGridDelegation(favoritesGrid);
   const searchGrid = document.getElementById("search-results-grid");
   if (searchGrid) setupGridDelegation(searchGrid);
+  const dashboardGrid = document.getElementById("latest-imports-grid");
+  if (dashboardGrid) setupGridDelegation(dashboardGrid);
 
 
   // Phase 1: Fast data (status + tagger + settings)

@@ -3,9 +3,6 @@ import { logJS } from "../utils";
 import { maskPath } from "../components";
 import { renderTagListHtml, getTagPillHtml } from "../cards";
 
-import { refreshDashboard } from "./dashboard";
-import { refreshGallery } from "./gallery";
-
 export async function openTagModal(imgId: number, path: string) {
   const modal = document.getElementById("add-tag-modal");
   const idInput = document.getElementById("tag-image-id") as HTMLInputElement;
@@ -80,6 +77,11 @@ export async function refreshCardTags(imgId: number) {
     document.querySelectorAll(`[data-image-id="${imgId}"] .tag-list`).forEach((el) => {
       el.innerHTML = tagHtml;
     });
+    const featuredCard = document.querySelector(`#featured-day-content [data-image-id="${imgId}"]`);
+    if (featuredCard) {
+      const featuredTagList = document.querySelector("#featured-day-content .featured-details .tag-list");
+      if (featuredTagList) featuredTagList.innerHTML = tagHtml;
+    }
   } catch (e) {
     console.error("Failed to refresh card tags:", e);
   }
@@ -122,8 +124,6 @@ export async function handleModalAutoTag() {
 
       await refreshModalTags(imageId);
       await refreshCardTags(imageId);
-      refreshGallery();
-      refreshDashboard();
     } else if ("Error" in resp) {
       statusArea.textContent = `Failed: ${resp.Error.message}`;
       statusArea.style.color = "#ef4444";
@@ -160,7 +160,7 @@ export function setupTags() {
         tagNameInput.value = "";
         tagNameInput.dispatchEvent(new Event('change', { bubbles: true }));
         await refreshModalTags(imgId);
-        refreshDashboard();
+        await refreshCardTags(imgId);
       } else if ("Error" in resp) {
         alert("Failed to add tag: " + resp.Error.message);
       }
@@ -189,10 +189,6 @@ export function setupTags() {
       if ("Success" in resp) {
         await refreshModalTags(imgId);
         await refreshCardTags(imgId);
-        refreshDashboard();
-        if (document.getElementById("view-gallery")?.classList.contains("active")) {
-          refreshGallery();
-        }
       } else if ("Error" in resp) {
         alert("Failed to remove tag: " + resp.Error.message);
       }
@@ -206,10 +202,6 @@ export function setupTags() {
       if ("Success" in resp) {
         await refreshModalTags(imgId);
         await refreshCardTags(imgId);
-        refreshDashboard();
-        if (document.getElementById("view-gallery")?.classList.contains("active")) {
-          refreshGallery();
-        }
       } else if ("Error" in resp) {
         alert("Failed to un-blacklist tag: " + resp.Error.message);
       }
