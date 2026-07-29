@@ -7,6 +7,7 @@ pub mod search;
 pub mod settings;
 pub mod tags;
 
+use curator_core::detection::DetectionPipeline;
 use curator_core::ipc::{EmbeddingModel, Request, Response};
 use curator_core::tagger::TaggerEngine;
 use curator_core::thumbnail::ThumbnailCache;
@@ -38,6 +39,7 @@ pub async fn handle_request(
     model_manager: &ModelManager,
     vector_index: &VectorIndex,
     tagger: &Arc<TaggerEngine>,
+    detection: &Arc<DetectionPipeline>,
     data_dir: &Path,
     settings: &Arc<tokio::sync::Mutex<AppSettings>>,
     thumbnail_cache: &ThumbnailCache,
@@ -181,6 +183,7 @@ pub async fn handle_request(
             parse_filter,
             parse_type,
             concept_id,
+            character_identity_id,
             limit,
         } => {
             match search::search_logic(
@@ -192,6 +195,7 @@ pub async fn handle_request(
                     parse_filter,
                     parse_type,
                     concept_id,
+                    character_identity_id,
                     limit,
                 },
                 db,
@@ -362,6 +366,8 @@ pub async fn handle_request(
                 tagger_device: s.tagger_device.clone(),
                 idle_timeout_secs: s.idle_timeout_secs,
                 embedding_model: s.embedding_model,
+                detection_device: s.detection_device.clone(),
+                detection_metrics_device: s.detection_metrics_device.clone(),
             }
         }
 
@@ -370,6 +376,8 @@ pub async fn handle_request(
             tagger_device,
             idle_timeout_secs,
             embedding_model,
+            detection_device,
+            detection_metrics_device,
         } => {
             match settings::update_settings_logic(
                 settings::UpdateSettingsParams {
@@ -383,6 +391,8 @@ pub async fn handle_request(
                     tagger_device,
                     idle_timeout_secs,
                     embedding_model,
+                    detection_device,
+                    detection_metrics_device,
                 },
             )
             .await
@@ -392,6 +402,8 @@ pub async fn handle_request(
                     tagger_device: s.tagger_device,
                     idle_timeout_secs: s.idle_timeout_secs,
                     embedding_model: s.embedding_model,
+                    detection_device: s.detection_device,
+                    detection_metrics_device: s.detection_metrics_device,
                 },
                 Err(e) => Response::Error {
                     message: e.to_string(),
@@ -450,6 +462,8 @@ pub async fn handle_request(
                 tagger_device: settings_val.tagger_device,
                 idle_timeout_secs: settings_val.idle_timeout_secs,
                 embedding_model: settings_val.embedding_model,
+                detection_device: settings_val.detection_device,
+                detection_metrics_device: settings_val.detection_metrics_device,
                 featured_images,
                 latest_images,
             }
@@ -678,6 +692,176 @@ pub async fn handle_request(
                 },
                 Err(e) => Response::Error {
                     message: e.to_string(),
+                },
+            }
+        }
+
+        // ── Character Detection ──────────────────────────────────────
+        Request::DetectCharacters { image_id } => {
+            match detection.detect_image(image_id).await {
+                Ok(result) => Response::DetectionResult {
+                    image_id: result.image_id,
+                    detections: result.detections,
+                },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        Request::DetectCharactersBatch { image_ids } => {
+            match detection.detect_batch(&image_ids).await {
+                Ok(results) => Response::DetectionBatchResult { results },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        Request::GetCharacterDetections { image_id } => {
+            match detection.get_detections(image_id).await {
+                Ok(detections) => Response::CharacterDetectionsResult {
+                    image_id,
+                    detections,
+                },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        Request::GetDetectionCrop {
+            detection_id,
+            max_size,
+        } => {
+            let _size = max_size.unwrap_or(128);
+            match detection.load_crop_jpeg(detection_id).await {
+                Ok(Some(bytes)) => Response::DetectionCropResult {
+                    crop_webp_bytes: bytes,
+                },
+                Ok(None) => Response::Error {
+                    message: "Image file not found".to_string(),
+                },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        Request::AssignCharacterIdentity {
+            detection_id,
+            identity_id,
+        } => match detection.assign_identity(detection_id, identity_id).await {
+            Ok(()) => Response::Success,
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+        Request::CreateCharacterIdentity { name } => {
+            match detection.create_identity(name).await {
+                Ok(id) => Response::CharacterIdentitiesList {
+                    identities: vec![curator_core::detection::CharacterIdentity {
+                        id,
+                        name: String::new(),
+                        detection_count: 0,
+                        created_at: String::new(),
+                    }],
+                },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        Request::RenameCharacterIdentity { identity_id, name } => {
+            match detection.rename_identity(identity_id, name).await {
+                Ok(()) => Response::Success,
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        Request::DeleteCharacterIdentity { identity_id } => {
+            match detection.delete_identity(identity_id).await {
+                Ok(()) => Response::Success,
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        Request::ListCharacterIdentities => {
+            match detection.list_identities().await {
+                Ok(identities) => Response::CharacterIdentitiesList { identities },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        Request::ReidentifyAllDetections => {
+            match detection.reidentify_all().await {
+                Ok(result) => Response::ReidentifyResult {
+                    total_detections: result.total_detections,
+                    matched: result.matched,
+                    unmatched: result.unmatched,
+                },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        Request::SearchByCharacter { identity_id } => {
+            match detection.search_by_character(identity_id).await {
+                Ok(image_ids) => Response::CharacterSearchResult { image_ids },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        Request::ListUnassignedDetections => {
+            match detection.list_unassigned_detections().await {
+                Ok(detections) => Response::UnassignedDetectionsList { detections },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        Request::DeleteDetection { detection_id } => {
+            match detection.delete_detection(detection_id).await {
+                Ok(()) => Response::Success,
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+        Request::RunDetectionBenchmark => {
+            let det_dir = data_dir.join("models");
+            let yolo_path = det_dir.join("person_detect_v1.1_s/model.onnx");
+            let ccip_feat_path = det_dir.join("ccip-caformer-24-randaug-pruned/model_feat.onnx");
+            let ccip_metrics_path =
+                det_dir.join("ccip-caformer-24-randaug-pruned/model_metrics.onnx");
+
+            info!(
+                "RunDetectionBenchmark: yolo_exists={}, ccip_feat_exists={}, ccip_metrics_exists={}",
+                yolo_path.exists(),
+                ccip_feat_path.exists(),
+                ccip_metrics_path.exists()
+            );
+
+            match curator_core::run_detection_benchmark(
+                &yolo_path,
+                &ccip_feat_path,
+                &ccip_metrics_path,
+            ) {
+                Ok(res) => Response::DetectionBenchmarkResult {
+                    yolo_cpu_time_ms: res.yolo_cpu_ms,
+                    yolo_gpu_time_ms: res.yolo_gpu_ms,
+                    yolo_gpu_error: res.yolo_gpu_error,
+                    ccip_feat_cpu_time_ms: res.ccip_feat_cpu_ms,
+                    ccip_feat_gpu_time_ms: res.ccip_feat_gpu_ms,
+                    ccip_feat_gpu_error: res.ccip_feat_gpu_error,
+                    ccip_metrics_cpu_time_ms: res.ccip_metrics_cpu_ms,
+                    ccip_metrics_gpu_time_ms: res.ccip_metrics_gpu_ms,
+                    ccip_metrics_gpu_error: res.ccip_metrics_gpu_error,
+                    has_gpu: res.has_gpu,
+                },
+                Err(e) => Response::Error {
+                    message: format!("Detection benchmark failed: {:?}", e),
                 },
             }
         }

@@ -158,6 +158,7 @@ async fn main() -> Result<(), Error> {
             parse_filter: None,
             parse_type: None,
             concept_id: None,
+            character_identity_id: None,
             filename_filter: None,
             limit,
         },
@@ -449,12 +450,16 @@ async fn main() -> Result<(), Error> {
             tagger_device,
             idle_timeout_secs,
             embedding_model,
+            detection_device,
+            detection_metrics_device,
         } => {
             println!("Settings:");
-            println!("  CLIP device:      {:?}", clip_device);
-            println!("  Tagger device:    {:?}", tagger_device);
-            println!("  Idle timeout:     {}s", idle_timeout_secs);
-            println!("  Embedding model:  {:?}", embedding_model);
+            println!("  CLIP device:              {:?}", clip_device);
+            println!("  Tagger device:            {:?}", tagger_device);
+            println!("  Idle timeout:             {}s", idle_timeout_secs);
+            println!("  Embedding model:          {:?}", embedding_model);
+            println!("  Detection device:         {:?}", detection_device);
+            println!("  Detection metrics device: {:?}", detection_metrics_device);
         }
         Response::PreprocessBenchmarkResult { report } => {
             println!("{}", report);

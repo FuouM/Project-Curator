@@ -5,6 +5,7 @@ import { imageBytesToPngBlob } from "./utils";
 import { getImageClickAction, isSelectMode, selectedImageIds } from "./state";
 import { openImageViewer } from "./image-viewer";
 import { callService } from "./ipc";
+import { refreshCharacters, attachAutocomplete, invalidateSuggestions } from "./views/characters";
 
 // --- Thumbnail Queue ---
 const MAX_CONCURRENT = 2;
@@ -394,6 +395,23 @@ function openImageInfoModal(img: ImageDetails) {
     ? img.tags.map(t => renderTagPill(t)).join(" ")
     : '<span style="color:#999;font-style:italic;">No tags</span>';
 
+  const detectionsHtml = `<div class="group-box" style="margin-top:8px;" id="detections-section">
+    <div class="group-box-title"><i class="bi bi-bounding-box"></i> Character Detections</div>
+    <div class="group-box-body" id="detections-body">
+      <div id="detections-loading" style="display:none;color:#666;font-size:11px;"><i class="bi bi-hourglass-split"></i> Loading detections...</div>
+      <div id="detections-empty" style="display:none;color:#999;font-size:11px;font-style:italic;">No detections yet.</div>
+      <div id="detections-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+      <div style="display:flex;gap:4px;margin-top:4px;">
+        <button class="win-button primary" id="detect-characters-btn" style="font-size:11px;">
+          <i class="bi bi-bounding-box"></i> Detect Characters
+        </button>
+        <button class="win-button" id="refresh-detections-btn" style="font-size:11px;">
+          <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+      </div>
+    </div>
+  </div>`;
+
   body.innerHTML =
     '<table class="curator-table" style="font-size:11px;"><tbody>' +
     '<tr><td style="font-weight:600;width:120px;">Image ID</td><td>' + img.id + '</td></tr>' +
@@ -406,10 +424,12 @@ function openImageInfoModal(img: ImageDetails) {
     '<tr><td style="font-weight:600;">Tags (' + tagsCount + ')</td><td>' + (catBreakdown || "—") + '</td></tr>' +
     '</tbody></table>' +
     '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">' + tagsHtml + '</div>' +
-    parsedHtml;
+    parsedHtml +
+    detectionsHtml;
 
   modal.classList.add("active");
 
+  // --- Copy SHA-256 ---
   const copySha = body.querySelector("#info-copy-sha256");
   if (copySha && sha256Full) {
     copySha.addEventListener("click", async () => {
@@ -421,10 +441,164 @@ function openImageInfoModal(img: ImageDetails) {
     });
   }
 
+  // --- Character Detections ---
+  loadDetectionsForImage(img.id);
+
+  const detectBtn = body.querySelector("#detect-characters-btn") as HTMLButtonElement;
+  if (detectBtn) {
+    detectBtn.addEventListener("click", async () => {
+      detectBtn.disabled = true;
+      detectBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Detecting...';
+      const loading = body.querySelector("#detections-loading") as HTMLElement;
+      if (loading) loading.style.display = "block";
+      try {
+        await callService({ DetectCharacters: { image_id: img.id } });
+        await loadDetectionsForImage(img.id);
+        await refreshCharacters();
+      } catch (e: any) {
+        console.error("Detection failed:", e);
+      } finally {
+        detectBtn.disabled = false;
+        detectBtn.innerHTML = '<i class="bi bi-bounding-box"></i> Detect Characters';
+        if (loading) loading.style.display = "none";
+      }
+    });
+  }
+
+  const refreshDetBtn = body.querySelector("#refresh-detections-btn") as HTMLButtonElement;
+  if (refreshDetBtn) {
+    refreshDetBtn.addEventListener("click", async () => {
+      await loadDetectionsForImage(img.id);
+    });
+  }
+
   const closeBtn = modal.querySelector(".modal-close");
   const onClose = () => { modal.classList.remove("active"); closeBtn?.removeEventListener("click", onClose); };
   closeBtn?.addEventListener("click", onClose);
   modal.addEventListener("click", (e) => { if (e.target === modal) onClose(); }, { once: true });
+}
+
+async function loadDetectionsForImage(imageId: number) {
+  const loading = document.getElementById("detections-loading");
+  const empty = document.getElementById("detections-empty");
+  const list = document.getElementById("detections-list");
+  if (!list) return;
+
+  if (loading) loading.style.display = "block";
+  if (empty) empty.style.display = "none";
+  list.innerHTML = "";
+
+  try {
+    const resp = await callService({ GetCharacterDetections: { image_id: imageId } });
+    if ("CharacterDetectionsResult" in resp) {
+      const detections = resp.CharacterDetectionsResult.detections;
+      if (loading) loading.style.display = "none";
+
+      if (detections.length === 0) {
+        if (empty) empty.style.display = "block";
+        return;
+      }
+
+      // Load identities for the dropdown
+      const idResp = await callService({ ListCharacterIdentities: null });
+      const identities: any[] = "CharacterIdentitiesList" in idResp ? idResp.CharacterIdentitiesList.identities : [];
+
+      for (const det of detections) {
+        const detEl = document.createElement("div");
+        detEl.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid var(--sys-border-light,#d0d0d0);border-radius:2px;background:var(--sys-window-bg,#fff);font-size:11px;";
+
+        // Crop thumbnail placeholder
+        const cropThumb = document.createElement("div");
+        cropThumb.style.cssText = "width:48px;height:48px;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;";
+        cropThumb.innerHTML = '<i class="bi bi-image" style="color:#999;"></i>';
+
+        // Load crop async
+        callService({ GetDetectionCrop: { detection_id: det.id, max_size: 96 } }).then((cropResp: any) => {
+          if ("DetectionCropResult" in cropResp) {
+            const bytes = new Uint8Array(cropResp.DetectionCropResult.crop_webp_bytes);
+            const blob = new Blob([bytes], { type: "image/webp" });
+            const url = URL.createObjectURL(blob);
+            cropThumb.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" />`;
+          }
+        }).catch(() => {});
+
+        const infoEl = document.createElement("div");
+        infoEl.style.cssText = "flex:1;min-width:0;";
+
+        const assignedIdentity = det.identity_id !== null ? identities.find((i: any) => i.id === det.identity_id) : null;
+        const dropdownId = `det-ac-${det.id}`;
+
+        if (assignedIdentity) {
+          infoEl.innerHTML = `
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div style="position:relative;display:inline-block;">
+                <input class="det-name-input" value="${assignedIdentity.name}" style="font-weight:600;font-size:11px;padding:1px 4px;border:1px solid transparent;border-radius:2px;background:transparent;width:140px;" autocomplete="off" />
+                <div id="${dropdownId}" class="autocomplete-dropdown" style="display:none;"></div>
+              </div>
+              <span style="color:#888;">(${(det.confidence * 100).toFixed(1)}%)</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
+              <select class="win-select detection-identity-select" data-detection-id="${det.id}" style="font-size:10px;padding:1px 4px;max-width:150px;">
+                <option value="">Unassigned</option>
+                ${identities.map((i: any) => `<option value="${i.id}" ${det.identity_id === i.id ? "selected" : ""}>${i.name}</option>`).join("")}
+              </select>
+            </div>
+          `;
+          const nameInput = infoEl.querySelector(".det-name-input") as HTMLInputElement;
+          attachAutocomplete(nameInput, dropdownId, async (newName) => {
+            if (newName !== assignedIdentity.name) {
+              await callService({ RenameCharacterIdentity: { identity_id: assignedIdentity.id, name: newName } });
+              invalidateSuggestions();
+            }
+          });
+          nameInput.addEventListener("blur", async () => {
+            const newName = nameInput.value.trim();
+            if (newName && newName !== assignedIdentity.name) {
+              await callService({ RenameCharacterIdentity: { identity_id: assignedIdentity.id, name: newName } });
+              invalidateSuggestions();
+            }
+          });
+          nameInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") { e.preventDefault(); nameInput.blur(); }
+          });
+        } else {
+          infoEl.innerHTML = `
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-weight:600;color:#888;">Unassigned</span>
+              <span style="color:#888;">(${(det.confidence * 100).toFixed(1)}%)</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
+              <select class="win-select detection-identity-select" data-detection-id="${det.id}" style="font-size:10px;padding:1px 4px;max-width:150px;">
+                <option value="">Unassigned</option>
+                ${identities.map((i: any) => `<option value="${i.id}">${i.name}</option>`).join("")}
+              </select>
+            </div>
+          `;
+        }
+
+        detEl.appendChild(cropThumb);
+        detEl.appendChild(infoEl);
+        list.appendChild(detEl);
+
+        // Identity assignment handler
+        const select = detEl.querySelector(".detection-identity-select") as HTMLSelectElement;
+        select?.addEventListener("change", async () => {
+          const val = select.value;
+          const identityId = val ? parseInt(val, 10) : null;
+          await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: identityId } });
+          await loadDetectionsForImage(imageId);
+          await refreshCharacters();
+        });
+      }
+    }
+  } catch (e) {
+    console.error("Failed to load detections:", e);
+    if (loading) loading.style.display = "none";
+    if (empty) {
+      empty.style.display = "block";
+      empty.textContent = "Failed to load detections.";
+    }
+  }
 }
 
 // --- Card Rendering (no per-card event handlers) ---

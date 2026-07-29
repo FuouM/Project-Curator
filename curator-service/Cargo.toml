@@ -16,3 +16,4 @@ clap = { version = "4", features = ["derive"] }
 sha2 = "0.10"
 bytemuck = "1"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "macros", "chrono", "uuid"] }
+ureq = "3"

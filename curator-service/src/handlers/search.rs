@@ -13,6 +13,7 @@ pub struct SearchParams {
     pub parse_filter: Option<String>,
     pub parse_type: Option<String>,
     pub concept_id: Option<i64>,
+    pub character_identity_id: Option<i64>,
     pub limit: usize,
 }
 
@@ -73,6 +74,7 @@ pub async fn search_logic(
         parse_filter,
         parse_type,
         concept_id,
+        character_identity_id,
         limit,
     } = params;
     let mut candidate_ids: Option<std::collections::HashSet<i64>> = None;
@@ -142,6 +144,22 @@ pub async fn search_logic(
                 }
             }
         }
+    }
+
+    // Filter by character identity
+    if let Some(char_id) = character_identity_id {
+        let rows: Vec<(i64,)> = sqlx::query_as(
+            "SELECT DISTINCT image_id FROM character_detections WHERE identity_id = ?"
+        )
+        .bind(char_id)
+        .fetch_all(db)
+        .await
+        .unwrap_or_default();
+        let ids: std::collections::HashSet<i64> = rows.into_iter().map(|r| r.0).collect();
+        candidate_ids = Some(match candidate_ids.take() {
+            Some(existing) => existing.intersection(&ids).copied().collect(),
+            None => ids,
+        });
     }
 
     if let Some(img_path) = query_image_path {

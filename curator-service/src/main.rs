@@ -1,6 +1,7 @@
 use anyhow::{Context, Error};
 use clap::Parser;
 use curator_core::db::init_db;
+use curator_core::detection::{CCIPModel, DetectionPipeline, YoloDetector};
 use curator_core::ipc::{Request, Response};
 use curator_core::tagger::TaggerEngine;
 use curator_core::thumbnail::ThumbnailCache;
@@ -28,6 +29,7 @@ struct ClientContext {
     model_manager: Arc<ModelManager>,
     vector_index: Arc<VectorIndex>,
     tagger: Arc<TaggerEngine>,
+    detection: Arc<DetectionPipeline>,
     service_key: Arc<String>,
     data_dir: Arc<PathBuf>,
     settings: Arc<tokio::sync::Mutex<AppSettings>>,
@@ -42,10 +44,18 @@ pub(crate) struct AppSettings {
     idle_timeout_secs: u64,
     #[serde(default)]
     embedding_model: curator_core::ipc::EmbeddingModel,
+    #[serde(default)]
+    detection_device: curator_core::ipc::DevicePreference,
+    #[serde(default = "default_detection_metrics_device")]
+    detection_metrics_device: curator_core::ipc::DevicePreference,
 }
 
 fn default_idle_timeout() -> u64 {
     300
+}
+
+fn default_detection_metrics_device() -> curator_core::ipc::DevicePreference {
+    curator_core::ipc::DevicePreference::Cpu
 }
 
 impl Default for AppSettings {
@@ -55,6 +65,8 @@ impl Default for AppSettings {
             tagger_device: curator_core::ipc::DevicePreference::Auto,
             idle_timeout_secs: default_idle_timeout(),
             embedding_model: curator_core::ipc::EmbeddingModel::ClipVitB32,
+            detection_device: curator_core::ipc::DevicePreference::Auto,
+            detection_metrics_device: curator_core::ipc::DevicePreference::Cpu,
         }
     }
 }
@@ -85,6 +97,47 @@ struct Args {
 
     #[arg(long)]
     tagger_model_dir: Option<String>,
+}
+
+fn download_detection_models(model_dir: &Path) -> Result<(), Error> {
+    use std::fs;
+
+    let models = [
+        (
+            "person_detect_v1.1_s/model.onnx",
+            "https://huggingface.co/deepghs/anime_person_detection/resolve/main/person_detect_v1.1_s/model.onnx",
+        ),
+        (
+            "ccip-caformer-24-randaug-pruned/model_feat.onnx",
+            "https://huggingface.co/deepghs/ccip_onnx/resolve/main/ccip-caformer-24-randaug-pruned/model_feat.onnx",
+        ),
+        (
+            "ccip-caformer-24-randaug-pruned/model_metrics.onnx",
+            "https://huggingface.co/deepghs/ccip_onnx/resolve/main/ccip-caformer-24-randaug-pruned/model_metrics.onnx",
+        ),
+    ];
+
+    for (rel_path, url) in &models {
+        let dest = model_dir.join(rel_path);
+        if dest.exists() {
+            continue;
+        }
+        info!("Downloading detection model: {} -> {:?}", url, dest);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let agent = ureq::Agent::new_with_defaults();
+        let mut response = agent
+            .get(*url)
+            .call()
+            .with_context(|| format!("Failed to download {}", rel_path))?;
+        let mut reader = response.body_mut().as_reader();
+        let mut file = fs::File::create(&dest)?;
+        std::io::copy(&mut reader, &mut file)?;
+        info!("Downloaded {}", rel_path);
+    }
+
+    Ok(())
 }
 
 #[tokio::main]
@@ -153,14 +206,18 @@ async fn main() -> Result<(), Error> {
 
     let settings = load_settings(&data_dir);
     info!(
-        "Settings loaded: clip_device={:?}, tagger_device={:?}, idle_timeout={}s",
-        settings.clip_device, settings.tagger_device, settings.idle_timeout_secs
+        "Settings loaded: clip_device={:?}, tagger_device={:?}, detection_device={:?}, detection_metrics_device={:?}, idle_timeout={}s",
+        settings.clip_device, settings.tagger_device, settings.detection_device, settings.detection_metrics_device, settings.idle_timeout_secs
     );
 
     let model_dir = data_dir.join("models");
     let model_manager = ModelManager::new(&model_dir, settings.clip_device.clone());
     model_manager.set_active_model(settings.embedding_model);
     model_manager.init()?;
+
+    // Download detection models if missing
+    download_detection_models(&model_dir)?;
+
     let model_manager = Arc::new(model_manager);
 
     let index_path = data_dir.join("vector_index.usearch");
@@ -179,6 +236,11 @@ async fn main() -> Result<(), Error> {
         "Camie Tagger configured at {:?} with device {:?} (model loads on first use)",
         tagger_dir, settings.tagger_device
     );
+
+    let detection_yolo = YoloDetector::new(&model_dir, settings.detection_device.clone());
+    let detection_ccip = CCIPModel::new(&model_dir, settings.detection_device.clone(), settings.detection_metrics_device.clone());
+    let detection = Arc::new(DetectionPipeline::new(detection_yolo, detection_ccip, db.clone()));
+    info!("Detection pipeline configured (YOLO + CCIP, models load on first use)");
 
     let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone());
     worker.start();
@@ -221,6 +283,7 @@ async fn main() -> Result<(), Error> {
     let mm_arc = model_manager.clone();
     let vi_arc = vector_index.clone();
     let tagger_arc = tagger.clone();
+    let detection_arc = detection.clone();
     let key_arc = Arc::new(service_key);
     let data_dir_arc = Arc::new(data_dir);
     let thumb_arc = thumbnail_cache;
@@ -239,6 +302,7 @@ async fn main() -> Result<(), Error> {
         let mm = mm_arc.clone();
         let vi = vi_arc.clone();
         let tagger = tagger_arc.clone();
+        let det = detection_arc.clone();
         let key = key_arc.clone();
         let dd = data_dir_arc.clone();
         let st = settings_arc.clone();
@@ -250,6 +314,7 @@ async fn main() -> Result<(), Error> {
                 model_manager: mm,
                 vector_index: vi,
                 tagger,
+                detection: det,
                 service_key: key,
                 data_dir: dd,
                 settings: st,
@@ -271,6 +336,7 @@ async fn handle_client(
         model_manager,
         vector_index,
         tagger,
+        detection,
         service_key,
         data_dir,
         settings,
@@ -319,6 +385,7 @@ async fn handle_client(
             &model_manager,
             &vector_index,
             &tagger,
+            &detection,
             &data_dir,
             &settings,
             &thumbnail_cache,

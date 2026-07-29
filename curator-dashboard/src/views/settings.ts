@@ -9,6 +9,8 @@ export function setupSettings() {
   const taggerSelect = document.getElementById("settings-tagger-device") as HTMLSelectElement;
   const idleSelect = document.getElementById("settings-idle-timeout") as HTMLSelectElement;
   const embeddingSelect = document.getElementById("settings-embedding-model") as HTMLSelectElement;
+  const detDeviceSelect = document.getElementById("settings-detection-device") as HTMLSelectElement;
+  const detMetricsSelect = document.getElementById("settings-detection-metrics-device") as HTMLSelectElement;
   const saveBtn = document.getElementById("save-settings-btn");
   const reindexBtn = document.getElementById("reindex-vectors-btn");
   const statusMsg = document.getElementById("settings-status-msg");
@@ -162,6 +164,8 @@ export function setupSettings() {
           tagger_device: taggerSelect.value,
           idle_timeout_secs: parseInt(idleSelect.value, 10),
           embedding_model: embeddingSelect ? embeddingSelect.value : null,
+          detection_device: detDeviceSelect ? detDeviceSelect.value : null,
+          detection_metrics_device: detMetricsSelect ? detMetricsSelect.value : null,
         }
       });
 

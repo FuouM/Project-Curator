@@ -126,7 +126,7 @@ export function setupSearch() {
       const conceptIdVal = conceptSelect && conceptSelect.value ? parseInt(conceptSelect.value) : null;
 
       const resp = await callService({
-        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, filename_filter: filenameFilter, parse_filter: parseFilter, parse_type: parseType, concept_id: conceptIdVal, limit: 50 }
+        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, filename_filter: filenameFilter, parse_filter: parseFilter, parse_type: parseType, concept_id: conceptIdVal, character_identity_id: null, limit: 50 }
       });
 
       if ("SearchResult" in resp) {

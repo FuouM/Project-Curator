@@ -208,6 +208,8 @@ export function applySettingsToUI(resp: any) {
   const taggerSelect = document.getElementById("settings-tagger-device") as HTMLSelectElement;
   const idleSelect = document.getElementById("settings-idle-timeout") as HTMLSelectElement;
   const embeddingSelect = document.getElementById("settings-embedding-model") as HTMLSelectElement;
+  const detDeviceSelect = document.getElementById("settings-detection-device") as HTMLSelectElement;
+  const detMetricsSelect = document.getElementById("settings-detection-metrics-device") as HTMLSelectElement;
   if (clipSelect) clipSelect.value = s.clip_device;
   if (taggerSelect) taggerSelect.value = s.tagger_device;
   if (idleSelect) idleSelect.value = s.idle_timeout_secs.toString();
@@ -215,4 +217,6 @@ export function applySettingsToUI(resp: any) {
     embeddingSelect.value = s.embedding_model;
     import("./benchmark").then(m => m.updateBenchmarkModelHeader(s.embedding_model));
   }
+  if (detDeviceSelect) detDeviceSelect.value = s.detection_device;
+  if (detMetricsSelect) detMetricsSelect.value = s.detection_metrics_device;
 }

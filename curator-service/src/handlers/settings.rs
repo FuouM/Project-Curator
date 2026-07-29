@@ -18,6 +18,8 @@ pub struct UpdateSettingsParams<'a> {
     pub tagger_device: Option<curator_core::ipc::DevicePreference>,
     pub idle_timeout_secs: Option<u64>,
     pub embedding_model: Option<EmbeddingModel>,
+    pub detection_device: Option<curator_core::ipc::DevicePreference>,
+    pub detection_metrics_device: Option<curator_core::ipc::DevicePreference>,
 }
 
 pub async fn query_status(
@@ -68,6 +70,8 @@ pub async fn update_settings_logic(
         tagger_device,
         idle_timeout_secs,
         embedding_model,
+        detection_device,
+        detection_metrics_device,
     } = params;
     let mut model_changed = false;
     let mut s = settings.lock().await;
@@ -86,6 +90,12 @@ pub async fn update_settings_logic(
             model_changed = true;
         }
     }
+    if let Some(ref dd) = detection_device {
+        s.detection_device = dd.clone();
+    }
+    if let Some(ref md) = detection_metrics_device {
+        s.detection_metrics_device = md.clone();
+    }
     if let Err(e) = crate::save_settings(data_dir, &s) {
         warn!("Failed to save settings: {:?}", e);
     }
@@ -93,6 +103,8 @@ pub async fn update_settings_logic(
     let tagger_dev = s.tagger_device.clone();
     let idle = s.idle_timeout_secs;
     let active_model = s.embedding_model;
+    let det_dev = s.detection_device.clone();
+    let det_met_dev = s.detection_metrics_device.clone();
     drop(s);
 
     if clip_device.is_some() {
@@ -125,8 +137,8 @@ pub async fn update_settings_logic(
     }
 
     info!(
-        "Settings updated: clip_device={:?}, tagger_device={:?}, idle_timeout={}s, embedding_model={:?}",
-        clip, tagger_dev, idle, active_model
+        "Settings updated: clip_device={:?}, tagger_device={:?}, detection_device={:?}, detection_metrics_device={:?}, idle_timeout={}s, embedding_model={:?}",
+        clip, tagger_dev, det_dev, det_met_dev, idle, active_model
     );
 
     Ok(AppSettings {
@@ -134,5 +146,7 @@ pub async fn update_settings_logic(
         tagger_device: tagger_dev,
         idle_timeout_secs: idle,
         embedding_model: active_model,
+        detection_device: det_dev,
+        detection_metrics_device: det_met_dev,
     })
 }

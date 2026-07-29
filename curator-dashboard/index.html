@@ -55,6 +55,9 @@
               <li class="nav-item" data-view="concepts">
                 <span><i class="bi bi-magic"></i></span> Custom Concepts
               </li>
+              <li class="nav-item" data-view="characters">
+                <span><i class="bi bi-bounding-box"></i></span> Character Identities
+              </li>
               <li class="nav-item" data-view="filename-parser">
                 <span><i class="bi bi-regex"></i></span> Filename Parser
               </li>
@@ -288,6 +291,30 @@
               </div>
             </div>
             <div id="concepts-list-container" class="concepts-grid"></div>
+          </div>
+        </section>
+
+        <!-- CHARACTER IDENTITIES VIEW -->
+        <section class="view-section" id="view-characters">
+          <div class="group-box">
+            <div class="group-box-title"><i class="bi bi-bounding-box"></i> Character Identities</div>
+            <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+              <p style="margin: 0; font-size: 12px; color: var(--sys-text-subtle);">
+                Manage auto-discovered character identities from YOLO + CCIP detection.
+              </p>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="win-button" id="refresh-identities-btn" title="Refresh identities list">
+                  <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+                <button type="button" class="win-button" id="reidentify-all-btn" title="Re-identify all detections against current identities">
+                  <i class="bi bi-arrow-clockwise"></i> Reidentify All
+                </button>
+                <button type="button" class="win-button primary" id="create-identity-btn">
+                  <i class="bi bi-plus-lg"></i> New Identity
+                </button>
+              </div>
+            </div>
+            <div id="characters-list-container" class="concepts-grid"></div>
           </div>
         </section>
 
@@ -611,7 +638,7 @@
           <div class="group-box" style="display: flex; flex-direction: column; gap: 16px;">
             <div class="group-box-title">Hardware Throughput Benchmark</div>
             <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">
-              Measure inference latency on CPU vs GPU. This runs CLIP Vision model inference (5 iterations) and reports average speed and throughput factor.
+              Measure inference latency on CPU vs GPU. Runs all available models (CLIP, Tagger, YOLO, CCIP) and reports average speed and throughput factor.
             </p>
             <div style="display: flex; gap: 16px; align-items: center;">
               <div class="form-group" style="margin-bottom: 0; display: flex; align-items: center; gap: 8px;">
@@ -663,6 +690,54 @@
                   <div style="display: flex; justify-content: space-between; padding-top: 2px;">
                     <span>Throughput Factor:</span>
                     <span id="benchmark-tagger-speedup">—</span>
+                  </div>
+                </div>
+
+                <div style="margin-top: 8px;">
+                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">YOLO Person Detection (640x640)</div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>CPU Throughput:</span>
+                    <span id="benchmark-yolo-cpu">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>GPU Throughput:</span>
+                    <span id="benchmark-yolo-gpu">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
+                    <span>Throughput Factor:</span>
+                    <span id="benchmark-yolo-speedup">—</span>
+                  </div>
+                </div>
+
+                <div style="margin-top: 8px;">
+                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">CCIP Feature Extraction (384x384)</div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>CPU Throughput:</span>
+                    <span id="benchmark-ccip-feat-cpu">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>GPU Throughput:</span>
+                    <span id="benchmark-ccip-feat-gpu">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
+                    <span>Throughput Factor:</span>
+                    <span id="benchmark-ccip-feat-speedup">—</span>
+                  </div>
+                </div>
+
+                <div style="margin-top: 8px;">
+                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">CCIP Metrics (16x768)</div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>CPU Throughput:</span>
+                    <span id="benchmark-ccip-metrics-cpu">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>GPU Throughput:</span>
+                    <span id="benchmark-ccip-metrics-gpu">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
+                    <span>Throughput Factor:</span>
+                    <span id="benchmark-ccip-metrics-speedup">—</span>
                   </div>
                 </div>
               </div>
@@ -817,6 +892,30 @@
                 </div>
               </div>
 
+              <!-- Detection Model Devices -->
+              <div class="group-box" style="padding: 12px;">
+                <div class="group-box-title">Character Detection (YOLO + CCIP)</div>
+                <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">
+                  YOLO detects character bounding boxes; CCIP extracts identity embeddings. The metrics model is tiny (16x768) and should stay on CPU.
+                </p>
+                <div class="form-group">
+                  <label style="font-weight: 600; min-width: 120px;">Feature extractors:</label>
+                  <select class="input-field" id="settings-detection-device" style="width: 180px;">
+                    <option value="auto">Auto (GPU if available)</option>
+                    <option value="cpu">CPU Only</option>
+                    <option value="gpu">GPU Only</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label style="font-weight: 600; min-width: 120px;">Metrics (similarity):</label>
+                  <select class="input-field" id="settings-detection-metrics-device" style="width: 180px;">
+                    <option value="auto">Auto (GPU if available)</option>
+                    <option value="cpu" selected>CPU Only</option>
+                    <option value="gpu">GPU Only</option>
+                  </select>
+                </div>
+              </div>
+
               <!-- Idle Timeout -->
               <div class="group-box" style="padding: 12px;">
                 <div class="group-box-title">Memory Management</div>
@@ -894,6 +993,9 @@
       <div class="image-viewer-header">
         <span class="image-viewer-title" id="image-viewer-filename"></span>
         <div class="image-viewer-header-actions">
+          <button class="image-viewer-btn" id="image-viewer-toggle-detections" title="Show/Hide character detections">
+            <i class="bi bi-bounding-box"></i> Detections
+          </button>
           <button class="image-viewer-btn" id="image-viewer-open-external">
             <i class="bi bi-box-arrow-up-right"></i> Open Externally
           </button>
@@ -902,6 +1004,7 @@
       </div>
       <div class="image-viewer-body">
         <img id="image-viewer-img" src="" alt="Full size image" />
+        <svg id="image-viewer-detections-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;display:none;"></svg>
       </div>
     </div>
 

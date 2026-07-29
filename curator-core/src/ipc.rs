@@ -59,6 +59,8 @@ pub enum Request {
         parse_type: Option<String>,
         #[serde(default)]
         concept_id: Option<i64>,
+        #[serde(default)]
+        character_identity_id: Option<i64>,
         limit: usize,
     },
     GetStatus,
@@ -119,6 +121,8 @@ pub enum Request {
         tagger_device: Option<DevicePreference>,
         idle_timeout_secs: Option<u64>,
         embedding_model: Option<EmbeddingModel>,
+        detection_device: Option<DevicePreference>,
+        detection_metrics_device: Option<DevicePreference>,
     },
     /// Reindex all vectors with the active model.
     ReindexVectors,
@@ -219,6 +223,59 @@ pub enum Request {
         #[serde(default)]
         output_match_type: Option<String>,
     },
+
+    // ── Character Detection ──────────────────────────────────────────
+    /// Detect persons in a single image, extract CCIP embeddings, match identities.
+    DetectCharacters {
+        image_id: i64,
+    },
+    /// Batch detect persons across multiple images.
+    DetectCharactersBatch {
+        image_ids: Vec<i64>,
+    },
+    /// Get stored detections for an image.
+    GetCharacterDetections {
+        image_id: i64,
+    },
+    /// Get an on-the-fly crop thumbnail for a detection (webp bytes).
+    GetDetectionCrop {
+        detection_id: i64,
+        max_size: Option<u32>,
+    },
+    /// Assign a detection to a character identity (or unassign if identity_id is null).
+    AssignCharacterIdentity {
+        detection_id: i64,
+        identity_id: Option<i64>,
+    },
+    /// Create a new character identity with auto-incrementing name.
+    CreateCharacterIdentity {
+        name: Option<String>,
+    },
+    /// Rename a character identity.
+    RenameCharacterIdentity {
+        identity_id: i64,
+        name: String,
+    },
+    /// Delete a character identity (detections become unassigned).
+    DeleteCharacterIdentity {
+        identity_id: i64,
+    },
+    /// List all character identities with detection counts.
+    ListCharacterIdentities,
+    /// Re-identify all detections against current identities.
+    ReidentifyAllDetections,
+    /// Search for all images containing a specific character identity.
+    SearchByCharacter {
+        identity_id: i64,
+    },
+    /// List all unassigned detections (identity_id IS NULL).
+    ListUnassignedDetections,
+    /// Delete a single detection by ID.
+    DeleteDetection {
+        detection_id: i64,
+    },
+    /// Run CPU vs GPU ONNX model benchmark for detection models (YOLO, CCIP feat, CCIP metrics).
+    RunDetectionBenchmark,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -301,6 +358,8 @@ pub enum Response {
         tagger_device: DevicePreference,
         idle_timeout_secs: u64,
         embedding_model: EmbeddingModel,
+        detection_device: DevicePreference,
+        detection_metrics_device: DevicePreference,
     },
     /// Results of preprocessing benchmark.
     PreprocessBenchmarkResult {
@@ -323,6 +382,8 @@ pub enum Response {
         tagger_device: DevicePreference,
         idle_timeout_secs: u64,
         embedding_model: EmbeddingModel,
+        detection_device: DevicePreference,
+        detection_metrics_device: DevicePreference,
         featured_images: Vec<ImageDetails>,
         latest_images: Vec<ImageDetails>,
     },
@@ -394,6 +455,57 @@ pub enum Response {
         total_processed: usize,
         matched_count: usize,
         tags_created: usize,
+    },
+
+    // ── Character Detection Results ──────────────────────────────────
+    /// Result of detecting characters in a single image.
+    DetectionResult {
+        image_id: i64,
+        detections: Vec<crate::detection::StoredDetection>,
+    },
+    /// Result of batch character detection.
+    DetectionBatchResult {
+        results: Vec<crate::detection::DetectionResult>,
+    },
+    /// Stored detections for an image.
+    CharacterDetectionsResult {
+        image_id: i64,
+        detections: Vec<crate::detection::StoredDetection>,
+    },
+    /// On-the-fly crop thumbnail.
+    DetectionCropResult {
+        crop_webp_bytes: Vec<u8>,
+    },
+    /// List of character identities.
+    CharacterIdentitiesList {
+        identities: Vec<crate::detection::CharacterIdentity>,
+    },
+    /// Result of re-identifying all detections.
+    ReidentifyResult {
+        total_detections: i64,
+        matched: i64,
+        unmatched: i64,
+    },
+    /// Result of searching by character.
+    CharacterSearchResult {
+        image_ids: Vec<i64>,
+    },
+    /// List of unassigned detections.
+    UnassignedDetectionsList {
+        detections: Vec<crate::detection::StoredDetection>,
+    },
+    /// Detection model benchmark results.
+    DetectionBenchmarkResult {
+        yolo_cpu_time_ms: f64,
+        yolo_gpu_time_ms: Option<f64>,
+        yolo_gpu_error: Option<String>,
+        ccip_feat_cpu_time_ms: f64,
+        ccip_feat_gpu_time_ms: Option<f64>,
+        ccip_feat_gpu_error: Option<String>,
+        ccip_metrics_cpu_time_ms: f64,
+        ccip_metrics_gpu_time_ms: Option<f64>,
+        ccip_metrics_gpu_error: Option<String>,
+        has_gpu: bool,
     },
 }
 

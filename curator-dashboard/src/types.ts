@@ -7,7 +7,7 @@ export type RequestPayload =
   | { AddTag: { image_id: number; tag: string; category: string } }
   | { RemoveTag: { image_id: number; tag: string } }
   | { UnblacklistTag: { image_id: number; tag: string } }
-  | { Search: { query_text: string | null; query_image_path: string | null; tag_filter: string | null; filename_filter: string | null; parse_filter: string | null; parse_type: string | null; concept_id: number | null; limit: number } }
+  | { Search: { query_text: string | null; query_image_path: string | null; tag_filter: string | null; filename_filter: string | null; parse_filter: string | null; parse_type: string | null; concept_id: number | null; character_identity_id: number | null; limit: number } }
   | { ListImages: { limit: number; offset: number; only_favorites?: boolean | null } }
   | { SetFavorite: { image_id: number; favorite: boolean } }
   | { GetImage: { image_id: number } }
@@ -19,7 +19,7 @@ export type RequestPayload =
   | { GetTaggerStatus: null }
   | { RunBenchmark: { embedding_model: "clip-vit-b-32" | "mobileclip-s2" } }
   | { GetSettings: null }
-  | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null } }
+  | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null; detection_device: string | null; detection_metrics_device: string | null } }
   | { ReindexVectors: null }
   | { ReindexFailedVectors: null }
   | { GetTagStatistics: null }
@@ -41,7 +41,21 @@ export type RequestPayload =
   | { TestFilenamePattern: { filename: string; pattern_or_type: string; rule_type: string; token_config: TokenBlock[] | null } }
   | { CompileTokenBlocks: { token_config: TokenBlock[] } }
   | { PreviewBatchFilenameParsing: { limit: number; pattern_or_type: string; rule_type: string; token_config: TokenBlock[] | null; output_match_type?: string | null } }
-  | { RunBatchFilenameParsing: { pattern_or_type: string; rule_type: string; token_config: TokenBlock[] | null; output_match_type?: string | null } };
+  | { RunBatchFilenameParsing: { pattern_or_type: string; rule_type: string; token_config: TokenBlock[] | null; output_match_type?: string | null } }
+  | { DetectCharacters: { image_id: number } }
+  | { DetectCharactersBatch: { image_ids: number[] } }
+  | { GetCharacterDetections: { image_id: number } }
+  | { GetDetectionCrop: { detection_id: number; max_size?: number } }
+  | { AssignCharacterIdentity: { detection_id: number; identity_id: number | null } }
+  | { CreateCharacterIdentity: { name: string | null } }
+  | { RenameCharacterIdentity: { identity_id: number; name: string } }
+  | { DeleteCharacterIdentity: { identity_id: number } }
+  | { ListCharacterIdentities: null }
+  | { ReidentifyAllDetections: null }
+  | { SearchByCharacter: { identity_id: number } }
+  | { ListUnassignedDetections: null }
+  | { DeleteDetection: { detection_id: number } }
+  | { RunDetectionBenchmark: null };
 
 export interface TokenBlock {
   token_type: string;
@@ -158,12 +172,13 @@ export type ResponsePayload =
   | { BatchTagResult: { processed: number; failed: number; skipped: number } }
   | { TaggerStatusResult: { loaded: boolean; model_path: string; total_tags: number } }
   | { BenchmarkResult: { clip_cpu_time_ms: number; clip_gpu_time_ms: number | null; clip_gpu_error: string | null; tagger_cpu_time_ms: number | null; tagger_gpu_time_ms: number | null; tagger_gpu_error: string | null; has_gpu: boolean } }
-  | { SettingsResult: { clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string } }
+  | { SettingsResult: { clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string; detection_device: string; detection_metrics_device: string } }
   | { TagStatisticsResult: { tags: TagStat[] } }
   | { DashboardInitResult: {
       image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number;
       tagger_loaded: boolean; tagger_model_path: string; tagger_total_tags: number;
       clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string;
+      detection_device: string; detection_metrics_device: string;
       featured_images: ImageDetails[]; latest_images: ImageDetails[];
     } }
   | { ImportedFoldersResult: { folders: FolderDetails[] } }
@@ -180,7 +195,51 @@ export type ResponsePayload =
   | { TestFilenamePatternResult: { result: ParsedMetadata | null } }
   | { CompileTokenBlocksResult: { regex: string } }
   | { PreviewBatchFilenameParsingResult: { items: BatchPreviewItem[] } }
-  | { RunBatchFilenameParsingResult: { total_processed: number; matched_count: number; tags_created: number } };
+  | { RunBatchFilenameParsingResult: { total_processed: number; matched_count: number; tags_created: number } }
+  | { DetectionResult: { image_id: number; detections: CharacterDetection[] } }
+  | { DetectionBatchResult: { results: DetectionBatchItem[] } }
+  | { CharacterDetectionsResult: { image_id: number; detections: CharacterDetection[] } }
+  | { DetectionCropResult: { crop_webp_bytes: number[] } }
+  | { CharacterIdentitiesList: { identities: CharacterIdentity[] } }
+  | { ReidentifyResult: { total_detections: number; matched: number; unmatched: number } }
+  | { CharacterSearchResult: { image_ids: number[] } }
+  | { UnassignedDetectionsList: { detections: CharacterDetection[] } }
+  | { DetectionBenchmarkResult: {
+      yolo_cpu_time_ms: number;
+      yolo_gpu_time_ms: number | null;
+      yolo_gpu_error: string | null;
+      ccip_feat_cpu_time_ms: number;
+      ccip_feat_gpu_time_ms: number | null;
+      ccip_feat_gpu_error: string | null;
+      ccip_metrics_cpu_time_ms: number;
+      ccip_metrics_gpu_time_ms: number | null;
+      ccip_metrics_gpu_error: string | null;
+      has_gpu: boolean;
+    } };
+
+export interface CharacterDetection {
+  id: number;
+  image_id: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  confidence: number;
+  has_embedding: boolean;
+  identity_id: number | null;
+}
+
+export interface CharacterIdentity {
+  id: number;
+  name: string;
+  detection_count: number;
+  created_at: string;
+}
+
+export interface DetectionBatchItem {
+  image_id: number;
+  detections: CharacterDetection[];
+}
 
 // --- Card Rendering Data ---
 

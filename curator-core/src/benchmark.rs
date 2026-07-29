@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use ndarray::Array4;
+use ndarray::{Array2, Array4};
 use ort::{inputs, session::Session, value::TensorRef};
 use std::path::Path;
 use std::time::Instant;
@@ -378,4 +378,190 @@ pub fn run_onnx_benchmark(
     }
 
     Ok((cpu_time, gpu_time, gpu_err, has_gpu))
+}
+
+pub fn run_onnx_benchmark_2d(
+    model_path: &Path,
+    rows: usize,
+    cols: usize,
+) -> Result<(f64, Option<f64>, Option<String>, bool)> {
+    if !model_path.exists() {
+        anyhow::bail!("Model path does not exist: {:?}", model_path);
+    }
+
+    let mut cpu_session = Session::builder()?
+        .with_intra_threads(1)?
+        .commit_from_file(model_path)
+        .context("Failed to load benchmark model on CPU")?;
+
+    let dummy_input = Array2::<f32>::zeros((rows, cols));
+
+    let _ = cpu_session.run(inputs![TensorRef::from_array_view(&dummy_input)?])?;
+
+    let runs = 5;
+    let start = Instant::now();
+    for _ in 0..runs {
+        let _ = cpu_session.run(inputs![TensorRef::from_array_view(&dummy_input)?])?;
+    }
+    let cpu_time = start.elapsed().as_secs_f64() * 1000.0 / (runs as f64);
+
+    let has_gpu = cfg!(any(
+        target_os = "windows",
+        target_os = "macos",
+        target_os = "linux"
+    ));
+    let mut gpu_time = None;
+    let mut gpu_err = None;
+
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+    {
+        let mut builder = Session::builder()?.with_intra_threads(1)?;
+        let mut provider_registered = false;
+
+        #[cfg(target_os = "windows")]
+        {
+            if builder
+                .clone()
+                .with_execution_providers([ort::ep::DirectML::default().build()])
+                .is_ok()
+            {
+                if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::DirectML::default().build()])
+                {
+                    builder = b;
+                    provider_registered = true;
+                }
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            if builder
+                .clone()
+                .with_execution_providers([ort::ep::CoreML::default().build()])
+                .is_ok()
+            {
+                if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::CoreML::default().build()])
+                {
+                    builder = b;
+                    provider_registered = true;
+                }
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            let mut registered = false;
+            if builder
+                .clone()
+                .with_execution_providers([ort::ep::CUDA::default().build()])
+                .is_ok()
+            {
+                if let Ok(b) = builder
+                    .clone()
+                    .with_execution_providers([ort::ep::CUDA::default().build()])
+                {
+                    builder = b;
+                    provider_registered = true;
+                    registered = true;
+                }
+            }
+            if !registered {
+                if builder
+                    .clone()
+                    .with_execution_providers([ort::ep::ROCm::default().build()])
+                    .is_ok()
+                {
+                    if let Ok(b) = builder
+                        .clone()
+                        .with_execution_providers([ort::ep::ROCm::default().build()])
+                    {
+                        builder = b;
+                        provider_registered = true;
+                    }
+                }
+            }
+        }
+
+        if provider_registered {
+            match builder.commit_from_file(model_path) {
+                Ok(mut gpu_session) => {
+                    if gpu_session
+                        .run(inputs![TensorRef::from_array_view(&dummy_input)?])
+                        .is_ok()
+                    {
+                        let start = Instant::now();
+                        let mut success = true;
+                        for _ in 0..runs {
+                            if gpu_session
+                                .run(inputs![TensorRef::from_array_view(&dummy_input)?])
+                                .is_err()
+                            {
+                                success = false;
+                                break;
+                            }
+                        }
+                        if success {
+                            gpu_time = Some(start.elapsed().as_secs_f64() * 1000.0 / (runs as f64));
+                        } else {
+                            gpu_err = Some("GPU run loop failed".to_string());
+                        }
+                    } else {
+                        gpu_err = Some("GPU warmup run failed".to_string());
+                    }
+                }
+                Err(e) => {
+                    gpu_err = Some(format!("Failed to commit GPU session: {:?}", e));
+                }
+            }
+        } else {
+            gpu_err = Some("No GPU provider registered successfully".to_string());
+        }
+    }
+
+    Ok((cpu_time, gpu_time, gpu_err, has_gpu))
+}
+
+pub struct DetectionBenchmarkResult {
+    pub yolo_cpu_ms: f64,
+    pub yolo_gpu_ms: Option<f64>,
+    pub yolo_gpu_error: Option<String>,
+    pub ccip_feat_cpu_ms: f64,
+    pub ccip_feat_gpu_ms: Option<f64>,
+    pub ccip_feat_gpu_error: Option<String>,
+    pub ccip_metrics_cpu_ms: f64,
+    pub ccip_metrics_gpu_ms: Option<f64>,
+    pub ccip_metrics_gpu_error: Option<String>,
+    pub has_gpu: bool,
+}
+
+pub fn run_detection_benchmark(
+    yolo_path: &Path,
+    ccip_feat_path: &Path,
+    ccip_metrics_path: &Path,
+) -> Result<DetectionBenchmarkResult> {
+    let (yolo_cpu, yolo_gpu, yolo_err, has_gpu) =
+        run_onnx_benchmark(yolo_path, 640)?;
+
+    let (ccip_feat_cpu, ccip_feat_gpu, ccip_feat_err, _) =
+        run_onnx_benchmark(ccip_feat_path, 384)?;
+
+    let (ccip_metrics_cpu, ccip_metrics_gpu, ccip_metrics_err, _) =
+        run_onnx_benchmark_2d(ccip_metrics_path, 16, 768)?;
+
+    Ok(DetectionBenchmarkResult {
+        yolo_cpu_ms: yolo_cpu,
+        yolo_gpu_ms: yolo_gpu,
+        yolo_gpu_error: yolo_err,
+        ccip_feat_cpu_ms: ccip_feat_cpu,
+        ccip_feat_gpu_ms: ccip_feat_gpu,
+        ccip_feat_gpu_error: ccip_feat_err,
+        ccip_metrics_cpu_ms: ccip_metrics_cpu,
+        ccip_metrics_gpu_ms: ccip_metrics_gpu,
+        ccip_metrics_gpu_error: ccip_metrics_err,
+        has_gpu,
+    })
 }

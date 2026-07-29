@@ -6,6 +6,7 @@ import { refreshTagStats } from "./tagstats";
 import { refreshFolders } from "./folders";
 import { refreshComponentStylesheet } from "./components-view";
 import { refreshBatchPreview } from "./filename-parser";
+import { refreshCharacters, setupCharactersView } from "./characters";
 
 const subtitles: Record<string, { title: string; sub: string }> = {
   dashboard: { title: "Dashboard", sub: "Overview of your local vector store and image library." },
@@ -21,10 +22,12 @@ const subtitles: Record<string, { title: string; sub: string }> = {
   folders: { title: "Imported Folders", sub: "Browse folders and view import statistics." },
   components: { title: "Component Stylesheet", sub: "A showcase and reference of the application's UI components and styles." },
   concepts: { title: "Custom Concepts", sub: "Teach Curator new characters, copyrights, or series from sample images without model retraining." },
+  characters: { title: "Character Identities", sub: "Manage auto-discovered character identities from YOLO + CCIP detection." },
   "filename-parser": { title: "Filename Parser & Tagger", sub: "Extract structured tags, timestamps, artist names, and artwork IDs directly from image filenames." }
 };
 
 export function setupNavigation() {
+  setupCharactersView();
   const navItems = document.querySelectorAll(".nav-item");
   const sections = document.querySelectorAll(".view-section");
   const viewTitle = document.getElementById("view-title");
@@ -70,6 +73,8 @@ export function setupNavigation() {
         refreshComponentStylesheet();
       } else if (view === "filename-parser") {
         refreshBatchPreview();
+      } else if (view === "characters") {
+        refreshCharacters();
       }
     });
   });
