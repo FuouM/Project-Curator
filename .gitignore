@@ -5,6 +5,10 @@ test_images
 reference
 
 onnxruntime.dll
+DirectML.dll
+
+.cargo/
+scratch/
 
 
 # Byte-compiled / optimized / DLL files
