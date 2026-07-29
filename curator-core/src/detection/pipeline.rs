@@ -1,3 +1,4 @@
+use crate::crop_cache::CropCache;
 use crate::db::models::Image;
 use crate::detection::ccip::CCIPModel;
 use crate::detection::types::*;
@@ -6,6 +7,7 @@ use crate::image_decode;
 use anyhow::{Context, Result};
 use image::RgbImage;
 use sqlx::sqlite::SqlitePool;
+use std::sync::Arc;
 use tracing::{info, warn};
 
 const CROP_THUMB_SIZE: u32 = 128;
@@ -15,11 +17,12 @@ pub struct DetectionPipeline {
     pub yolo: YoloDetector,
     pub ccip: CCIPModel,
     pub db: SqlitePool,
+    pub crop_cache: Arc<CropCache>,
 }
 
 impl DetectionPipeline {
-    pub fn new(yolo: YoloDetector, ccip: CCIPModel, db: SqlitePool) -> Self {
-        Self { yolo, ccip, db }
+    pub fn new(yolo: YoloDetector, ccip: CCIPModel, db: SqlitePool, crop_cache: Arc<CropCache>) -> Self {
+        Self { yolo, ccip, db, crop_cache }
     }
 
     /// Detect persons in an image, extract CCIP embeddings, match against known identities,
@@ -333,6 +336,10 @@ impl DetectionPipeline {
 
     /// Load crop thumbnail bytes for a detection (for UI display).
     pub async fn load_crop_jpeg(&self, detection_id: i64) -> Result<Option<Vec<u8>>> {
+        if let Some(cached) = self.crop_cache.get(detection_id).await {
+            return Ok(Some(cached));
+        }
+
         let row: (i64, i64, i32, i32, i32, i32, f32, Option<Vec<u8>>, Option<i64>) =
             sqlx::query_as(
                 "SELECT id, image_id, x0, y0, x1, y1, confidence, ccip_embedding, identity_id FROM character_detections WHERE id = ?"
@@ -378,9 +385,15 @@ impl DetectionPipeline {
         );
 
         let rgb = resized.to_rgb8();
-        let encoder = webp::Encoder::from_rgb(rgb.as_raw(), rgb.width(), rgb.height());
-        let webp_memory = encoder.encode(WEBP_QUALITY);
-        Ok(Some(webp_memory.to_vec()))
+        let bytes = {
+            let encoder = webp::Encoder::from_rgb(rgb.as_raw(), rgb.width(), rgb.height());
+            let webp_memory = encoder.encode(WEBP_QUALITY);
+            webp_memory.to_vec()
+        };
+
+        let _ = self.crop_cache.put(detection_id, CROP_THUMB_SIZE, &bytes).await;
+
+        Ok(Some(bytes))
     }
 
     async fn load_identities(&self) -> Result<Vec<CharacterIdentity>> {
@@ -456,35 +469,45 @@ fn extract_crop(img: &RgbImage, det: &Detection) -> Result<RgbImage> {
 }
 
 fn extract_crop_padded(img: &RgbImage, det: &StoredDetection, padding_ratio: f32) -> Result<RgbImage> {
-    let w = img.width() as f32;
-    let h = img.height() as f32;
+    let w = img.width() as i32;
+    let h = img.height() as i32;
     let bw = (det.x1 - det.x0) as f32;
     let bh = (det.y1 - det.y0) as f32;
     let pad_x = (bw * padding_ratio) as i32;
     let pad_y = (bh * padding_ratio) as i32;
 
-    let x0 = (det.x0 - pad_x).max(0) as u32;
-    let y0 = (det.y0 - pad_y).max(0) as u32;
-    let x1 = (det.x1 + pad_x).min(w as i32) as u32;
-    let y1 = (det.y1 + pad_y).min(h as i32) as u32;
+    let cx = (det.x0 + det.x1) / 2;
+    let cy = (det.y0 + det.y1) / 2;
+    let half_w = (bw / 2.0) as i32 + pad_x;
+    let half_h = (bh / 2.0) as i32 + pad_y;
+    let half = half_w.max(half_h);
 
-    let crop_w = x1 - x0;
-    let crop_h = y1 - y0;
+    let x0 = cx - half;
+    let y0 = cy - half;
+    let size = half * 2;
 
-    if crop_w == 0 || crop_h == 0 {
-        anyhow::bail!("Invalid crop dimensions: {}x{}", crop_w, crop_h);
+    if size <= 0 {
+        anyhow::bail!("Invalid crop dimensions: {}x{}", size, size);
     }
 
-    let mut crop = RgbImage::new(crop_w, crop_h);
+    let mut crop = RgbImage::new(size as u32, size as u32);
     let raw = img.as_raw();
     let crop_raw = crop.as_mut();
 
-    for y in 0..crop_h {
-        let src_row = ((y0 + y) * img.width() + x0) as usize * 3;
-        let dst_row = (y * crop_w) as usize * 3;
-        let copy_len = (crop_w * 3) as usize;
-        crop_raw[dst_row..dst_row + copy_len]
-            .copy_from_slice(&raw[src_row..src_row + copy_len]);
+    for dy in 0..size {
+        let src_y = y0 + dy;
+        for dx in 0..size {
+            let src_x = x0 + dx;
+            let dst_idx = ((dy * size + dx) * 3) as usize;
+            if src_x >= 0 && src_x < w && src_y >= 0 && src_y < h {
+                let src_idx = ((src_y * w + src_x) * 3) as usize;
+                crop_raw[dst_idx..dst_idx + 3].copy_from_slice(&raw[src_idx..src_idx + 3]);
+            } else {
+                crop_raw[dst_idx] = 255;
+                crop_raw[dst_idx + 1] = 255;
+                crop_raw[dst_idx + 2] = 255;
+            }
+        }
     }
 
     Ok(crop)

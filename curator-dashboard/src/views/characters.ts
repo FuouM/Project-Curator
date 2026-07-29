@@ -344,11 +344,19 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number) {
     const imageIds = resp.CharacterSearchResult.image_ids;
     if (imageIds.length === 0) return;
 
-    const detResp = await callService({ GetCharacterDetections: { image_id: imageIds[0] } });
-    if (!("CharacterDetectionsResult" in detResp)) return;
-    const dets = detResp.CharacterDetectionsResult.detections.filter((d: CharacterDetection) => d.identity_id === identityId);
+    const matchingDets: CharacterDetection[] = [];
+    for (const imgId of imageIds.slice(0, 10)) {
+      if (matchingDets.length >= 6) break;
+      const detResp = await callService({ GetCharacterDetections: { image_id: imgId } });
+      if (!("CharacterDetectionsResult" in detResp)) continue;
+      const dets = detResp.CharacterDetectionsResult.detections.filter((d: CharacterDetection) => d.identity_id === identityId);
+      for (const d of dets) {
+        if (matchingDets.length >= 6) break;
+        matchingDets.push(d);
+      }
+    }
 
-    for (const det of dets.slice(0, 4)) {
+    for (const det of matchingDets) {
       const thumb = document.createElement("div");
       thumb.style.cssText = "width:80px;height:80px;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px;";
       thumb.innerHTML = '<i class="bi bi-image" style="color:#999;font-size:16px;"></i>';

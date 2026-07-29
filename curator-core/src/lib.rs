@@ -1,6 +1,7 @@
 pub mod benchmark;
 pub mod concept;
 pub mod constants;
+pub mod crop_cache;
 pub mod db;
 pub mod detection;
 pub mod filename_parser;
@@ -12,6 +13,7 @@ pub mod thumbnail;
 pub mod vector;
 
 pub use benchmark::{benchmark_preprocess, run_detection_benchmark, run_onnx_benchmark, DetectionBenchmarkResult};
+pub use crop_cache::CropCache;
 pub use db::init_db;
 pub use db::models;
 pub use detection::{CCIPModel, DetectionPipeline, YoloDetector};

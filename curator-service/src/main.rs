@@ -239,16 +239,20 @@ async fn main() -> Result<(), Error> {
 
     let detection_yolo = YoloDetector::new(&model_dir, settings.detection_device.clone());
     let detection_ccip = CCIPModel::new(&model_dir, settings.detection_device.clone(), settings.detection_metrics_device.clone());
-    let detection = Arc::new(DetectionPipeline::new(detection_yolo, detection_ccip, db.clone()));
-    info!("Detection pipeline configured (YOLO + CCIP, models load on first use)");
-
-    let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone());
-    worker.start();
 
     let thumb_db_path = data_dir.join("thumbnail-cache.db");
     let thumbnail_cache = ThumbnailCache::open(&thumb_db_path)
         .await
         .context("Failed to open thumbnail cache")?;
+    let crop_cache = curator_core::CropCache::open(&thumb_db_path)
+        .await
+        .context("Failed to open crop cache")?;
+
+    let detection = Arc::new(DetectionPipeline::new(detection_yolo, detection_ccip, db.clone(), crop_cache));
+    info!("Detection pipeline configured (YOLO + CCIP, models load on first use)");
+
+    let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone());
+    worker.start();
 
     let settings_arc = Arc::new(tokio::sync::Mutex::new(settings));
 
