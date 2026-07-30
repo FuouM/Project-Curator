@@ -110,7 +110,10 @@ pub enum Request {
     /// Run CPU vs GPU ONNX model benchmark.
     RunBenchmark {
         embedding_model: EmbeddingModel,
+        run_tagger: Option<bool>,
     },
+    /// Run CPU vs GPU Tagger model benchmark.
+    RunTaggerBenchmark,
     /// Benchmark image preprocessing (decode + resize + normalize) across methods.
     BenchmarkPreprocess {
         image_path: String,

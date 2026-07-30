@@ -47,7 +47,7 @@ pub async fn handle_request(
     match request {
         Request::Ping => Response::Pong,
 
-        Request::RunBenchmark { embedding_model } => {
+        Request::RunBenchmark { embedding_model, run_tagger } => {
             let vision_path = match embedding_model {
                 EmbeddingModel::ClipVitB32 => model_manager.model_dir().join("vision_model.onnx"),
                 EmbeddingModel::MobileClipS2 => model_manager
@@ -58,17 +58,19 @@ pub async fn handle_request(
                 EmbeddingModel::ClipVitB32 => 224,
                 EmbeddingModel::MobileClipS2 => 256,
             };
+            let run_tagger_val = run_tagger.unwrap_or(true);
             let tagger_path = tagger.model_path();
             info!(
-                "RunBenchmark request: embedding_model={:?}, vision_path={:?}, tagger_path={:?}, tagger_path_exists={}",
+                "RunBenchmark request: embedding_model={:?}, vision_path={:?}, run_tagger={}, tagger_path={:?}, tagger_path_exists={}",
                 embedding_model,
                 vision_path,
+                run_tagger_val,
                 tagger_path,
                 tagger_path.exists()
             );
 
             let clip_res = curator_core::run_onnx_benchmark(&vision_path, target_size);
-            let tagger_res = if tagger_path.exists() {
+            let tagger_res = if run_tagger_val && tagger_path.exists() {
                 match curator_core::run_onnx_benchmark(tagger_path, 512) {
                     Ok((cpu, gpu, err, _)) => (Some(cpu), gpu, err),
                     Err(e) => (
@@ -78,7 +80,7 @@ pub async fn handle_request(
                     ),
                 }
             } else {
-                (None, None, Some("Tagger model file not found.".to_string()))
+                (None, None, None)
             };
 
             match clip_res {
@@ -94,6 +96,32 @@ pub async fn handle_request(
                 Err(e) => Response::Error {
                     message: format!("CLIP model benchmark failed: {:?}", e),
                 },
+            }
+        }
+
+        Request::RunTaggerBenchmark => {
+            let tagger_path = tagger.model_path();
+            let tagger_res = if tagger_path.exists() {
+                match curator_core::run_onnx_benchmark(tagger_path, 512) {
+                    Ok((cpu, gpu, err, has_gpu)) => (Some(cpu), gpu, err, has_gpu),
+                    Err(e) => (
+                        None,
+                        None,
+                        Some(format!("Tagger benchmark failed: {:?}", e)),
+                        false,
+                    ),
+                }
+            } else {
+                (None, None, Some("Tagger model file not found.".to_string()), false)
+            };
+            Response::BenchmarkResult {
+                clip_cpu_time_ms: 0.0,
+                clip_gpu_time_ms: None,
+                clip_gpu_error: None,
+                tagger_cpu_time_ms: tagger_res.0,
+                tagger_gpu_time_ms: tagger_res.1,
+                tagger_gpu_error: tagger_res.2,
+                has_gpu: tagger_res.3,
             }
         }
 

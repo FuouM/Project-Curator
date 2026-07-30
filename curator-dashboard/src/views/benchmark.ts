@@ -32,19 +32,22 @@ export function setupBenchmark() {
   if (!runBtn) return;
 
   function initBenchmarkUI() {
-    // Phase 1 (CLIP & Tagger) starts immediately
-    const runningCpuGpu = [clipCpu, clipGpu, taggerCpu, taggerGpu];
-    const calculatingSpeedups = [clipSpeedup, taggerSpeedup];
+    // Phase 1 (CLIP ViT-B/32) starts immediately
+    if (clipCpu) clipCpu.textContent = "Running...";
+    if (clipGpu) clipGpu.textContent = "Running...";
+    if (clipSpeedup) clipSpeedup.textContent = "Calculating...";
 
-    runningCpuGpu.forEach(el => { if (el) el.textContent = "Running..."; });
-    calculatingSpeedups.forEach(el => { if (el) el.textContent = "Calculating..."; });
+    // Phase 2 (Camie Tagger) is queued
+    if (taggerCpu) taggerCpu.textContent = "Queued...";
+    if (taggerGpu) taggerGpu.textContent = "Queued...";
+    if (taggerSpeedup) taggerSpeedup.textContent = "Waiting...";
 
-    // Phase 2 (MobileCLIP) is queued
+    // Phase 3 (MobileCLIP-S2) is queued
     if (mclipCpu) mclipCpu.textContent = "Queued...";
     if (mclipGpu) mclipGpu.textContent = "Queued...";
     if (mclipSpeedup) mclipSpeedup.textContent = "Waiting...";
 
-    // Phase 3 (Detections) is queued
+    // Phase 4 (Detections) is queued
     const queuedCpuGpu = [yoloCpu, yoloGpu, ccipFeatCpu, ccipFeatGpu, ccipMetricsCpu, ccipMetricsGpu];
     const waitingSpeedups = [yoloSpeedup, ccipFeatSpeedup, ccipMetricsSpeedup];
 
@@ -83,27 +86,14 @@ export function setupBenchmark() {
     initBenchmarkUI();
 
     try {
-      // 1. Run CLIP ViT-B/32 Benchmark (Starts immediately)
-      const clipResp = await callService({ RunBenchmark: { embedding_model: "clip-vit-b-32" } })
+      // 1. Run CLIP ViT-B/32 Benchmark (with run_tagger: false)
+      const clipResp = await callService({ RunBenchmark: { embedding_model: "clip-vit-b-32", run_tagger: false } })
         .catch((e: any) => ({ Error: { message: e.message } }));
 
-      // Handle CLIP ViT-B/32 & Tagger results
+      // Handle CLIP ViT-B/32 results
       if ("BenchmarkResult" in clipResp) {
-        const {
-          clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error,
-          tagger_cpu_time_ms, tagger_gpu_time_ms, tagger_gpu_error,
-          has_gpu
-        } = clipResp.BenchmarkResult;
-
+        const { clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error, has_gpu } = clipResp.BenchmarkResult;
         displayThroughput(clipCpu, clipGpu, clipSpeedup, clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error);
-
-        if (tagger_cpu_time_ms !== null) {
-          displayThroughput(taggerCpu, taggerGpu, taggerSpeedup, tagger_cpu_time_ms, tagger_gpu_time_ms, tagger_gpu_error);
-        } else {
-          if (taggerCpu) taggerCpu.textContent = tagger_gpu_error ? `Error: ${tagger_gpu_error}` : "N/A (Model file not found)";
-          if (taggerGpu) taggerGpu.textContent = "N/A";
-          if (taggerSpeedup) taggerSpeedup.textContent = "—";
-        }
 
         if (gpuLoaded) {
           if (has_gpu) {
@@ -119,26 +109,45 @@ export function setupBenchmark() {
         if (errText) errText.textContent = `CLIP ViT-B/32: ${clipResp.Error.message}`;
       }
 
-      // 2. Set MobileCLIP-S2 to Running and start it
+      // 2. Set Camie Tagger to Running and start it
+      if (taggerCpu) taggerCpu.textContent = "Running...";
+      if (taggerGpu) taggerGpu.textContent = "Running...";
+      if (taggerSpeedup) taggerSpeedup.textContent = "Calculating...";
+
+      const taggerResp = await callService({ RunTaggerBenchmark: null })
+        .catch((e: any) => ({ Error: { message: e.message } }));
+
+      if ("BenchmarkResult" in taggerResp) {
+        const { tagger_cpu_time_ms, tagger_gpu_time_ms, tagger_gpu_error } = taggerResp.BenchmarkResult;
+        if (tagger_cpu_time_ms !== null) {
+          displayThroughput(taggerCpu, taggerGpu, taggerSpeedup, tagger_cpu_time_ms, tagger_gpu_time_ms, tagger_gpu_error);
+        } else {
+          if (taggerCpu) taggerCpu.textContent = tagger_gpu_error ? `Error: ${tagger_gpu_error}` : "N/A (Model file not found)";
+          if (taggerGpu) taggerGpu.textContent = "N/A";
+          if (taggerSpeedup) taggerSpeedup.textContent = "—";
+        }
+      } else if ("Error" in taggerResp) {
+        const existing = errText?.textContent || "";
+        if (errText) errText.textContent = existing ? `${existing}\nCamie Tagger: ${taggerResp.Error.message}` : `Camie Tagger: ${taggerResp.Error.message}`;
+      }
+
+      // 3. Set MobileCLIP-S2 to Running and start it
       if (mclipCpu) mclipCpu.textContent = "Running...";
       if (mclipGpu) mclipGpu.textContent = "Running...";
       if (mclipSpeedup) mclipSpeedup.textContent = "Calculating...";
 
-      const mclipResp = await callService({ RunBenchmark: { embedding_model: "mobileclip-s2" } })
+      const mclipResp = await callService({ RunBenchmark: { embedding_model: "mobileclip-s2", run_tagger: false } })
         .catch((e: any) => ({ Error: { message: e.message } }));
 
       if ("BenchmarkResult" in mclipResp) {
-        const {
-          clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error,
-        } = mclipResp.BenchmarkResult;
-
+        const { clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error } = mclipResp.BenchmarkResult;
         displayThroughput(mclipCpu, mclipGpu, mclipSpeedup, clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error);
       } else if ("Error" in mclipResp) {
         const existing = errText?.textContent || "";
         if (errText) errText.textContent = existing ? `${existing}\nMobileCLIP: ${mclipResp.Error.message}` : `MobileCLIP: ${mclipResp.Error.message}`;
       }
 
-      // 3. Set Detections to Running and start it
+      // 4. Set Detections to Running and start it
       const detectionCpuGpu = [yoloCpu, yoloGpu, ccipFeatCpu, ccipFeatGpu, ccipMetricsCpu, ccipMetricsGpu];
       const detectionSpeedups = [yoloSpeedup, ccipFeatSpeedup, ccipMetricsSpeedup];
 

@@ -17,7 +17,8 @@ export type RequestPayload =
   | { TagImage: { image_id: number; threshold: number | null; force: boolean | null } }
   | { TagImageBatch: { image_ids: number[]; threshold: number | null; force: boolean | null } }
   | { GetTaggerStatus: null }
-  | { RunBenchmark: { embedding_model: "clip-vit-b-32" | "mobileclip-s2" } }
+  | { RunBenchmark: { embedding_model: "clip-vit-b-32" | "mobileclip-s2", run_tagger?: boolean | null } }
+  | { RunTaggerBenchmark: null }
   | { GetSettings: null }
   | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null; detection_device: string | null; detection_metrics_device: string | null } }
   | { ReindexVectors: null }
