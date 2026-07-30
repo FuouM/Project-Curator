@@ -332,7 +332,7 @@ impl Curator for CuratorServiceImpl {
             }
         };
         
-        info!("Received gRPC Request: {:?}", request_parsed);
+        info!("Received gRPC Request: {}", request_str);
         let response = handlers::handle_request(
             request_parsed,
             &self.ctx.db,
@@ -347,6 +347,7 @@ impl Curator for CuratorServiceImpl {
         .await;
 
         let response_json = serde_json::to_string(&response).map_err(|e| Status::internal(e.to_string()))?;
+        info!("Sending gRPC Response: {}", response_json);
         Ok(TonicResponse::new(CuratorResponse { response_json }))
     }
 }

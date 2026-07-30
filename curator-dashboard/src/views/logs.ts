@@ -1,41 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { currentLogTab, setCurrentLogTab } from "../state";
 
-// --- ANSI to HTML Renderer ---
-const ANSI_COLORS: Record<number, string> = {
-  30: "#000000", 31: "#ef4444", 32: "#10b981", 33: "#f59e0b",
-  34: "#3b82f6", 35: "#8b5cf6", 36: "#06b6d4", 37: "#d4d4d8",
-  90: "#71717a", 91: "#f87171", 92: "#34d399", 93: "#fbbf24",
-  94: "#60a5fa", 95: "#a78bfa", 96: "#22d3ee", 97: "#ffffff",
-};
-
 let fullLogLines: string[] = [];
 let linesShownCount = 200;
 let lastLogContent = "";
 let isUserScrolling = false;
-
-function ansiCodeReplacer(_match: string, codes: string): string {
-  if (!codes) return "</span>";
-  const parts = codes.split(";");
-  let out = "";
-  for (const p of parts) {
-    const code = parseInt(p, 10);
-    if (code === 0) {
-      out += "</span>";
-    } else if (code === 1) {
-      out += '<span style="font-weight:600">';
-    } else if (code === 2) {
-      out += '<span style="opacity:0.5">';
-    } else if (code === 3) {
-      out += '<span style="font-style:italic">';
-    } else if (code === 4) {
-      out += '<span style="text-decoration:underline">';
-    } else if (ANSI_COLORS[code]) {
-      out += `<span style="color:${ANSI_COLORS[code]}">`;
-    }
-  }
-  return out;
-}
 
 function colorizeJsonHtml(jsonStr: string): string {
   return jsonStr.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
@@ -58,24 +27,27 @@ function colorizeJsonHtml(jsonStr: string): string {
 function processLogLine(line: string): string {
   if (!line.trim()) return "";
 
-  // 1. Escape HTML entities
-  let escaped = line
+  // 1. Strip all ANSI escape codes first to prevent timestamp/level parsing interference
+  const cleanLine = line.replace(/[\u001b\x1b]\[[0-9;]*m/g, "");
+
+  // 2. Escape HTML entities
+  let escaped = cleanLine
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // 2. Extract and format timestamps
+  // 3. Extract and format timestamps
   let timestampHtml = "";
   let content = escaped;
 
   const tsRegex = /^(\[?\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+\-]\d{2}:?\d{2}|Z)?\]?)\s*/;
   const tsMatch = escaped.match(tsRegex);
   if (tsMatch) {
-    timestampHtml = `<span style="color:#52525b; font-weight:500; font-family:var(--sys-font-mono, monospace); margin-right:6px;">${tsMatch[1]}</span>`;
+    timestampHtml = `<span style="color:#71717a; font-weight:500; font-family:var(--sys-font-mono, monospace); margin-right:6px;">${tsMatch[1]}</span>`;
     content = escaped.slice(tsMatch[0].length);
   }
 
-  // 3. Highlight log levels
+  // 4. Highlight log levels
   content = content.replace(/\b(INFO|WARN|WARNING|ERROR|FATAL|DEBUG|TRACE)\b/gi, (lvl) => {
     let color = "#10b981"; // INFO
     const upper = lvl.toUpperCase();
@@ -86,7 +58,7 @@ function processLogLine(line: string): string {
     return `<span style="color:${color}; font-weight:600; font-size:10px; text-transform:uppercase;">[${upper}]</span>`;
   });
 
-  // 4. Prettify embedded JSON
+  // 5. Prettify embedded JSON
   const firstBrace = content.indexOf('{');
   const lastBrace = content.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
@@ -113,16 +85,6 @@ function processLogLine(line: string): string {
     } catch (_) {
       // Leave as is if invalid JSON
     }
-  }
-
-  // 5. Convert ANSI colors
-  content = content.replace(/\x1b\[([0-9;]*)m/g, ansiCodeReplacer);
-  content = content.replace(/\u001b\[([0-9;]*)m/g, ansiCodeReplacer);
-
-  const openSpans = (content.match(/<span/g) || []).length;
-  const closeSpans = (content.match(/<\/span>/g) || []).length;
-  for (let i = 0; i < openSpans - closeSpans; i++) {
-    content += "</span>";
   }
 
   return `<div style="margin-bottom: 5px; line-height: 1.4; font-family: var(--sys-font-mono, monospace); font-size: 11px;">${timestampHtml}${content}</div>`;
