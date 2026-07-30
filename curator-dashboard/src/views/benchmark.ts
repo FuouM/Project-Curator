@@ -31,18 +31,25 @@ export function setupBenchmark() {
 
   if (!runBtn) return;
 
-  function setRunning() {
-    const targets = [
-      clipCpu, clipGpu, mclipCpu, mclipGpu, taggerCpu, taggerGpu,
-      yoloCpu, yoloGpu, ccipFeatCpu, ccipFeatGpu, ccipMetricsCpu, ccipMetricsGpu
-    ];
-    const speedups = [
-      clipSpeedup, mclipSpeedup, taggerSpeedup, yoloSpeedup,
-      ccipFeatSpeedup, ccipMetricsSpeedup
-    ];
+  function initBenchmarkUI() {
+    // Phase 1 (CLIP & Tagger) starts immediately
+    const runningCpuGpu = [clipCpu, clipGpu, taggerCpu, taggerGpu];
+    const calculatingSpeedups = [clipSpeedup, taggerSpeedup];
 
-    targets.forEach(el => { if (el) el.textContent = "Running..."; });
-    speedups.forEach(el => { if (el) el.textContent = "Calculating..."; });
+    runningCpuGpu.forEach(el => { if (el) el.textContent = "Running..."; });
+    calculatingSpeedups.forEach(el => { if (el) el.textContent = "Calculating..."; });
+
+    // Phase 2 (MobileCLIP) is queued
+    if (mclipCpu) mclipCpu.textContent = "Queued...";
+    if (mclipGpu) mclipGpu.textContent = "Queued...";
+    if (mclipSpeedup) mclipSpeedup.textContent = "Waiting...";
+
+    // Phase 3 (Detections) is queued
+    const queuedCpuGpu = [yoloCpu, yoloGpu, ccipFeatCpu, ccipFeatGpu, ccipMetricsCpu, ccipMetricsGpu];
+    const waitingSpeedups = [yoloSpeedup, ccipFeatSpeedup, ccipMetricsSpeedup];
+
+    queuedCpuGpu.forEach(el => { if (el) el.textContent = "Queued..."; });
+    waitingSpeedups.forEach(el => { if (el) el.textContent = "Waiting..."; });
 
     if (gpuLoaded) gpuLoaded.textContent = "...";
     if (errText) errText.textContent = "";
@@ -73,14 +80,14 @@ export function setupBenchmark() {
   runBtn.addEventListener("click", async () => {
     runBtn.setAttribute("disabled", "true");
     runBtn.textContent = "Benchmarking...";
-    setRunning();
+    initBenchmarkUI();
 
     try {
-      // 1. Run CLIP ViT-B/32 Benchmark
+      // 1. Run CLIP ViT-B/32 Benchmark (Starts immediately)
       const clipResp = await callService({ RunBenchmark: { embedding_model: "clip-vit-b-32" } })
         .catch((e: any) => ({ Error: { message: e.message } }));
 
-      // Handle CLIP ViT-B/32 results
+      // Handle CLIP ViT-B/32 & Tagger results
       if ("BenchmarkResult" in clipResp) {
         const {
           clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error,
@@ -112,7 +119,11 @@ export function setupBenchmark() {
         if (errText) errText.textContent = `CLIP ViT-B/32: ${clipResp.Error.message}`;
       }
 
-      // 2. Run MobileCLIP-S2 Benchmark
+      // 2. Set MobileCLIP-S2 to Running and start it
+      if (mclipCpu) mclipCpu.textContent = "Running...";
+      if (mclipGpu) mclipGpu.textContent = "Running...";
+      if (mclipSpeedup) mclipSpeedup.textContent = "Calculating...";
+
       const mclipResp = await callService({ RunBenchmark: { embedding_model: "mobileclip-s2" } })
         .catch((e: any) => ({ Error: { message: e.message } }));
 
@@ -127,7 +138,13 @@ export function setupBenchmark() {
         if (errText) errText.textContent = existing ? `${existing}\nMobileCLIP: ${mclipResp.Error.message}` : `MobileCLIP: ${mclipResp.Error.message}`;
       }
 
-      // 3. Run Detection Benchmark (YOLO, CCIP feature/metrics)
+      // 3. Set Detections to Running and start it
+      const detectionCpuGpu = [yoloCpu, yoloGpu, ccipFeatCpu, ccipFeatGpu, ccipMetricsCpu, ccipMetricsGpu];
+      const detectionSpeedups = [yoloSpeedup, ccipFeatSpeedup, ccipMetricsSpeedup];
+
+      detectionCpuGpu.forEach(el => { if (el) el.textContent = "Running..."; });
+      detectionSpeedups.forEach(el => { if (el) el.textContent = "Calculating..."; });
+
       const detResp = await callService({ RunDetectionBenchmark: null })
         .catch((e: any) => ({ Error: { message: e.message } }));
 
