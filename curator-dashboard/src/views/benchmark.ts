@@ -47,12 +47,20 @@ export function setupBenchmark() {
     if (mclipGpu) mclipGpu.textContent = "Queued...";
     if (mclipSpeedup) mclipSpeedup.textContent = "Waiting...";
 
-    // Phase 4 (Detections) is queued
-    const queuedCpuGpu = [yoloCpu, yoloGpu, ccipFeatCpu, ccipFeatGpu, ccipMetricsCpu, ccipMetricsGpu];
-    const waitingSpeedups = [yoloSpeedup, ccipFeatSpeedup, ccipMetricsSpeedup];
+    // Phase 4 (YOLO Person) is queued
+    if (yoloCpu) yoloCpu.textContent = "Queued...";
+    if (yoloGpu) yoloGpu.textContent = "Queued...";
+    if (yoloSpeedup) yoloSpeedup.textContent = "Waiting...";
 
-    queuedCpuGpu.forEach(el => { if (el) el.textContent = "Queued..."; });
-    waitingSpeedups.forEach(el => { if (el) el.textContent = "Waiting..."; });
+    // Phase 5 (CCIP Feature) is queued
+    if (ccipFeatCpu) ccipFeatCpu.textContent = "Queued...";
+    if (ccipFeatGpu) ccipFeatGpu.textContent = "Queued...";
+    if (ccipFeatSpeedup) ccipFeatSpeedup.textContent = "Waiting...";
+
+    // Phase 6 (CCIP Metrics) is queued
+    if (ccipMetricsCpu) ccipMetricsCpu.textContent = "Queued...";
+    if (ccipMetricsGpu) ccipMetricsGpu.textContent = "Queued...";
+    if (ccipMetricsSpeedup) ccipMetricsSpeedup.textContent = "Waiting...";
 
     if (gpuLoaded) gpuLoaded.textContent = "...";
     if (errText) errText.textContent = "";
@@ -86,7 +94,7 @@ export function setupBenchmark() {
     initBenchmarkUI();
 
     try {
-      // 1. Run CLIP ViT-B/32 Benchmark (with run_tagger: false)
+      // 1. Run CLIP ViT-B/32 Benchmark
       const clipResp = await callService({ RunBenchmark: { embedding_model: "clip-vit-b-32", run_tagger: false } })
         .catch((e: any) => ({ Error: { message: e.message } }));
 
@@ -109,7 +117,7 @@ export function setupBenchmark() {
         if (errText) errText.textContent = `CLIP ViT-B/32: ${clipResp.Error.message}`;
       }
 
-      // 2. Set Camie Tagger to Running and start it
+      // 2. Run Camie Tagger
       if (taggerCpu) taggerCpu.textContent = "Running...";
       if (taggerGpu) taggerGpu.textContent = "Running...";
       if (taggerSpeedup) taggerSpeedup.textContent = "Calculating...";
@@ -131,7 +139,7 @@ export function setupBenchmark() {
         if (errText) errText.textContent = existing ? `${existing}\nCamie Tagger: ${taggerResp.Error.message}` : `Camie Tagger: ${taggerResp.Error.message}`;
       }
 
-      // 3. Set MobileCLIP-S2 to Running and start it
+      // 3. Run MobileCLIP-S2
       if (mclipCpu) mclipCpu.textContent = "Running...";
       if (mclipGpu) mclipGpu.textContent = "Running...";
       if (mclipSpeedup) mclipSpeedup.textContent = "Calculating...";
@@ -147,29 +155,58 @@ export function setupBenchmark() {
         if (errText) errText.textContent = existing ? `${existing}\nMobileCLIP: ${mclipResp.Error.message}` : `MobileCLIP: ${mclipResp.Error.message}`;
       }
 
-      // 4. Set Detections to Running and start it
-      const detectionCpuGpu = [yoloCpu, yoloGpu, ccipFeatCpu, ccipFeatGpu, ccipMetricsCpu, ccipMetricsGpu];
-      const detectionSpeedups = [yoloSpeedup, ccipFeatSpeedup, ccipMetricsSpeedup];
+      // 4. Run YOLO Person Detection
+      if (yoloCpu) yoloCpu.textContent = "Running...";
+      if (yoloGpu) yoloGpu.textContent = "Running...";
+      if (yoloSpeedup) yoloSpeedup.textContent = "Calculating...";
 
-      detectionCpuGpu.forEach(el => { if (el) el.textContent = "Running..."; });
-      detectionSpeedups.forEach(el => { if (el) el.textContent = "Calculating..."; });
-
-      const detResp = await callService({ RunDetectionBenchmark: null })
+      const yoloResp = await callService({ RunYoloBenchmark: null })
         .catch((e: any) => ({ Error: { message: e.message } }));
 
-      if ("DetectionBenchmarkResult" in detResp) {
-        const {
-          yolo_cpu_time_ms, yolo_gpu_time_ms, yolo_gpu_error,
-          ccip_feat_cpu_time_ms, ccip_feat_gpu_time_ms, ccip_feat_gpu_error,
-          ccip_metrics_cpu_time_ms, ccip_metrics_gpu_time_ms, ccip_metrics_gpu_error,
-        } = detResp.DetectionBenchmarkResult;
-
-        displayThroughput(yoloCpu, yoloGpu, yoloSpeedup, yolo_cpu_time_ms, yolo_gpu_time_ms, yolo_gpu_error);
-        displayThroughput(ccipFeatCpu, ccipFeatGpu, ccipFeatSpeedup, ccip_feat_cpu_time_ms, ccip_feat_gpu_time_ms, ccip_feat_gpu_error);
-        displayThroughput(ccipMetricsCpu, ccipMetricsGpu, ccipMetricsSpeedup, ccip_metrics_cpu_time_ms, ccip_metrics_gpu_time_ms, ccip_metrics_gpu_error);
-      } else if ("Error" in detResp) {
+      if ("DetectionBenchmarkResult" in yoloResp) {
+        const { yolo_cpu_time_ms, yolo_gpu_time_ms, yolo_gpu_error } = yoloResp.DetectionBenchmarkResult;
+        if (yolo_cpu_time_ms !== null) {
+          displayThroughput(yoloCpu, yoloGpu, yoloSpeedup, yolo_cpu_time_ms, yolo_gpu_time_ms, yolo_gpu_error);
+        }
+      } else if ("Error" in yoloResp) {
         const existing = errText?.textContent || "";
-        if (errText) errText.textContent = existing ? `${existing}\nDetection: ${detResp.Error.message}` : `Detection: ${detResp.Error.message}`;
+        if (errText) errText.textContent = existing ? `${existing}\nYOLO: ${yoloResp.Error.message}` : `YOLO: ${yoloResp.Error.message}`;
+      }
+
+      // 5. Run CCIP Feature Extraction
+      if (ccipFeatCpu) ccipFeatCpu.textContent = "Running...";
+      if (ccipFeatGpu) ccipFeatGpu.textContent = "Running...";
+      if (ccipFeatSpeedup) ccipFeatSpeedup.textContent = "Calculating...";
+
+      const featResp = await callService({ RunCcipFeatBenchmark: null })
+        .catch((e: any) => ({ Error: { message: e.message } }));
+
+      if ("DetectionBenchmarkResult" in featResp) {
+        const { ccip_feat_cpu_time_ms, ccip_feat_gpu_time_ms, ccip_feat_gpu_error } = featResp.DetectionBenchmarkResult;
+        if (ccip_feat_cpu_time_ms !== null) {
+          displayThroughput(ccipFeatCpu, ccipFeatGpu, ccipFeatSpeedup, ccip_feat_cpu_time_ms, ccip_feat_gpu_time_ms, ccip_feat_gpu_error);
+        }
+      } else if ("Error" in featResp) {
+        const existing = errText?.textContent || "";
+        if (errText) errText.textContent = existing ? `${existing}\nCCIP Feature: ${featResp.Error.message}` : `CCIP Feature: ${featResp.Error.message}`;
+      }
+
+      // 6. Run CCIP Metrics
+      if (ccipMetricsCpu) ccipMetricsCpu.textContent = "Running...";
+      if (ccipMetricsGpu) ccipMetricsGpu.textContent = "Running...";
+      if (ccipMetricsSpeedup) ccipMetricsSpeedup.textContent = "Calculating...";
+
+      const metricsResp = await callService({ RunCcipMetricsBenchmark: null })
+        .catch((e: any) => ({ Error: { message: e.message } }));
+
+      if ("DetectionBenchmarkResult" in metricsResp) {
+        const { ccip_metrics_cpu_time_ms, ccip_metrics_gpu_time_ms, ccip_metrics_gpu_error } = metricsResp.DetectionBenchmarkResult;
+        if (ccip_metrics_cpu_time_ms !== null) {
+          displayThroughput(ccipMetricsCpu, ccipMetricsGpu, ccipMetricsSpeedup, ccip_metrics_cpu_time_ms, ccip_metrics_gpu_time_ms, ccip_metrics_gpu_error);
+        }
+      } else if ("Error" in metricsResp) {
+        const existing = errText?.textContent || "";
+        if (errText) errText.textContent = existing ? `${existing}\nCCIP Metrics: ${metricsResp.Error.message}` : `CCIP Metrics: ${metricsResp.Error.message}`;
       }
     } catch (e: any) {
       if (errText) errText.textContent = `Execution error: ${e.message || e}`;

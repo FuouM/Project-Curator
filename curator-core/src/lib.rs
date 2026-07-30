@@ -12,7 +12,7 @@ pub mod tagger;
 pub mod thumbnail;
 pub mod vector;
 
-pub use benchmark::{benchmark_preprocess, run_detection_benchmark, run_onnx_benchmark, DetectionBenchmarkResult};
+pub use benchmark::{benchmark_preprocess, run_detection_benchmark, run_onnx_benchmark, run_onnx_benchmark_2d, DetectionBenchmarkResult};
 pub use crop_cache::CropCache;
 pub use db::init_db;
 pub use db::models;

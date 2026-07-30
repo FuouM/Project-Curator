@@ -873,39 +873,86 @@ pub async fn handle_request(
             }
         }
 
-        Request::RunDetectionBenchmark => {
+        Request::RunYoloBenchmark => {
             let det_dir = data_dir.join("models");
             let yolo_path = det_dir.join("person_detect_v1.1_s/model.onnx");
-            let ccip_feat_path = det_dir.join("ccip-caformer-24-randaug-pruned/model_feat.onnx");
-            let ccip_metrics_path =
-                det_dir.join("ccip-caformer-24-randaug-pruned/model_metrics.onnx");
+            info!("RunYoloBenchmark request: exists={}", yolo_path.exists());
 
-            info!(
-                "RunDetectionBenchmark: yolo_exists={}, ccip_feat_exists={}, ccip_metrics_exists={}",
-                yolo_path.exists(),
-                ccip_feat_path.exists(),
-                ccip_metrics_path.exists()
-            );
+            if !yolo_path.exists() {
+                return Response::Error { message: "YOLO model file not found.".to_string() };
+            }
 
-            match curator_core::run_detection_benchmark(
-                &yolo_path,
-                &ccip_feat_path,
-                &ccip_metrics_path,
-            ) {
-                Ok(res) => Response::DetectionBenchmarkResult {
-                    yolo_cpu_time_ms: res.yolo_cpu_ms,
-                    yolo_gpu_time_ms: res.yolo_gpu_ms,
-                    yolo_gpu_error: res.yolo_gpu_error,
-                    ccip_feat_cpu_time_ms: res.ccip_feat_cpu_ms,
-                    ccip_feat_gpu_time_ms: res.ccip_feat_gpu_ms,
-                    ccip_feat_gpu_error: res.ccip_feat_gpu_error,
-                    ccip_metrics_cpu_time_ms: res.ccip_metrics_cpu_ms,
-                    ccip_metrics_gpu_time_ms: res.ccip_metrics_gpu_ms,
-                    ccip_metrics_gpu_error: res.ccip_metrics_gpu_error,
-                    has_gpu: res.has_gpu,
+            match curator_core::run_onnx_benchmark(&yolo_path, 640) {
+                Ok((cpu, gpu, err, has_gpu)) => Response::DetectionBenchmarkResult {
+                    yolo_cpu_time_ms: Some(cpu),
+                    yolo_gpu_time_ms: gpu,
+                    yolo_gpu_error: err,
+                    ccip_feat_cpu_time_ms: None,
+                    ccip_feat_gpu_time_ms: None,
+                    ccip_feat_gpu_error: None,
+                    ccip_metrics_cpu_time_ms: None,
+                    ccip_metrics_gpu_time_ms: None,
+                    ccip_metrics_gpu_error: None,
+                    has_gpu,
                 },
                 Err(e) => Response::Error {
-                    message: format!("Detection benchmark failed: {:?}", e),
+                    message: format!("Yolo benchmark failed: {:?}", e),
+                },
+            }
+        }
+
+        Request::RunCcipFeatBenchmark => {
+            let det_dir = data_dir.join("models");
+            let ccip_feat_path = det_dir.join("ccip-caformer-24-randaug-pruned/model_feat.onnx");
+            info!("RunCcipFeatBenchmark request: exists={}", ccip_feat_path.exists());
+
+            if !ccip_feat_path.exists() {
+                return Response::Error { message: "CCIP Feature model file not found.".to_string() };
+            }
+
+            match curator_core::run_onnx_benchmark(&ccip_feat_path, 384) {
+                Ok((cpu, gpu, err, has_gpu)) => Response::DetectionBenchmarkResult {
+                    yolo_cpu_time_ms: None,
+                    yolo_gpu_time_ms: None,
+                    yolo_gpu_error: None,
+                    ccip_feat_cpu_time_ms: Some(cpu),
+                    ccip_feat_gpu_time_ms: gpu,
+                    ccip_feat_gpu_error: err,
+                    ccip_metrics_cpu_time_ms: None,
+                    ccip_metrics_gpu_time_ms: None,
+                    ccip_metrics_gpu_error: None,
+                    has_gpu,
+                },
+                Err(e) => Response::Error {
+                    message: format!("CCIP Feature benchmark failed: {:?}", e),
+                },
+            }
+        }
+
+        Request::RunCcipMetricsBenchmark => {
+            let det_dir = data_dir.join("models");
+            let ccip_metrics_path = det_dir.join("ccip-caformer-24-randaug-pruned/model_metrics.onnx");
+            info!("RunCcipMetricsBenchmark request: exists={}", ccip_metrics_path.exists());
+
+            if !ccip_metrics_path.exists() {
+                return Response::Error { message: "CCIP Metrics model file not found.".to_string() };
+            }
+
+            match curator_core::run_onnx_benchmark_2d(&ccip_metrics_path, 16, 768) {
+                Ok((cpu, gpu, err, has_gpu)) => Response::DetectionBenchmarkResult {
+                    yolo_cpu_time_ms: None,
+                    yolo_gpu_time_ms: None,
+                    yolo_gpu_error: None,
+                    ccip_feat_cpu_time_ms: None,
+                    ccip_feat_gpu_time_ms: None,
+                    ccip_feat_gpu_error: None,
+                    ccip_metrics_cpu_time_ms: Some(cpu),
+                    ccip_metrics_gpu_time_ms: gpu,
+                    ccip_metrics_gpu_error: err,
+                    has_gpu,
+                },
+                Err(e) => Response::Error {
+                    message: format!("CCIP Metrics benchmark failed: {:?}", e),
                 },
             }
         }

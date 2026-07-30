@@ -291,8 +291,12 @@ pub enum Request {
         x1: i32,
         y1: i32,
     },
-    /// Run CPU vs GPU ONNX model benchmark for detection models (YOLO, CCIP feat, CCIP metrics).
-    RunDetectionBenchmark,
+    /// Run CPU vs GPU ONNX model benchmark for YOLO detector.
+    RunYoloBenchmark,
+    /// Run CPU vs GPU ONNX model benchmark for CCIP Feature extraction.
+    RunCcipFeatBenchmark,
+    /// Run CPU vs GPU ONNX model benchmark for CCIP Metrics.
+    RunCcipMetricsBenchmark,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -513,13 +517,13 @@ pub enum Response {
     },
     /// Detection model benchmark results.
     DetectionBenchmarkResult {
-        yolo_cpu_time_ms: f64,
+        yolo_cpu_time_ms: Option<f64>,
         yolo_gpu_time_ms: Option<f64>,
         yolo_gpu_error: Option<String>,
-        ccip_feat_cpu_time_ms: f64,
+        ccip_feat_cpu_time_ms: Option<f64>,
         ccip_feat_gpu_time_ms: Option<f64>,
         ccip_feat_gpu_error: Option<String>,
-        ccip_metrics_cpu_time_ms: f64,
+        ccip_metrics_cpu_time_ms: Option<f64>,
         ccip_metrics_gpu_time_ms: Option<f64>,
         ccip_metrics_gpu_error: Option<String>,
         has_gpu: bool,
