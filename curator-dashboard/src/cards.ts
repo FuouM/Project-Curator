@@ -15,6 +15,63 @@ let thumbTotal = 0;
 let thumbLoaded = 0;
 let thumbHideTimer: number | null = null;
 
+// --- Thumbnail Cache (LRU, limited to 500 entries) ---
+const MAX_CACHE_SIZE = 500;
+const thumbCache = new Map<number, string>();
+
+function cacheThumbnail(imageId: number, url: string) {
+  if (thumbCache.has(imageId)) {
+    thumbCache.delete(imageId);
+  }
+  thumbCache.set(imageId, url);
+
+  if (thumbCache.size > MAX_CACHE_SIZE) {
+    const oldestKey = thumbCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      const oldestUrl = thumbCache.get(oldestKey);
+      if (oldestUrl && oldestUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(oldestUrl);
+      }
+      thumbCache.delete(oldestKey);
+    }
+  }
+}
+
+// --- Crop Cache (LRU, limited to 100 entries) ---
+const MAX_CROP_CACHE_SIZE = 100;
+const cropCache = new Map<number, string>();
+
+function cacheCrop(detectionId: number, url: string) {
+  if (cropCache.has(detectionId)) {
+    cropCache.delete(detectionId);
+  }
+  cropCache.set(detectionId, url);
+
+  if (cropCache.size > MAX_CROP_CACHE_SIZE) {
+    const oldestKey = cropCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      const oldestUrl = cropCache.get(oldestKey);
+      if (oldestUrl && oldestUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(oldestUrl);
+      }
+      cropCache.delete(oldestKey);
+    }
+  }
+}
+
+export function getCachedCrop(detectionId: number): string | undefined {
+  const url = cropCache.get(detectionId);
+  if (url) {
+    cropCache.delete(detectionId);
+    cropCache.set(detectionId, url);
+  }
+  return url;
+}
+
+export function setCachedCrop(detectionId: number, url: string) {
+  cacheCrop(detectionId, url);
+}
+
 interface ThumbJob {
   imageId: number;
   img: HTMLImageElement;
@@ -40,7 +97,9 @@ function invokeThumbnail(job: ThumbJob) {
     if (job.gen !== generation || !job.img.isConnected || !data) return;
     const bytes = new Uint8Array(data);
     const blob = new Blob([bytes], { type: "image/webp" });
-    job.img.src = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
+    cacheThumbnail(job.imageId, url);
+    job.img.src = url;
     job.img.classList.add("loaded");
   }).catch(() => {}).finally(() => {
     if (job.preview) job.preview.classList.remove("thumb-loading");
@@ -512,15 +571,24 @@ async function loadDetectionsForImage(imageId: number) {
         cropThumb.style.cssText = "width:48px;height:48px;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;";
         cropThumb.innerHTML = '<i class="bi bi-image" style="color:#999;"></i>';
 
-        // Load crop async
-        callService({ GetDetectionCrop: { detection_id: det.id, max_size: 96 } }).then((cropResp: any) => {
-          if ("DetectionCropResult" in cropResp) {
-            const bytes = new Uint8Array(cropResp.DetectionCropResult.crop_webp_bytes);
-            const blob = new Blob([bytes], { type: "image/webp" });
-            const url = URL.createObjectURL(blob);
-            cropThumb.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" />`;
-          }
-        }).catch(() => {});
+        // Load crop async/sync from cache
+        if (cropCache.has(det.id)) {
+          const cachedUrl = cropCache.get(det.id)!;
+          // Refresh accessed entry in LRU crop cache
+          cropCache.delete(det.id);
+          cropCache.set(det.id, cachedUrl);
+          cropThumb.innerHTML = `<img src="${cachedUrl}" style="width:100%;height:100%;object-fit:cover;" />`;
+        } else {
+          callService({ GetDetectionCrop: { detection_id: det.id, max_size: 96 } }).then((cropResp: any) => {
+            if ("DetectionCropResult" in cropResp) {
+              const bytes = new Uint8Array(cropResp.DetectionCropResult.crop_webp_bytes);
+              const blob = new Blob([bytes], { type: "image/webp" });
+              const url = URL.createObjectURL(blob);
+              cacheCrop(det.id, url);
+              cropThumb.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" />`;
+            }
+          }).catch(() => {});
+        }
 
         const infoEl = document.createElement("div");
         infoEl.style.cssText = "flex:1;min-width:0;";
@@ -619,13 +687,32 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
       ? '<div class="badge-missing"><i class="bi bi-exclamation-triangle"></i> Missing</div>'
       : "";
 
+        // Pre-populate GIF path in cache to avoid flash/delay
+    const isGif = /\.gif$/i.test(img.filepath);
+    if (isGif && !thumbCache.has(img.id)) {
+      cacheThumbnail(img.id, convertFileSrc(img.filepath));
+    }
+
+    const isCached = thumbCache.has(img.id);
+    let cachedSrc = "";
+    if (isCached) {
+      cachedSrc = thumbCache.get(img.id)!;
+      // Refresh accessed entry in the LRU cache
+      thumbCache.delete(img.id);
+      thumbCache.set(img.id, cachedSrc);
+    }
+    const isPending = !isCached;
+    const imgClass = isCached ? "loaded" : "";
+    const previewClass = isCached ? "image-preview" : "image-preview thumb-loading";
+    const srcAttr = isCached ? `src="${cachedSrc}"` : "";
+
     card.innerHTML = `
       <input type="checkbox" class="card-select-checkbox" data-id="${img.id}" ${selectedImageIds.has(img.id) ? 'checked' : ''} />
       <div class="star-btn ${img.favorite ? 'favorite' : ''}" data-id="${img.id}">
         <i class="bi ${img.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
       </div>
-      <div class="image-preview thumb-loading">
-        <img data-thumb-id="${img.id}" data-filepath="${img.filepath}" data-pending="1" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" />
+      <div class="${previewClass}">
+        <img data-thumb-id="${img.id}" data-filepath="${img.filepath}" data-pending="${isPending ? '1' : '0'}" ${srcAttr} alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" class="${imgClass}" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
         ${missingBadge}
         ${img.badgeHtml || ""}
@@ -664,10 +751,10 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
   queue.length = 0;
   if (thumbHideTimer) { clearTimeout(thumbHideTimer); thumbHideTimer = null; }
   thumbTotal = grid.querySelectorAll<HTMLElement>("img[data-thumb-id]").length;
-  thumbLoaded = 0;
+  thumbLoaded = grid.querySelectorAll<HTMLElement>("img[data-thumb-id][data-pending='0']").length;
   updateThumbProgress();
 
-  grid.querySelectorAll<HTMLElement>("img[data-thumb-id]").forEach(img => {
+  grid.querySelectorAll<HTMLElement>("img[data-thumb-id][data-pending='1']").forEach(img => {
     lazyObserver.observe(img);
   });
 }

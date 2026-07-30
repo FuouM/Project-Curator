@@ -1,5 +1,6 @@
 import { callService } from "../ipc";
 import { CharacterIdentity, CharacterDetection } from "../types";
+import { getCachedCrop, setCachedCrop } from "../cards";
 
 interface SuggestionItem {
   name: string;
@@ -158,11 +159,18 @@ export function attachAutocomplete(
 }
 
 function loadCropForElement(el: HTMLElement, detectionId: number) {
+  const cachedUrl = getCachedCrop(detectionId);
+  if (cachedUrl) {
+    el.innerHTML = `<img src="${cachedUrl}" style="width:100%;height:100%;object-fit:cover;" />`;
+    return;
+  }
+
   callService({ GetDetectionCrop: { detection_id: detectionId, max_size: 96 } }).then((cropResp: any) => {
     if ("DetectionCropResult" in cropResp) {
       const bytes = new Uint8Array(cropResp.DetectionCropResult.crop_webp_bytes);
       const blob = new Blob([bytes], { type: "image/webp" });
       const url = URL.createObjectURL(blob);
+      setCachedCrop(detectionId, url);
       el.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" />`;
     }
   }).catch(() => {});

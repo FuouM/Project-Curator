@@ -74,7 +74,10 @@ export function setupNavigation() {
       } else if (view === "filename-parser") {
         refreshBatchPreview();
       } else if (view === "characters") {
-        refreshCharacters();
+        const container = document.getElementById("characters-list-container");
+        if (!container || container.children.length === 0 || container.querySelector(".skeleton-loader")) {
+          refreshCharacters();
+        }
       }
     });
   });
