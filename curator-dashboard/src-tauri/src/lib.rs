@@ -3,10 +3,10 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, OnceLock};
 use tauri::Emitter;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use tokio::sync::OnceCell;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
+use curator_core::grpc::curator_client::CuratorClient;
+use tonic::transport::Channel;
 
 use curator_core::thumbnail::{ThumbnailCache, generate_thumbnail};
 
@@ -105,170 +105,78 @@ fn spawn_service() {
 
 use tokio::sync::Mutex;
 
-fn get_pipe_connection() -> &'static Mutex<Option<NamedPipeClient>> {
-    static CONN: OnceLock<Mutex<Option<NamedPipeClient>>> = OnceLock::new();
-    CONN.get_or_init(|| Mutex::new(None))
+fn get_grpc_client() -> &'static Mutex<Option<CuratorClient<Channel>>> {
+    static CLIENT: OnceLock<Mutex<Option<CuratorClient<Channel>>>> = OnceLock::new();
+    CLIENT.get_or_init(|| Mutex::new(None))
 }
 
-fn get_cached_token() -> &'static Mutex<Option<String>> {
-    static TOKEN: OnceLock<Mutex<Option<String>>> = OnceLock::new();
-    TOKEN.get_or_init(|| Mutex::new(None))
-}
 
 static THUMB_DB_PATH: OnceLock<PathBuf> = OnceLock::new();
 static THUMB_CACHE: OnceCell<Arc<ThumbnailCache>> = OnceCell::const_new();
 static IMAGES_DB: OnceCell<SqlitePool> = OnceCell::const_new();
 
-/// Returns true when `s` appears to contain a complete JSON value
-/// (balanced braces/brackets), accounting for strings and escapes.
-fn is_json_complete(s: &str) -> bool {
-    let s = s.trim();
-    if s.is_empty() {
-        return false;
-    }
-    // Simple string "..." or bare number/bool/null
-    let first = s.chars().next().unwrap();
-    if first != '{' && first != '[' {
-        // Strings, numbers, true/false/null — complete if non-empty
-        return true;
-    }
-    let mut depth: i64 = 0;
-    let mut in_string = false;
-    let mut escape = false;
-    for c in s.chars() {
-        if escape {
-            escape = false;
-            continue;
-        }
-        if c == '\\' && in_string {
-            escape = true;
-            continue;
-        }
-        if c == '"' {
-            in_string = !in_string;
-            continue;
-        }
-        if in_string {
-            continue;
-        }
-        match c {
-            '{' | '[' => depth += 1,
-            '}' | ']' => {
-                depth -= 1;
-                if depth == 0 {
-                    return true;
-                }
-            }
-            _ => {}
-        }
-    }
-    false
-}
 
-async fn get_or_obtain_token() -> Result<String, String> {
-    {
-        let cached = get_cached_token().lock().await;
-        if let Some(ref t) = *cached {
-            return Ok(t.clone());
-        }
-    }
-
-    let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
-    let key_file = data_dir.join("service.key");
-
-    if !key_file.exists() {
-        log_dashboard_event("service.key missing, spawning service...");
-        spawn_service();
-    }
-
-    let start = std::time::Instant::now();
-    while start.elapsed() < std::time::Duration::from_secs(3) {
-        if key_file.exists() {
-            if let Ok(t) = fs::read_to_string(&key_file) {
-                let token = t.trim().to_string();
-                if !token.is_empty() {
-                    let mut cached = get_cached_token().lock().await;
-                    *cached = Some(token.clone());
-                    return Ok(token);
-                }
-            }
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-
-    log_dashboard_event("Retrying spawn_service after key file timeout...");
-    spawn_service();
-    let start = std::time::Instant::now();
-    while start.elapsed() < std::time::Duration::from_secs(2) {
-        if key_file.exists() {
-            if let Ok(t) = fs::read_to_string(&key_file) {
-                let token = t.trim().to_string();
-                if !token.is_empty() {
-                    let mut cached = get_cached_token().lock().await;
-                    *cached = Some(token.clone());
-                    return Ok(token);
-                }
-            }
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-
-    Err("Failed to read service key file within timeout".to_string())
-}
-
-async fn ensure_connected(pipe_name: &str, token: &str) -> Result<NamedPipeClient, String> {
-    if let Ok(client) = connect_and_authenticate(pipe_name, token).await {
-        return Ok(client);
-    }
-
-    spawn_service();
-
-    {
-        let mut cached = get_cached_token().lock().await;
-        *cached = None;
-    }
-
-    let start = std::time::Instant::now();
-    while start.elapsed() < std::time::Duration::from_secs(3) {
-        if let Ok(fresh_token) = get_or_obtain_token().await {
-            if let Ok(client) = connect_and_authenticate(pipe_name, &fresh_token).await {
-                log_dashboard_event("Fast pipe connection established successfully.");
-                return Ok(client);
-            }
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-
-    Err("Failed to establish named pipe connection to service".to_string())
-}
 
 async fn pipe_request(request_json: &str) -> Result<String, String> {
-    let pipe_name = r"\\.\pipe\curator_ipc";
+    let client_mutex = get_grpc_client();
+    let mut guard = client_mutex.lock().await;
 
-    let conn_mutex = get_pipe_connection();
-    let mut conn_guard = conn_mutex.lock().await;
-
-    if conn_guard.is_none() {
-        let token = get_or_obtain_token().await?;
-        let client = ensure_connected(pipe_name, &token).await?;
-        *conn_guard = Some(client);
+    if guard.is_none() {
+        match curator_core::ipc::grpc_helper::connect_ipc().await {
+            Ok(channel) => {
+                *guard = Some(CuratorClient::new(channel));
+            }
+            Err(_) => {
+                spawn_service();
+                let start = std::time::Instant::now();
+                let mut connected = false;
+                while start.elapsed() < std::time::Duration::from_secs(3) {
+                    if let Ok(channel) = curator_core::ipc::grpc_helper::connect_ipc().await {
+                        *guard = Some(CuratorClient::new(channel));
+                        connected = true;
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+                if !connected {
+                    return Err("Failed to establish connection to Curator Service".to_string());
+                }
+            }
+        }
     }
 
-    let send_result = {
-        let client = conn_guard.as_mut().unwrap();
-        send_request_json(client, request_json).await
+    let mut client = guard.clone().unwrap();
+    let grpc_req = curator_core::grpc::CuratorRequest {
+        request_json: request_json.to_string(),
     };
 
-    match send_result {
-        Ok(response) => Ok(response),
-        Err(_e) => {
-            *conn_guard = None;
-            let token = get_or_obtain_token().await?;
-            let client = ensure_connected(pipe_name, &token).await?;
-            *conn_guard = Some(client);
-            send_request_json(conn_guard.as_mut().unwrap(), request_json)
-                .await
-                .map_err(|e2| format!("Retry also failed: {}", e2))
+    match client.call(grpc_req).await {
+        Ok(grpc_resp) => Ok(grpc_resp.into_inner().response_json),
+        Err(e) => {
+            log_dashboard_event(&format!("gRPC call failed, attempting reconnect: {:?}", e));
+            *guard = None;
+            spawn_service();
+            let start = std::time::Instant::now();
+            let mut connected = false;
+            while start.elapsed() < std::time::Duration::from_secs(3) {
+                if let Ok(channel) = curator_core::ipc::grpc_helper::connect_ipc().await {
+                    *guard = Some(CuratorClient::new(channel));
+                    connected = true;
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            if !connected {
+                return Err("Failed to reconnect to Curator Service".to_string());
+            }
+
+            let mut client = guard.clone().unwrap();
+            let grpc_req = curator_core::grpc::CuratorRequest {
+                request_json: request_json.to_string(),
+            };
+            client.call(grpc_req).await
+                .map(|resp| resp.into_inner().response_json)
+                .map_err(|e2| format!("Retry also failed: {:?}", e2))
         }
     }
 }
@@ -279,62 +187,6 @@ async fn send_to_service(request_json: String) -> Result<String, String> {
     pipe_request(&request_json).await
 }
 
-async fn connect_and_authenticate(pipe_name: &str, token: &str) -> Result<NamedPipeClient, String> {
-    let mut client = ClientOptions::new().open(pipe_name).map_err(|e| {
-        format!("Named Pipe open failed: {:?}", e)
-    })?;
-
-    client.write_all(token.as_bytes()).await.map_err(|e| {
-        format!("Handshake write failed: {:?}", e)
-    })?;
-
-    let mut auth_buffer = vec![0; 32];
-    let n = client.read(&mut auth_buffer).await.map_err(|e| {
-        format!("Handshake read failed: {:?}", e)
-    })?;
-
-    let auth_status = String::from_utf8_lossy(&auth_buffer[..n]);
-    if auth_status != "AUTH_OK" {
-        return Err(format!("Authentication failed: {}", auth_status));
-    }
-
-    Ok(client)
-}
-
-async fn send_request_json(
-    client: &mut NamedPipeClient,
-    request_json: &str,
-) -> Result<String, String> {
-    client
-        .write_all(request_json.as_bytes())
-        .await
-        .map_err(|e| format!("Request send failed: {}", e))?;
-
-    let mut accumulated = Vec::new();
-    let mut chunk = vec![0u8; 65536];
-    loop {
-        let n = client
-            .read(&mut chunk)
-            .await
-            .map_err(|e| format!("Response read failed: {}", e))?;
-        if n == 0 {
-            if accumulated.is_empty() {
-                return Err("Connection closed by service before response".to_string());
-            }
-            break;
-        }
-        accumulated.extend_from_slice(&chunk[..n]);
-
-        if let Ok(s) = std::str::from_utf8(&accumulated) {
-            let s = s.trim();
-            if !s.is_empty() && is_json_complete(s) {
-                break;
-            }
-        }
-    }
-
-    Ok(String::from_utf8_lossy(&accumulated).to_string())
-}
 #[tauri::command]
 async fn select_path(is_directory: bool) -> Result<Option<String>, String> {
     let dialog = rfd::AsyncFileDialog::new();
@@ -475,42 +327,45 @@ pub fn run() {
 
             let _ = THUMB_DB_PATH.set(data_dir.join("thumbnail-cache.db"));
 
-            // Eagerly pre-establish the pipe connection in a background task
+            // Eagerly pre-establish the gRPC connection in a background task
             // so the first IPC call from the frontend is instant.
             let app_handle = _app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                let pipe_name = r"\\.\pipe\curator_ipc";
                 log_dashboard_event("Pre-connect: Initializing service connection...");
-                match get_or_obtain_token().await {
-                    Ok(token) => match ensure_connected(pipe_name, &token).await {
-                        Ok(client) => {
-                            let conn_mutex = get_pipe_connection();
-                            let mut conn_guard = conn_mutex.lock().await;
-                            *conn_guard = Some(client);
-                            log_dashboard_event("Pre-connect: Pipe connection ready.");
+                let client_mutex = get_grpc_client();
+                let mut guard = client_mutex.lock().await;
+
+                if guard.is_none() {
+                    match curator_core::ipc::grpc_helper::connect_ipc().await {
+                        Ok(channel) => {
+                            *guard = Some(CuratorClient::new(channel));
+                            log_dashboard_event("Pre-connect: gRPC channel ready.");
                         }
                         Err(e) => {
-                            log_dashboard_event(&format!("Pre-connect pipe failed: {}", e));
+                            log_dashboard_event(&format!("Pre-connect: Initial connect failed: {:?}", e));
+                            spawn_service();
+                            let start = std::time::Instant::now();
+                            while start.elapsed() < std::time::Duration::from_secs(3) {
+                                if let Ok(channel) = curator_core::ipc::grpc_helper::connect_ipc().await {
+                                    *guard = Some(CuratorClient::new(channel));
+                                    log_dashboard_event("Pre-connect: gRPC channel ready after spawning.");
+                                    break;
+                                }
+                                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                            }
                         }
-                    },
-                    Err(e) => {
-                        log_dashboard_event(&format!("Pre-connect token failed: {}", e));
                     }
                 }
 
-                // Warm up: fire a Ping to verify the connection works
-                let ping_json = serde_json::to_string(&"Ping").unwrap_or_default();
-                let conn_mutex = get_pipe_connection();
-                let mut conn_guard = conn_mutex.lock().await;
-                if let Some(ref mut client) = *conn_guard {
-                    match send_request_json(client, &ping_json).await {
+                if let Some(ref mut client) = *guard {
+                    let grpc_req = curator_core::grpc::CuratorRequest {
+                        request_json: serde_json::to_string(&curator_core::ipc::Request::Ping).unwrap_or_default(),
+                    };
+                    match client.call(grpc_req).await {
                         Ok(_) => log_dashboard_event("Pre-connect: Ping OK, connection warm."),
                         Err(e) => {
-                            log_dashboard_event(&format!(
-                                "Pre-connect Ping failed ({}), dropping connection.",
-                                e
-                            ));
-                            *conn_guard = None;
+                            log_dashboard_event(&format!("Pre-connect Ping failed: {:?}", e));
+                            *guard = None;
                         }
                     }
                 }

@@ -1,3 +1,5 @@
+pub mod grpc_helper;
+
 use serde::{Deserialize, Serialize};
 
 fn default_thumb_width() -> u32 {
@@ -277,6 +279,14 @@ pub enum Request {
     /// Delete a single detection by ID.
     DeleteDetection {
         detection_id: i64,
+    },
+    /// Update a detection's bounding box coordinates, clear its cache, and extract a new embedding.
+    UpdateDetectionBoundingBox {
+        detection_id: i64,
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        y1: i32,
     },
     /// Run CPU vs GPU ONNX model benchmark for detection models (YOLO, CCIP feat, CCIP metrics).
     RunDetectionBenchmark,

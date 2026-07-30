@@ -22,3 +22,6 @@ pub use ipc::{DevicePreference, ImageDetails, Request, Response, SearchMatch, Ta
 pub use tagger::{TagPrediction, TaggerEngine};
 pub use vector::{ModelManager, VectorIndex, apply_device_preference};
 
+pub mod grpc {
+    tonic::include_proto!("curator");
+}

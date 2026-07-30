@@ -12,10 +12,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::windows::named_pipe::ServerOptions;
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use curator_core::grpc::curator_server::{Curator, CuratorServer};
+use curator_core::grpc::{CuratorRequest, CuratorResponse};
+use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
+
 
 mod auth;
 mod handlers;
@@ -280,126 +282,72 @@ async fn main() -> Result<(), Error> {
         });
     }
 
-    let pipe_name = r"\\.\pipe\curator_ipc";
-    info!("Listening on Named Pipe: {}", pipe_name);
+    let incoming = curator_core::ipc::grpc_helper::server_incoming()?;
+    info!("gRPC Transport Server configured (Named Pipe on Windows, UDS on Unix).");
 
-    let db_arc = db.clone();
-    let mm_arc = model_manager.clone();
-    let vi_arc = vector_index.clone();
-    let tagger_arc = tagger.clone();
-    let detection_arc = detection.clone();
-    let key_arc = Arc::new(service_key);
-    let data_dir_arc = Arc::new(data_dir);
-    let thumb_arc = thumbnail_cache;
+    let service_impl = CuratorServiceImpl {
+        ctx: Arc::new(ClientContext {
+            db,
+            model_manager,
+            vector_index,
+            tagger,
+            detection,
+            service_key: Arc::new(service_key),
+            data_dir: Arc::new(data_dir),
+            settings: settings_arc,
+            thumbnail_cache,
+        }),
+    };
 
-    let mut is_first = true;
-    loop {
-        let server = ServerOptions::new()
-            .first_pipe_instance(is_first)
-            .create(pipe_name)
-            .context("Failed to create named pipe instance")?;
-        is_first = false;
+    info!("Starting Tonic gRPC Service...");
+    tonic::transport::Server::builder()
+        .add_service(CuratorServer::new(service_impl))
+        .serve_with_incoming(incoming)
+        .await?;
 
-        server.connect().await?;
-
-        let db = db_arc.clone();
-        let mm = mm_arc.clone();
-        let vi = vi_arc.clone();
-        let tagger = tagger_arc.clone();
-        let det = detection_arc.clone();
-        let key = key_arc.clone();
-        let dd = data_dir_arc.clone();
-        let st = settings_arc.clone();
-        let tc = thumb_arc.clone();
-
-        tokio::spawn(async move {
-            let ctx = ClientContext {
-                db,
-                model_manager: mm,
-                vector_index: vi,
-                tagger,
-                detection: det,
-                service_key: key,
-                data_dir: dd,
-                settings: st,
-                thumbnail_cache: tc,
-            };
-            if let Err(e) = handle_client(server, ctx).await {
-                error!("Error handling IPC client: {:?}", e);
-            }
-        });
-    }
+    Ok(())
 }
 
-async fn handle_client(
-    mut stream: tokio::net::windows::named_pipe::NamedPipeServer,
-    ctx: ClientContext,
-) -> Result<(), Error> {
-    let ClientContext {
-        db,
-        model_manager,
-        vector_index,
-        tagger,
-        detection,
-        service_key,
-        data_dir,
-        settings,
-        thumbnail_cache,
-    } = ctx;
-    info!("New client connected to named pipe.");
-    let mut buffer = vec![0; 16384];
+pub struct CuratorServiceImpl {
+    ctx: Arc<ClientContext>,
+}
 
-    let n = stream.read(&mut buffer).await?;
-    if n == 0 {
-        return Ok(());
-    }
-
-    let token_input = String::from_utf8_lossy(&buffer[..n]).trim().to_string();
-    if token_input != *service_key {
-        warn!("Client authentication failed. Invalid token.");
-        stream.write_all(b"AUTH_FAILED").await?;
-        return Ok(());
-    }
-
-    stream.write_all(b"AUTH_OK").await?;
-
-    loop {
-        let n = stream.read(&mut buffer).await?;
-        if n == 0 {
-            break;
-        }
-
-        let request_str = String::from_utf8_lossy(&buffer[..n]);
-        let request: Request = match serde_json::from_str(&request_str) {
+#[tonic::async_trait]
+impl Curator for CuratorServiceImpl {
+    async fn call(
+        &self,
+        request: TonicRequest<CuratorRequest>,
+    ) -> Result<TonicResponse<CuratorResponse>, Status> {
+        let req_payload = request.into_inner();
+        let request_str = req_payload.request_json;
+        
+        let request_parsed: Request = match serde_json::from_str(&request_str) {
             Ok(r) => r,
             Err(e) => {
                 let err_resp = Response::Error {
                     message: format!("Failed to parse request JSON: {:?}", e),
                 };
-                let resp_str = serde_json::to_string(&err_resp)?;
-                stream.write_all(resp_str.as_bytes()).await?;
-                continue;
+                let resp_json = serde_json::to_string(&err_resp).map_err(|e| Status::internal(e.to_string()))?;
+                return Ok(TonicResponse::new(CuratorResponse { response_json: resp_json }));
             }
         };
-
-        info!("Received Request: {:?}", request);
+        
+        info!("Received gRPC Request: {:?}", request_parsed);
         let response = handlers::handle_request(
-            request,
-            &db,
-            &model_manager,
-            &vector_index,
-            &tagger,
-            &detection,
-            &data_dir,
-            &settings,
-            &thumbnail_cache,
+            request_parsed,
+            &self.ctx.db,
+            &self.ctx.model_manager,
+            &self.ctx.vector_index,
+            &self.ctx.tagger,
+            &self.ctx.detection,
+            &self.ctx.data_dir,
+            &self.ctx.settings,
+            &self.ctx.thumbnail_cache,
         )
         .await;
 
-        let response_str = serde_json::to_string(&response)?;
-        stream.write_all(response_str.as_bytes()).await?;
+        let response_json = serde_json::to_string(&response).map_err(|e| Status::internal(e.to_string()))?;
+        Ok(TonicResponse::new(CuratorResponse { response_json }))
     }
-
-    info!("Client disconnected.");
-    Ok(())
 }
+

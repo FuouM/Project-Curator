@@ -3,8 +3,7 @@ use clap::{Parser, Subcommand};
 use curator_core::ipc::{EmbeddingModel, ImageDetails, Request, Response};
 use std::fs;
 use std::path::PathBuf;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::windows::named_pipe::ClientOptions;
+
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Command line client for Project Curator", long_about = None)]
@@ -124,10 +123,11 @@ async fn main() -> Result<(), Error> {
             key_file
         ));
     }
-    let token = fs::read_to_string(&key_file)
+    let _token = fs::read_to_string(&key_file)
         .context("Failed to read service key file")?
         .trim()
         .to_string();
+
 
     // 2. Map CLI command to IPC Request
     let request = match cli.command {
@@ -216,51 +216,24 @@ async fn main() -> Result<(), Error> {
         }
     };
 
-    // 3. Connect to Named Pipe IPC Server
-    let pipe_name = r"\\.\pipe\curator_ipc";
-    let mut client = ClientOptions::new()
-        .open(pipe_name)
-        .context("Failed to connect to Curator Service Named Pipe. Is the service running?")?;
+    // 3. Connect to Curator gRPC Service
+    let channel = curator_core::ipc::grpc_helper::connect_ipc().await
+        .context("Failed to connect to Curator Service. Is the service running?")?;
+    let mut client = curator_core::grpc::curator_client::CuratorClient::new(channel);
 
-    // 4. Perform Handshake (Send Token)
-    client.write_all(token.as_bytes()).await?;
-
-    let mut auth_buffer = vec![0; 32];
-    let n = client.read(&mut auth_buffer).await?;
-    let auth_status = String::from_utf8_lossy(&auth_buffer[..n]);
-    if auth_status != "AUTH_OK" {
-        return Err(anyhow::anyhow!(
-            "Service authentication failed: {}",
-            auth_status
-        ));
-    }
-
-    // 5. Send Request
+    // 4. Send Request and Get Response
     let request_str = serde_json::to_string(&request)?;
-    client.write_all(request_str.as_bytes()).await?;
-    client.flush().await?;
-    // Shutdown write half so the service knows we are done sending requests
-    // but keep read half open. NamedPipeServer loop reads until connection closes.
-    // In our architecture, it is a request-response pattern.
-    // Let's read until we get the full response packet.
+    let grpc_req = curator_core::grpc::CuratorRequest {
+        request_json: request_str,
+    };
+    let grpc_resp = client.call(grpc_req).await
+        .context("gRPC request to Curator Service failed")?;
+    let response_str = grpc_resp.into_inner().response_json;
 
-    // 6. Read Response
-    let mut response_buffer = Vec::new();
-    let mut temp_buf = vec![0; 65536];
-    loop {
-        let n = client.read(&mut temp_buf).await?;
-        if n == 0 {
-            break;
-        }
-        response_buffer.extend_from_slice(&temp_buf[..n]);
-        // If we can parse a valid Response JSON, we have the complete packet.
-        if serde_json::from_slice::<Response>(&response_buffer).is_ok() {
-            break;
-        }
-    }
-    let response: Response = serde_json::from_slice(&response_buffer).context(
-        "Failed to parse response JSON from service. The buffer may have been truncated.",
+    let response: Response = serde_json::from_str(&response_str).context(
+        "Failed to parse response JSON from service.",
     )?;
+
 
     // 7. Format and Print Response
     match response {

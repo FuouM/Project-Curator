@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package curator;
+
+service Curator {
+    rpc Call (CuratorRequest) returns (CuratorResponse);
+}
+
+message CuratorRequest {
+    string request_json = 1;
+}
+
+message CuratorResponse {
+    string response_json = 2;
+}
