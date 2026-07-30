@@ -119,6 +119,7 @@ npm run tauri dev
   * Display structural layout skeletons and empty placeholder outlines instantly when rendering tabs or complex view components.
   * Defer secondary details queries, crop generation tasks, and thumbnail updates to a microtask/timer delay (`setTimeout(..., 50)`) to allow the UI to paint without freezing.
 * **Git Staging & Commiting Mandate**:
+  * **Never Auto-Commit**: NEVER run `git commit` or `git push` commands automatically. Only perform Git commits or pushes when the user explicitly instructs you to do so.
   * **NO Wildcard Staging**: NEVER run wildcard staging commands (`git add .`, `git add -A`, or `git add *`). Explicitly stage target files by their path to avoid committing untracked temp files, log files, or build artifacts.
   * **Semantic Commit Bodies**: Follow the repo's commit body style. Commit messages must consist of a semantic summary line (`type: description`) followed by detailed bullet points documenting the structural file modifications.
 
