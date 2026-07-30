@@ -267,6 +267,75 @@ impl DetectionPipeline {
         Ok(())
     }
 
+    /// Update a detection's bounding box coordinates, clear its cache, and extract a new embedding.
+    pub async fn update_detection_bbox(&self, detection_id: i64, x0: i32, y0: i32, x1: i32, y1: i32) -> Result<()> {
+        // 1. Invalidate crop cache
+        self.crop_cache.delete(detection_id).await?;
+
+        // 2. Fetch image_id
+        let row: (i64,) = sqlx::query_as(
+            "SELECT image_id FROM character_detections WHERE id = ?"
+        )
+        .bind(detection_id)
+        .fetch_one(&self.db)
+        .await?;
+
+        let image_id = row.0;
+
+        // 3. Fetch image path
+        let image: Image = sqlx::query_as("SELECT * FROM images WHERE id = ? AND deleted_at IS NULL")
+            .bind(image_id)
+            .fetch_one(&self.db)
+            .await?;
+
+        let filepath = std::path::Path::new(&image.current_filepath);
+        if !filepath.exists() {
+            anyhow::bail!("Image file not found: {:?}", filepath);
+        }
+
+        // 4. Decode image
+        let (rgb_buf, width, height) = image_decode::decode_rgb(filepath)?;
+        let img = RgbImage::from_raw(width, height, rgb_buf)
+            .context("Failed to create RgbImage from decoded buffer")?;
+
+        // 5. Extract crop & CCIP embedding
+        // Clamp coordinates to image dimensions
+        let x0 = x0.clamp(0, width as i32 - 1);
+        let y0 = y0.clamp(0, height as i32 - 1);
+        let x1 = x1.clamp(0, width as i32);
+        let y1 = y1.clamp(0, height as i32);
+
+        let det = StoredDetection {
+            id: detection_id,
+            image_id,
+            x0,
+            y0,
+            x1,
+            y1,
+            confidence: 1.0,
+            has_embedding: false,
+            identity_id: None,
+        };
+
+        let crop = extract_crop_padded(&img, &det, 0.0)?;
+        let embedding = self.ccip.extract_embedding(&crop)?;
+        let embedding_bytes = f32_vec_to_bytes(&embedding);
+
+        // 6. Update database
+        sqlx::query("UPDATE character_detections SET x0 = ?, y0 = ?, x1 = ?, y1 = ?, confidence = ?, ccip_embedding = ? WHERE id = ?")
+            .bind(x0)
+            .bind(y0)
+            .bind(x1)
+            .bind(y1)
+            .bind(1.0f32)
+            .bind(&embedding_bytes)
+            .bind(detection_id)
+            .execute(&self.db)
+            .await?;
+
+        Ok(())
+    }
+
     /// Re-identify all detections against current character identities.
     pub async fn reidentify_all(&self) -> Result<ReidentifyResult> {
         let identities = self.load_identities().await?;

@@ -639,15 +639,7 @@
             <div class="group-box-title">Hardware Throughput Benchmark</div>
             <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">
               Measure inference latency on CPU vs GPU. Runs all available models (CLIP, Tagger, YOLO, CCIP) and reports average speed and throughput factor.
-            </p>
-            <div style="display: flex; gap: 16px; align-items: center;">
-              <div class="form-group" style="margin-bottom: 0; display: flex; align-items: center; gap: 8px;">
-                <label style="font-weight: 600; font-size: 11px;">Embedding Model:</label>
-                <select class="input-field" id="benchmark-embedding-model" style="width: 180px; padding: 2px 4px; font-size: 11px;">
-                  <option value="clip-vit-b-32">CLIP ViT-B/32 (224x224)</option>
-                  <option value="mobileclip-s2">MobileCLIP-S2 (256x256)</option>
-                </select>
-              </div>
+                  <div style="display: flex; gap: 16px; align-items: center;">
               <button class="win-button" id="run-benchmark-btn">
                 <i class="bi bi-play-fill"></i> Run Benchmark
               </button>
@@ -660,9 +652,9 @@
                   <span style="font-weight: bold;">GPU Provider Support:</span>
                   <span id="benchmark-gpu-loaded">—</span>
                 </div>
-
+ 
                 <div style="margin-top: 4px;">
-                  <div id="benchmark-clip-title" style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">CLIP Vision Model (224x224)</div>
+                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">CLIP ViT-B/32 Vision Model (224x224)</div>
                   <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
                     <span>CPU Throughput:</span>
                     <span id="benchmark-clip-cpu">—</span>
@@ -674,6 +666,22 @@
                   <div style="display: flex; justify-content: space-between; padding-top: 2px;">
                     <span>Throughput Factor:</span>
                     <span id="benchmark-clip-speedup">—</span>
+                  </div>
+                </div>
+
+                <div style="margin-top: 8px;">
+                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">MobileCLIP-S2 Vision Model (256x256)</div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>CPU Throughput:</span>
+                    <span id="benchmark-mclip-cpu">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>GPU Throughput:</span>
+                    <span id="benchmark-mclip-gpu">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
+                    <span>Throughput Factor:</span>
+                    <span id="benchmark-mclip-speedup">—</span>
                   </div>
                 </div>
 
@@ -1016,6 +1024,48 @@
           <span class="modal-close">&times;</span>
         </div>
         <div class="modal-body" id="image-info-modal-body" style="max-height: 70vh; overflow-y: auto;">
+        </div>
+      </div>
+    </div>
+
+    <!-- Bounding Box Editor Modal -->
+    <div id="bbox-editor-modal" class="modal">
+      <div class="modal-content" style="width: 700px; max-width: 90vw;">
+        <div class="modal-header">
+          <span class="modal-title"><i class="bi bi-bounding-box-circles"></i> Edit Bounding Box</span>
+          <span class="modal-close" id="bbox-editor-close">&times;</span>
+        </div>
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px; align-items: center;">
+          <p style="font-size: 11px; color: #555; align-self: flex-start; margin: 0;">
+            Drag the corners/edges to adjust the bounding box, or click and drag anywhere to draw a new box.
+          </p>
+          <div id="bbox-editor-container" style="position: relative; max-width: 100%; max-height: 50vh; overflow: hidden; background: #222; border: 1px solid #7a7a7a; display: flex; align-items: center; justify-content: center;">
+            <img id="bbox-editor-img" src="" style="max-width: 100%; max-height: 50vh; display: block; user-select: none; -webkit-user-drag: none;" />
+            <div id="bbox-editor-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair;">
+              <div id="bbox-editor-box" style="position: absolute; border: 2px solid #e74c3c; box-sizing: border-box; display: none; background: rgba(231, 76, 60, 0.15); cursor: move;">
+                <div class="bbox-handle nw" style="position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #e74c3c; top: -5px; left: -5px; cursor: nwse-resize;"></div>
+                <div class="bbox-handle ne" style="position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #e74c3c; top: -5px; right: -5px; cursor: nesw-resize;"></div>
+                <div class="bbox-handle se" style="position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #e74c3c; bottom: -5px; right: -5px; cursor: nwse-resize;"></div>
+                <div class="bbox-handle sw" style="position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #e74c3c; bottom: -5px; left: -5px; cursor: nesw-resize;"></div>
+                <div class="bbox-handle n" style="position: absolute; height: 6px; left: 3px; right: 3px; top: -4px; cursor: ns-resize;"></div>
+                <div class="bbox-handle s" style="position: absolute; height: 6px; left: 3px; right: 3px; bottom: -4px; cursor: ns-resize;"></div>
+                <div class="bbox-handle e" style="position: absolute; width: 6px; top: 3px; bottom: 3px; right: -4px; cursor: ew-resize;"></div>
+                <div class="bbox-handle w" style="position: absolute; width: 6px; top: 3px; bottom: 3px; left: -4px; cursor: ew-resize;"></div>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; width: 100%; justify-content: space-between; align-items: center; border-top: 1px solid #ccc; padding-top: 8px; font-size: 11px;">
+            <div style="display: flex; gap: 8px;">
+              <label>X0: <input type="number" id="bbox-input-x0" style="width: 55px; font-size: 11px; padding: 1px 3px;" /></label>
+              <label>Y0: <input type="number" id="bbox-input-y0" style="width: 55px; font-size: 11px; padding: 1px 3px;" /></label>
+              <label>X1: <input type="number" id="bbox-input-x1" style="width: 55px; font-size: 11px; padding: 1px 3px;" /></label>
+              <label>Y1: <input type="number" id="bbox-input-y1" style="width: 55px; font-size: 11px; padding: 1px 3px;" /></label>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button class="win-button" id="bbox-editor-save"><i class="bi bi-check-lg"></i> Save</button>
+              <button class="win-button" id="bbox-editor-cancel">Cancel</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

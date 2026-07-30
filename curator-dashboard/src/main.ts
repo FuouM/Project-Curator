@@ -13,7 +13,56 @@ import { callService } from "./ipc";
 import { updateStatusIndicators, updateTaggerIndicators, applySettingsToUI, startStatusPolling, renderFeaturedDay } from "./views/dashboard";
 import { renderImages, setupGridDelegation } from "./cards";
 
+import { getCurrentWindow } from "@tauri-apps/api/window";
+
+async function restoreWindowState() {
+  try {
+    const appWindow = getCurrentWindow();
+    const savedState = localStorage.getItem("curator-window-state");
+    if (savedState) {
+      const { x, y, width, height } = JSON.parse(savedState);
+      if (width && height) {
+        await appWindow.setSize({ type: 'Physical', width, height });
+      }
+      if (x !== undefined && y !== undefined) {
+        await appWindow.setPosition({ type: 'Physical', x, y });
+      }
+    }
+  } catch (_) {}
+
+  setupWindowStateListener();
+}
+
+function setupWindowStateListener() {
+  try {
+    const appWindow = getCurrentWindow();
+    let saveTimeout: any = null;
+    const saveState = async () => {
+      try {
+        const outerSize = await appWindow.outerSize();
+        const outerPosition = await appWindow.outerPosition();
+        localStorage.setItem("curator-window-state", JSON.stringify({
+          width: outerSize.width,
+          height: outerSize.height,
+          x: outerPosition.x,
+          y: outerPosition.y
+        }));
+      } catch (_) {}
+    };
+
+    appWindow.listen("tauri://resize", () => {
+      clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(saveState, 300);
+    });
+    appWindow.listen("tauri://move", () => {
+      clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(saveState, 300);
+    });
+  } catch (_) {}
+}
+
 function init() {
+  restoreWindowState();
   setupNavigation();
   setupImport();
   setupSearch();

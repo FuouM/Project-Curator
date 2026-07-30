@@ -56,6 +56,7 @@ export type RequestPayload =
   | { SearchByCharacter: { identity_id: number } }
   | { ListUnassignedDetections: null }
   | { DeleteDetection: { detection_id: number } }
+  | { UpdateDetectionBoundingBox: { detection_id: number; x0: number; y0: number; x1: number; y1: number } }
   | { RunDetectionBenchmark: null };
 
 export interface TokenBlock {

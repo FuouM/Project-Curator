@@ -399,8 +399,49 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number) {
       cropsContainer.innerHTML = "";
       for (const det of matchingDets) {
         const thumb = document.createElement("div");
-        thumb.style.cssText = "width:80px;height:80px;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px;";
+        thumb.style.cssText = "position:relative;width:80px;height:80px;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px;";
         thumb.innerHTML = '<i class="bi bi-image" style="color:#999;font-size:16px;"></i>';
+
+        const unassignBtn = document.createElement("span");
+        unassignBtn.className = "unassign-crop-btn";
+        unassignBtn.style.cssText = "position:absolute;top:2px;right:2px;width:16px;height:16px;background:rgba(231,76,60,0.85);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;z-index:5;";
+        unassignBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+        unassignBtn.title = "Unassign detection";
+        unassignBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          if (!confirm(`Are you sure you want to unassign this sample from this character identity?`)) return;
+          try {
+            await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: null } });
+            await refreshCharacters();
+          } catch (err: any) {
+            alert("Failed to unassign sample: " + err.message);
+          }
+        });
+        thumb.appendChild(unassignBtn);
+
+        const editBtn = document.createElement("span");
+        editBtn.className = "edit-crop-btn";
+        editBtn.style.cssText = "position:absolute;bottom:2px;right:2px;width:16px;height:16px;background:rgba(0,0,0,0.65);color:#fff;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;cursor:pointer;z-index:5;";
+        editBtn.innerHTML = '<i class="bi bi-bounding-box"></i>';
+        editBtn.title = "Edit bounding box";
+        editBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          try {
+            const imgResp = await callService({ GetImage: { image_id: det.image_id } });
+            if ("ImageResult" in imgResp) {
+              const fp = imgResp.ImageResult.image.current_filepath;
+              import("../bbox-editor").then(m => {
+                m.openBBoxEditor(det.id, det.image_id, fp, det.x0, det.y0, det.x1, det.y1, () => {
+                  refreshCharacters();
+                });
+              });
+            }
+          } catch (err: any) {
+            alert("Failed to open bounding box editor: " + err.message);
+          }
+        });
+        thumb.appendChild(editBtn);
+
         cropsContainer.appendChild(thumb);
         loadCropForElement(thumb, det.id);
       }

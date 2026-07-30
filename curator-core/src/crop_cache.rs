@@ -56,6 +56,14 @@ impl CropCache {
         row.map(|(data,)| data)
     }
 
+    pub async fn delete(&self, detection_id: i64) -> Result<()> {
+        sqlx::query("DELETE FROM detection_crops WHERE detection_id = ?")
+            .bind(detection_id)
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+
     pub async fn put(&self, detection_id: i64, size: u32, data: &[u8]) -> Result<()> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

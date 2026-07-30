@@ -836,6 +836,14 @@ pub async fn handle_request(
                 },
             }
         }
+        Request::UpdateDetectionBoundingBox { detection_id, x0, y0, x1, y1 } => {
+            match detection.update_detection_bbox(detection_id, x0, y0, x1, y1).await {
+                Ok(()) => Response::Success,
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
 
         Request::RunDetectionBenchmark => {
             let det_dir = data_dir.join("models");

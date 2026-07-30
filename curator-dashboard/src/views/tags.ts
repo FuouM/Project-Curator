@@ -80,7 +80,9 @@ export async function refreshCardTags(imgId: number) {
     const featuredCard = document.querySelector(`#featured-day-content [data-image-id="${imgId}"]`);
     if (featuredCard) {
       const featuredTagList = document.querySelector("#featured-day-content .featured-details .tag-list");
-      if (featuredTagList) featuredTagList.innerHTML = tagHtml;
+      if (featuredTagList) {
+        featuredTagList.innerHTML = tags.map((t: any) => getTagPillHtml(t)).join("");
+      }
     }
   } catch (e) {
     console.error("Failed to refresh card tags:", e);

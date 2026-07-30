@@ -345,6 +345,10 @@ export function attachCardEventHandlers(
       handleCopyClick(container, imageId);
       return;
     }
+    if (target.closest(".info-btn")) {
+      handleInfoClick(imageId);
+      return;
+    }
     if (target.closest(".image-open-folder-btn")) {
       const dir = filepath.replace(/[\\/][^\\/]+$/, "");
       invoke("open_file_externally", { path: dir }).catch(() => {});
@@ -644,6 +648,40 @@ async function loadDetectionsForImage(imageId: number) {
 
         detEl.appendChild(cropThumb);
         detEl.appendChild(infoEl);
+
+        const actionsEl = document.createElement("div");
+        actionsEl.style.cssText = "display:flex;gap:4px;margin-left:auto;align-items:center;";
+        actionsEl.innerHTML = `
+          <button class="win-button edit-bbox-btn" style="font-size:10px;padding:2px 6px;" title="Edit bounding box">
+            <i class="bi bi-bounding-box"></i>
+          </button>
+          <button class="win-button danger delete-det-btn" style="font-size:10px;padding:2px 6px;" title="Delete detection">
+            <i class="bi bi-trash"></i>
+          </button>
+        `;
+        detEl.appendChild(actionsEl);
+
+        actionsEl.querySelector(".edit-bbox-btn")?.addEventListener("click", () => {
+          callService({ GetImage: { image_id: imageId } }).then((imgResp: any) => {
+            if ("ImageResult" in imgResp) {
+              const fp = imgResp.ImageResult.image.current_filepath;
+              import("./bbox-editor").then(m => {
+                m.openBBoxEditor(det.id, imageId, fp, det.x0, det.y0, det.x1, det.y1, () => {
+                  loadDetectionsForImage(imageId);
+                  refreshCharacters();
+                });
+              });
+            }
+          });
+        });
+
+        actionsEl.querySelector(".delete-det-btn")?.addEventListener("click", async () => {
+          if (!confirm("Are you sure you want to delete this detection? This will remove it from the system.")) return;
+          await callService({ DeleteDetection: { detection_id: det.id } });
+          loadDetectionsForImage(imageId);
+          refreshCharacters();
+        });
+
         list.appendChild(detEl);
 
         // Identity assignment handler

@@ -9,6 +9,10 @@ export function setupBenchmark() {
   const clipGpu = document.getElementById("benchmark-clip-gpu");
   const clipSpeedup = document.getElementById("benchmark-clip-speedup");
 
+  const mclipCpu = document.getElementById("benchmark-mclip-cpu");
+  const mclipGpu = document.getElementById("benchmark-mclip-gpu");
+  const mclipSpeedup = document.getElementById("benchmark-mclip-speedup");
+
   const taggerCpu = document.getElementById("benchmark-tagger-cpu");
   const taggerGpu = document.getElementById("benchmark-tagger-gpu");
   const taggerSpeedup = document.getElementById("benchmark-tagger-speedup");
@@ -28,21 +32,18 @@ export function setupBenchmark() {
   if (!runBtn) return;
 
   function setRunning() {
-    if (clipCpu) clipCpu.textContent = "Running...";
-    if (clipGpu) clipGpu.textContent = "Running...";
-    if (clipSpeedup) clipSpeedup.textContent = "Calculating...";
-    if (taggerCpu) taggerCpu.textContent = "Running...";
-    if (taggerGpu) taggerGpu.textContent = "Running...";
-    if (taggerSpeedup) taggerSpeedup.textContent = "Calculating...";
-    if (yoloCpu) yoloCpu.textContent = "Running...";
-    if (yoloGpu) yoloGpu.textContent = "Running...";
-    if (yoloSpeedup) yoloSpeedup.textContent = "Calculating...";
-    if (ccipFeatCpu) ccipFeatCpu.textContent = "Running...";
-    if (ccipFeatGpu) ccipFeatGpu.textContent = "Running...";
-    if (ccipFeatSpeedup) ccipFeatSpeedup.textContent = "Calculating...";
-    if (ccipMetricsCpu) ccipMetricsCpu.textContent = "Running...";
-    if (ccipMetricsGpu) ccipMetricsGpu.textContent = "Running...";
-    if (ccipMetricsSpeedup) ccipMetricsSpeedup.textContent = "Calculating...";
+    const targets = [
+      clipCpu, clipGpu, mclipCpu, mclipGpu, taggerCpu, taggerGpu,
+      yoloCpu, yoloGpu, ccipFeatCpu, ccipFeatGpu, ccipMetricsCpu, ccipMetricsGpu
+    ];
+    const speedups = [
+      clipSpeedup, mclipSpeedup, taggerSpeedup, yoloSpeedup,
+      ccipFeatSpeedup, ccipMetricsSpeedup
+    ];
+
+    targets.forEach(el => { if (el) el.textContent = "Running..."; });
+    speedups.forEach(el => { if (el) el.textContent = "Calculating..."; });
+
     if (gpuLoaded) gpuLoaded.textContent = "...";
     if (errText) errText.textContent = "";
   }
@@ -70,80 +71,88 @@ export function setupBenchmark() {
   }
 
   runBtn.addEventListener("click", async () => {
-    const modelSelect = document.getElementById("benchmark-embedding-model") as HTMLSelectElement;
-    const selectedModel = modelSelect ? (modelSelect.value as "clip-vit-b-32" | "mobileclip-s2") : "clip-vit-b-32";
-
-    updateBenchmarkModelHeader(selectedModel);
-
     runBtn.setAttribute("disabled", "true");
     runBtn.textContent = "Benchmarking...";
     setRunning();
 
-    // Run both benchmarks in parallel
-    const [clipResp, detResp] = await Promise.all([
-      callService({ RunBenchmark: { embedding_model: selectedModel } }).catch((e: any) => ({ Error: { message: e.message } })),
-      callService({ RunDetectionBenchmark: null }).catch((e: any) => ({ Error: { message: e.message } })),
-    ]);
+    try {
+      // 1. Run CLIP ViT-B/32 Benchmark
+      const clipResp = await callService({ RunBenchmark: { embedding_model: "clip-vit-b-32" } })
+        .catch((e: any) => ({ Error: { message: e.message } }));
 
-    // Handle CLIP/Tagger results
-    if ("BenchmarkResult" in clipResp) {
-      const {
-        clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error,
-        tagger_cpu_time_ms, tagger_gpu_time_ms, tagger_gpu_error,
-        has_gpu
-      } = clipResp.BenchmarkResult;
+      // Handle CLIP ViT-B/32 results
+      if ("BenchmarkResult" in clipResp) {
+        const {
+          clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error,
+          tagger_cpu_time_ms, tagger_gpu_time_ms, tagger_gpu_error,
+          has_gpu
+        } = clipResp.BenchmarkResult;
 
-      displayThroughput(clipCpu, clipGpu, clipSpeedup, clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error);
+        displayThroughput(clipCpu, clipGpu, clipSpeedup, clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error);
 
-      if (tagger_cpu_time_ms !== null) {
-        displayThroughput(taggerCpu, taggerGpu, taggerSpeedup, tagger_cpu_time_ms, tagger_gpu_time_ms, tagger_gpu_error);
-      } else {
-        if (taggerCpu) taggerCpu.textContent = tagger_gpu_error ? `Error: ${tagger_gpu_error}` : "N/A (Model file not found)";
-        if (taggerGpu) taggerGpu.textContent = "N/A";
-        if (taggerSpeedup) taggerSpeedup.textContent = "—";
-      }
-
-      if (gpuLoaded) {
-        if (has_gpu) {
-          gpuLoaded.textContent = "Yes";
-          gpuLoaded.style.color = "#008000";
-          gpuLoaded.style.fontWeight = "bold";
+        if (tagger_cpu_time_ms !== null) {
+          displayThroughput(taggerCpu, taggerGpu, taggerSpeedup, tagger_cpu_time_ms, tagger_gpu_time_ms, tagger_gpu_error);
         } else {
-          gpuLoaded.textContent = "No (CPU only build)";
-          gpuLoaded.style.color = "#555555";
+          if (taggerCpu) taggerCpu.textContent = tagger_gpu_error ? `Error: ${tagger_gpu_error}` : "N/A (Model file not found)";
+          if (taggerGpu) taggerGpu.textContent = "N/A";
+          if (taggerSpeedup) taggerSpeedup.textContent = "—";
         }
+
+        if (gpuLoaded) {
+          if (has_gpu) {
+            gpuLoaded.textContent = "Yes";
+            gpuLoaded.style.color = "#008000";
+            gpuLoaded.style.fontWeight = "bold";
+          } else {
+            gpuLoaded.textContent = "No (CPU only build)";
+            gpuLoaded.style.color = "#555555";
+          }
+        }
+      } else if ("Error" in clipResp) {
+        if (errText) errText.textContent = `CLIP ViT-B/32: ${clipResp.Error.message}`;
       }
-    } else if ("Error" in clipResp) {
-      if (errText) errText.textContent = clipResp.Error.message;
+
+      // 2. Run MobileCLIP-S2 Benchmark
+      const mclipResp = await callService({ RunBenchmark: { embedding_model: "mobileclip-s2" } })
+        .catch((e: any) => ({ Error: { message: e.message } }));
+
+      if ("BenchmarkResult" in mclipResp) {
+        const {
+          clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error,
+        } = mclipResp.BenchmarkResult;
+
+        displayThroughput(mclipCpu, mclipGpu, mclipSpeedup, clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error);
+      } else if ("Error" in mclipResp) {
+        const existing = errText?.textContent || "";
+        if (errText) errText.textContent = existing ? `${existing}\nMobileCLIP: ${mclipResp.Error.message}` : `MobileCLIP: ${mclipResp.Error.message}`;
+      }
+
+      // 3. Run Detection Benchmark (YOLO, CCIP feature/metrics)
+      const detResp = await callService({ RunDetectionBenchmark: null })
+        .catch((e: any) => ({ Error: { message: e.message } }));
+
+      if ("DetectionBenchmarkResult" in detResp) {
+        const {
+          yolo_cpu_time_ms, yolo_gpu_time_ms, yolo_gpu_error,
+          ccip_feat_cpu_time_ms, ccip_feat_gpu_time_ms, ccip_feat_gpu_error,
+          ccip_metrics_cpu_time_ms, ccip_metrics_gpu_time_ms, ccip_metrics_gpu_error,
+        } = detResp.DetectionBenchmarkResult;
+
+        displayThroughput(yoloCpu, yoloGpu, yoloSpeedup, yolo_cpu_time_ms, yolo_gpu_time_ms, yolo_gpu_error);
+        displayThroughput(ccipFeatCpu, ccipFeatGpu, ccipFeatSpeedup, ccip_feat_cpu_time_ms, ccip_feat_gpu_time_ms, ccip_feat_gpu_error);
+        displayThroughput(ccipMetricsCpu, ccipMetricsGpu, ccipMetricsSpeedup, ccip_metrics_cpu_time_ms, ccip_metrics_gpu_time_ms, ccip_metrics_gpu_error);
+      } else if ("Error" in detResp) {
+        const existing = errText?.textContent || "";
+        if (errText) errText.textContent = existing ? `${existing}\nDetection: ${detResp.Error.message}` : `Detection: ${detResp.Error.message}`;
+      }
+    } catch (e: any) {
+      if (errText) errText.textContent = `Execution error: ${e.message || e}`;
+    } finally {
+      runBtn.removeAttribute("disabled");
+      runBtn.innerHTML = '<i class="bi bi-play-fill"></i> Run Benchmark';
     }
-
-    // Handle Detection results
-    if ("DetectionBenchmarkResult" in detResp) {
-      const {
-        yolo_cpu_time_ms, yolo_gpu_time_ms, yolo_gpu_error,
-        ccip_feat_cpu_time_ms, ccip_feat_gpu_time_ms, ccip_feat_gpu_error,
-        ccip_metrics_cpu_time_ms, ccip_metrics_gpu_time_ms, ccip_metrics_gpu_error,
-      } = detResp.DetectionBenchmarkResult;
-
-      displayThroughput(yoloCpu, yoloGpu, yoloSpeedup, yolo_cpu_time_ms, yolo_gpu_time_ms, yolo_gpu_error);
-      displayThroughput(ccipFeatCpu, ccipFeatGpu, ccipFeatSpeedup, ccip_feat_cpu_time_ms, ccip_feat_gpu_time_ms, ccip_feat_gpu_error);
-      displayThroughput(ccipMetricsCpu, ccipMetricsGpu, ccipMetricsSpeedup, ccip_metrics_cpu_time_ms, ccip_metrics_gpu_time_ms, ccip_metrics_gpu_error);
-    } else if ("Error" in detResp) {
-      const existing = errText?.textContent || "";
-      if (errText) errText.textContent = existing ? `${existing}\nDetection: ${detResp.Error.message}` : `Detection: ${detResp.Error.message}`;
-    }
-
-    runBtn.removeAttribute("disabled");
-    runBtn.innerHTML = '<i class="bi bi-play-fill"></i> Run Benchmark';
   });
 }
 
-export function updateBenchmarkModelHeader(model: string | null) {
-  const titleEl = document.getElementById("benchmark-clip-title");
-  if (!titleEl) return;
-  if (model === "mobileclip-s2") {
-    titleEl.textContent = "MobileCLIP-S2 Model (256x256)";
-  } else {
-    titleEl.textContent = "CLIP ViT-B/32 Model (224x224)";
-  }
-}
+// Kept for signature compatibility if imported elsewhere
+export function updateBenchmarkModelHeader(_model: string | null) {}
