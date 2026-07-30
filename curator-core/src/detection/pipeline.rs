@@ -47,64 +47,82 @@ impl DetectionPipeline {
         let mut identities = self.load_identities().await?;
 
         let mut stored = Vec::new();
-        for det in &detections {
-            let crop = extract_crop(&img, det)?;
-            let embedding = self.ccip.extract_embedding(&crop)?;
-
-            let mut matched_identity: Option<i64> = None;
-            for identity in &identities {
-                let refs = self.load_identity_embeddings(identity.id).await?;
-                if refs.is_empty() {
-                    continue;
-                }
-                let (is_match, _diff) = self.ccip.compare_embeddings(&embedding, &refs)?;
-                if is_match {
-                    matched_identity = Some(identity.id);
-                    break;
-                }
-            }
-
-            // Auto-create identity for unmatched detections
-            if matched_identity.is_none() {
-                let new_id = self.create_next_identity().await?;
-                matched_identity = Some(new_id);
-                let new_name = format!("Character {}", new_id);
-                identities.push(CharacterIdentity {
-                    id: new_id,
-                    name: new_name,
-                    detection_count: 0,
-                    created_at: String::new(),
-                });
-            }
-
-            let embedding_bytes = f32_vec_to_bytes(&embedding);
-            let result = sqlx::query(
-                "INSERT INTO character_detections (image_id, x0, y0, x1, y1, confidence, ccip_embedding, identity_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        if !detections.is_empty() {
+            // Pre-load all character identity embeddings in a single query to avoid N queries in loop
+            let mut identity_embeddings: std::collections::HashMap<i64, Vec<Vec<f32>>> = std::collections::HashMap::new();
+            let rows: Vec<(i64, Vec<u8>)> = sqlx::query_as(
+                "SELECT identity_id, ccip_embedding FROM character_detections WHERE identity_id IS NOT NULL AND ccip_embedding IS NOT NULL"
             )
-            .bind(image_id)
-            .bind(det.x0)
-            .bind(det.y0)
-            .bind(det.x1)
-            .bind(det.y1)
-            .bind(det.confidence)
-            .bind(&embedding_bytes)
-            .bind(matched_identity)
-            .execute(&self.db)
+            .fetch_all(&self.db)
             .await?;
+            for (ident_id, emb_bytes) in rows {
+                identity_embeddings.entry(ident_id).or_default().push(bytes_to_f32_vec(&emb_bytes));
+            }
 
-            let detection_id = result.last_insert_rowid();
+            for det in &detections {
+                let crop = extract_crop(&img, det)?;
+                let embedding = self.ccip.extract_embedding(&crop)?;
 
-            stored.push(StoredDetection {
-                id: detection_id,
-                image_id,
-                x0: det.x0,
-                y0: det.y0,
-                x1: det.x1,
-                y1: det.y1,
-                confidence: det.confidence,
-                has_embedding: true,
-                identity_id: matched_identity,
-            });
+                let mut matched_identity: Option<i64> = None;
+                for identity in &identities {
+                    if let Some(refs) = identity_embeddings.get(&identity.id) {
+                        let (is_match, _diff) = self.ccip.compare_embeddings(&embedding, refs)?;
+                        if is_match {
+                            matched_identity = Some(identity.id);
+                            break;
+                        }
+                    }
+                }
+
+                // Auto-create identity for unmatched detections
+                if matched_identity.is_none() {
+                    let new_id = self.create_next_identity().await?;
+                    matched_identity = Some(new_id);
+                    let new_name = format!("Character {}", new_id);
+                    identities.push(CharacterIdentity {
+                        id: new_id,
+                        name: new_name,
+                        detection_count: 0,
+                        created_at: String::new(),
+                    });
+                    // Insert empty vector list for the new identity
+                    identity_embeddings.insert(new_id, Vec::new());
+                }
+
+                let embedding_bytes = f32_vec_to_bytes(&embedding);
+                let result = sqlx::query(
+                    "INSERT INTO character_detections (image_id, x0, y0, x1, y1, confidence, ccip_embedding, identity_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                )
+                .bind(image_id)
+                .bind(det.x0)
+                .bind(det.y0)
+                .bind(det.x1)
+                .bind(det.y1)
+                .bind(det.confidence)
+                .bind(&embedding_bytes)
+                .bind(matched_identity)
+                .execute(&self.db)
+                .await?;
+
+                let detection_id = result.last_insert_rowid();
+
+                stored.push(StoredDetection {
+                    id: detection_id,
+                    image_id,
+                    x0: det.x0,
+                    y0: det.y0,
+                    x1: det.x1,
+                    y1: det.y1,
+                    confidence: det.confidence,
+                    has_embedding: true,
+                    identity_id: matched_identity,
+                });
+
+                // Add this new embedding to the cache so subsequent detections can match it immediately
+                if let Some(matched_id) = matched_identity {
+                    identity_embeddings.entry(matched_id).or_default().push(embedding.clone());
+                }
+            }
         }
 
         info!(
@@ -261,32 +279,43 @@ impl DetectionPipeline {
         let total = detections.len() as i64;
         let mut matched = 0i64;
 
-        for (det_id, emb_bytes) in &detections {
-            let query_emb = bytes_to_f32_vec(emb_bytes);
-
-            let mut best_identity: Option<i64> = None;
-            let mut best_diff = f32::MAX;
-
-            for identity in &identities {
-                let refs = self.load_identity_embeddings(identity.id).await?;
-                if refs.is_empty() {
-                    continue;
-                }
-                let (is_match, diff) = self.ccip.compare_embeddings(&query_emb, &refs)?;
-                if is_match && diff < best_diff {
-                    best_diff = diff;
-                    best_identity = Some(identity.id);
-                }
+        if !detections.is_empty() {
+            // Pre-load all character identity embeddings in a single query
+            let mut identity_embeddings: std::collections::HashMap<i64, Vec<Vec<f32>>> = std::collections::HashMap::new();
+            let rows: Vec<(i64, Vec<u8>)> = sqlx::query_as(
+                "SELECT identity_id, ccip_embedding FROM character_detections WHERE identity_id IS NOT NULL AND ccip_embedding IS NOT NULL"
+            )
+            .fetch_all(&self.db)
+            .await?;
+            for (ident_id, emb_bytes) in rows {
+                identity_embeddings.entry(ident_id).or_default().push(bytes_to_f32_vec(&emb_bytes));
             }
 
-            sqlx::query("UPDATE character_detections SET identity_id = ? WHERE id = ?")
-                .bind(best_identity)
-                .bind(det_id)
-                .execute(&self.db)
-                .await?;
+            for (det_id, emb_bytes) in &detections {
+                let query_emb = bytes_to_f32_vec(emb_bytes);
 
-            if best_identity.is_some() {
-                matched += 1;
+                let mut best_identity: Option<i64> = None;
+                let mut best_diff = f32::MAX;
+
+                for identity in &identities {
+                    if let Some(refs) = identity_embeddings.get(&identity.id) {
+                        let (is_match, diff) = self.ccip.compare_embeddings(&query_emb, refs)?;
+                        if is_match && diff < best_diff {
+                            best_diff = diff;
+                            best_identity = Some(identity.id);
+                        }
+                    }
+                }
+
+                sqlx::query("UPDATE character_detections SET identity_id = ? WHERE id = ?")
+                    .bind(best_identity)
+                    .bind(det_id)
+                    .execute(&self.db)
+                    .await?;
+
+                if best_identity.is_some() {
+                    matched += 1;
+                }
             }
         }
 
@@ -418,19 +447,7 @@ impl DetectionPipeline {
         Ok(result.last_insert_rowid())
     }
 
-    async fn load_identity_embeddings(&self, identity_id: i64) -> Result<Vec<Vec<f32>>> {
-        let rows: Vec<(Option<Vec<u8>>,) > = sqlx::query_as(
-            "SELECT ccip_embedding FROM character_detections WHERE identity_id = ? AND ccip_embedding IS NOT NULL"
-        )
-        .bind(identity_id)
-        .fetch_all(&self.db)
-        .await?;
 
-        Ok(rows
-            .into_iter()
-            .filter_map(|(emb,)| emb.map(|b| bytes_to_f32_vec(&b)))
-            .collect())
-    }
 }
 
 fn extract_crop(img: &RgbImage, det: &Detection) -> Result<RgbImage> {

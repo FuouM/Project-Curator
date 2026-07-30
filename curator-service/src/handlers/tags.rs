@@ -199,11 +199,14 @@ pub async fn get_tag_statistics_logic(
 ) -> Result<Vec<curator_core::ipc::TagStat>> {
     let tags = sqlx::query_as::<_, curator_core::ipc::TagStat>(
         r#"
-        SELECT t.name AS tag, t.category AS category, COUNT(*) AS count
-        FROM image_tags it
-        JOIN tags t ON t.id = it.tag_id
-        WHERE it.is_deleted = 0
-        GROUP BY it.tag_id
+        SELECT t.name AS tag, t.category AS category, g.count AS count
+        FROM (
+            SELECT tag_id, COUNT(*) AS count
+            FROM image_tags
+            WHERE is_deleted = 0
+            GROUP BY tag_id
+        ) g
+        JOIN tags t ON t.id = g.tag_id
         ORDER BY count DESC
         "#,
     )

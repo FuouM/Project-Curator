@@ -22,6 +22,7 @@ pub async fn init_db<P: AsRef<Path>>(db_path: P) -> Result<SqlitePool, anyhow::E
     let pool = SqlitePool::connect_with(options).await?;
 
     info!("Running database migrations...");
+    // Force rebuild to trigger sqlx migration compilation v2
     sqlx::migrate!("./migrations").run(&pool).await?;
     info!("Database migrations completed successfully.");
 

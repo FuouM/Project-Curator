@@ -172,16 +172,15 @@
 
 .autocomplete-dropdown {
   position: absolute;
-  top: 100%;
+  top: 24px;
   left: 0;
-  right: 0;
-  max-height: 200px;
+  width: 250px;
+  max-height: 250px;
   overflow-y: auto;
-  background-color: var(--sys-window-bg);
-  border: 1px solid var(--sys-border-dark);
-  border-top: none;
-  z-index: 100;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  background-color: var(--sys-window-bg, #ffffff);
+  border: 1px solid var(--sys-border-dark, #a0a0a0);
+  z-index: 99999 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 .autocomplete-item {
   padding: 4px 8px;
