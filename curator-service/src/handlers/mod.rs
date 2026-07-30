@@ -419,6 +419,14 @@ pub async fn handle_request(
                 },
             }
         }
+        Request::GetCharacterSuggestions { query } => {
+            match tags::get_character_suggestions_logic(db, query.as_deref()).await {
+                Ok(tags) => Response::TagStatisticsResult { tags },
+                Err(e) => Response::Error {
+                    message: format!("Failed to fetch character suggestions: {:?}", e),
+                },
+            }
+        }
 
         Request::GetDashboardInit => {
             let (status_result, settings_result) = tokio::join!(

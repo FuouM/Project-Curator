@@ -107,6 +107,20 @@ npm run tauri dev
   * **Explicit Sample Tagging**: Teaching a concept or adding samples ONLY tags the explicitly selected ground-truth sample images.
   * **User Blacklist Respect**: Deleting a custom concept tag must cleanly delete the row, and NEVER convert custom concept tags into AI exclusions/blacklists.
 * **Concise & Direct Responses**: Keep answers short, direct, and actionable. Avoid unnecessary re-summaries, verbose technical disclaimers, or excessive build output.
+* **Database Schema & Migrations Mandate**:
+  * **ALWAYS use Migrations**: NEVER execute ad-hoc schema modifications, column creations, or performance indexes directly against local development databases using sqlite CLI or code commands.
+  * **Location**: All database updates, new tables, and indexes must be written as structured SQL files inside `curator-core/migrations/` (e.g. `0011_xxxx.sql`). This guarantees that schema changes are automatically migrated and synchronized across all environments on service startup.
+* **Database Explain Plan Mandate**:
+  * Run `EXPLAIN QUERY PLAN` on SQLite queries before finalizing query refactors to verify index utilization and avoid table scans or temp B-trees for ordering.
+* **IPC Volume & Performance Mandate**:
+  * **Indexed Pattern Queries**: Avoid pre-fetching large data arrays (e.g., >1,000 items) over IPC named-pipe channels at startup. Autocomplete components must perform dynamic, index-supported pattern searches (`LIKE` queries) on keypress, keeping response payloads small and IPC latency under **10ms**.
+  * **Structured IPC Serialization**: Explicitly map IPC payloads using key-object shapes (e.g. `{ RequestCommand: { arg: val } }`) instead of raw parameters to bypass formatting normalization failures in `callService`.
+* **Lazy DOM Loader Mandate**:
+  * Display structural layout skeletons and empty placeholder outlines instantly when rendering tabs or complex view components.
+  * Defer secondary details queries, crop generation tasks, and thumbnail updates to a microtask/timer delay (`setTimeout(..., 50)`) to allow the UI to paint without freezing.
+* **Git Staging & Commiting Mandate**:
+  * **NO Wildcard Staging**: NEVER run wildcard staging commands (`git add .`, `git add -A`, or `git add *`). Explicitly stage target files by their path to avoid committing untracked temp files, log files, or build artifacts.
+  * **Semantic Commit Bodies**: Follow the repo's commit body style. Commit messages must consist of a semantic summary line (`type: description`) followed by detailed bullet points documenting the structural file modifications.
 
 ### UI & Aesthetic Rules (Modern WinForms Desktop Control Aesthetic)
 * **STRICT DESIGN SYSTEM MANDATE - ALWAYS FOLLOW**:

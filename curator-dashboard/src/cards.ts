@@ -5,7 +5,7 @@ import { imageBytesToPngBlob } from "./utils";
 import { getImageClickAction, isSelectMode, selectedImageIds } from "./state";
 import { openImageViewer } from "./image-viewer";
 import { callService } from "./ipc";
-import { refreshCharacters, attachAutocomplete, invalidateSuggestions } from "./views/characters";
+import { refreshCharacters, attachAutocomplete } from "./views/characters";
 
 // --- Thumbnail Queue ---
 const MAX_CONCURRENT = 2;
@@ -548,14 +548,12 @@ async function loadDetectionsForImage(imageId: number) {
           attachAutocomplete(nameInput, dropdownId, async (newName) => {
             if (newName !== assignedIdentity.name) {
               await callService({ RenameCharacterIdentity: { identity_id: assignedIdentity.id, name: newName } });
-              invalidateSuggestions();
             }
           });
           nameInput.addEventListener("blur", async () => {
             const newName = nameInput.value.trim();
             if (newName && newName !== assignedIdentity.name) {
               await callService({ RenameCharacterIdentity: { identity_id: assignedIdentity.id, name: newName } });
-              invalidateSuggestions();
             }
           });
           nameInput.addEventListener("keydown", (e) => {

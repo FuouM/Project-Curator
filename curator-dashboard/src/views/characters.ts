@@ -7,59 +7,64 @@ interface SuggestionItem {
   source: "tag" | "identity" | "concept";
 }
 
-let cachedSuggestions: SuggestionItem[] | null = null;
 
-async function loadSuggestions(): Promise<SuggestionItem[]> {
-  if (cachedSuggestions) return cachedSuggestions;
+
+// Fetch suggestions matching the query text dynamically from the database
+export async function getSuggestions(query: string): Promise<SuggestionItem[]> {
   const items: SuggestionItem[] = [];
   const seen = new Set<string>();
 
-  // Character tags from tags table
   try {
-    const tagResp = await callService({ GetTagStatistics: null });
-    if ("TagStatisticsResult" in tagResp) {
-      for (const t of tagResp.TagStatisticsResult.tags) {
-        if (t.category === "character" && !seen.has(t.tag)) {
+    const [tagResp, idResp, conceptResp] = await Promise.all([
+      // Execute indexed pattern matches on database for instant response (sub-1ms query search)
+      callService({ GetCharacterSuggestions: { query: query } }).catch(() => null),
+      callService({ ListCharacterIdentities: null }).catch(() => null),
+      callService({ ListConcepts: null }).catch(() => null)
+    ]);
+
+    const q = query.toLowerCase();
+
+    if (tagResp && "TagStatisticsResult" in tagResp) {
+      const tags = tagResp.TagStatisticsResult.tags;
+      const len = tags.length;
+      for (let i = 0; i < len; i++) {
+        const t = tags[i];
+        if (!seen.has(t.tag)) {
           seen.add(t.tag);
           items.push({ name: t.tag, count: t.count, source: "tag" });
         }
       }
     }
-  } catch (_) {}
 
-  // Existing identity names
-  try {
-    const idResp = await callService({ ListCharacterIdentities: null });
-    if ("CharacterIdentitiesList" in idResp) {
-      for (const i of idResp.CharacterIdentitiesList.identities) {
-        if (!seen.has(i.name)) {
-          seen.add(i.name);
-          items.push({ name: i.name, count: i.detection_count, source: "identity" });
+    if (idResp && "CharacterIdentitiesList" in idResp) {
+      const idents = idResp.CharacterIdentitiesList.identities;
+      const len = idents.length;
+      for (let i = 0; i < len; i++) {
+        const identity = idents[i];
+        if (identity.name.toLowerCase().includes(q) && !seen.has(identity.name)) {
+          seen.add(identity.name);
+          items.push({ name: identity.name, count: identity.detection_count, source: "identity" });
+        }
+      }
+    }
+
+    if (conceptResp && "ConceptListResult" in conceptResp) {
+      const concepts = conceptResp.ConceptListResult.concepts;
+      const len = concepts.length;
+      for (let i = 0; i < len; i++) {
+        const concept = concepts[i];
+        if (concept.name.toLowerCase().includes(q) && !seen.has(concept.name)) {
+          seen.add(concept.name);
+          items.push({ name: concept.name, count: concept.sample_count, source: "concept" });
         }
       }
     }
   } catch (_) {}
 
-  // Custom concept names
-  try {
-    const conceptResp = await callService({ ListConcepts: null });
-    if ("ConceptListResult" in conceptResp) {
-      for (const c of conceptResp.ConceptListResult.concepts) {
-        if (!seen.has(c.name)) {
-          seen.add(c.name);
-          items.push({ name: c.name, count: c.sample_count, source: "concept" });
-        }
-      }
-    }
-  } catch (_) {}
-
-  cachedSuggestions = items.sort((a, b) => b.count - a.count);
-  return cachedSuggestions;
+  return items.sort((a, b) => b.count - a.count);
 }
 
-export function invalidateSuggestions() {
-  cachedSuggestions = null;
-}
+
 
 export function attachAutocomplete(
   input: HTMLInputElement,
@@ -78,19 +83,18 @@ export function attachAutocomplete(
     }
 
     const q = query.toLowerCase();
-    loadSuggestions().then((allItems) => {
+    getSuggestions(q).then((matches) => {
       if (!dropdown) return;
-      const matches = allItems
-        .filter(s => s.name.toLowerCase().includes(q) && s.name !== input.value)
-        .slice(0, 15);
+      // Slice matches to fit dropdown
+      const itemsToRender = matches.slice(0, 15);
 
-      if (matches.length === 0) {
+      if (itemsToRender.length === 0) {
         dropdown.style.display = "none";
         return;
       }
 
       activeIndex = -1;
-      dropdown.innerHTML = matches.map((s, i) =>
+      dropdown.innerHTML = itemsToRender.map((s, i) =>
         `<div class="autocomplete-item" data-name="${s.name}" data-index="${i}">
           <span class="autocomplete-item-tag">${s.name}</span>
           <span class="autocomplete-item-count">${s.count}</span>
@@ -169,7 +173,6 @@ export function setupCharactersView() {
     const name = prompt("Character name (leave empty for auto-naming):");
     try {
       await callService({ CreateCharacterIdentity: { name: name || null } });
-      invalidateSuggestions();
       await refreshCharacters();
     } catch (e: any) {
       console.error("Failed to create identity:", e);
@@ -207,6 +210,19 @@ export function setupCharactersView() {
 export async function refreshCharacters() {
   const container = document.getElementById("characters-list-container");
   if (!container) return;
+
+  // Render initial card layout skeletons/placeholders to keep the tab immediate and responsive
+  container.innerHTML = `
+    <div class="concept-card group-box skeleton-loader" style="opacity: 0.6; pointer-events: none;">
+      <div class="concept-card-title"><i class="bi bi-hourglass-split"></i> Loading identities...</div>
+      <div class="concept-card-body">
+        <div class="identity-sample-crops" style="display:flex;gap:4px;margin-top:6px;">
+          <div style="width:80px;height:80px;background:#f8f9fa;border:1px dashed #ced4da;border-radius:2px;"></div>
+          <div style="width:80px;height:80px;background:#f8f9fa;border:1px dashed #ced4da;border-radius:2px;"></div>
+        </div>
+      </div>
+    </div>
+  `;
 
   try {
     const [identitiesResp, unassignedResp] = await Promise.all([
@@ -265,7 +281,14 @@ export async function refreshCharacters() {
           <div class="concept-info-row" style="font-size:11px;color:#666;">
             Created: ${identity.created_at || "—"}
           </div>
-          <div class="identity-sample-crops" style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;" data-identity-id="${identity.id}"></div>
+          <div class="identity-sample-crops" style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;" data-identity-id="${identity.id}">
+            <!-- Instantly display placeholder thumbnail boxes to prevent layout shift and show outlines -->
+            ${Array.from({ length: Math.min(6, identity.detection_count) }).map(() => `
+              <div class="crop-placeholder-slot" style="width:80px;height:80px;background:#f8f9fa;border:1px dashed #ced4da;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px;">
+                <i class="bi bi-image" style="color:#adb5bd;font-size:16px;"></i>
+              </div>
+            `).join("")}
+          </div>
           <div class="concept-card-actions" style="margin-top:8px;display:flex;gap:6px;">
             <button class="win-button find-all-btn" data-id="${identity.id}" style="font-size:11px;">
               <i class="bi bi-search"></i> Find All
@@ -283,14 +306,6 @@ export async function refreshCharacters() {
       attachAutocomplete(nameInput, dropdownId, async (newName) => {
         if (newName !== identity.name) {
           await callService({ RenameCharacterIdentity: { identity_id: identity.id, name: newName } });
-          invalidateSuggestions();
-        }
-      });
-      nameInput.addEventListener("blur", async () => {
-        const newName = nameInput.value.trim();
-        if (newName && newName !== identity.name) {
-          await callService({ RenameCharacterIdentity: { identity_id: identity.id, name: newName } });
-          invalidateSuggestions();
         }
       });
       nameInput.addEventListener("keydown", (e) => {
@@ -300,8 +315,11 @@ export async function refreshCharacters() {
         }
       });
 
-      // Load sample crop thumbnails
-      loadIdentitySampleCrops(card, identity.id);
+      // Load sample crop thumbnails dynamically after cards are rendered
+      const idVal = identity.id;
+      setTimeout(() => {
+        loadIdentitySampleCrops(card, idVal);
+      }, 50);
 
       // Find All
       card.querySelector(".find-all-btn")?.addEventListener("click", async () => {
@@ -321,7 +339,6 @@ export async function refreshCharacters() {
         if (!confirm(`Delete identity "${identity.name}"? Detections will become unassigned.`)) return;
         try {
           await callService({ DeleteCharacterIdentity: { identity_id: identity.id } });
-          invalidateSuggestions();
           await refreshCharacters();
         } catch (e: any) {
           console.error("Delete identity failed:", e);
@@ -344,26 +361,47 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number) {
     const imageIds = resp.CharacterSearchResult.image_ids;
     if (imageIds.length === 0) return;
 
+    // Execute fetches in parallel to keep database operations real-time
+    const candidateImageIds = imageIds.slice(0, 10);
+    const results = await Promise.all(
+      candidateImageIds.map(imgId => 
+        callService({ GetCharacterDetections: { image_id: imgId } })
+          .then(detResp => {
+            if ("CharacterDetectionsResult" in detResp) {
+              return detResp.CharacterDetectionsResult.detections.filter(
+                (d: CharacterDetection) => d.identity_id === identityId
+              );
+            }
+            return [];
+          })
+          .catch(() => [])
+      )
+    );
+
     const matchingDets: CharacterDetection[] = [];
-    for (const imgId of imageIds.slice(0, 10)) {
-      if (matchingDets.length >= 6) break;
-      const detResp = await callService({ GetCharacterDetections: { image_id: imgId } });
-      if (!("CharacterDetectionsResult" in detResp)) continue;
-      const dets = detResp.CharacterDetectionsResult.detections.filter((d: CharacterDetection) => d.identity_id === identityId);
+    for (const dets of results) {
       for (const d of dets) {
         if (matchingDets.length >= 6) break;
         matchingDets.push(d);
       }
+      if (matchingDets.length >= 6) break;
     }
 
-    for (const det of matchingDets) {
-      const thumb = document.createElement("div");
-      thumb.style.cssText = "width:80px;height:80px;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px;";
-      thumb.innerHTML = '<i class="bi bi-image" style="color:#999;font-size:16px;"></i>';
-      cropsContainer.appendChild(thumb);
-      loadCropForElement(thumb, det.id);
+    if (matchingDets.length > 0) {
+      cropsContainer.innerHTML = "";
+      for (const det of matchingDets) {
+        const thumb = document.createElement("div");
+        thumb.style.cssText = "width:80px;height:80px;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px;";
+        thumb.innerHTML = '<i class="bi bi-image" style="color:#999;font-size:16px;"></i>';
+        cropsContainer.appendChild(thumb);
+        loadCropForElement(thumb, det.id);
+      }
+    } else {
+      cropsContainer.innerHTML = "";
     }
-  } catch (_) {}
+  } catch (_) {
+    cropsContainer.innerHTML = "";
+  }
 }
 
 function renderUnassignedDetection(

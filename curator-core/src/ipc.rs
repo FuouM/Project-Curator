@@ -130,6 +130,10 @@ pub enum Request {
     ReindexFailedVectors,
     /// Get aggregate tag statistics: counts per tag grouped by category.
     GetTagStatistics,
+    /// Get character suggestions (includes 0 count tags).
+    GetCharacterSuggestions {
+        query: Option<String>,
+    },
     /// Batch call for dashboard init: returns status, tagger status, settings,
     /// and initial image lists all at once to minimize IPC round-trips.
     GetDashboardInit,

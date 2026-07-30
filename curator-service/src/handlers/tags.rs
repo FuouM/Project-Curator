@@ -200,15 +200,56 @@ pub async fn get_tag_statistics_logic(
     let tags = sqlx::query_as::<_, curator_core::ipc::TagStat>(
         r#"
         SELECT t.name AS tag, t.category AS category, COUNT(*) AS count
-        FROM tags t
-        JOIN image_tags it ON it.tag_id = t.id
+        FROM image_tags it
+        JOIN tags t ON t.id = it.tag_id
         WHERE it.is_deleted = 0
-        GROUP BY t.id
+        GROUP BY it.tag_id
         ORDER BY count DESC
         "#,
     )
     .fetch_all(db)
     .await?;
+
+    Ok(tags)
+}
+
+pub async fn get_character_suggestions_logic(
+    db: &SqlitePool,
+    query: Option<&str>,
+) -> Result<Vec<curator_core::ipc::TagStat>> {
+    let tags = if let Some(q) = query {
+        let pattern = format!("%{}%", q);
+        sqlx::query_as::<_, curator_core::ipc::TagStat>(
+            r#"
+            SELECT 
+                t.name AS tag, 
+                t.category AS category, 
+                0 AS count
+            FROM tags t
+            WHERE t.category = 'character' AND t.name LIKE ?
+            ORDER BY t.name ASC
+            LIMIT 30
+            "#,
+        )
+        .bind(pattern)
+        .fetch_all(db)
+        .await?
+    } else {
+        sqlx::query_as::<_, curator_core::ipc::TagStat>(
+            r#"
+            SELECT 
+                t.name AS tag, 
+                t.category AS category, 
+                0 AS count
+            FROM tags t
+            WHERE t.category = 'character'
+            ORDER BY t.name ASC
+            LIMIT 30
+            "#,
+        )
+        .fetch_all(db)
+        .await?
+    };
 
     Ok(tags)
 }

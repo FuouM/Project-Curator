@@ -23,6 +23,7 @@ export type RequestPayload =
   | { ReindexVectors: null }
   | { ReindexFailedVectors: null }
   | { GetTagStatistics: null }
+  | { GetCharacterSuggestions: null }
   | { GetDashboardInit: null }
   | { GetImportedFolders: null }
   | { BackfillImageFolders: null }

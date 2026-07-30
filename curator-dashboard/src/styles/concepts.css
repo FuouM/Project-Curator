@@ -1,3 +1,36 @@
+/* Custom Concept Card Shimmer & Skeleton Loaders */
+.skeleton-loader {
+  position: relative;
+  background-color: var(--sys-window-bg);
+}
+.skeleton-loader::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 25%, rgba(160, 160, 160, 0.15) 50%, transparent 75%);
+  background-size: 200% 100%;
+  animation: card-shimmer 1.5s ease-in-out infinite;
+  pointer-events: none;
+}
+.crop-placeholder-slot {
+  position: relative;
+  overflow: hidden;
+}
+.crop-placeholder-slot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 25%, rgba(160, 160, 160, 0.15) 50%, transparent 75%);
+  background-size: 200% 100%;
+  animation: card-shimmer 1.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes card-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 .concepts-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
