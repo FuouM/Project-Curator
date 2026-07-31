@@ -37,18 +37,11 @@ pub struct OcrDetector {
 impl OcrDetector {
     pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
-        // Prefer medium variants for better accuracy; fall back to small
-        let det_model = {
-            let medium = dir.join("PP-OCRv6_medium_det_onnx").join("inference.onnx");
-            let small  = dir.join("PP-OCRv6_small_det_onnx").join("inference.onnx");
-            if medium.exists() { medium } else { small }
-        };
+        let det_model = dir.join("PP-OCRv6_medium_det_onnx").join("inference.onnx");
         let (rec_model, rec_dict) = {
-            let medium_model = dir.join("PP-OCRv6_medium_rec_onnx").join("inference.onnx");
-            let medium_dict  = dir.join("PP-OCRv6_medium_rec_onnx").join("inference.yml");
-            let small_model  = dir.join("PP-OCRv6_small_rec_onnx").join("inference.onnx");
-            let small_dict   = dir.join("PP-OCRv6_small_rec_onnx").join("inference.yml");
-            if medium_model.exists() { (medium_model, medium_dict) } else { (small_model, small_dict) }
+            let model = dir.join("PP-OCRv6_medium_rec_onnx").join("inference.onnx");
+            let dict  = dir.join("PP-OCRv6_medium_rec_onnx").join("inference.yml");
+            (model, dict)
         };
 
         // Search upwards for onnxruntime.dll starting from current executable path
