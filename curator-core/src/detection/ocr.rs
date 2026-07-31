@@ -439,10 +439,13 @@ pub fn preprocess_rec(image: &RgbImage) -> Result<Array4<f32>> {
 }
 
 /// Preprocess a cropped text line for the angle classifier model.
-/// Reference: resize_norm_img in predict_cls.py — resize to 48x192, normalize to [-1, 1]
+/// Reference: inference.yml for PP-LCNet_x1_0_textline_ori_onnx
+/// - ResizeImage: [160, 80] (width, height)
+/// - NormalizeImage: BGR order, mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225], scale=1/255
+/// - ToCHWImage
 pub fn preprocess_cls(image: &RgbImage) -> Result<Array4<f32>> {
-    let target_h = 48usize;
-    let target_w = 192usize;
+    let target_h = 80usize;
+    let target_w = 160usize;
 
     let (ow, oh) = image.dimensions();
     let ratio = ow as f32 / oh as f32;
@@ -463,9 +466,10 @@ pub fn preprocess_cls(image: &RgbImage) -> Result<Array4<f32>> {
             let b = data[src_base + 2] as f32 / 255.0;
 
             let pix_idx = y * target_w + x;
-            slice[0 * px_stride + pix_idx] = (b - 0.5) / 0.5;
-            slice[1 * px_stride + pix_idx] = (g - 0.5) / 0.5;
-            slice[2 * px_stride + pix_idx] = (r - 0.5) / 0.5;
+            // BGR order: channel 0=B, 1=G, 2=R
+            slice[0 * px_stride + pix_idx] = (b - 0.485) / 0.229;
+            slice[1 * px_stride + pix_idx] = (g - 0.456) / 0.224;
+            slice[2 * px_stride + pix_idx] = (r - 0.406) / 0.225;
         }
     }
 

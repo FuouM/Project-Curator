@@ -326,8 +326,8 @@ if score_180 > score_0 && score_180 > 0.9 {
 ```
 
 The classifier is optional — if the model file is not present, the code skips
-angle classification entirely. Preprocessing: resize to 48×192, normalize to
-`[-1, 1]` (same formula as recognition).
+angle classification entirely. Preprocessing: resize to 80×160 (width×height),
+normalize with BGR mean/std `(pixel/255 - mean) / std` (not the symmetric formula).
 
 ---
 
