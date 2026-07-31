@@ -937,3 +937,26 @@ export function setupBrowseButton(btnId: string, targetInput: HTMLInputElement, 
     }
   });
 }
+
+export function refreshCardOcr(imageId: number, ocrText: string) {
+  const cards = document.querySelectorAll(`[data-image-id="${imageId}"]`);
+  cards.forEach(card => {
+    const info = card.querySelector(".image-info");
+    if (!info) return;
+
+    const existing = info.querySelector(".ocr-block");
+    if (ocrText) {
+      const html = `<div class="ocr-block" onclick="this.classList.toggle('expanded')"><i class="bi bi-file-earmark-text ocr-icon"></i><span class="ocr-block-text">${ocrText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`;
+      if (existing) {
+        existing.outerHTML = html;
+      } else {
+        const tagList = info.querySelector(".tag-list");
+        if (tagList) {
+          tagList.insertAdjacentHTML("beforebegin", html);
+        }
+      }
+    } else if (existing) {
+      existing.remove();
+    }
+  });
+}

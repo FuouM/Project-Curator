@@ -105,14 +105,12 @@
   padding: 2px 6px;
   margin-bottom: 4px;
   cursor: pointer;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
+  max-height: calc(1.4em * 5 + 4px);
+  overflow-y: auto;
 }
 .ocr-block.expanded {
-  display: block;
-  -webkit-line-clamp: unset;
+  max-height: none;
+  overflow-y: visible;
 }
 .ocr-icon {
   display: inline;

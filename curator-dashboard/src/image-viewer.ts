@@ -98,9 +98,9 @@ async function toggleOcr() {
       resp = await callService({ RunOcr: { image_id: currentViewerImageId } });
       if (waitBtn) waitBtn.innerHTML = '<i class="bi bi-fonts"></i> OCR Text';
       detections = ("OcrDetectionsResult" in resp) ? resp.OcrDetectionsResult.detections : [];
-      // Refresh cards after initial OCR run
-      import("./views/gallery").then(m => m.refreshGallery());
-      import("./views/dashboard").then(m => m.refreshDashboard());
+      // Update card OCR text directly
+      const ocrText = detections.map((d: any) => d.text).join("\n");
+      import("./cards").then(m => m.refreshCardOcr(currentViewerImageId!, ocrText));
     }
 
     if (detections.length === 0) return;
@@ -301,9 +301,9 @@ export function setupImageViewer() {
         ocrVisible = false;
         updateOcrButton(false);
       }
-      // Refresh gallery and dashboard cards to reflect updated OCR text
-      import("./views/gallery").then(m => m.refreshGallery());
-      import("./views/dashboard").then(m => m.refreshDashboard());
+      // Update card OCR text directly
+      const ocrText = detections.map((d: any) => d.text).join("\n");
+      import("./cards").then(m => m.refreshCardOcr(currentViewerImageId!, ocrText));
     } catch (err) {
       console.error("Re-run OCR failed:", err);
     } finally {
