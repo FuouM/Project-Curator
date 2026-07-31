@@ -1,6 +1,7 @@
 import { callService } from "../ipc";
 import { CharacterIdentity, CharacterDetection } from "../types";
 import { getCachedCrop, setCachedCrop } from "../cards";
+import { openImageViewer } from "../image-viewer";
 
 interface SuggestionItem {
   name: string;
@@ -72,7 +73,8 @@ export function attachAutocomplete(
   dropdownId: string,
   onSelect: (value: string) => void
 ) {
-  const dropdown = document.getElementById(dropdownId);
+  const dropdown = (input.parentElement?.querySelector("#" + dropdownId) as HTMLElement)
+    || document.getElementById(dropdownId);
   if (!dropdown) return;
 
   let activeIndex = -1;
@@ -159,9 +161,27 @@ export function attachAutocomplete(
 }
 
 function loadCropForElement(el: HTMLElement, detectionId: number) {
+  el.classList.add("skeleton-pulse");
   const cachedUrl = getCachedCrop(detectionId);
+  
+  const setImage = (url: string) => {
+    el.classList.remove("skeleton-pulse");
+    const existingImg = el.querySelector("img");
+    if (existingImg) {
+      existingImg.src = url;
+    } else {
+      const icon = el.querySelector(".bi-image");
+      if (icon) icon.remove();
+
+      const img = document.createElement("img");
+      img.src = url;
+      img.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:2px;";
+      el.prepend(img);
+    }
+  };
+
   if (cachedUrl) {
-    el.innerHTML = `<img src="${cachedUrl}" style="width:100%;height:100%;object-fit:cover;" />`;
+    setImage(cachedUrl);
     return;
   }
 
@@ -171,9 +191,11 @@ function loadCropForElement(el: HTMLElement, detectionId: number) {
       const blob = new Blob([bytes], { type: "image/webp" });
       const url = URL.createObjectURL(blob);
       setCachedCrop(detectionId, url);
-      el.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" />`;
+      setImage(url);
     }
-  }).catch(() => {});
+  }).catch(() => {
+    el.classList.remove("skeleton-pulse");
+  });
 }
 
 export function setupCharactersView() {
@@ -224,9 +246,9 @@ export async function refreshCharacters() {
     <div class="concept-card group-box skeleton-loader" style="opacity: 0.6; pointer-events: none;">
       <div class="concept-card-title"><i class="bi bi-hourglass-split"></i> Loading identities...</div>
       <div class="concept-card-body">
-        <div class="identity-sample-crops" style="display:flex;gap:4px;margin-top:6px;">
-          <div style="width:80px;height:80px;background:#f8f9fa;border:1px dashed #ced4da;border-radius:2px;"></div>
-          <div style="width:80px;height:80px;background:#f8f9fa;border:1px dashed #ced4da;border-radius:2px;"></div>
+        <div class="identity-sample-crops" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 6px;">
+          <div style="aspect-ratio: 1/1; width: 100%; background:#f8f9fa; border:1px dashed #ced4da; border-radius:2px;"></div>
+          <div style="aspect-ratio: 1/1; width: 100%; background:#f8f9fa; border:1px dashed #ced4da; border-radius:2px;"></div>
         </div>
       </div>
     </div>
@@ -289,10 +311,10 @@ export async function refreshCharacters() {
           <div class="concept-info-row" style="font-size:11px;color:#666;">
             Created: ${identity.created_at || "—"}
           </div>
-          <div class="identity-sample-crops" style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;" data-identity-id="${identity.id}">
+          <div class="identity-sample-crops" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; max-height: 180px; overflow-y: auto; margin-top: 6px; padding-right: 4px;" data-identity-id="${identity.id}">
             <!-- Instantly display placeholder thumbnail boxes to prevent layout shift and show outlines -->
-            ${Array.from({ length: Math.min(6, identity.detection_count) }).map(() => `
-              <div class="crop-placeholder-slot" style="width:80px;height:80px;background:#f8f9fa;border:1px dashed #ced4da;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px;">
+            ${Array.from({ length: Math.min(10, identity.detection_count) }).map(() => `
+              <div class="crop-placeholder-slot" style="aspect-ratio: 1/1; width: 100%; background:#f8f9fa; border:1px dashed #ced4da; display:flex; align-items:center; justify-content:center; border-radius:2px;">
                 <i class="bi bi-image" style="color:#adb5bd;font-size:16px;"></i>
               </div>
             `).join("")}
@@ -314,6 +336,7 @@ export async function refreshCharacters() {
       attachAutocomplete(nameInput, dropdownId, async (newName) => {
         if (newName !== identity.name) {
           await callService({ RenameCharacterIdentity: { identity_id: identity.id, name: newName } });
+          await refreshCharacters();
         }
       });
       nameInput.addEventListener("keydown", (e) => {
@@ -370,9 +393,9 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number) {
     if (imageIds.length === 0) return;
 
     // Execute fetches in parallel to keep database operations real-time
-    const candidateImageIds = imageIds.slice(0, 10);
+    const candidateImageIds = imageIds.slice(0, 100);
     const results = await Promise.all(
-      candidateImageIds.map(imgId => 
+      candidateImageIds.map((imgId: number) => 
         callService({ GetCharacterDetections: { image_id: imgId } })
           .then(detResp => {
             if ("CharacterDetectionsResult" in detResp) {
@@ -389,27 +412,30 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number) {
     const matchingDets: CharacterDetection[] = [];
     for (const dets of results) {
       for (const d of dets) {
-        if (matchingDets.length >= 6) break;
         matchingDets.push(d);
       }
-      if (matchingDets.length >= 6) break;
     }
 
     if (matchingDets.length > 0) {
       cropsContainer.innerHTML = "";
       for (const det of matchingDets) {
         const thumb = document.createElement("div");
-        thumb.style.cssText = "position:relative;width:80px;height:80px;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px;";
+        thumb.style.cssText = "position:relative;aspect-ratio:1/1;width:100%;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;border-radius:2px;";
         thumb.innerHTML = '<i class="bi bi-image" style="color:#999;font-size:16px;"></i>';
 
+        // Unassign button (top-left) with a minus symbol
         const unassignBtn = document.createElement("span");
         unassignBtn.className = "unassign-crop-btn";
-        unassignBtn.style.cssText = "position:absolute;top:2px;right:2px;width:16px;height:16px;background:rgba(231,76,60,0.85);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;z-index:5;";
-        unassignBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+        unassignBtn.style.cssText = "position:absolute;top:2px;left:2px;width:16px;height:16px;background:rgba(231,76,60,0.85);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;z-index:5;";
+        unassignBtn.innerHTML = '<i class="bi bi-dash"></i>';
         unassignBtn.title = "Unassign detection";
         unassignBtn.addEventListener("click", async (e) => {
           e.stopPropagation();
-          if (!confirm(`Are you sure you want to unassign this sample from this character identity?`)) return;
+          const isLastSample = imageIds.length === 1;
+          const confirmMsg = isLastSample
+            ? "This is the last sample of this character identity. Unassigning it will automatically delete the identity. Do you want to proceed?"
+            : "Are you sure you want to unassign this sample from this character identity?";
+          if (!confirm(confirmMsg)) return;
           try {
             await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: null } });
             await refreshCharacters();
@@ -419,6 +445,27 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number) {
         });
         thumb.appendChild(unassignBtn);
 
+        // Open original image button (bottom-left)
+        const openImgBtn = document.createElement("span");
+        openImgBtn.className = "open-image-btn";
+        openImgBtn.style.cssText = "position:absolute;bottom:2px;left:2px;width:16px;height:16px;background:rgba(52,152,219,0.85);color:#fff;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;cursor:pointer;z-index:5;";
+        openImgBtn.innerHTML = '<i class="bi bi-image"></i>';
+        openImgBtn.title = "Open original image";
+        openImgBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          try {
+            const imgResp = await callService({ GetImage: { image_id: det.image_id } });
+            if ("ImageResult" in imgResp) {
+              const fp = imgResp.ImageResult.image.current_filepath;
+              openImageViewer(fp, det.image_id);
+            }
+          } catch (err: any) {
+            alert("Failed to open image: " + err.message);
+          }
+        });
+        thumb.appendChild(openImgBtn);
+
+        // Edit bounding box button (bottom-right)
         const editBtn = document.createElement("span");
         editBtn.className = "edit-crop-btn";
         editBtn.style.cssText = "position:absolute;bottom:2px;right:2px;width:16px;height:16px;background:rgba(0,0,0,0.65);color:#fff;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;cursor:pointer;z-index:5;";
@@ -432,6 +479,7 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number) {
               const fp = imgResp.ImageResult.image.current_filepath;
               import("../bbox-editor").then(m => {
                 m.openBBoxEditor(det.id, det.image_id, fp, det.x0, det.y0, det.x1, det.y1, () => {
+                  import("../cards").then(cards => cards.invalidateCropCache(det.id));
                   refreshCharacters();
                 });
               });

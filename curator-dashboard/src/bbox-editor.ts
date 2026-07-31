@@ -2,8 +2,6 @@ import { callService } from "./ipc";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 let currentDetId: number | null = null;
-let currentImageId: number | null = null;
-let originalFilePath: string = "";
 let imgNaturalWidth = 1;
 let imgNaturalHeight = 1;
 
@@ -25,7 +23,7 @@ let onSaveCallback: (() => void) | null = null;
 
 export function openBBoxEditor(
   detectionId: number,
-  imageId: number,
+  _imageId: number,
   filePath: string,
   x0: number,
   y0: number,
@@ -34,13 +32,12 @@ export function openBBoxEditor(
   onSave?: () => void
 ) {
   currentDetId = detectionId;
-  currentImageId = imageId;
-  originalFilePath = filePath;
   boxX0 = x0;
   boxY0 = y0;
   boxX1 = x1;
   boxY1 = y1;
   onSaveCallback = onSave || null;
+  console.log("openBBoxEditor: called with coords =", x0, y0, x1, y1, "filePath =", filePath);
 
   const modal = document.getElementById("bbox-editor-modal");
   const img = document.getElementById("bbox-editor-img") as HTMLImageElement;
@@ -48,18 +45,37 @@ export function openBBoxEditor(
 
   if (!modal || !img || !box) return;
 
-  // Clear previous box display until image is loaded
+  // Clear previous box display until image is loaded and sized
   box.style.display = "none";
-  img.src = convertFileSrc(filePath);
+
+  // Activate modal first so clientWidth/clientHeight layout is determined
+  modal.classList.add("active");
+
+  const showBox = () => {
+    const activeBox = document.getElementById("bbox-editor-box");
+    if (activeBox) activeBox.style.display = "block";
+  };
 
   img.onload = () => {
     imgNaturalWidth = img.naturalWidth || 1;
     imgNaturalHeight = img.naturalHeight || 1;
-    box.style.display = "block";
-    updateBBoxUI();
+    showBox();
+    setTimeout(() => {
+      updateBBoxUI();
+    }, 50);
   };
 
-  modal.classList.add("active");
+  img.src = convertFileSrc(filePath);
+
+  if (img.complete) {
+    imgNaturalWidth = img.naturalWidth || 1;
+    imgNaturalHeight = img.naturalHeight || 1;
+    showBox();
+    setTimeout(() => {
+      updateBBoxUI();
+    }, 100);
+  }
+
   setupBBoxEvents();
 }
 
@@ -74,10 +90,17 @@ function updateBBoxUI() {
   const scaleX = dispWidth / imgNaturalWidth;
   const scaleY = dispHeight / imgNaturalHeight;
 
+  console.log("updateBBoxUI: clientWidth =", dispWidth, "clientHeight =", dispHeight);
+  console.log("updateBBoxUI: natural =", imgNaturalWidth, imgNaturalHeight);
+  console.log("updateBBoxUI: scale =", scaleX, scaleY);
+  console.log("updateBBoxUI: coords =", boxX0, boxY0, boxX1, boxY1);
+
   const left = Math.min(boxX0, boxX1) * scaleX;
   const top = Math.min(boxY0, boxY1) * scaleY;
   const width = Math.abs(boxX1 - boxX0) * scaleX;
   const height = Math.abs(boxY1 - boxY0) * scaleY;
+
+  console.log("updateBBoxUI: left =", left, "top =", top, "width =", width, "height =", height);
 
   box.style.left = `${left}px`;
   box.style.top = `${top}px`;
@@ -100,7 +123,6 @@ function closeBBoxEditor() {
   const modal = document.getElementById("bbox-editor-modal");
   if (modal) modal.classList.remove("active");
   currentDetId = null;
-  currentImageId = null;
   onSaveCallback = null;
 }
 

@@ -28,6 +28,8 @@ impl DetectionPipeline {
     /// Detect persons in an image, extract CCIP embeddings, match against known identities,
     /// and store results in the database.
     pub async fn detect_image(&self, image_id: i64) -> Result<DetectionResult> {
+        let t_total = std::time::Instant::now();
+
         let image: Image = sqlx::query_as("SELECT * FROM images WHERE id = ? AND deleted_at IS NULL")
             .bind(image_id)
             .fetch_optional(&self.db)
@@ -39,15 +41,39 @@ impl DetectionPipeline {
             anyhow::bail!("Image file not found: {:?}", filepath);
         }
 
+        // Clear existing detections for this image to prevent duplicate accumulation
+        let old_dets: Vec<(i64,)> = sqlx::query_as("SELECT id FROM character_detections WHERE image_id = ?")
+            .bind(image_id)
+            .fetch_all(&self.db)
+            .await?;
+        for (old_id,) in old_dets {
+            let _ = self.crop_cache.delete(old_id).await;
+        }
+        sqlx::query("DELETE FROM character_detections WHERE image_id = ?")
+            .bind(image_id)
+            .execute(&self.db)
+            .await?;
+        self.cleanup_empty_identities().await?;
+
+        let t_decode = std::time::Instant::now();
         let (rgb_buf, width, height) = image_decode::decode_rgb(filepath)?;
         let img = RgbImage::from_raw(width, height, rgb_buf)
             .context("Failed to create RgbImage from decoded buffer")?;
+        let decode_ms = t_decode.elapsed().as_millis();
 
+        let t_yolo = std::time::Instant::now();
         let detections = self.yolo.detect_persons(&img)?;
+        let yolo_ms = t_yolo.elapsed().as_millis();
+
         let mut identities = self.load_identities().await?;
 
         let mut stored = Vec::new();
+        let mut ccip_ms = 0;
+        let mut match_ms = 0;
+        let mut cache_ms = 0;
+
         if !detections.is_empty() {
+            let t_match_setup = std::time::Instant::now();
             // Pre-load all character identity embeddings in a single query to avoid N queries in loop
             let mut identity_embeddings: std::collections::HashMap<i64, Vec<Vec<f32>>> = std::collections::HashMap::new();
             let rows: Vec<(i64, Vec<u8>)> = sqlx::query_as(
@@ -58,11 +84,15 @@ impl DetectionPipeline {
             for (ident_id, emb_bytes) in rows {
                 identity_embeddings.entry(ident_id).or_default().push(bytes_to_f32_vec(&emb_bytes));
             }
+            match_ms += t_match_setup.elapsed().as_millis();
 
             for det in &detections {
+                let t_ccip = std::time::Instant::now();
                 let crop = extract_crop(&img, det)?;
                 let embedding = self.ccip.extract_embedding(&crop)?;
+                ccip_ms += t_ccip.elapsed().as_millis();
 
+                let t_match = std::time::Instant::now();
                 let mut matched_identity: Option<i64> = None;
                 for identity in &identities {
                     if let Some(refs) = identity_embeddings.get(&identity.id) {
@@ -88,7 +118,9 @@ impl DetectionPipeline {
                     // Insert empty vector list for the new identity
                     identity_embeddings.insert(new_id, Vec::new());
                 }
+                match_ms += t_match.elapsed().as_millis();
 
+                let t_cache = std::time::Instant::now();
                 let embedding_bytes = f32_vec_to_bytes(&embedding);
                 let result = sqlx::query(
                     "INSERT INTO character_detections (image_id, x0, y0, x1, y1, confidence, ccip_embedding, identity_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -106,7 +138,7 @@ impl DetectionPipeline {
 
                 let detection_id = result.last_insert_rowid();
 
-                stored.push(StoredDetection {
+                let stored_det = StoredDetection {
                     id: detection_id,
                     image_id,
                     x0: det.x0,
@@ -116,20 +148,47 @@ impl DetectionPipeline {
                     confidence: det.confidence,
                     has_embedding: true,
                     identity_id: matched_identity,
-                });
+                };
+
+                stored.push(stored_det);
 
                 // Add this new embedding to the cache so subsequent detections can match it immediately
                 if let Some(matched_id) = matched_identity {
                     identity_embeddings.entry(matched_id).or_default().push(embedding.clone());
                 }
+                cache_ms += t_cache.elapsed().as_millis();
             }
+
+            // Offload crop extraction and cache insertion to a background task
+            let crops_cache = self.crop_cache.clone();
+            let stored_cloned = stored.clone();
+            let img_cloned = img.clone();
+            tokio::spawn(async move {
+                let mut crops_to_cache = Vec::new();
+                for stored_det in stored_cloned {
+                    if let Ok(crop) = extract_crop_padded(&img_cloned, &stored_det, 0.05) {
+                        if let Ok(resized_raw) = resize_rgb_fast(&crop, CROP_THUMB_SIZE) {
+                            let webp_bytes = {
+                                let encoder = webp::Encoder::from_rgb(&resized_raw, CROP_THUMB_SIZE, CROP_THUMB_SIZE);
+                                let webp_memory = encoder.encode(WEBP_QUALITY);
+                                webp_memory.to_vec()
+                            };
+                            crops_to_cache.push((stored_det.id, CROP_THUMB_SIZE, webp_bytes));
+                        }
+                    }
+                }
+                if !crops_to_cache.is_empty() {
+                    if let Err(e) = crops_cache.put_batch(&crops_to_cache).await {
+                        tracing::warn!("Failed to warm up crop cache in background: {:?}", e);
+                    }
+                }
+            });
         }
 
+        let total_ms = t_total.elapsed().as_millis();
         info!(
-            "Detected {} characters in image {} ({} matched to identities)",
-            stored.len(),
-            image_id,
-            stored.iter().filter(|d| d.identity_id.is_some()).count()
+            "detect_image timing summary for image {}: decode={}ms yolo={}ms ccip={}ms match={}ms cache={}ms total={}ms | {} detections",
+            image_id, decode_ms, yolo_ms, ccip_ms, match_ms, cache_ms, total_ms, stored.len()
         );
 
         Ok(DetectionResult {
@@ -178,7 +237,6 @@ impl DetectionPipeline {
             .collect())
     }
 
-    /// Assign a detection to a character identity (or unassign).
     pub async fn assign_identity(
         &self,
         detection_id: i64,
@@ -189,6 +247,7 @@ impl DetectionPipeline {
             .bind(detection_id)
             .execute(&self.db)
             .await?;
+        self.cleanup_empty_identities().await?;
         Ok(())
     }
 
@@ -216,10 +275,35 @@ impl DetectionPipeline {
         Ok(id)
     }
 
-    /// Rename a character identity.
     pub async fn rename_identity(&self, identity_id: i64, name: String) -> Result<()> {
+        let target_name = name.trim();
+        
+        let existing: Option<(i64,)> = sqlx::query_as("SELECT id FROM character_identities WHERE name = ?")
+            .bind(target_name)
+            .fetch_optional(&self.db)
+            .await?;
+
+        if let Some((existing_id,)) = existing {
+            if existing_id != identity_id {
+                // Merge identities: update detections to point to existing identity, then delete old identity
+                sqlx::query("UPDATE character_detections SET identity_id = ? WHERE identity_id = ?")
+                    .bind(existing_id)
+                    .bind(identity_id)
+                    .execute(&self.db)
+                    .await?;
+
+                sqlx::query("DELETE FROM character_identities WHERE id = ?")
+                    .bind(identity_id)
+                    .execute(&self.db)
+                    .await?;
+
+                info!("Merged identity {} into existing identity {} (name: {})", identity_id, existing_id, target_name);
+                return Ok(());
+            }
+        }
+
         sqlx::query("UPDATE character_identities SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-            .bind(&name)
+            .bind(target_name)
             .bind(identity_id)
             .execute(&self.db)
             .await?;
@@ -228,6 +312,12 @@ impl DetectionPipeline {
 
     /// Delete a character identity (detections become unassigned).
     pub async fn delete_identity(&self, identity_id: i64) -> Result<()> {
+        // Explicitly set identity_id to NULL for all associated detections to prevent orphaning them
+        sqlx::query("UPDATE character_detections SET identity_id = NULL WHERE identity_id = ?")
+            .bind(identity_id)
+            .execute(&self.db)
+            .await?;
+
         sqlx::query("DELETE FROM character_identities WHERE id = ?")
             .bind(identity_id)
             .execute(&self.db)
@@ -258,12 +348,21 @@ impl DetectionPipeline {
             .collect())
     }
 
-    /// Delete a single detection by ID.
     pub async fn delete_detection(&self, detection_id: i64) -> Result<()> {
         sqlx::query("DELETE FROM character_detections WHERE id = ?")
             .bind(detection_id)
             .execute(&self.db)
             .await?;
+        self.cleanup_empty_identities().await?;
+        Ok(())
+    }
+
+    async fn cleanup_empty_identities(&self) -> Result<()> {
+        sqlx::query(
+            "DELETE FROM character_identities WHERE id NOT IN (SELECT DISTINCT identity_id FROM character_detections WHERE identity_id IS NOT NULL)"
+        )
+        .execute(&self.db)
+        .await?;
         Ok(())
     }
 
@@ -332,6 +431,9 @@ impl DetectionPipeline {
             .bind(detection_id)
             .execute(&self.db)
             .await?;
+
+        // 7. Invalidate SQLite crop cache so next crop request pulls the updated box coordinates
+        let _ = self.crop_cache.delete(detection_id).await;
 
         Ok(())
     }
@@ -470,24 +572,28 @@ impl DetectionPipeline {
             return Ok(None);
         }
 
-        let (rgb_buf, width, height) = image_decode::decode_rgb(filepath)?;
-        let img = RgbImage::from_raw(width, height, rgb_buf)
-            .context("Failed to create RgbImage")?;
+        let current_filepath = image.current_filepath.clone();
+        let bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
+            let path = std::path::Path::new(&current_filepath);
+            let (rgb_buf, width, height) = image_decode::decode_rgb(path)?;
+            let img = RgbImage::from_raw(width, height, rgb_buf)
+                .context("Failed to create RgbImage")?;
 
-        let crop = extract_crop_padded(&img, &det, 0.05)?;
+            let crop = extract_crop_padded(&img, &det, 0.05)?;
+            let crop_w = crop.width();
+            let crop_h = crop.height();
+            info!(
+                "load_crop_jpeg: det_id={} coords=({},{},{},{}) image_dims={}x{} crop_dims={}x{}",
+                detection_id, det.x0, det.y0, det.x1, det.y1, width, height, crop_w, crop_h
+            );
 
-        let resized = image::DynamicImage::ImageRgb8(crop).resize(
-            CROP_THUMB_SIZE,
-            CROP_THUMB_SIZE,
-            image::imageops::FilterType::Lanczos3,
-        );
-
-        let rgb = resized.to_rgb8();
-        let bytes = {
-            let encoder = webp::Encoder::from_rgb(rgb.as_raw(), rgb.width(), rgb.height());
+            let resized_raw = resize_rgb_fast(&crop, CROP_THUMB_SIZE)?;
+            let encoder = webp::Encoder::from_rgb(&resized_raw, CROP_THUMB_SIZE, CROP_THUMB_SIZE);
             let webp_memory = encoder.encode(WEBP_QUALITY);
-            webp_memory.to_vec()
-        };
+            Ok(webp_memory.to_vec())
+        })
+        .await
+        .context("Failed to execute spawn_blocking for crop thumbnail")??;
 
         let _ = self.crop_cache.put(detection_id, CROP_THUMB_SIZE, &bytes).await;
 
@@ -562,41 +668,40 @@ fn extract_crop_padded(img: &RgbImage, det: &StoredDetection, padding_ratio: f32
     let pad_x = (bw * padding_ratio) as i32;
     let pad_y = (bh * padding_ratio) as i32;
 
-    let cx = (det.x0 + det.x1) / 2;
-    let cy = (det.y0 + det.y1) / 2;
-    let half_w = (bw / 2.0) as i32 + pad_x;
-    let half_h = (bh / 2.0) as i32 + pad_y;
-    let half = half_w.max(half_h);
+    // 1. Crop exactly the bounding box (with padding)
+    let x0 = (det.x0 - pad_x).max(0);
+    let y0 = (det.y0 - pad_y).max(0);
+    let x1 = (det.x1 + pad_x).min(w);
+    let y1 = (det.y1 + pad_y).min(h);
 
-    let x0 = cx - half;
-    let y0 = cy - half;
-    let size = half * 2;
+    let crop_w = (x1 - x0) as u32;
+    let crop_h = (y1 - y0) as u32;
 
-    if size <= 0 {
-        anyhow::bail!("Invalid crop dimensions: {}x{}", size, size);
+    if crop_w == 0 || crop_h == 0 {
+        anyhow::bail!("Invalid crop dimensions: {}x{}", crop_w, crop_h);
     }
 
-    let mut crop = RgbImage::new(size as u32, size as u32);
+    // 2. Initialize a white square image
+    let square_size = crop_w.max(crop_h);
+    let mut square_img = RgbImage::from_pixel(square_size, square_size, image::Rgb([255, 255, 255]));
+
+    // 3. Center the rectangular crop inside the white square
+    let offset_x = (square_size - crop_w) / 2;
+    let offset_y = (square_size - crop_h) / 2;
+
     let raw = img.as_raw();
-    let crop_raw = crop.as_mut();
+    let square_raw = square_img.as_mut();
 
-    for dy in 0..size {
-        let src_y = y0 + dy;
-        for dx in 0..size {
-            let src_x = x0 + dx;
-            let dst_idx = ((dy * size + dx) * 3) as usize;
-            if src_x >= 0 && src_x < w && src_y >= 0 && src_y < h {
-                let src_idx = ((src_y * w + src_x) * 3) as usize;
-                crop_raw[dst_idx..dst_idx + 3].copy_from_slice(&raw[src_idx..src_idx + 3]);
-            } else {
-                crop_raw[dst_idx] = 255;
-                crop_raw[dst_idx + 1] = 255;
-                crop_raw[dst_idx + 2] = 255;
-            }
-        }
+    for y in 0..crop_h {
+        let src_row = (((y0 + y as i32) * w) + x0) as usize * 3;
+        let dst_y = offset_y + y;
+        let dst_row = ((dst_y * square_size + offset_x) as usize) * 3;
+        let copy_len = (crop_w * 3) as usize;
+        square_raw[dst_row..dst_row + copy_len]
+            .copy_from_slice(&raw[src_row..src_row + copy_len]);
     }
 
-    Ok(crop)
+    Ok(square_img)
 }
 
 fn f32_vec_to_bytes(v: &[f32]) -> Vec<u8> {
@@ -612,4 +717,22 @@ fn bytes_to_f32_vec(bytes: &[u8]) -> Vec<f32> {
         .chunks_exact(4)
         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
+}
+
+fn resize_rgb_fast(crop: &RgbImage, target_size: u32) -> Result<Vec<u8>> {
+    let mut resizer = fast_image_resize::Resizer::new();
+    let src_image = fast_image_resize::images::ImageRef::new(
+        crop.width(),
+        crop.height(),
+        crop.as_raw(),
+        fast_image_resize::PixelType::U8x3,
+    )?;
+    let mut dst_image = fast_image_resize::images::Image::from_vec_u8(
+        target_size,
+        target_size,
+        vec![0u8; (target_size * target_size * 3) as usize],
+        fast_image_resize::PixelType::U8x3,
+    )?;
+    resizer.resize(&src_image, &mut dst_image, None)?;
+    Ok(dst_image.buffer().to_vec())
 }

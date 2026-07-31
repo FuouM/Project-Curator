@@ -64,6 +64,13 @@ impl CropCache {
         Ok(())
     }
 
+    pub async fn clear(&self) -> Result<()> {
+        sqlx::query("DELETE FROM detection_crops")
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+
     pub async fn put(&self, detection_id: i64, size: u32, data: &[u8]) -> Result<()> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -79,6 +86,33 @@ impl CropCache {
         .bind(now)
         .execute(&self.db)
         .await?;
+
+        self.evict_if_needed(DEFAULT_MAX_ENTRIES).await?;
+        Ok(())
+    }
+
+    pub async fn put_batch(&self, crops: &[(i64, u32, Vec<u8>)]) -> Result<()> {
+        if crops.is_empty() {
+            return Ok(());
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let mut tx = self.db.begin().await?;
+        for &(detection_id, size, ref data) in crops {
+            sqlx::query(
+                "INSERT OR REPLACE INTO detection_crops (detection_id, size, data, created_at) VALUES (?, ?, ?, ?)",
+            )
+            .bind(detection_id)
+            .bind(size)
+            .bind(data)
+            .bind(now)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
 
         self.evict_if_needed(DEFAULT_MAX_ENTRIES).await?;
         Ok(())

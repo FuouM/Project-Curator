@@ -968,6 +968,19 @@
               <span id="backfill-status-msg" style="font-size: 11px; min-height: 16px;"></span>
             </div>
           </div>
+
+          <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+            <div class="group-box-title">Cache Management</div>
+            <p style="font-size: 11px; color: #333333;">
+              Clear the cached bounding box crops. This forces the system to regenerate crop thumbnails from original files on demand.
+            </p>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button class="win-button" id="clear-crop-cache-btn">
+                <i class="bi bi-trash"></i> Clear Crop Cache
+              </button>
+              <span id="clear-crop-cache-status-msg" style="font-size: 11px; min-height: 16px;"></span>
+            </div>
+          </div>
         </section>
 
         <!-- COMPONENT STYLESHEET VIEW -->
@@ -1010,9 +1023,9 @@
           <span class="image-viewer-close" id="image-viewer-close">&times;</span>
         </div>
       </div>
-      <div class="image-viewer-body">
+      <div class="image-viewer-body" style="position: relative;">
         <img id="image-viewer-img" src="" alt="Full size image" />
-        <svg id="image-viewer-detections-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;display:none;"></svg>
+        <svg id="image-viewer-detections-overlay" style="position:absolute;pointer-events:none;display:none;"></svg>
       </div>
     </div>
 
@@ -1040,17 +1053,19 @@
             Drag the corners/edges to adjust the bounding box, or click and drag anywhere to draw a new box.
           </p>
           <div id="bbox-editor-container" style="position: relative; max-width: 100%; max-height: 50vh; overflow: hidden; background: #222; border: 1px solid #7a7a7a; display: flex; align-items: center; justify-content: center;">
-            <img id="bbox-editor-img" src="" style="max-width: 100%; max-height: 50vh; display: block; user-select: none; -webkit-user-drag: none;" />
-            <div id="bbox-editor-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair;">
-              <div id="bbox-editor-box" style="position: absolute; border: 2px solid #e74c3c; box-sizing: border-box; display: none; background: rgba(231, 76, 60, 0.15); cursor: move;">
-                <div class="bbox-handle nw" style="position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #e74c3c; top: -5px; left: -5px; cursor: nwse-resize;"></div>
-                <div class="bbox-handle ne" style="position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #e74c3c; top: -5px; right: -5px; cursor: nesw-resize;"></div>
-                <div class="bbox-handle se" style="position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #e74c3c; bottom: -5px; right: -5px; cursor: nwse-resize;"></div>
-                <div class="bbox-handle sw" style="position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #e74c3c; bottom: -5px; left: -5px; cursor: nesw-resize;"></div>
-                <div class="bbox-handle n" style="position: absolute; height: 6px; left: 3px; right: 3px; top: -4px; cursor: ns-resize;"></div>
-                <div class="bbox-handle s" style="position: absolute; height: 6px; left: 3px; right: 3px; bottom: -4px; cursor: ns-resize;"></div>
-                <div class="bbox-handle e" style="position: absolute; width: 6px; top: 3px; bottom: 3px; right: -4px; cursor: ew-resize;"></div>
-                <div class="bbox-handle w" style="position: absolute; width: 6px; top: 3px; bottom: 3px; left: -4px; cursor: ew-resize;"></div>
+            <div style="position: relative; display: inline-block; max-width: 100%; max-height: 50vh;">
+              <img id="bbox-editor-img" src="" style="max-width: 100%; max-height: 50vh; display: block; user-select: none; -webkit-user-drag: none;" />
+              <div id="bbox-editor-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair;">
+                <div id="bbox-editor-box" style="position: absolute; border: 2px solid #e74c3c; box-sizing: border-box; display: none; background: rgba(231, 76, 60, 0.15); cursor: move;">
+                  <div class="bbox-handle nw" style="position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #e74c3c; top: -5px; left: -5px; cursor: nwse-resize;"></div>
+                  <div class="bbox-handle ne" style="position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #e74c3c; top: -5px; right: -5px; cursor: nesw-resize;"></div>
+                  <div class="bbox-handle se" style="position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #e74c3c; bottom: -5px; right: -5px; cursor: nwse-resize;"></div>
+                  <div class="bbox-handle sw" style="position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #e74c3c; bottom: -5px; left: -5px; cursor: nesw-resize;"></div>
+                  <div class="bbox-handle n" style="position: absolute; height: 6px; left: 3px; right: 3px; top: -4px; cursor: ns-resize;"></div>
+                  <div class="bbox-handle s" style="position: absolute; height: 6px; left: 3px; right: 3px; bottom: -4px; cursor: ns-resize;"></div>
+                  <div class="bbox-handle e" style="position: absolute; width: 6px; top: 3px; bottom: 3px; right: -4px; cursor: ew-resize;"></div>
+                  <div class="bbox-handle w" style="position: absolute; width: 6px; top: 3px; bottom: 3px; left: -4px; cursor: ew-resize;"></div>
+                </div>
               </div>
             </div>
           </div>

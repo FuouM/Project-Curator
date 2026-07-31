@@ -20,6 +20,7 @@ export type RequestPayload =
   | { RunBenchmark: { embedding_model: "clip-vit-b-32" | "mobileclip-s2", run_tagger?: boolean | null } }
   | { RunTaggerBenchmark: null }
   | { GetSettings: null }
+  | { ClearCropCache: null }
   | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null; detection_device: string | null; detection_metrics_device: string | null } }
   | { ReindexVectors: null }
   | { ReindexFailedVectors: null }

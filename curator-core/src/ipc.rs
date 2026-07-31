@@ -120,6 +120,8 @@ pub enum Request {
     },
     /// Get current settings (device preferences, etc.).
     GetSettings,
+    /// Clear detection crop cache.
+    ClearCropCache,
     /// Update settings. Partial update — only provided fields are changed.
     UpdateSettings {
         clip_device: Option<DevicePreference>,

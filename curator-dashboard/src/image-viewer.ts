@@ -86,6 +86,12 @@ async function toggleDetections() {
     const scaleX = img.clientWidth / img.naturalWidth;
     const scaleY = img.clientHeight / img.naturalHeight;
 
+    // Reposition and resize the SVG element to match the image dimensions exactly
+    overlay.style.left = `${img.offsetLeft}px`;
+    overlay.style.top = `${img.offsetTop}px`;
+    overlay.style.width = `${img.clientWidth}px`;
+    overlay.style.height = `${img.clientHeight}px`;
+
     overlay.innerHTML = "";
     overlay.setAttribute("viewBox", `0 0 ${img.clientWidth} ${img.clientHeight}`);
 

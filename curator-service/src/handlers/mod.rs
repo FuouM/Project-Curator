@@ -399,6 +399,15 @@ pub async fn handle_request(
             }
         }
 
+        Request::ClearCropCache => {
+            match detection.crop_cache.clear().await {
+                Ok(_) => Response::Success,
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
         Request::UpdateSettings {
             clip_device,
             tagger_device,

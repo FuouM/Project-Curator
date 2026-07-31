@@ -72,6 +72,27 @@ export function setCachedCrop(detectionId: number, url: string) {
   cacheCrop(detectionId, url);
 }
 
+export function invalidateCropCache(detectionId: number) {
+  const url = cropCache.get(detectionId);
+  if (url && url.startsWith("blob:")) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch (_) {}
+  }
+  cropCache.delete(detectionId);
+}
+
+export function clearAllCropCaches() {
+  cropCache.forEach(url => {
+    if (url && url.startsWith("blob:")) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch (_) {}
+    }
+  });
+  cropCache.clear();
+}
+
 interface ThumbJob {
   imageId: number;
   img: HTMLImageElement;
@@ -572,7 +593,8 @@ async function loadDetectionsForImage(imageId: number) {
 
         // Crop thumbnail placeholder
         const cropThumb = document.createElement("div");
-        cropThumb.style.cssText = "width:48px;height:48px;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;";
+        cropThumb.className = "skeleton-pulse";
+        cropThumb.style.cssText = "width:48px;height:48px;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;";
         cropThumb.innerHTML = '<i class="bi bi-image" style="color:#999;"></i>';
 
         // Load crop async/sync from cache
@@ -581,6 +603,7 @@ async function loadDetectionsForImage(imageId: number) {
           // Refresh accessed entry in LRU crop cache
           cropCache.delete(det.id);
           cropCache.set(det.id, cachedUrl);
+          cropThumb.classList.remove("skeleton-pulse");
           cropThumb.innerHTML = `<img src="${cachedUrl}" style="width:100%;height:100%;object-fit:cover;" />`;
         } else {
           callService({ GetDetectionCrop: { detection_id: det.id, max_size: 96 } }).then((cropResp: any) => {
@@ -589,9 +612,12 @@ async function loadDetectionsForImage(imageId: number) {
               const blob = new Blob([bytes], { type: "image/webp" });
               const url = URL.createObjectURL(blob);
               cacheCrop(det.id, url);
+              cropThumb.classList.remove("skeleton-pulse");
               cropThumb.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" />`;
             }
-          }).catch(() => {});
+          }).catch(() => {
+            cropThumb.classList.remove("skeleton-pulse");
+          });
         }
 
         const infoEl = document.createElement("div");
@@ -620,12 +646,16 @@ async function loadDetectionsForImage(imageId: number) {
           attachAutocomplete(nameInput, dropdownId, async (newName) => {
             if (newName !== assignedIdentity.name) {
               await callService({ RenameCharacterIdentity: { identity_id: assignedIdentity.id, name: newName } });
+              await loadDetectionsForImage(imageId);
+              await refreshCharacters();
             }
           });
           nameInput.addEventListener("blur", async () => {
             const newName = nameInput.value.trim();
             if (newName && newName !== assignedIdentity.name) {
               await callService({ RenameCharacterIdentity: { identity_id: assignedIdentity.id, name: newName } });
+              await loadDetectionsForImage(imageId);
+              await refreshCharacters();
             }
           });
           nameInput.addEventListener("keydown", (e) => {
@@ -667,6 +697,7 @@ async function loadDetectionsForImage(imageId: number) {
               const fp = imgResp.ImageResult.image.current_filepath;
               import("./bbox-editor").then(m => {
                 m.openBBoxEditor(det.id, imageId, fp, det.x0, det.y0, det.x1, det.y1, () => {
+                  invalidateCropCache(det.id);
                   loadDetectionsForImage(imageId);
                   refreshCharacters();
                 });

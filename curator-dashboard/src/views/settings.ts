@@ -276,4 +276,27 @@ export function setupSettings() {
     }
     backfillBtn.removeAttribute("disabled");
   });
+
+  // Clear crop cache button
+  const clearCropCacheBtn = document.getElementById("clear-crop-cache-btn");
+  const clearCropCacheStatus = document.getElementById("clear-crop-cache-status-msg");
+  clearCropCacheBtn?.addEventListener("click", async () => {
+    if (!clearCropCacheStatus) return;
+    if (!confirm("Are you sure you want to clear all cached bounding box crops?")) return;
+    setStatusMessage(clearCropCacheStatus, "Clearing crop cache...", "loading");
+    clearCropCacheBtn.setAttribute("disabled", "true");
+    try {
+      const resp = await callService({ ClearCropCache: null });
+      if ("Success" in resp) {
+        const cardsModule = await import("../cards");
+        cardsModule.clearAllCropCaches();
+        setStatusMessage(clearCropCacheStatus, "Crop cache cleared successfully.", "success");
+      } else if ("Error" in resp) {
+        setStatusMessage(clearCropCacheStatus, "Failed: " + resp.Error.message, "error");
+      }
+    } catch (e: any) {
+      setStatusMessage(clearCropCacheStatus, "Error: " + (e.message || e), "error");
+    }
+    clearCropCacheBtn.removeAttribute("disabled");
+  });
 }
