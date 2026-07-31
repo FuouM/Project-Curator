@@ -98,6 +98,9 @@ async function toggleOcr() {
       resp = await callService({ RunOcr: { image_id: currentViewerImageId } });
       if (waitBtn) waitBtn.innerHTML = '<i class="bi bi-fonts"></i> OCR Text';
       detections = ("OcrDetectionsResult" in resp) ? resp.OcrDetectionsResult.detections : [];
+      // Refresh cards after initial OCR run
+      import("./views/gallery").then(m => m.refreshGallery());
+      import("./views/dashboard").then(m => m.refreshDashboard());
     }
 
     if (detections.length === 0) return;
@@ -279,6 +282,33 @@ export function setupImageViewer() {
   document.getElementById("image-viewer-toggle-ocr")?.addEventListener("click", (e) => {
     e.stopPropagation();
     toggleOcr();
+  });
+
+  document.getElementById("image-viewer-rerun-ocr")?.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (!currentViewerImageId) return;
+    const btn = document.getElementById("image-viewer-rerun-ocr");
+    try {
+      if (btn) btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Running...';
+      const resp = await callService({ RunOcr: { image_id: currentViewerImageId } });
+      const detections = ("OcrDetectionsResult" in resp) ? resp.OcrDetectionsResult.detections : [];
+      if (detections.length > 0) {
+        ocrVisible = false;
+        toggleOcr();
+      } else {
+        const overlay = document.getElementById("image-viewer-ocr-overlay");
+        if (overlay) { overlay.innerHTML = ""; overlay.style.display = "none"; }
+        ocrVisible = false;
+        updateOcrButton(false);
+      }
+      // Refresh gallery and dashboard cards to reflect updated OCR text
+      import("./views/gallery").then(m => m.refreshGallery());
+      import("./views/dashboard").then(m => m.refreshDashboard());
+    } catch (err) {
+      console.error("Re-run OCR failed:", err);
+    } finally {
+      if (btn) btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Re-run OCR';
+    }
   });
 
   document.addEventListener("keydown", (e) => {
