@@ -1,21 +1,10 @@
-use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
 use anyhow::{Context, Result};
 use ndarray::Array4;
-use ort::{inputs, session::Session, value::TensorRef};
+use ort::{inputs, value::TensorRef};
 use image::{ImageBuffer, RgbImage, Rgb};
 
 use crate::ipc::DevicePreference;
-use crate::vector::apply_device_preference;
-
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
 
 #[derive(Debug, Clone)]
 pub struct OcrDetection {
@@ -25,16 +14,13 @@ pub struct OcrDetection {
     pub is_from_bubble: bool,
 }
 
+use crate::onnx::ManagedSession;
+
 pub struct OcrDetector {
-    det_model_path: PathBuf,
-    rec_model_path: PathBuf,
-    cls_model_path: Option<PathBuf>,
-    device: Mutex<DevicePreference>,
-    pub det_session: Mutex<Option<Session>>,
-    pub rec_session: Mutex<Option<Session>>,
-    pub cls_session: Mutex<Option<Session>>,
+    pub det_session: ManagedSession,
+    pub rec_session: ManagedSession,
+    pub cls_session: Option<ManagedSession>,
     pub rec_chars: Vec<String>,
-    last_used: AtomicU64,
     pub bubble_detector: MangaBubbleDetector,
 }
 
@@ -47,9 +33,12 @@ impl OcrDetector {
             let dict  = dir.join("PP-OCRv6_medium_rec_onnx").join("inference.yml");
             (model, dict)
         };
-        // Optional angle classifier (PP-LCNet textline_ori) — rotates 180° if detected
         let cls_model = dir.join("PP-LCNet_x1_0_textline_ori_onnx").join("inference.onnx");
-        let cls_model = if cls_model.exists() { Some(cls_model) } else { None };
+        let cls_session = if cls_model.exists() {
+            Some(ManagedSession::new("OCR Cls", cls_model, device.clone(), 1))
+        } else {
+            None
+        };
 
         // Search upwards for onnxruntime.dll starting from current executable path
         if let Ok(exe_path) = std::env::current_exe() {
@@ -83,9 +72,6 @@ impl OcrDetector {
         }
 
         // Load character dictionary from inference.yml PostProcess.character_dict entries.
-        // Format: block YAML sequence under `character_dict:`, entries as `  - char` or `  - 'char'`.
-        // Index 0 is "blank" for CTC decoding (prepended by CTCLabelDecode.add_special_char).
-        // PP-OCRv6 uses use_space_char=True, which appends " " as the final class (index 18709).
         let mut rec_chars = vec!["blank".to_string()];
         if rec_dict.exists() {
             if let Ok(content) = std::fs::read_to_string(&rec_dict) {
@@ -94,12 +80,10 @@ impl OcrDetector {
                     let trimmed = line.trim_end_matches('\r');
                     let trimmed_stripped = trimmed.trim();
 
-                    // Blank lines: skip but stay in dict section
                     if trimmed_stripped.is_empty() {
                         continue;
                     }
 
-                    // Detect start of character_dict section
                     if trimmed_stripped == "character_dict:" {
                         in_char_dict = true;
                         continue;
@@ -107,9 +91,7 @@ impl OcrDetector {
 
                     if in_char_dict {
                         if let Some(rest) = trimmed_stripped.strip_prefix("- ") {
-                            // Strip surrounding single or double quotes, then unescape
                             let ch = if rest.starts_with('\'') && rest.ends_with('\'') {
-                                // YAML single-quoted scalar: '' inside means literal '
                                 let inner = &rest[1..rest.len()-1];
                                 inner.replace("''", "'")
                             } else if rest.starts_with('"') && rest.ends_with('"') {
@@ -119,148 +101,97 @@ impl OcrDetector {
                             };
                             rec_chars.push(ch);
                         } else if trimmed_stripped == "-" {
-                            // Bare dash = empty string character
                             rec_chars.push(String::new());
                         } else {
-                            // Non-list, non-blank line: end of section
                             in_char_dict = false;
                         }
                     }
                 }
             }
         }
-        // PP-OCRv6 rec model uses use_space_char=True: space is appended as the last class.
-        // The YAML character_dict has 18708 entries; blank(1) + chars(18708) + space(1) = 18710
-        // which matches num_classes=18710 in the ONNX model output.
         rec_chars.push(" ".to_string());
 
         Self {
-            det_model_path: det_model,
-            rec_model_path: rec_model,
-            cls_model_path: cls_model,
-            device: Mutex::new(device.clone()),
-            det_session: Mutex::new(None),
-            rec_session: Mutex::new(None),
-            cls_session: Mutex::new(None),
+            det_session: ManagedSession::new("OCR Det", det_model, device.clone(), 1),
+            rec_session: ManagedSession::new("OCR Rec", rec_model, device.clone(), 1),
+            cls_session,
             rec_chars,
-            last_used: AtomicU64::new(now_secs()),
             bubble_detector: MangaBubbleDetector::new(model_dir.as_ref(), device),
         }
     }
 
     pub fn is_loaded(&self) -> bool {
-        self.det_session.lock().unwrap().is_some() && self.rec_session.lock().unwrap().is_some()
+        self.det_session.is_loaded() && self.rec_session.is_loaded()
     }
 
     pub fn idle_secs(&self) -> u64 {
-        now_secs().saturating_sub(self.last_used.load(Ordering::Relaxed))
+        let mut max_idle = self.det_session.idle_secs().max(self.rec_session.idle_secs());
+        if let Some(ref cls) = self.cls_session {
+            max_idle = max_idle.max(cls.idle_secs());
+        }
+        max_idle = max_idle.max(self.bubble_detector.session.idle_secs());
+        max_idle
     }
 
     pub fn unload(&self) {
-        let mut det = self.det_session.lock().unwrap();
-        let mut rec = self.rec_session.lock().unwrap();
-        let mut cls = self.cls_session.lock().unwrap();
-        if det.is_some() || rec.is_some() || cls.is_some() {
-            tracing::info!("OCR: unloading models");
-            *det = None;
-            *rec = None;
-            *cls = None;
+        self.det_session.unload();
+        self.rec_session.unload();
+        if let Some(ref cls) = self.cls_session {
+            cls.unload();
         }
+        self.bubble_detector.unload();
     }
 
     pub fn set_device(&self, device: DevicePreference) {
-        {
-            let mut d = self.device.lock().unwrap();
-            *d = device.clone();
+        self.det_session.set_device(device.clone());
+        self.rec_session.set_device(device.clone());
+        if let Some(ref cls) = self.cls_session {
+            cls.set_device(device.clone());
         }
-        self.unload();
+        self.bubble_detector.session.set_device(device);
     }
 
-    fn load(&self) -> Result<()> {
-        let mut det_guard = self.det_session.lock().unwrap();
-        let mut rec_guard = self.rec_session.lock().unwrap();
-        let mut cls_guard = self.cls_session.lock().unwrap();
-        if det_guard.is_some() && rec_guard.is_some() {
-            return Ok(());
+    pub fn load(&self) -> Result<()> {
+        self.det_session.load()?;
+        self.rec_session.load()?;
+        if let Some(ref cls) = self.cls_session {
+            let _ = cls.load();
         }
-
-        if !self.det_model_path.exists() {
-            anyhow::bail!("OCR Det model not found at {:?}", self.det_model_path);
+        if self.bubble_detector.is_available() {
+            let _ = self.bubble_detector.session.load();
         }
-        if !self.rec_model_path.exists() {
-            anyhow::bail!("OCR Rec model not found at {:?}", self.rec_model_path);
-        }
-
-        let device = self.device.lock().unwrap().clone();
-        tracing::info!("Loading OCR detection model (device: {:?})", device);
-
-        let mut det_builder = Session::builder()?.with_intra_threads(1)?;
-        apply_device_preference(&mut det_builder, &device, "OCR Det");
-        let det_sess = det_builder.commit_from_file(&self.det_model_path)?;
-
-        tracing::info!("Loading OCR recognition model (device: {:?})", device);
-        let mut rec_builder = Session::builder()?.with_intra_threads(1)?;
-        apply_device_preference(&mut rec_builder, &device, "OCR Rec");
-        let rec_sess = rec_builder.commit_from_file(&self.rec_model_path)?;
-
-        *det_guard = Some(det_sess);
-        *rec_guard = Some(rec_sess);
-
-        // Load angle classifier if model file exists
-        if let Some(ref cls_path) = self.cls_model_path {
-            if cls_path.exists() && cls_guard.is_none() {
-                tracing::info!("Loading OCR angle classifier (device: {:?})", device);
-                let mut cls_builder = Session::builder()?.with_intra_threads(1)?;
-                apply_device_preference(&mut cls_builder, &device, "OCR Cls");
-                if let Ok(cls_sess) = cls_builder.commit_from_file(cls_path) {
-                    *cls_guard = Some(cls_sess);
-                }
-            }
-        }
-
         Ok(())
     }
 
     pub fn run_ocr(&self, image: &RgbImage) -> Result<(Vec<OcrDetection>, Vec<BubbleDetection>)> {
-        self.load()?;
-        self.last_used.store(now_secs(), Ordering::Relaxed);
-
-        let mut det_guard = self.det_session.lock().unwrap();
-        let mut rec_guard = self.rec_session.lock().unwrap();
-        let mut cls_guard = self.cls_session.lock().unwrap();
-        let det_session = det_guard.as_mut().unwrap();
-        let rec_session = rec_guard.as_mut().unwrap();
-        let cls_opt: &mut Option<Session> = &mut *cls_guard;
-
         let (ow, oh) = image.dimensions();
         let orig_w = ow as usize;
         let orig_h = oh as usize;
 
-    // 1. Preprocess for detection: resize keeping aspect ratio, round to multiple of 32
-    //    Reference: DetResizeForTest with limit_side_len=960, limit_type="max"
-    let (det_tensor, _resize_w, _resize_h) = preprocess_det(image)?;
+        // 1. Preprocess for detection
+        let (det_tensor, _resize_w, _resize_h) = preprocess_det(image)?;
 
         // 2. Run detection model
-        let outputs = det_session.run(inputs![TensorRef::from_array_view(&det_tensor)?])?;
-        let output_tensor = outputs.get("fetch_name_0")
-            .or_else(|| outputs.get("maps"))
-            .or_else(|| outputs.get("output_0"))
-            .context("Failed to get detection maps output from OCR model")?;
-        let (shape, pred_data) = output_tensor.try_extract_tensor::<f32>()?;
+        let (shape, pred_data) = self.det_session.with_session(|session| {
+            let outputs = session.run(inputs![TensorRef::from_array_view(&det_tensor)?])?;
+            let output_tensor = outputs.get("fetch_name_0")
+                .or_else(|| outputs.get("maps"))
+                .or_else(|| outputs.get("output_0"))
+                .context("Failed to get detection maps output from OCR model")?;
+            let (shape, data) = output_tensor.try_extract_tensor::<f32>()?;
+            Ok((shape.to_owned(), data.to_vec()))
+        })?;
 
-        // Shape is [1, 1, H, W] — pred_data is the raw sigmoid probability map
         let map_h = shape[2] as usize;
         let map_w = shape[3] as usize;
 
         // 3. Extract bounding box polygons from the probability map
-        //    Matches: DBPostProcess(thresh=0.2, box_thresh=0.45, unclip_ratio=1.4)
-        //    boxes_from_bitmap with scale back to original image coordinates
         let quads = extract_boxes_from_map(
-            pred_data,
+            &pred_data,
             map_w, map_h,
-            0.3,   // det_db_thresh (reference default)
-            0.6,   // det_db_box_thresh (reference default)
-            1.5,   // det_db_unclip_ratio (reference default)
+            0.3,
+            0.6,
+            1.5,
             orig_w, orig_h,
         )?;
 
@@ -301,23 +232,24 @@ impl OcrDetector {
             };
 
             // Angle classification: rotate 180° if classifier detects upside-down text
-            if let Some(cls_sess) = cls_opt {
+            if let Some(ref cls) = self.cls_session {
                 if let Ok(cls_tensor) = preprocess_cls(&cropped_line) {
-                    if let Ok(cls_outputs) = cls_sess.run(inputs![TensorRef::from_array_view(&cls_tensor)?]) {
-                        if let Some(cls_out) = cls_outputs.get("fetch_name_0")
+                    let cls_res = cls.with_session(|cls_sess| {
+                        let cls_outputs = cls_sess.run(inputs![TensorRef::from_array_view(&cls_tensor)?])?;
+                        let cls_out = cls_outputs.get("fetch_name_0")
                             .or_else(|| cls_outputs.get("output_0"))
                             .or_else(|| cls_outputs.get("output"))
-                        {
-                            if let Ok((cls_shape, cls_data)) = cls_out.try_extract_tensor::<f32>() {
-                                // Binary classifier: [0°, 180°] — index 1 = 180°
-                                let num_classes = cls_shape[cls_shape.len() - 1] as usize;
-                                if num_classes >= 2 {
-                                    let score_0 = cls_data[0];
-                                    let score_180 = cls_data[1];
-                                    if score_180 > score_0 && score_180 > 0.9 {
-                                        cropped_line = image::imageops::rotate180(&cropped_line);
-                                    }
-                                }
+                            .context("Failed to get cls output")?;
+                        let (cls_shape, cls_data) = cls_out.try_extract_tensor::<f32>()?;
+                        Ok((cls_shape.to_owned(), cls_data.to_vec()))
+                    });
+                    if let Ok((cls_shape, cls_data)) = cls_res {
+                        let num_classes = cls_shape[cls_shape.len() - 1] as usize;
+                        if num_classes >= 2 {
+                            let score_0 = cls_data[0];
+                            let score_180 = cls_data[1];
+                            if score_180 > score_0 && score_180 > 0.9 {
+                                cropped_line = image::imageops::rotate180(&cropped_line);
                             }
                         }
                     }
@@ -328,28 +260,31 @@ impl OcrDetector {
                 Ok(t) => t,
                 Err(_) => continue,
             };
-            let rec_outputs = match rec_session.run(inputs![TensorRef::from_array_view(&rec_tensor)?]) {
-                Ok(o) => o,
+            let rec_res = self.rec_session.with_session(|rec_sess| {
+                let rec_outputs = rec_sess.run(inputs![TensorRef::from_array_view(&rec_tensor)?])?;
+                let rec_tensor_out = rec_outputs
+                    .get("fetch_name_0")
+                    .or_else(|| rec_outputs.get("output_0"))
+                    .or_else(|| rec_outputs.get("output"))
+                    .context("Failed to get rec output")?;
+                let (rec_shape, rec_data) = rec_tensor_out.try_extract_tensor::<f32>()?;
+                Ok((rec_shape.to_owned(), rec_data.to_vec()))
+            });
+            let (rec_shape, rec_data) = match rec_res {
+                Ok(res) => res,
                 Err(_) => continue,
             };
-            let rec_tensor_out = rec_outputs
-                .get("fetch_name_0")
-                .or_else(|| rec_outputs.get("output_0"))
-                .or_else(|| rec_outputs.get("output"));
-            if let Some(rec_tensor_out) = rec_tensor_out {
-                if let Ok((rec_shape, rec_data)) = rec_tensor_out.try_extract_tensor::<f32>() {
-                    let seq_len  = rec_shape[1] as usize;
-                    let num_classes = rec_shape[2] as usize;
-                    let (text, confidence) = decode_ctc(rec_data, seq_len, num_classes, &self.rec_chars);
-                    if confidence > 0.5 && !text.trim().is_empty() {
-                        results.push(OcrDetection {
-                            text,
-                            confidence,
-                            polygon: *poly,
-                            is_from_bubble: bubble_flags.get(idx).copied().unwrap_or(false),
-                        });
-                    }
-                }
+
+            let seq_len  = rec_shape[1] as usize;
+            let num_classes = rec_shape[2] as usize;
+            let (text, confidence) = decode_ctc(&rec_data, seq_len, num_classes, &self.rec_chars);
+            if confidence > 0.5 && !text.trim().is_empty() {
+                results.push(OcrDetection {
+                    text,
+                    confidence,
+                    polygon: *poly,
+                    is_from_bubble: bubble_flags.get(idx).copied().unwrap_or(false),
+                });
             }
         }
 
@@ -947,10 +882,7 @@ pub struct BubbleDetection {
 /// Output: (1, 300, 6) — [cx, cy, w, h, confidence, class]
 /// Single class: Text. No NMS needed (end-to-end head).
 pub struct MangaBubbleDetector {
-    model_path: PathBuf,
-    session: Mutex<Option<Session>>,
-    device: Mutex<DevicePreference>,
-    last_used: AtomicU64,
+    pub session: ManagedSession,
 }
 
 impl MangaBubbleDetector {
@@ -958,49 +890,19 @@ impl MangaBubbleDetector {
         let dir = model_dir.as_ref().to_path_buf();
         let model_path = dir.join("MangaBubbleYOLO").join("yolo26n.onnx");
         Self {
-            model_path,
-            session: Mutex::new(None),
-            device: Mutex::new(device),
-            last_used: AtomicU64::new(now_secs()),
+            session: ManagedSession::new("Manga Bubble YOLO", model_path, device, 1),
         }
     }
 
     pub fn is_available(&self) -> bool {
-        self.model_path.exists()
-    }
-
-    fn load(&self) -> Result<()> {
-        let mut guard = self.session.lock().unwrap();
-        if guard.is_some() {
-            return Ok(());
-        }
-        if !self.model_path.exists() {
-            anyhow::bail!("Manga bubble model not found at {:?}", self.model_path);
-        }
-        let device = self.device.lock().unwrap().clone();
-        tracing::info!("Loading manga bubble detector (device: {:?})", device);
-        let mut builder = Session::builder()?.with_intra_threads(1)?;
-        apply_device_preference(&mut builder, &device, "Manga Bubble YOLO");
-        let sess = builder.commit_from_file(&self.model_path)?;
-        *guard = Some(sess);
-        Ok(())
+        self.session.model_path().exists()
     }
 
     pub fn unload(&self) {
-        let mut guard = self.session.lock().unwrap();
-        if guard.is_some() {
-            tracing::info!("Manga bubble detector: unloading model");
-            *guard = None;
-        }
+        self.session.unload();
     }
 
     pub fn detect_bubbles(&self, image: &RgbImage, conf_threshold: f32) -> Result<Vec<BubbleDetection>> {
-        self.load()?;
-        self.last_used.store(now_secs(), Ordering::Relaxed);
-
-        let mut guard = self.session.lock().unwrap();
-        let session = guard.as_mut().unwrap();
-
         let (orig_w, orig_h) = image.dimensions();
         let input_size = 1280usize;
         let pad_value: f32 = 114.0 / 255.0;
@@ -1044,14 +946,16 @@ impl MangaBubbleDetector {
         }
 
         // Run inference
-        let outputs = session.run(inputs![TensorRef::from_array_view(&tensor)?])?;
-        
-        let output = outputs.get("output0")
-            .or_else(|| outputs.get("output_0"))
-            .or_else(|| outputs.get("fetch_name_0"))
-            .or_else(|| outputs.get("output"))
-            .context("YOLO: output tensor not found (tried output0, output_0, fetch_name_0, output)")?;
-        let (_shape, data) = output.try_extract_tensor::<f32>()?;
+        let data_vec = self.session.with_session(|session| {
+            let outputs = session.run(inputs![TensorRef::from_array_view(&tensor)?])?;
+            let output = outputs.get("output0")
+                .or_else(|| outputs.get("output_0"))
+                .or_else(|| outputs.get("fetch_name_0"))
+                .or_else(|| outputs.get("output"))
+                .context("YOLO: output tensor not found (tried output0, output_0, fetch_name_0, output)")?;
+            let (_, data) = output.try_extract_tensor::<f32>()?;
+            Ok(data.to_vec())
+        })?;
 
         // Output shape: (1, 300, 6) — [x1, y1, x2, y2, conf, class]
         // Coordinates are in input pixel space (with letterbox padding)
@@ -1059,11 +963,11 @@ impl MangaBubbleDetector {
         let mut bubbles = Vec::new();
         for i in 0..num_detections {
             let base = i * 6;
-            let x1_raw = data[base];
-            let y1_raw = data[base + 1];
-            let x2_raw = data[base + 2];
-            let y2_raw = data[base + 3];
-            let conf = data[base + 4];
+            let x1_raw = data_vec[base];
+            let y1_raw = data_vec[base + 1];
+            let x2_raw = data_vec[base + 2];
+            let y2_raw = data_vec[base + 3];
+            let conf = data_vec[base + 4];
 
             if conf < conf_threshold {
                 continue;

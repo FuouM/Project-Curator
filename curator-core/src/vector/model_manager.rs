@@ -1,13 +1,13 @@
 use crate::image_decode;
 use crate::ipc::{DevicePreference, EmbeddingModel};
-use crate::vector::device::apply_device_preference;
+use crate::onnx::ManagedSession;
 use crate::vector::now_secs;
 use anyhow::{Context, Error};
 use ndarray::{Array2, Array4};
-use ort::{inputs, session::Session, value::TensorRef};
+use ort::{inputs, value::TensorRef};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokenizers::Tokenizer;
 use tracing::{info, warn};
@@ -16,8 +16,8 @@ pub struct ModelManager {
     model_dir: PathBuf,
     device: Mutex<DevicePreference>,
     active_model: Mutex<EmbeddingModel>,
-    vision_session: Mutex<Option<Session>>,
-    text_session: Mutex<Option<Session>>,
+    vision_session: Mutex<Option<Arc<ManagedSession>>>,
+    text_session: Mutex<Option<Arc<ManagedSession>>>,
     tokenizer: Mutex<Option<Tokenizer>>,
     last_used: AtomicU64,
 }
@@ -45,7 +45,10 @@ impl ModelManager {
 
     /// Return true if ONNX sessions are loaded in memory.
     pub fn is_loaded(&self) -> bool {
-        self.vision_session.lock().unwrap().is_some() && self.text_session.lock().unwrap().is_some()
+        let vs = self.vision_session.lock().unwrap();
+        let ts = self.text_session.lock().unwrap();
+        vs.as_ref().map(|s| s.is_loaded()).unwrap_or(false)
+            && ts.as_ref().map(|s| s.is_loaded()).unwrap_or(false)
     }
 
     /// Seconds since last inference.
@@ -60,6 +63,12 @@ impl ModelManager {
         let mut tok = self.tokenizer.lock().unwrap();
         if vs.is_some() || ts.is_some() {
             info!("CLIP: unloading sessions (idle {}s)", self.idle_secs());
+            if let Some(ref s) = *vs {
+                s.unload();
+            }
+            if let Some(ref s) = *ts {
+                s.unload();
+            }
             *vs = None;
             *ts = None;
             *tok = None;
@@ -80,6 +89,12 @@ impl ModelManager {
                 "CLIP: device changed to {:?} — unloading sessions for reload",
                 device
             );
+            if let Some(ref s) = *vs {
+                s.unload();
+            }
+            if let Some(ref s) = *ts {
+                s.unload();
+            }
             *vs = None;
             *ts = None;
         }
@@ -101,6 +116,12 @@ impl ModelManager {
                 "CLIP: active model changed to {:?} — unloading sessions for reload",
                 model
             );
+            if let Some(ref s) = *vs {
+                s.unload();
+            }
+            if let Some(ref s) = *ts {
+                s.unload();
+            }
             *vs = None;
             *ts = None;
             *tok = None;
@@ -109,15 +130,14 @@ impl ModelManager {
 
     /// Ensure both ONNX sessions and tokenizer are loaded. Idempotent.
     fn ensure_loaded(&self) -> Result<(), Error> {
-        // Fast path: already loaded
-        if self.tokenizer.lock().unwrap().is_some()
-            && self.vision_session.lock().unwrap().is_some()
-            && self.text_session.lock().unwrap().is_some()
-        {
+        let is_vision_none = self.vision_session.lock().unwrap().is_none();
+        let is_text_none = self.text_session.lock().unwrap().is_none();
+        let is_tok_none = self.tokenizer.lock().unwrap().is_none();
+
+        if !is_tok_none && !is_vision_none && !is_text_none {
             return Ok(());
         }
 
-        // Slow path: load everything
         let active = self.active_model();
         let (tokenizer_path, vision_path, text_path) = match active {
             EmbeddingModel::ClipVitB32 => (
@@ -156,15 +176,7 @@ impl ModelManager {
             let mut vs = self.vision_session.lock().unwrap();
             if vs.is_none() {
                 info!("Loading ONNX Vision Session from {:?}", vision_path);
-                let mut builder = Session::builder()
-                    .map_err(|e| anyhow::anyhow!("Failed to build vision session: {:?}", e))?
-                    .with_intra_threads(1)
-                    .map_err(|e| anyhow::anyhow!("Failed to set vision threads: {:?}", e))?;
-                apply_device_preference(&mut builder, &device, "CLIP Vision");
-                *vs =
-                    Some(builder.commit_from_file(&vision_path).map_err(|e| {
-                        anyhow::anyhow!("Failed to commit vision session: {:?}", e)
-                    })?);
+                *vs = Some(Arc::new(ManagedSession::new("CLIP Vision", vision_path, device.clone(), 1)));
             }
         }
 
@@ -173,16 +185,7 @@ impl ModelManager {
             let mut ts = self.text_session.lock().unwrap();
             if ts.is_none() {
                 info!("Loading ONNX Text Session from {:?}", text_path);
-                let mut builder = Session::builder()
-                    .map_err(|e| anyhow::anyhow!("Failed to build text session: {:?}", e))?
-                    .with_intra_threads(1)
-                    .map_err(|e| anyhow::anyhow!("Failed to set text threads: {:?}", e))?;
-                apply_device_preference(&mut builder, &device, "CLIP Text");
-                *ts = Some(
-                    builder
-                        .commit_from_file(&text_path)
-                        .map_err(|e| anyhow::anyhow!("Failed to commit text session: {:?}", e))?,
-                );
+                *ts = Some(Arc::new(ManagedSession::new("CLIP Text", text_path, device, 1)));
             }
         }
 
@@ -300,13 +303,10 @@ impl ModelManager {
     fn generate_image_embedding_inner(&self, image_path: &Path) -> Result<Vec<f32>, Error> {
         self.ensure_loaded()?;
         self.last_used.store(now_secs(), Ordering::Relaxed);
-        let mut session_guard = self
-            .vision_session
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Vision mutex poisoned"))?;
-        let _session = session_guard
-            .as_mut()
-            .context("Vision model not initialized")?;
+        let vs_arc = {
+            let guard = self.vision_session.lock().unwrap();
+            guard.as_ref().cloned().context("Vision model not initialized")?
+        };
 
         // 1. Decode image via shared fast decode
         let (rgb_buf, width, height) = image_decode::decode_rgb(image_path)?;
@@ -379,19 +379,16 @@ impl ModelManager {
         }
 
         // 5. Run inference
-        let session = session_guard
-            .as_mut()
-            .context("Vision model not initialized")?;
-        let outputs = session.run(inputs![TensorRef::from_array_view(&input_array)?])?;
+        let mut embedding = vs_arc.with_session(|session| {
+            let outputs = session.run(inputs![TensorRef::from_array_view(&input_array)?])?;
+            let output_tensor = outputs
+                .get("image_embeds")
+                .or_else(|| outputs.get("output_0"))
+                .context("Failed to get image embeds output from model")?;
+            let (_, data) = output_tensor.try_extract_tensor::<f32>()?;
+            Ok(data.to_vec())
+        })?;
 
-        let output_tensor = outputs
-            .get("image_embeds")
-            .or_else(|| outputs.get("output_0"))
-            .context("Failed to get image embeds output from model")?;
-
-        let output_ref = output_tensor.try_extract_tensor::<f32>()?;
-
-        let mut embedding = output_ref.1.to_vec();
         let norm = (embedding.iter().map(|&x| x * x).sum::<f32>()).sqrt();
         if norm > 0.0 {
             for val in &mut embedding {
@@ -491,10 +488,10 @@ impl ModelManager {
     ) -> Result<Vec<Result<Vec<f32>, Error>>, Error> {
         self.ensure_loaded()?;
         self.last_used.store(now_secs(), Ordering::Relaxed);
-        let mut session_guard = self
-            .vision_session
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Vision mutex poisoned"))?;
+        let vs_arc = {
+            let guard = self.vision_session.lock().unwrap();
+            guard.as_ref().cloned().context("Vision model not initialized")?
+        };
 
         let active = self.active_model();
         let target_size = match active {
@@ -561,18 +558,15 @@ impl ModelManager {
             }
         }
 
-        let session = session_guard
-            .as_mut()
-            .context("Vision model not initialized")?;
-        let outputs = session.run(inputs![TensorRef::from_array_view(&input_array)?])?;
-
-        let output_tensor = outputs
-            .get("image_embeds")
-            .or_else(|| outputs.get("output_0"))
-            .context("Failed to get image embeds output from model")?;
-
-        let output_ref = output_tensor.try_extract_tensor::<f32>()?;
-        let flat_outputs = output_ref.1;
+        let flat_outputs = vs_arc.with_session(|session| {
+            let outputs = session.run(inputs![TensorRef::from_array_view(&input_array)?])?;
+            let output_tensor = outputs
+                .get("image_embeds")
+                .or_else(|| outputs.get("output_0"))
+                .context("Failed to get image embeds output from model")?;
+            let (_, data) = output_tensor.try_extract_tensor::<f32>()?;
+            Ok(data.to_vec())
+        })?;
 
         for (batch_idx, &orig_idx) in valid_indices.iter().enumerate() {
             let start = batch_idx * 512;
@@ -634,13 +628,10 @@ impl ModelManager {
     fn generate_text_embedding_inner(&self, text: &str) -> Result<Vec<f32>, Error> {
         self.ensure_loaded()?;
         self.last_used.store(now_secs(), Ordering::Relaxed);
-        let mut session_guard = self
-            .text_session
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Text mutex poisoned"))?;
-        let _session = session_guard
-            .as_mut()
-            .context("Text model not initialized")?;
+        let ts_arc = {
+            let guard = self.text_session.lock().unwrap();
+            guard.as_ref().cloned().context("Text model not initialized")?
+        };
         let tok_guard = self.tokenizer.lock().unwrap();
         let tokenizer = tok_guard.as_ref().context("Tokenizer not initialized")?;
 
@@ -659,21 +650,18 @@ impl ModelManager {
 
         let input_ids_array = Array2::<i64>::from_shape_fn((1, 77), |(_, j)| padded_ids[j]);
 
-        let session = session_guard
-            .as_mut()
-            .context("Text model not initialized")?;
-        let outputs = session.run(inputs![
-            "input_ids" => TensorRef::from_array_view(&input_ids_array)?
-        ])?;
+        let mut embedding = ts_arc.with_session(|session| {
+            let outputs = session.run(inputs![
+                "input_ids" => TensorRef::from_array_view(&input_ids_array)?
+            ])?;
+            let output_tensor = outputs
+                .get("text_embeds")
+                .or_else(|| outputs.get("output_0"))
+                .context("Failed to get text embeds output from model")?;
+            let (_, data) = output_tensor.try_extract_tensor::<f32>()?;
+            Ok(data.to_vec())
+        })?;
 
-        let output_tensor = outputs
-            .get("text_embeds")
-            .or_else(|| outputs.get("output_0"))
-            .context("Failed to get text embeds output from model")?;
-
-        let output_ref = output_tensor.try_extract_tensor::<f32>()?;
-
-        let mut embedding = output_ref.1.to_vec();
         let norm = (embedding.iter().map(|&x| x * x).sum::<f32>()).sqrt();
         if norm > 0.0 {
             for val in &mut embedding {

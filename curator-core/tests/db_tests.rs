@@ -113,14 +113,15 @@ fn test_ocr_image_transcription_extraction() {
     // Direct inspect detection probability map values if 0 text blocks were found
     if results.is_empty() {
         let (det_tensor, det_w, det_h) = curator_core::detection::ocr::preprocess_det(&img).unwrap();
-        let mut det_guard = detector.det_session.lock().unwrap();
-        let det_session = det_guard.as_mut().unwrap();
-        let outputs = det_session.run(ort::inputs![ort::value::TensorRef::from_array_view(&det_tensor).unwrap()]).unwrap();
-        let out_tensor = outputs.get("fetch_name_0").or_else(|| outputs.get("maps")).unwrap();
-        let (shape, data) = out_tensor.try_extract_tensor::<f32>().unwrap();
+        let (shape, data) = detector.det_session.with_session(|det_session| {
+            let outputs = det_session.run(ort::inputs![ort::value::TensorRef::from_array_view(&det_tensor).unwrap()]).unwrap();
+            let out_tensor = outputs.get("fetch_name_0").or_else(|| outputs.get("maps")).unwrap();
+            let (shape, data) = out_tensor.try_extract_tensor::<f32>().unwrap();
+            Ok((shape.to_owned(), data.to_vec()))
+        }).unwrap();
         let mut max_val = 0.0f32;
         let mut count_above = 0;
-        for &v in data {
+        for v in data {
             if v > max_val { max_val = v; }
             if v > 0.2 { count_above += 1; }
         }

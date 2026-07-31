@@ -7,10 +7,13 @@ pub mod detection;
 pub mod filename_parser;
 pub mod image_decode;
 pub mod ipc;
+pub mod onnx;
 pub mod preprocess;
 pub mod tagger;
 pub mod thumbnail;
 pub mod vector;
+
+pub use onnx::ManagedSession;
 
 pub use benchmark::{
     benchmark_preprocess, run_detection_benchmark, run_onnx_benchmark,

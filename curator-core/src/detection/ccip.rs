@@ -1,12 +1,10 @@
 use crate::ipc::DevicePreference;
-use crate::vector::apply_device_preference;
+use crate::onnx::ManagedSession;
 use anyhow::{Context, Result};
 use ndarray::{Array2, Array4};
-use ort::{inputs, session::Session, value::TensorRef};
-use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use ort::{inputs, value::TensorRef};
+use std::path::Path;
+use std::time::Instant;
 use tracing::{debug, info};
 
 const CCIP_INPUT_SIZE: u32 = 384;
@@ -16,21 +14,9 @@ const DEFAULT_MATCH_THRESHOLD: f32 = 0.178;
 const CLIP_MEAN: [f32; 3] = [0.48145466, 0.4578275, 0.40821073];
 const CLIP_STD: [f32; 3] = [0.26862954, 0.2613026, 0.27577711];
 
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
 pub struct CCIPModel {
-    feat_model_path: PathBuf,
-    metrics_model_path: PathBuf,
-    feat_device: Mutex<DevicePreference>,
-    metrics_device: Mutex<DevicePreference>,
-    feat_session: Mutex<Option<Session>>,
-    metrics_session: Mutex<Option<Session>>,
-    last_used: AtomicU64,
+    feat_session: ManagedSession,
+    metrics_session: ManagedSession,
 }
 
 impl CCIPModel {
@@ -38,118 +24,45 @@ impl CCIPModel {
         let dir = model_dir.as_ref().to_path_buf();
         let ccip_dir = dir.join("ccip-caformer-24-randaug-pruned");
         Self {
-            feat_model_path: ccip_dir.join("model_feat.onnx"),
-            metrics_model_path: ccip_dir.join("model_metrics.onnx"),
-            feat_device: Mutex::new(feat_device),
-            metrics_device: Mutex::new(metrics_device),
-            feat_session: Mutex::new(None),
-            metrics_session: Mutex::new(None),
-            last_used: AtomicU64::new(now_secs()),
+            feat_session: ManagedSession::new(
+                "CCIP Feature",
+                ccip_dir.join("model_feat.onnx"),
+                feat_device,
+                1,
+            ),
+            metrics_session: ManagedSession::new(
+                "CCIP Metrics",
+                ccip_dir.join("model_metrics.onnx"),
+                metrics_device,
+                1,
+            ),
         }
     }
 
     pub fn is_loaded(&self) -> bool {
-        self.feat_session.lock().unwrap().is_some()
-            && self.metrics_session.lock().unwrap().is_some()
+        self.feat_session.is_loaded() && self.metrics_session.is_loaded()
     }
 
     pub fn idle_secs(&self) -> u64 {
-        now_secs().saturating_sub(self.last_used.load(Ordering::Relaxed))
+        self.feat_session.idle_secs().max(self.metrics_session.idle_secs())
     }
 
     pub fn unload(&self) {
-        let mut fs = self.feat_session.lock().unwrap();
-        let mut ms = self.metrics_session.lock().unwrap();
-        if fs.is_some() || ms.is_some() {
-            info!("CCIP: unloading models (idle {}s)", self.idle_secs());
-            *fs = None;
-            *ms = None;
-        }
+        self.feat_session.unload();
+        self.metrics_session.unload();
     }
 
     pub fn set_feat_device(&self, device: DevicePreference) {
-        {
-            let mut d = self.feat_device.lock().unwrap();
-            *d = device.clone();
-        }
-        let mut fs = self.feat_session.lock().unwrap();
-        if fs.is_some() {
-            info!(
-                "CCIP feat: device changed to {:?} — unloading for reload",
-                device
-            );
-            *fs = None;
-        }
+        self.feat_session.set_device(device);
     }
 
     pub fn set_metrics_device(&self, device: DevicePreference) {
-        {
-            let mut d = self.metrics_device.lock().unwrap();
-            *d = device.clone();
-        }
-        let mut ms = self.metrics_session.lock().unwrap();
-        if ms.is_some() {
-            info!(
-                "CCIP metrics: device changed to {:?} — unloading for reload",
-                device
-            );
-            *ms = None;
-        }
+        self.metrics_session.set_device(device);
     }
 
-    fn load(&self) -> Result<()> {
-        {
-            let fs = self.feat_session.lock().unwrap();
-            let ms = self.metrics_session.lock().unwrap();
-            if fs.is_some() && ms.is_some() {
-                return Ok(());
-            }
-        }
-
-        if !self.feat_model_path.exists() {
-            anyhow::bail!(
-                "CCIP feature model not found at {:?}",
-                self.feat_model_path
-            );
-        }
-        if !self.metrics_model_path.exists() {
-            anyhow::bail!(
-                "CCIP metrics model not found at {:?}",
-                self.metrics_model_path
-            );
-        }
-
-        let feat_device = self.feat_device.lock().unwrap().clone();
-        let metrics_device = self.metrics_device.lock().unwrap().clone();
-        info!("Loading CCIP models (feat device: {:?}, metrics device: {:?})", feat_device, metrics_device);
-
-        {
-            let mut builder = Session::builder()
-                .context("Failed to build CCIP feat session")?
-                .with_intra_threads(1)
-                .context("Failed to set CCIP feat threads")?;
-            apply_device_preference(&mut builder, &feat_device, "CCIP Feature");
-            let session = builder
-                .commit_from_file(&self.feat_model_path)
-                .context("Failed to load CCIP feature ONNX session")?;
-            let mut guard = self.feat_session.lock().unwrap();
-            *guard = Some(session);
-        }
-
-        {
-            let mut builder = Session::builder()
-                .context("Failed to build CCIP metrics session")?
-                .with_intra_threads(1)
-                .context("Failed to set CCIP metrics threads")?;
-            apply_device_preference(&mut builder, &metrics_device, "CCIP Metrics");
-            let session = builder
-                .commit_from_file(&self.metrics_model_path)
-                .context("Failed to load CCIP metrics ONNX session")?;
-            let mut guard = self.metrics_session.lock().unwrap();
-            *guard = Some(session);
-        }
-
-        info!("CCIP ONNX sessions ready");
+    pub fn load(&self) -> Result<()> {
+        self.feat_session.load()?;
+        self.metrics_session.load()?;
         Ok(())
     }
 
@@ -160,22 +73,13 @@ impl CCIPModel {
 
     fn extract_embedding_inner(&self, crop: &image::RgbImage) -> Result<Vec<f32>> {
         let t0 = Instant::now();
-        {
-            let guard = self.feat_session.lock().unwrap();
-            if guard.is_none() {
-                drop(guard);
-                self.load()?;
-            }
-        }
-        let load_ms = t0.elapsed().as_secs_f64() * 1000.0;
-
-        self.last_used.store(now_secs(), Ordering::Relaxed);
-        let mut guard = self.feat_session.lock().unwrap();
-        let session = guard.as_mut().context("CCIP feat session not initialized")?;
-
-        let t1 = Instant::now();
-        let tensor = preprocess_ccip(crop, CCIP_INPUT_SIZE)?;
-        let preprocess_ms = t1.elapsed().as_secs_f64() * 1000.0;
+        let preprocess_ms: f64;
+        let tensor = {
+            let t1 = Instant::now();
+            let res = preprocess_ccip(crop, CCIP_INPUT_SIZE)?;
+            preprocess_ms = t1.elapsed().as_secs_f64() * 1000.0;
+            res
+        };
 
         let t2 = Instant::now();
         debug!(
@@ -183,21 +87,23 @@ impl CCIPModel {
             crop.width(),
             crop.height()
         );
-        let outputs = session
-            .run(inputs![TensorRef::from_array_view(&tensor)?])
-            .context("CCIP feature inference failed")?;
+        let embedding = self.feat_session.with_session(|session| {
+            let outputs = session
+                .run(inputs![TensorRef::from_array_view(&tensor)?])
+                .context("CCIP feature inference failed")?;
+            let output_tensor = outputs
+                .get("output")
+                .context("Failed to get output from CCIP feature model")?;
+            let (_, data) = output_tensor.try_extract_tensor::<f32>()?;
+            Ok(data.to_vec())
+        })?;
         let inference_ms = t2.elapsed().as_secs_f64() * 1000.0;
 
-        let output_tensor = outputs
-            .get("output")
-            .context("Failed to get output from CCIP feature model")?;
-        let (_shape, data) = output_tensor.try_extract_tensor::<f32>()?;
-        let embedding: Vec<f32> = data.iter().copied().collect();
-
         let total_ms = t0.elapsed().as_secs_f64() * 1000.0;
+        let load_ms = total_ms - preprocess_ms - inference_ms;
         info!(
-            "CCIP extract timing: load={:.1}ms preprocess={:.1}ms inference={:.1}ms total={:.1}ms | dim={}",
-            load_ms, preprocess_ms, inference_ms, total_ms, embedding.len()
+            "CCIP extract timing: load_and_overhead={:.1}ms preprocess={:.1}ms inference={:.1}ms total={:.1}ms | dim={}",
+            load_ms.max(0.0), preprocess_ms, inference_ms, total_ms, embedding.len()
         );
 
         Ok(embedding)
@@ -226,14 +132,6 @@ impl CCIPModel {
         query: &[f32],
         references: &[Vec<f32>],
     ) -> Result<f32> {
-        self.ensure_metrics_loaded()?;
-        self.last_used.store(now_secs(), Ordering::Relaxed);
-
-        let mut guard = self.metrics_session.lock().unwrap();
-        let session = guard
-            .as_mut()
-            .context("CCIP metrics session not initialized")?;
-
         let n = 1 + references.len();
         let mut input_vec = Vec::with_capacity(n * CCIP_EMBEDDING_DIM);
         input_vec.extend_from_slice(query);
@@ -245,65 +143,42 @@ impl CCIPModel {
             Array2::from_shape_vec((n, CCIP_EMBEDDING_DIM), input_vec)
                 .context("Failed to build CCIP metrics input")?;
 
-        let outputs = session
-            .run(inputs![TensorRef::from_array_view(&input_array)?])
-            .context("CCIP metrics inference failed")?;
+        let mean_diff = self.metrics_session.with_session(|session| {
+            let outputs = session
+                .run(inputs![TensorRef::from_array_view(&input_array)?])
+                .context("CCIP metrics inference failed")?;
 
-        let output_tensor = outputs
-            .get("output")
-            .context("Failed to get output from CCIP metrics model")?;
-        let (_shape, data) = output_tensor.try_extract_tensor::<f32>()?;
+            let output_tensor = outputs
+                .get("output")
+                .context("Failed to get output from CCIP metrics model")?;
+            let (_, data) = output_tensor.try_extract_tensor::<f32>()?;
 
-        // Output is [N, N] pairwise difference matrix
-        // We want the mean of differences between query (row 0) and all references (rows 1..N)
-        let mut total_diff = 0.0f32;
-        for j in 1..n {
-            total_diff += data[0 * n + j];
-        }
-        let mean_diff = total_diff / (n - 1) as f32;
+            // Output is [N, N] pairwise difference matrix
+            // We want the mean of differences between query (row 0) and all references (rows 1..N)
+            let mut total_diff = 0.0f32;
+            for j in 1..n {
+                total_diff += data[0 * n + j];
+            }
+            let mean_diff = total_diff / (n - 1) as f32;
+            Ok(mean_diff)
+        })?;
 
         Ok(mean_diff)
     }
 
-    fn ensure_metrics_loaded(&self) -> Result<()> {
-        let guard = self.metrics_session.lock().unwrap();
-        if guard.is_some() {
-            return Ok(());
-        }
-        drop(guard);
-        self.load()
-    }
-
     pub fn benchmark_once(&self, crop: &image::RgbImage) -> Result<f64> {
         let t0 = Instant::now();
-        {
-            let guard = self.feat_session.lock().unwrap();
-            if guard.is_none() {
-                drop(guard);
-                self.load()?;
-            }
-        }
-
-        let mut guard = self.feat_session.lock().unwrap();
-        let session = guard.as_mut().context("CCIP feat session not initialized")?;
-
         let tensor = preprocess_ccip(crop, CCIP_INPUT_SIZE)?;
-        let _ = session
-            .run(inputs![TensorRef::from_array_view(&tensor)?])
-            .context("CCIP benchmark inference failed")?;
-
+        self.feat_session.with_session(|session| {
+            let _ = session
+                .run(inputs![TensorRef::from_array_view(&tensor)?])
+                .context("CCIP benchmark inference failed")?;
+            Ok(())
+        })?;
         Ok(t0.elapsed().as_secs_f64() * 1000.0)
     }
 
     pub fn benchmark_metrics_once(&self, n_embeddings: usize) -> Result<f64> {
-        self.ensure_metrics_loaded()?;
-        self.last_used.store(now_secs(), Ordering::Relaxed);
-
-        let mut guard = self.metrics_session.lock().unwrap();
-        let session = guard
-            .as_mut()
-            .context("CCIP metrics session not initialized")?;
-
         let mut input_vec = Vec::with_capacity(n_embeddings * CCIP_EMBEDDING_DIM);
         for _ in 0..n_embeddings {
             for _ in 0..CCIP_EMBEDDING_DIM {
@@ -316,9 +191,12 @@ impl CCIPModel {
                 .context("Failed to build CCIP metrics benchmark input")?;
 
         let t0 = Instant::now();
-        let _ = session
-            .run(inputs![TensorRef::from_array_view(&input_array)?])
-            .context("CCIP metrics benchmark inference failed")?;
+        self.metrics_session.with_session(|session| {
+            let _ = session
+                .run(inputs![TensorRef::from_array_view(&input_array)?])
+                .context("CCIP metrics benchmark inference failed")?;
+            Ok(())
+        })?;
 
         Ok(t0.elapsed().as_secs_f64() * 1000.0)
     }

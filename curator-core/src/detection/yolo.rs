@@ -1,22 +1,13 @@
 use crate::ipc::DevicePreference;
-use crate::vector::apply_device_preference;
+use crate::onnx::ManagedSession;
 use anyhow::{Context, Result};
-use ndarray::{Array4};
-use ort::{inputs, session::Session, value::TensorRef};
-use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use ndarray::Array4;
+use ort::{inputs, value::TensorRef};
+use std::path::Path;
+use std::time::Instant;
 use tracing::{debug, info};
 
 use super::types::Detection;
-
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
 
 const YOLO_INPUT_SIZE: u32 = 640;
 const DEFAULT_CONFIDENCE: f32 = 0.3;
@@ -24,90 +15,40 @@ const NMS_IOU_THRESHOLD: f32 = 0.5;
 const PAD_COLOR: [u8; 3] = [114, 114, 114];
 
 pub struct YoloDetector {
-    model_path: PathBuf,
-    device: Mutex<DevicePreference>,
-    session: Mutex<Option<Session>>,
-    last_used: AtomicU64,
+    session: ManagedSession,
 }
 
 impl YoloDetector {
     pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
+        let model_path = dir.join("person_detect_v1.1_s").join("model.onnx");
         Self {
-            model_path: dir.join("person_detect_v1.1_s").join("model.onnx"),
-            device: Mutex::new(device),
-            session: Mutex::new(None),
-            last_used: AtomicU64::new(now_secs()),
+            session: ManagedSession::new("YOLO Person", model_path, device, 1),
         }
     }
 
     pub fn model_path(&self) -> &Path {
-        &self.model_path
+        self.session.model_path()
     }
 
     pub fn is_loaded(&self) -> bool {
-        self.session.lock().unwrap().is_some()
+        self.session.is_loaded()
     }
 
     pub fn idle_secs(&self) -> u64 {
-        now_secs().saturating_sub(self.last_used.load(Ordering::Relaxed))
+        self.session.idle_secs()
     }
 
     pub fn unload(&self) {
-        let mut guard = self.session.lock().unwrap();
-        if guard.is_some() {
-            info!("YOLO: unloading model (idle {}s)", self.idle_secs());
-            *guard = None;
-        }
+        self.session.unload();
     }
 
     pub fn set_device(&self, device: DevicePreference) {
-        {
-            let mut d = self.device.lock().unwrap();
-            *d = device.clone();
-        }
-        let mut guard = self.session.lock().unwrap();
-        if guard.is_some() {
-            info!(
-                "YOLO: device changed to {:?} — unloading model for reload",
-                device
-            );
-            *guard = None;
-        }
+        self.session.set_device(device);
     }
 
-    fn load(&self) -> Result<()> {
-        let mut guard = self.session.lock().unwrap();
-        if guard.is_some() {
-            return Ok(());
-        }
-        if !self.model_path.exists() {
-            anyhow::bail!(
-                "YOLO model not found at {:?}. Download person_detect_v1.1_s/model.onnx",
-                self.model_path
-            );
-        }
-
-        let device = self.device.lock().unwrap().clone();
-        info!(
-            "Loading YOLO person detection model from {:?} (device: {:?})",
-            self.model_path, device
-        );
-
-        let mut builder = Session::builder()
-            .context("Failed to build YOLO session")?
-            .with_intra_threads(1)
-            .context("Failed to set YOLO threads")?;
-
-        apply_device_preference(&mut builder, &device, "YOLO Person");
-
-        let session = builder
-            .commit_from_file(&self.model_path)
-            .context("Failed to load YOLO ONNX session")?;
-
-        info!("YOLO ONNX session ready");
-        *guard = Some(session);
-        Ok(())
+    pub fn load(&self) -> Result<()> {
+        self.session.load()
     }
 
     pub fn detect_persons(&self, image: &image::RgbImage) -> Result<Vec<Detection>> {
@@ -129,44 +70,35 @@ impl YoloDetector {
     ) -> Result<Vec<Detection>> {
         let t_total = Instant::now();
 
-        // Ensure loaded
         let t0 = Instant::now();
-        {
-            let guard = self.session.lock().unwrap();
-            if guard.is_none() {
-                drop(guard);
-                self.load()?;
-            }
-        }
-        let load_ms = t0.elapsed().as_secs_f64() * 1000.0;
-
-        self.last_used.store(now_secs(), Ordering::Relaxed);
-        let mut guard = self.session.lock().unwrap();
-        let session = guard.as_mut().context("YOLO session not initialized")?;
-
-        // Preprocess: letterbox resize to 640x640
-        let t1 = Instant::now();
-        let (tensor, pad_info) = preprocess_yolo(image, YOLO_INPUT_SIZE)?;
-        let preprocess_ms = t1.elapsed().as_secs_f64() * 1000.0;
+        let preprocess_ms: f64;
+        let (tensor, pad_info) = {
+            let t1 = Instant::now();
+            let res = preprocess_yolo(image, YOLO_INPUT_SIZE)?;
+            preprocess_ms = t1.elapsed().as_secs_f64() * 1000.0;
+            res
+        };
 
         // Run inference
         let t2 = Instant::now();
         debug!("Running YOLO inference ({}x{})", image.width(), image.height());
-        let outputs = session
-            .run(inputs![TensorRef::from_array_view(&tensor)?])
-            .context("YOLO ONNX inference failed")?;
+        let data_vec = self.session.with_session(|session| {
+            let outputs = session
+                .run(inputs![TensorRef::from_array_view(&tensor)?])
+                .context("YOLO ONNX inference failed")?;
+            let output_tensor = outputs
+                .get("output0")
+                .context("Failed to get output0 from YOLO model")?;
+            let (_, data) = output_tensor.try_extract_tensor::<f32>()?;
+            Ok(data.to_vec())
+        })?;
         let inference_ms = t2.elapsed().as_secs_f64() * 1000.0;
 
         // Post-process: extract detections
         let t3 = Instant::now();
-        let output_tensor = outputs
-            .get("output0")
-            .context("Failed to get output0 from YOLO model")?;
-        let (shape, data) = output_tensor.try_extract_tensor::<f32>()?;
-
         let detections = postprocess_yolo(
-            data,
-            shape.num_elements(),
+            &data_vec,
+            data_vec.len(),
             image.width(),
             image.height(),
             &pad_info,
@@ -175,9 +107,10 @@ impl YoloDetector {
         let postprocess_ms = t3.elapsed().as_secs_f64() * 1000.0;
 
         let total_ms = t_total.elapsed().as_secs_f64() * 1000.0;
+        let load_ms = t0.elapsed().as_secs_f64() * 1000.0 - preprocess_ms - inference_ms - postprocess_ms;
         info!(
-            "YOLO timing: load={:.1}ms preprocess={:.1}ms inference={:.1}ms postprocess={:.1}ms total={:.1}ms | {} detections",
-            load_ms, preprocess_ms, inference_ms, postprocess_ms, total_ms, detections.len()
+            "YOLO timing: load_and_overhead={:.1}ms preprocess={:.1}ms inference={:.1}ms postprocess={:.1}ms total={:.1}ms | {} detections",
+            load_ms.max(0.0), preprocess_ms, inference_ms, postprocess_ms, total_ms, detections.len()
         );
 
         Ok(detections)
@@ -185,22 +118,13 @@ impl YoloDetector {
 
     pub fn benchmark_once(&self, image: &image::RgbImage) -> Result<f64> {
         let t0 = Instant::now();
-        {
-            let guard = self.session.lock().unwrap();
-            if guard.is_none() {
-                drop(guard);
-                self.load()?;
-            }
-        }
-
-        let mut guard = self.session.lock().unwrap();
-        let session = guard.as_mut().context("YOLO session not initialized")?;
-
         let (tensor, _) = preprocess_yolo(image, YOLO_INPUT_SIZE)?;
-        let _ = session
-            .run(inputs![TensorRef::from_array_view(&tensor)?])
-            .context("YOLO benchmark inference failed")?;
-
+        self.session.with_session(|session| {
+            let _ = session
+                .run(inputs![TensorRef::from_array_view(&tensor)?])
+                .context("YOLO benchmark inference failed")?;
+            Ok(())
+        })?;
         Ok(t0.elapsed().as_secs_f64() * 1000.0)
     }
 }
