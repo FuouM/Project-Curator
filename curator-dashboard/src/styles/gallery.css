@@ -16,6 +16,11 @@
   outline: 2px solid var(--sys-border-focus, #0078d4);
   border-color: var(--sys-border-focus, #0078d4);
 }
+.image-card.lucky-highlight {
+  outline: 2px solid #f0c040;
+  border-color: #f0c040;
+  box-shadow: 0 0 8px rgba(240, 192, 64, 0.4);
+}
 
 .card-select-checkbox {
   position: absolute;

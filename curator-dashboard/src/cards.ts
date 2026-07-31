@@ -2,7 +2,7 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { renderTagPill, maskPath } from "./components";
 import { CardImageData, ImageDetails, SearchMatch, TagSummary, ParsedMetadata } from "./types";
 import { imageBytesToPngBlob } from "./utils";
-import { getImageClickAction, isSelectMode, selectedImageIds } from "./state";
+import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId } from "./state";
 import { openImageViewer } from "./image-viewer";
 import { callService } from "./ipc";
 import { refreshCharacters } from "./views/characters";
@@ -706,7 +706,8 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
 
   cards.forEach((img) => {
     const card = document.createElement("div");
-    card.className = `image-card ${selectedImageIds.has(img.id) ? 'selected' : ''}`;
+    const isLucky = luckyHighlightId === img.id;
+    card.className = `image-card ${selectedImageIds.has(img.id) ? 'selected' : ''} ${isLucky ? 'lucky-highlight' : ''}`;
     card.dataset.imageId = img.id.toString();
     card.dataset.filepath = img.filepath;
 

@@ -45,3 +45,7 @@ export function setFavoritesTotalCount(v: number) { favoritesTotalCount = v; }
 export let isSelectMode = false;
 export const selectedImageIds = new Set<number>();
 export function setIsSelectMode(v: boolean) { isSelectMode = v; }
+
+// --- Lucky Highlight State ---
+export let luckyHighlightId: number | null = null;
+export function setLuckyHighlightId(id: number | null) { luckyHighlightId = id; }

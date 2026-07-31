@@ -63,7 +63,8 @@ export type RequestPayload =
   | { RunCcipFeatBenchmark: null }
   | { RunCcipMetricsBenchmark: null }
   | { GetBenchmarkImages: { limit: number } }
-  | { BenchmarkSingleImage: { filepath: string } };
+  | { BenchmarkSingleImage: { filepath: string } }
+  | { GetRandomImage: null };
 
 export interface TokenBlock {
   token_type: string;
@@ -234,7 +235,8 @@ export type ResponsePayload =
       tagger_preprocess_time_ms: number;
       yolo_preprocess_time_ms: number;
       ccip_extract_preprocess_time_ms: number;
-    } };
+    } }
+  | { RandomImageResult: { image: ImageDetails; index: number } };
 
 export interface CharacterDetection {
   id: number;

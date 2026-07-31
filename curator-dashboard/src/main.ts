@@ -1,5 +1,5 @@
 import "bootstrap-icons/font/bootstrap-icons.css";
-import { setupImageViewer } from "./image-viewer";
+import { setupImageViewer, openImageViewer } from "./image-viewer";
 import { setupLogTabs } from "./views/logs";
 import { setupBenchmark } from "./views/benchmark";
 import { setupSettings } from "./views/settings";
@@ -8,10 +8,12 @@ import { setupSearch } from "./views/search";
 import { setupTags } from "./views/tags";
 import { setupConcepts } from "./views/concepts";
 import { setupFilenameParserView } from "./views/filename-parser";
-import { setupNavigation } from "./views/navigation";
+import { setupNavigation, navigateToView } from "./views/navigation";
 import { callService } from "./ipc";
 import { updateStatusIndicators, updateTaggerIndicators, applySettingsToUI, startStatusPolling, renderFeaturedDay } from "./views/dashboard";
 import { renderImages, setupGridDelegation } from "./cards";
+import { setGalleryPage, getImagesPerPage, setLuckyHighlightId } from "./state";
+import { refreshGallery } from "./views/gallery";
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { PhysicalSize, PhysicalPosition } from "@tauri-apps/api/dpi";
@@ -127,6 +129,36 @@ function init() {
   }).catch(() => {});
 
   startStatusPolling();
+
+  document.getElementById("dashboard-lucky-btn")?.addEventListener("click", handleFeelingLucky);
+  document.getElementById("gallery-lucky-btn")?.addEventListener("click", handleFeelingLucky);
+}
+
+async function handleFeelingLucky() {
+  try {
+    const resp = await callService({ GetRandomImage: null });
+    if (!("RandomImageResult" in resp)) return;
+
+    const { image, index } = resp.RandomImageResult;
+    const perPage = getImagesPerPage();
+    const page = Math.floor(index / perPage);
+
+    setLuckyHighlightId(image.id);
+    setGalleryPage(page);
+    navigateToView("gallery");
+
+    // Wait for gallery to render, then open viewer and clear highlight
+    setTimeout(() => {
+      refreshGallery().then(() => {
+        const card = document.querySelector(`#gallery-grid [data-image-id="${image.id}"]`) as HTMLElement | null;
+        if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+        openImageViewer(image.current_filepath, image.id);
+        setTimeout(() => setLuckyHighlightId(null), 3000);
+      });
+    }, 50);
+  } catch (e: any) {
+    console.error("I'm Feeling Lucky failed:", e);
+  }
 }
 
 if (document.readyState === "loading") {

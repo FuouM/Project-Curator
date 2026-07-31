@@ -650,3 +650,28 @@ pub async fn get_featured_image(db: &SqlitePool, data_dir: &Path) -> Option<Imag
 
     None
 }
+
+/// Returns a random image and its position index (0-based) in the gallery order.
+pub async fn get_random_image_logic(db: &SqlitePool) -> Result<(ImageDetails, i64)> {
+    // Pick a random image
+    let rand_row: (i64, String) = sqlx::query_as(
+        "SELECT id, created_at FROM images WHERE deleted_at IS NULL AND is_missing = 0 ORDER BY RANDOM() LIMIT 1",
+    )
+    .fetch_one(db)
+    .await?;
+
+    let rand_id = rand_row.0;
+    let rand_created_at = &rand_row.1;
+
+    // Count how many images come before it in gallery order (created_at DESC, id DESC)
+    let pos: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM images WHERE deleted_at IS NULL AND is_missing = 0 AND (created_at > ?1 OR (created_at = ?1 AND id > ?2))",
+    )
+    .bind(rand_created_at)
+    .bind(rand_id)
+    .fetch_one(db)
+    .await?;
+
+    let img = get_image_logic(rand_id, db).await?;
+    Ok((img, pos.0))
+}

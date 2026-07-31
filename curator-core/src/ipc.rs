@@ -303,6 +303,8 @@ pub enum Request {
     GetBenchmarkImages { limit: usize },
     /// Run CPU image processing and preprocessing on a single image.
     BenchmarkSingleImage { filepath: String },
+    /// Get a random image with its position index for "I'm Feeling Lucky".
+    GetRandomImage,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -546,6 +548,11 @@ pub enum Response {
         tagger_preprocess_time_ms: f64,
         yolo_preprocess_time_ms: f64,
         ccip_extract_preprocess_time_ms: f64,
+    },
+    /// A random image with its position index for "I'm Feeling Lucky".
+    RandomImageResult {
+        image: ImageDetails,
+        index: i64,
     },
 }
 

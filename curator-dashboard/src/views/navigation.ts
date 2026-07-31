@@ -120,3 +120,8 @@ export function setupNavigation() {
   document.getElementById("refresh-logs-btn")?.addEventListener("click", refreshLogs);
   document.getElementById("clear-logs-btn")?.addEventListener("click", clearLogsData);
 }
+
+export function navigateToView(view: string) {
+  const navItem = document.querySelector(`.nav-item[data-view="${view}"]`) as HTMLElement | null;
+  if (navItem) navItem.click();
+}

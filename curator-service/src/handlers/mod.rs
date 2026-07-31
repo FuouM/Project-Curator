@@ -990,6 +990,13 @@ pub async fn handle_request(
                 },
             }
         }
+
+        Request::GetRandomImage => match image::get_random_image_logic(db).await {
+            Ok((img, index)) => Response::RandomImageResult { image: img, index },
+            Err(e) => Response::Error {
+                message: format!("Failed to get random image: {:?}", e),
+            },
+        },
     }
 }
 
