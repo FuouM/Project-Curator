@@ -929,6 +929,18 @@ pub async fn handle_request(
                     ccip_metrics_cpu_time_ms: None,
                     ccip_metrics_gpu_time_ms: None,
                     ccip_metrics_gpu_error: None,
+                    ocr_det_cpu_time_ms: None,
+                    ocr_det_gpu_time_ms: None,
+                    ocr_det_gpu_error: None,
+                    ocr_rec_cpu_time_ms: None,
+                    ocr_rec_gpu_time_ms: None,
+                    ocr_rec_gpu_error: None,
+                    ocr_cls_cpu_time_ms: None,
+                    ocr_cls_gpu_time_ms: None,
+                    ocr_cls_gpu_error: None,
+                    manga_bubble_cpu_time_ms: None,
+                    manga_bubble_gpu_time_ms: None,
+                    manga_bubble_gpu_error: None,
                     has_gpu,
                 },
                 Err(e) => Response::Error {
@@ -957,6 +969,18 @@ pub async fn handle_request(
                     ccip_metrics_cpu_time_ms: None,
                     ccip_metrics_gpu_time_ms: None,
                     ccip_metrics_gpu_error: None,
+                    ocr_det_cpu_time_ms: None,
+                    ocr_det_gpu_time_ms: None,
+                    ocr_det_gpu_error: None,
+                    ocr_rec_cpu_time_ms: None,
+                    ocr_rec_gpu_time_ms: None,
+                    ocr_rec_gpu_error: None,
+                    ocr_cls_cpu_time_ms: None,
+                    ocr_cls_gpu_time_ms: None,
+                    ocr_cls_gpu_error: None,
+                    manga_bubble_cpu_time_ms: None,
+                    manga_bubble_gpu_time_ms: None,
+                    manga_bubble_gpu_error: None,
                     has_gpu,
                 },
                 Err(e) => Response::Error {
@@ -985,11 +1009,163 @@ pub async fn handle_request(
                     ccip_metrics_cpu_time_ms: Some(cpu),
                     ccip_metrics_gpu_time_ms: gpu,
                     ccip_metrics_gpu_error: err,
+                    ocr_det_cpu_time_ms: None,
+                    ocr_det_gpu_time_ms: None,
+                    ocr_det_gpu_error: None,
+                    ocr_rec_cpu_time_ms: None,
+                    ocr_rec_gpu_time_ms: None,
+                    ocr_rec_gpu_error: None,
+                    ocr_cls_cpu_time_ms: None,
+                    ocr_cls_gpu_time_ms: None,
+                    ocr_cls_gpu_error: None,
+                    manga_bubble_cpu_time_ms: None,
+                    manga_bubble_gpu_time_ms: None,
+                    manga_bubble_gpu_error: None,
                     has_gpu,
                 },
                 Err(e) => Response::Error {
                     message: format!("CCIP Metrics benchmark failed: {:?}", e),
                 },
+            }
+        }
+
+        Request::RunOcrDetBenchmark => {
+            let det_dir = data_dir.join("models");
+            let path = det_dir.join("PP-OCRv6_medium_det_onnx/inference.onnx");
+            if !path.exists() {
+                return Response::Error { message: "OCR Detection model file not found.".to_string() };
+            }
+            match curator_core::run_onnx_benchmark(&path, 960) {
+                Ok((cpu, gpu, err, has_gpu)) => Response::DetectionBenchmarkResult {
+                    yolo_cpu_time_ms: None,
+                    yolo_gpu_time_ms: None,
+                    yolo_gpu_error: None,
+                    ccip_feat_cpu_time_ms: None,
+                    ccip_feat_gpu_time_ms: None,
+                    ccip_feat_gpu_error: None,
+                    ccip_metrics_cpu_time_ms: None,
+                    ccip_metrics_gpu_time_ms: None,
+                    ccip_metrics_gpu_error: None,
+                    ocr_det_cpu_time_ms: Some(cpu),
+                    ocr_det_gpu_time_ms: gpu,
+                    ocr_det_gpu_error: err,
+                    ocr_rec_cpu_time_ms: None,
+                    ocr_rec_gpu_time_ms: None,
+                    ocr_rec_gpu_error: None,
+                    ocr_cls_cpu_time_ms: None,
+                    ocr_cls_gpu_time_ms: None,
+                    ocr_cls_gpu_error: None,
+                    manga_bubble_cpu_time_ms: None,
+                    manga_bubble_gpu_time_ms: None,
+                    manga_bubble_gpu_error: None,
+                    has_gpu,
+                },
+                Err(e) => Response::Error { message: format!("OCR Detection benchmark failed: {:?}", e) },
+            }
+        }
+
+        Request::RunOcrRecBenchmark => {
+            let det_dir = data_dir.join("models");
+            let path = det_dir.join("PP-OCRv6_medium_rec_onnx/inference.onnx");
+            if !path.exists() {
+                return Response::Error { message: "OCR Recognition model file not found.".to_string() };
+            }
+            match curator_core::run_onnx_benchmark_2d(&path, 48, 320) {
+                Ok((cpu, gpu, err, has_gpu)) => Response::DetectionBenchmarkResult {
+                    yolo_cpu_time_ms: None,
+                    yolo_gpu_time_ms: None,
+                    yolo_gpu_error: None,
+                    ccip_feat_cpu_time_ms: None,
+                    ccip_feat_gpu_time_ms: None,
+                    ccip_feat_gpu_error: None,
+                    ccip_metrics_cpu_time_ms: None,
+                    ccip_metrics_gpu_time_ms: None,
+                    ccip_metrics_gpu_error: None,
+                    ocr_det_cpu_time_ms: None,
+                    ocr_det_gpu_time_ms: None,
+                    ocr_det_gpu_error: None,
+                    ocr_rec_cpu_time_ms: Some(cpu),
+                    ocr_rec_gpu_time_ms: gpu,
+                    ocr_rec_gpu_error: err,
+                    ocr_cls_cpu_time_ms: None,
+                    ocr_cls_gpu_time_ms: None,
+                    ocr_cls_gpu_error: None,
+                    manga_bubble_cpu_time_ms: None,
+                    manga_bubble_gpu_time_ms: None,
+                    manga_bubble_gpu_error: None,
+                    has_gpu,
+                },
+                Err(e) => Response::Error { message: format!("OCR Recognition benchmark failed: {:?}", e) },
+            }
+        }
+
+        Request::RunOcrClsBenchmark => {
+            let det_dir = data_dir.join("models");
+            let path = det_dir.join("PP-LCNet_x1_0_textline_ori_onnx/inference.onnx");
+            if !path.exists() {
+                return Response::Error { message: "OCR Classification model file not found.".to_string() };
+            }
+            match curator_core::run_onnx_benchmark_2d(&path, 80, 160) {
+                Ok((cpu, gpu, err, has_gpu)) => Response::DetectionBenchmarkResult {
+                    yolo_cpu_time_ms: None,
+                    yolo_gpu_time_ms: None,
+                    yolo_gpu_error: None,
+                    ccip_feat_cpu_time_ms: None,
+                    ccip_feat_gpu_time_ms: None,
+                    ccip_feat_gpu_error: None,
+                    ccip_metrics_cpu_time_ms: None,
+                    ccip_metrics_gpu_time_ms: None,
+                    ccip_metrics_gpu_error: None,
+                    ocr_det_cpu_time_ms: None,
+                    ocr_det_gpu_time_ms: None,
+                    ocr_det_gpu_error: None,
+                    ocr_rec_cpu_time_ms: None,
+                    ocr_rec_gpu_time_ms: None,
+                    ocr_rec_gpu_error: None,
+                    ocr_cls_cpu_time_ms: Some(cpu),
+                    ocr_cls_gpu_time_ms: gpu,
+                    ocr_cls_gpu_error: err,
+                    manga_bubble_cpu_time_ms: None,
+                    manga_bubble_gpu_time_ms: None,
+                    manga_bubble_gpu_error: None,
+                    has_gpu,
+                },
+                Err(e) => Response::Error { message: format!("OCR Classification benchmark failed: {:?}", e) },
+            }
+        }
+
+        Request::RunMangaBubbleBenchmark => {
+            let det_dir = data_dir.join("models");
+            let path = det_dir.join("MangaBubbleYOLO/yolo26n.onnx");
+            if !path.exists() {
+                return Response::Error { message: "Manga Bubble YOLO model file not found.".to_string() };
+            }
+            match curator_core::run_onnx_benchmark(&path, 640) {
+                Ok((cpu, gpu, err, has_gpu)) => Response::DetectionBenchmarkResult {
+                    yolo_cpu_time_ms: None,
+                    yolo_gpu_time_ms: None,
+                    yolo_gpu_error: None,
+                    ccip_feat_cpu_time_ms: None,
+                    ccip_feat_gpu_time_ms: None,
+                    ccip_feat_gpu_error: None,
+                    ccip_metrics_cpu_time_ms: None,
+                    ccip_metrics_gpu_time_ms: None,
+                    ccip_metrics_gpu_error: None,
+                    ocr_det_cpu_time_ms: None,
+                    ocr_det_gpu_time_ms: None,
+                    ocr_det_gpu_error: None,
+                    ocr_rec_cpu_time_ms: None,
+                    ocr_rec_gpu_time_ms: None,
+                    ocr_rec_gpu_error: None,
+                    ocr_cls_cpu_time_ms: None,
+                    ocr_cls_gpu_time_ms: None,
+                    ocr_cls_gpu_error: None,
+                    manga_bubble_cpu_time_ms: Some(cpu),
+                    manga_bubble_gpu_time_ms: gpu,
+                    manga_bubble_gpu_error: err,
+                    has_gpu,
+                },
+                Err(e) => Response::Error { message: format!("Manga Bubble YOLO benchmark failed: {:?}", e) },
             }
         }
 
@@ -1011,6 +1187,8 @@ pub async fn handle_request(
                     tagger_preprocess_time_ms: res.tagger_preprocess_time_ms,
                     yolo_preprocess_time_ms: res.yolo_preprocess_time_ms,
                     ccip_extract_preprocess_time_ms: res.ccip_extract_preprocess_time_ms,
+                    ocr_det_preprocess_time_ms: res.ocr_det_preprocess_time_ms,
+                    ocr_rec_preprocess_time_ms: res.ocr_rec_preprocess_time_ms,
                 },
                 Err(e) => Response::Error {
                     message: format!("Failed to benchmark image {:?}: {:?}", filepath, e),

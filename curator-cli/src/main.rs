@@ -160,6 +160,8 @@ async fn main() -> Result<(), Error> {
             concept_id: None,
             character_identity_id: None,
             filename_filter: None,
+            ocr_filter: None,
+            ocr_text_search: None,
             limit,
         },
         Commands::List { limit, offset } => Request::ListImages {

@@ -66,6 +66,10 @@ export type RequestPayload =
   | { RunYoloBenchmark: null }
   | { RunCcipFeatBenchmark: null }
   | { RunCcipMetricsBenchmark: null }
+  | { RunOcrDetBenchmark: null }
+  | { RunOcrRecBenchmark: null }
+  | { RunOcrClsBenchmark: null }
+  | { RunMangaBubbleBenchmark: null }
   | { GetBenchmarkImages: { limit: number } }
   | { BenchmarkSingleImage: { filepath: string } }
   | { GetRandomImage: null };
@@ -237,6 +241,18 @@ export type ResponsePayload =
       ccip_metrics_cpu_time_ms: number | null;
       ccip_metrics_gpu_time_ms: number | null;
       ccip_metrics_gpu_error: string | null;
+      ocr_det_cpu_time_ms: number | null;
+      ocr_det_gpu_time_ms: number | null;
+      ocr_det_gpu_error: string | null;
+      ocr_rec_cpu_time_ms: number | null;
+      ocr_rec_gpu_time_ms: number | null;
+      ocr_rec_gpu_error: string | null;
+      ocr_cls_cpu_time_ms: number | null;
+      ocr_cls_gpu_time_ms: number | null;
+      ocr_cls_gpu_error: string | null;
+      manga_bubble_cpu_time_ms: number | null;
+      manga_bubble_gpu_time_ms: number | null;
+      manga_bubble_gpu_error: string | null;
       has_gpu: boolean;
     } }
   | { BenchmarkImagesResult: {

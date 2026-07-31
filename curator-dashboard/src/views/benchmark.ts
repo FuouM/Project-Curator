@@ -137,6 +137,58 @@ export function setupBenchmark() {
         return { cpuMs: ccip_metrics_cpu_time_ms, gpuMs: ccip_metrics_gpu_time_ms, gpuErr: ccip_metrics_gpu_error };
       },
     },
+    {
+      label: "OCR Text Detection",
+      cpuEl: getEl("benchmark-ocr-det-cpu"),
+      gpuEl: getEl("benchmark-ocr-det-gpu"),
+      speedupEl: getEl("benchmark-ocr-det-speedup"),
+      run: () => callService({ RunOcrDetBenchmark: null }).catch((e: any) => ({ Error: { message: e.message } })),
+      extractResult: (resp) => {
+        if (!("DetectionBenchmarkResult" in resp)) return null;
+        const { ocr_det_cpu_time_ms, ocr_det_gpu_time_ms, ocr_det_gpu_error } = resp.DetectionBenchmarkResult;
+        if (ocr_det_cpu_time_ms === null) return null;
+        return { cpuMs: ocr_det_cpu_time_ms, gpuMs: ocr_det_gpu_time_ms, gpuErr: ocr_det_gpu_error };
+      },
+    },
+    {
+      label: "OCR Text Recognition",
+      cpuEl: getEl("benchmark-ocr-rec-cpu"),
+      gpuEl: getEl("benchmark-ocr-rec-gpu"),
+      speedupEl: getEl("benchmark-ocr-rec-speedup"),
+      run: () => callService({ RunOcrRecBenchmark: null }).catch((e: any) => ({ Error: { message: e.message } })),
+      extractResult: (resp) => {
+        if (!("DetectionBenchmarkResult" in resp)) return null;
+        const { ocr_rec_cpu_time_ms, ocr_rec_gpu_time_ms, ocr_rec_gpu_error } = resp.DetectionBenchmarkResult;
+        if (ocr_rec_cpu_time_ms === null) return null;
+        return { cpuMs: ocr_rec_cpu_time_ms, gpuMs: ocr_rec_gpu_time_ms, gpuErr: ocr_rec_gpu_error };
+      },
+    },
+    {
+      label: "OCR Text Line Classification",
+      cpuEl: getEl("benchmark-ocr-cls-cpu"),
+      gpuEl: getEl("benchmark-ocr-cls-gpu"),
+      speedupEl: getEl("benchmark-ocr-cls-speedup"),
+      run: () => callService({ RunOcrClsBenchmark: null }).catch((e: any) => ({ Error: { message: e.message } })),
+      extractResult: (resp) => {
+        if (!("DetectionBenchmarkResult" in resp)) return null;
+        const { ocr_cls_cpu_time_ms, ocr_cls_gpu_time_ms, ocr_cls_gpu_error } = resp.DetectionBenchmarkResult;
+        if (ocr_cls_cpu_time_ms === null) return null;
+        return { cpuMs: ocr_cls_cpu_time_ms, gpuMs: ocr_cls_gpu_time_ms, gpuErr: ocr_cls_gpu_error };
+      },
+    },
+    {
+      label: "Manga Bubble YOLO",
+      cpuEl: getEl("benchmark-manga-bubble-cpu"),
+      gpuEl: getEl("benchmark-manga-bubble-gpu"),
+      speedupEl: getEl("benchmark-manga-bubble-speedup"),
+      run: () => callService({ RunMangaBubbleBenchmark: null }).catch((e: any) => ({ Error: { message: e.message } })),
+      extractResult: (resp) => {
+        if (!("DetectionBenchmarkResult" in resp)) return null;
+        const { manga_bubble_cpu_time_ms, manga_bubble_gpu_time_ms, manga_bubble_gpu_error } = resp.DetectionBenchmarkResult;
+        if (manga_bubble_cpu_time_ms === null) return null;
+        return { cpuMs: manga_bubble_cpu_time_ms, gpuMs: manga_bubble_gpu_time_ms, gpuErr: manga_bubble_gpu_error };
+      },
+    },
   ];
 
   function initBenchmarkUI() {

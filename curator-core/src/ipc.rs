@@ -316,6 +316,14 @@ pub enum Request {
     RunCcipFeatBenchmark,
     /// Run CPU vs GPU ONNX model benchmark for CCIP Metrics.
     RunCcipMetricsBenchmark,
+    /// Run CPU vs GPU ONNX model benchmark for OCR Detection.
+    RunOcrDetBenchmark,
+    /// Run CPU vs GPU ONNX model benchmark for OCR Recognition.
+    RunOcrRecBenchmark,
+    /// Run CPU vs GPU ONNX model benchmark for OCR Classification.
+    RunOcrClsBenchmark,
+    /// Run CPU vs GPU ONNX model benchmark for Manga Bubble detection (YOLO).
+    RunMangaBubbleBenchmark,
     /// Get up to limit valid image paths from the database for benchmarking.
     GetBenchmarkImages { limit: usize },
     /// Run CPU image processing and preprocessing on a single image.
@@ -571,6 +579,18 @@ pub enum Response {
         ccip_metrics_cpu_time_ms: Option<f64>,
         ccip_metrics_gpu_time_ms: Option<f64>,
         ccip_metrics_gpu_error: Option<String>,
+        ocr_det_cpu_time_ms: Option<f64>,
+        ocr_det_gpu_time_ms: Option<f64>,
+        ocr_det_gpu_error: Option<String>,
+        ocr_rec_cpu_time_ms: Option<f64>,
+        ocr_rec_gpu_time_ms: Option<f64>,
+        ocr_rec_gpu_error: Option<String>,
+        ocr_cls_cpu_time_ms: Option<f64>,
+        ocr_cls_gpu_time_ms: Option<f64>,
+        ocr_cls_gpu_error: Option<String>,
+        manga_bubble_cpu_time_ms: Option<f64>,
+        manga_bubble_gpu_time_ms: Option<f64>,
+        manga_bubble_gpu_error: Option<String>,
         has_gpu: bool,
     },
     /// List of filepaths for benchmarking.
@@ -585,6 +605,8 @@ pub enum Response {
         tagger_preprocess_time_ms: f64,
         yolo_preprocess_time_ms: f64,
         ccip_extract_preprocess_time_ms: f64,
+        ocr_det_preprocess_time_ms: f64,
+        ocr_rec_preprocess_time_ms: f64,
     },
     /// A random image with its position index for "I'm Feeling Lucky".
     RandomImageResult {

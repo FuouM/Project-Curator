@@ -314,7 +314,6 @@ export function setupImageViewer() {
       if (btn) btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Running...';
       const resp = await callService({ RunOcr: { image_id: currentViewerImageId } });
       const detections = ("OcrDetectionsResult" in resp) ? resp.OcrDetectionsResult.detections : [];
-      const bubbleBoxes = ("OcrDetectionsResult" in resp) ? (resp.OcrDetectionsResult as any).bubble_boxes ?? [] : [];
       // Re-fetch from DB so the viewer shows stored data
       ocrVisible = false;
       if (detections.length > 0) {
