@@ -14,6 +14,7 @@ pub struct SearchParams {
     pub parse_type: Option<String>,
     pub concept_id: Option<i64>,
     pub character_identity_id: Option<i64>,
+    pub ocr_filter: Option<bool>,
     pub limit: usize,
 }
 
@@ -75,6 +76,7 @@ pub async fn search_logic(
         parse_type,
         concept_id,
         character_identity_id,
+        ocr_filter,
         limit,
     } = params;
     let mut candidate_ids: Option<std::collections::HashSet<i64>> = None;
@@ -152,6 +154,21 @@ pub async fn search_logic(
             "SELECT DISTINCT image_id FROM character_detections WHERE identity_id = ?"
         )
         .bind(char_id)
+        .fetch_all(db)
+        .await
+        .unwrap_or_default();
+        let ids: std::collections::HashSet<i64> = rows.into_iter().map(|r| r.0).collect();
+        candidate_ids = Some(match candidate_ids.take() {
+            Some(existing) => existing.intersection(&ids).copied().collect(),
+            None => ids,
+        });
+    }
+
+    // Filter to only images with OCR detections
+    if ocr_filter == Some(true) {
+        let rows: Vec<(i64,)> = sqlx::query_as(
+            "SELECT DISTINCT image_id FROM image_ocr_detections"
+        )
         .fetch_all(db)
         .await
         .unwrap_or_default();
@@ -426,6 +443,7 @@ pub async fn search_logic(
             match_type,
             hamming_distance,
             parsed_metadata: details.parsed_metadata.clone(),
+            ocr_text: details.ocr_text.clone(),
         });
     }
 

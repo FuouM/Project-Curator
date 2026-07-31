@@ -63,6 +63,8 @@ pub enum Request {
         concept_id: Option<i64>,
         #[serde(default)]
         character_identity_id: Option<i64>,
+        #[serde(default)]
+        ocr_filter: Option<bool>,
         limit: usize,
     },
     GetStatus,
@@ -612,6 +614,8 @@ pub struct SearchMatch {
     pub hamming_distance: Option<u32>,
     #[serde(default)]
     pub parsed_metadata: Option<ParsedMetadata>,
+    #[serde(default)]
+    pub ocr_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

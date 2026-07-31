@@ -105,6 +105,7 @@ export interface SearchMatch {
   match_type: string;
   hamming_distance?: number;
   parsed_metadata?: ParsedMetadata;
+  ocr_text?: string;
 }
 
 export interface ImageDetails {

@@ -915,6 +915,7 @@ export function renderSearchResults(matches: SearchMatch[]) {
       badgeHtml: `<div class="vector-badge" style="background-color: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor};">${scoreBadgeText}</div>`,
       emptyMessage: "No matching results found.",
       parsedMetadata: m.parsed_metadata,
+      ocrText: m.ocr_text,
     };
   });
 
