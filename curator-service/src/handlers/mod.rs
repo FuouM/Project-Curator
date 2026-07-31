@@ -215,6 +215,7 @@ pub async fn handle_request(
             concept_id,
             character_identity_id,
             ocr_filter,
+            ocr_text_search,
             limit,
         } => {
             match search::search_logic(
@@ -228,6 +229,7 @@ pub async fn handle_request(
                     concept_id,
                     character_identity_id,
                     ocr_filter,
+                    ocr_text_search,
                     limit,
                 },
                 db,

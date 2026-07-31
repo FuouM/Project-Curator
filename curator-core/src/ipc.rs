@@ -65,6 +65,8 @@ pub enum Request {
         character_identity_id: Option<i64>,
         #[serde(default)]
         ocr_filter: Option<bool>,
+        #[serde(default)]
+        ocr_text_search: Option<String>,
         limit: usize,
     },
     GetStatus,

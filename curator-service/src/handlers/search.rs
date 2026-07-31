@@ -15,6 +15,7 @@ pub struct SearchParams {
     pub concept_id: Option<i64>,
     pub character_identity_id: Option<i64>,
     pub ocr_filter: Option<bool>,
+    pub ocr_text_search: Option<String>,
     pub limit: usize,
 }
 
@@ -77,6 +78,7 @@ pub async fn search_logic(
         concept_id,
         character_identity_id,
         ocr_filter,
+        ocr_text_search,
         limit,
     } = params;
     let mut candidate_ids: Option<std::collections::HashSet<i64>> = None;
@@ -238,20 +240,25 @@ pub async fn search_logic(
                 vector_scores.insert(id_i64, 1.0 - dist);
             }
 
-            // 2. FTS5 OCR full-text search match (Exact character overlaps)
+            candidate_ids = Some(ids);
+        }
+    }
+
+    // Dedicated OCR text full-text search
+    if let Some(ref ocr_text) = ocr_text_search {
+        if !ocr_text.trim().is_empty() {
             let fts_rows: Vec<(i64,)> = sqlx::query_as(
                 "SELECT DISTINCT image_id FROM image_ocr_fts WHERE text MATCH ?"
             )
-            .bind(text)
+            .bind(ocr_text)
             .fetch_all(db)
             .await
             .unwrap_or_default();
+            let mut ids = std::collections::HashSet::new();
             for (id,) in fts_rows {
                 ids.insert(id);
-                // Give FTS matches high score/relevance weight
                 vector_scores.insert(id, 1.0);
             }
-
             candidate_ids = Some(ids);
         }
     }

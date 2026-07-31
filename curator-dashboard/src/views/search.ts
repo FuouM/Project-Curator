@@ -128,9 +128,11 @@ export function setupSearch() {
       const conceptIdVal = conceptSelect && conceptSelect.value ? parseInt(conceptSelect.value) : null;
       const ocrFilterCheckbox = document.getElementById("search-ocr-filter") as HTMLInputElement;
       const ocrFilter = ocrFilterCheckbox?.checked ? true : null;
+      const ocrTextInput = document.getElementById("search-ocr-text-input") as HTMLInputElement;
+      const ocrTextSearch = ocrTextInput?.value.trim() || null;
 
       const resp = await callService({
-        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, filename_filter: filenameFilter, parse_filter: parseFilter, parse_type: parseType, concept_id: conceptIdVal, character_identity_id: null, ocr_filter: ocrFilter, limit: 50 }
+        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, filename_filter: filenameFilter, parse_filter: parseFilter, parse_type: parseType, concept_id: conceptIdVal, character_identity_id: null, ocr_filter: ocrFilter, ocr_text_search: ocrTextSearch, limit: 50 }
       });
 
       if ("SearchResult" in resp) {
