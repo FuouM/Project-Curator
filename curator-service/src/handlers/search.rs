@@ -210,15 +210,31 @@ pub async fn search_logic(
 
     if let Some(ref text) = query_text {
         if !text.trim().is_empty() {
+            let mut ids = std::collections::HashSet::new();
+
+            // 1. Text embedding semantic match
             let query_vector = model_manager.generate_text_embedding(text)?;
             let results = vector_index.search(&query_vector, limit.max(100))?;
-
-            let mut ids = std::collections::HashSet::new();
             for (id, dist) in results {
                 let id_i64 = id as i64;
                 ids.insert(id_i64);
                 vector_scores.insert(id_i64, 1.0 - dist);
             }
+
+            // 2. FTS5 OCR full-text search match (Exact character overlaps)
+            let fts_rows: Vec<(i64,)> = sqlx::query_as(
+                "SELECT DISTINCT image_id FROM image_ocr_fts WHERE text MATCH ?"
+            )
+            .bind(text)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+            for (id,) in fts_rows {
+                ids.insert(id);
+                // Give FTS matches high score/relevance weight
+                vector_scores.insert(id, 1.0);
+            }
+
             candidate_ids = Some(ids);
         }
     }

@@ -426,6 +426,7 @@ async fn main() -> Result<(), Error> {
             embedding_model,
             detection_device,
             detection_metrics_device,
+            ocr_device,
         } => {
             println!("Settings:");
             println!("  CLIP device:              {:?}", clip_device);
@@ -434,6 +435,7 @@ async fn main() -> Result<(), Error> {
             println!("  Embedding model:          {:?}", embedding_model);
             println!("  Detection device:         {:?}", detection_device);
             println!("  Detection metrics device: {:?}", detection_metrics_device);
+            println!("  OCR device:               {:?}", ocr_device);
         }
         Response::PreprocessBenchmarkResult { report } => {
             println!("{}", report);

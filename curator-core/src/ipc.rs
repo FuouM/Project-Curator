@@ -130,6 +130,7 @@ pub enum Request {
         embedding_model: Option<EmbeddingModel>,
         detection_device: Option<DevicePreference>,
         detection_metrics_device: Option<DevicePreference>,
+        ocr_device: Option<DevicePreference>,
     },
     /// Reindex all vectors with the active model.
     ReindexVectors,
@@ -317,6 +318,16 @@ pub enum Request {
     BenchmarkSingleImage { filepath: String },
     /// Get a random image with its position index for "I'm Feeling Lucky".
     GetRandomImage,
+
+    // ── OCR (Text Detection & Recognition) ───────────────────────────
+    /// Detect and recognize text blocks in a single image.
+    RunOcr {
+        image_id: i64,
+    },
+    /// Get stored OCR detections for an image.
+    GetOcrDetections {
+        image_id: i64,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -401,6 +412,7 @@ pub enum Response {
         embedding_model: EmbeddingModel,
         detection_device: DevicePreference,
         detection_metrics_device: DevicePreference,
+        ocr_device: DevicePreference,
     },
     /// Results of preprocessing benchmark.
     PreprocessBenchmarkResult {
@@ -425,6 +437,7 @@ pub enum Response {
         embedding_model: EmbeddingModel,
         detection_device: DevicePreference,
         detection_metrics_device: DevicePreference,
+        ocr_device: DevicePreference,
         featured_images: Vec<ImageDetails>,
         latest_images: Vec<ImageDetails>,
     },
@@ -574,6 +587,11 @@ pub enum Response {
         image: ImageDetails,
         index: i64,
     },
+    /// Stored OCR detections for an image.
+    OcrDetectionsResult {
+        image_id: i64,
+        detections: Vec<OcrResult>,
+    },
 }
 
 
@@ -673,3 +691,21 @@ pub struct DuplicateFolderInfo {
     /// Number of images in this folder that overlap with other folders in the group.
     pub overlap_count: i64,
 }
+
+/// Stored OCR detection representation.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct OcrResult {
+    pub id: i64,
+    pub image_id: i64,
+    pub text: String,
+    pub confidence: f32,
+    pub x0: i32,
+    pub y0: i32,
+    pub x1: i32,
+    pub y1: i32,
+    pub x2: i32,
+    pub y2: i32,
+    pub x3: i32,
+    pub y3: i32,
+}
+

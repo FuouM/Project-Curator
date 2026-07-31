@@ -7,6 +7,7 @@ import { callService } from "./ipc";
 let currentViewerPath: string | null = null;
 let currentViewerImageId: number | null = null;
 let detectionsVisible = false;
+let ocrVisible = false;
 
 const IDENTITY_COLORS = [
   "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6",
@@ -18,6 +19,7 @@ export function openImageViewer(filepath: string, _imageId?: number) {
   const img = document.getElementById("image-viewer-img") as HTMLImageElement;
   const title = document.getElementById("image-viewer-filename");
   const overlay = document.getElementById("image-viewer-detections-overlay");
+  const ocrOverlay = document.getElementById("image-viewer-ocr-overlay");
 
   if (!modal || !img || !title) return;
 
@@ -29,8 +31,11 @@ export function openImageViewer(filepath: string, _imageId?: number) {
 
   // Reset detections
   detectionsVisible = false;
+  ocrVisible = false;
   if (overlay) overlay.style.display = "none";
+  if (ocrOverlay) ocrOverlay.style.display = "none";
   updateDetectionButton(false);
+  updateOcrButton(false);
 }
 
 function closeImageViewer() {
@@ -41,6 +46,7 @@ function closeImageViewer() {
   currentViewerPath = null;
   currentViewerImageId = null;
   detectionsVisible = false;
+  ocrVisible = false;
 }
 
 function updateDetectionButton(active: boolean) {
@@ -52,6 +58,106 @@ function updateDetectionButton(active: boolean) {
   } else {
     btn.classList.remove("active");
     btn.style.background = "";
+  }
+}
+
+function updateOcrButton(active: boolean) {
+  const btn = document.getElementById("image-viewer-toggle-ocr");
+  if (!btn) return;
+  if (active) {
+    btn.classList.add("active");
+    btn.style.background = "var(--sys-accent-light, #cce5ff)";
+  } else {
+    btn.classList.remove("active");
+    btn.style.background = "";
+  }
+}
+
+async function toggleOcr() {
+  if (!currentViewerImageId) return;
+
+  const ocrOverlay = document.getElementById("image-viewer-ocr-overlay");
+  if (!ocrOverlay) return;
+
+  if (ocrVisible) {
+    ocrVisible = false;
+    ocrOverlay.style.display = "none";
+    updateOcrButton(false);
+    return;
+  }
+
+  try {
+    // 1. Get existing OCR detections
+    let resp = await callService({ GetOcrDetections: { image_id: currentViewerImageId } });
+    let detections = ("OcrDetectionsResult" in resp) ? resp.OcrDetectionsResult.detections : [];
+
+    // 2. If none exist in database, run OCR process on-demand
+    if (detections.length === 0) {
+      const waitBtn = document.getElementById("image-viewer-toggle-ocr");
+      if (waitBtn) waitBtn.textContent = "OCR Processing...";
+      resp = await callService({ RunOcr: { image_id: currentViewerImageId } });
+      if (waitBtn) waitBtn.innerHTML = '<i class="bi bi-fonts"></i> OCR Text';
+      detections = ("OcrDetectionsResult" in resp) ? resp.OcrDetectionsResult.detections : [];
+    }
+
+    if (detections.length === 0) return;
+
+    const img = document.getElementById("image-viewer-img") as HTMLImageElement;
+    if (!img.naturalWidth) return;
+
+    const scaleX = img.clientWidth / img.naturalWidth;
+    const scaleY = img.clientHeight / img.naturalHeight;
+
+    ocrOverlay.style.left = `${img.offsetLeft}px`;
+    ocrOverlay.style.top = `${img.offsetTop}px`;
+    ocrOverlay.style.width = `${img.clientWidth}px`;
+    ocrOverlay.style.height = `${img.clientHeight}px`;
+
+    ocrOverlay.innerHTML = "";
+    ocrOverlay.setAttribute("viewBox", `0 0 ${img.clientWidth} ${img.clientHeight}`);
+
+    for (const det of detections) {
+      // Draw polygon points path: p0 -> p1 -> p2 -> p3 -> close
+      const points = [
+        [det.x0 * scaleX, det.y0 * scaleY],
+        [det.x1 * scaleX, det.y1 * scaleY],
+        [det.x2 * scaleX, det.y2 * scaleY],
+        [det.x3 * scaleX, det.y3 * scaleY],
+      ];
+      
+      const polyPath = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      const ptsAttr = points.map(pt => `${pt[0]},${pt[1]}`).join(" ");
+      polyPath.setAttribute("points", ptsAttr);
+      polyPath.setAttribute("fill", "rgba(52, 152, 219, 0.15)");
+      polyPath.setAttribute("stroke", "#3498db");
+      polyPath.setAttribute("stroke-width", "2");
+      ocrOverlay.appendChild(polyPath);
+
+      // Render text label centered inside the polygon bounds
+      const minX = Math.min(points[0][0], points[1][0], points[2][0], points[3][0]);
+      const minY = Math.min(points[0][1], points[1][1], points[2][1], points[3][1]);
+
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("x", String(minX + 4));
+      label.setAttribute("y", String(minY + 14));
+      label.setAttribute("fill", "#ffffff");
+      label.setAttribute("font-size", "12");
+      label.setAttribute("font-weight", "600");
+      label.setAttribute("paint-order", "stroke");
+      label.setAttribute("stroke", "rgba(0,0,0,0.8)");
+      label.setAttribute("stroke-width", "3");
+      label.setAttribute("stroke-linecap", "round");
+      label.setAttribute("stroke-linejoin", "round");
+      label.textContent = det.text;
+      ocrOverlay.appendChild(label);
+    }
+
+    ocrVisible = true;
+    ocrOverlay.style.display = "block";
+    updateOcrButton(true);
+
+  } catch (e: any) {
+    console.error("Failed to load OCR detections:", e);
   }
 }
 
@@ -168,6 +274,11 @@ export function setupImageViewer() {
   document.getElementById("image-viewer-toggle-detections")?.addEventListener("click", (e) => {
     e.stopPropagation();
     toggleDetections();
+  });
+
+  document.getElementById("image-viewer-toggle-ocr")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleOcr();
   });
 
   document.addEventListener("keydown", (e) => {

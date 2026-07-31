@@ -13,6 +13,7 @@ export function setupSettings() {
   const embeddingSelect = document.getElementById("settings-embedding-model") as HTMLSelectElement;
   const detDeviceSelect = document.getElementById("settings-detection-device") as HTMLSelectElement;
   const detMetricsSelect = document.getElementById("settings-detection-metrics-device") as HTMLSelectElement;
+  const ocrDeviceSelect = document.getElementById("settings-ocr-device") as HTMLSelectElement;
   const saveBtn = document.getElementById("save-settings-btn");
   const reindexBtn = document.getElementById("reindex-vectors-btn");
   const statusMsg = document.getElementById("settings-status-msg");
@@ -95,6 +96,7 @@ export function setupSettings() {
           embedding_model: embeddingSelect ? embeddingSelect.value : null,
           detection_device: detDeviceSelect ? detDeviceSelect.value : null,
           detection_metrics_device: detMetricsSelect ? detMetricsSelect.value : null,
+          ocr_device: ocrDeviceSelect ? ocrDeviceSelect.value : null,
         }
       });
 

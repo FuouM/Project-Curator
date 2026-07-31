@@ -20,11 +20,12 @@ pub use benchmark::{
 pub use crop_cache::CropCache;
 pub use db::init_db;
 pub use db::models;
-pub use detection::{CCIPModel, DetectionPipeline, YoloDetector};
+pub use detection::{CCIPModel, DetectionPipeline, YoloDetector, OcrDetector, OcrDetection};
 pub use filename_parser::FilenameParser;
-pub use ipc::{DevicePreference, ImageDetails, Request, Response, SearchMatch, TagSummary};
+pub use ipc::{DevicePreference, ImageDetails, Request, Response, SearchMatch, TagSummary, OcrResult};
 pub use tagger::{TagPrediction, TaggerEngine};
 pub use vector::{ModelManager, VectorIndex, apply_device_preference};
+pub use image;
 
 pub mod grpc {
     tonic::include_proto!("curator");

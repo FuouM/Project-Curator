@@ -20,6 +20,7 @@ pub struct UpdateSettingsParams<'a> {
     pub embedding_model: Option<EmbeddingModel>,
     pub detection_device: Option<curator_core::ipc::DevicePreference>,
     pub detection_metrics_device: Option<curator_core::ipc::DevicePreference>,
+    pub ocr_device: Option<curator_core::ipc::DevicePreference>,
 }
 
 pub async fn query_status(
@@ -72,6 +73,7 @@ pub async fn update_settings_logic(
         embedding_model,
         detection_device,
         detection_metrics_device,
+        ocr_device,
     } = params;
     let mut model_changed = false;
     let mut s = settings.lock().await;
@@ -96,6 +98,9 @@ pub async fn update_settings_logic(
     if let Some(ref md) = detection_metrics_device {
         s.detection_metrics_device = md.clone();
     }
+    if let Some(ref od) = ocr_device {
+        s.ocr_device = od.clone();
+    }
     if let Err(e) = crate::save_settings(data_dir, &s) {
         warn!("Failed to save settings: {:?}", e);
     }
@@ -105,6 +110,7 @@ pub async fn update_settings_logic(
     let active_model = s.embedding_model;
     let det_dev = s.detection_device.clone();
     let det_met_dev = s.detection_metrics_device.clone();
+    let ocr_dev = s.ocr_device.clone();
     drop(s);
 
     if clip_device.is_some() {
@@ -137,8 +143,8 @@ pub async fn update_settings_logic(
     }
 
     info!(
-        "Settings updated: clip_device={:?}, tagger_device={:?}, detection_device={:?}, detection_metrics_device={:?}, idle_timeout={}s, embedding_model={:?}",
-        clip, tagger_dev, det_dev, det_met_dev, idle, active_model
+        "Settings updated: clip_device={:?}, tagger_device={:?}, detection_device={:?}, detection_metrics_device={:?}, ocr_device={:?}, idle_timeout={}s, embedding_model={:?}",
+        clip, tagger_dev, det_dev, det_met_dev, ocr_dev, idle, active_model
     );
 
     Ok(AppSettings {
@@ -148,5 +154,6 @@ pub async fn update_settings_logic(
         embedding_model: active_model,
         detection_device: det_dev,
         detection_metrics_device: det_met_dev,
+        ocr_device: ocr_dev,
     })
 }

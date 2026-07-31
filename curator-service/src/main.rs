@@ -32,6 +32,7 @@ struct ClientContext {
     vector_index: Arc<VectorIndex>,
     tagger: Arc<TaggerEngine>,
     detection: Arc<DetectionPipeline>,
+    ocr: Arc<curator_core::OcrDetector>,
     service_key: Arc<String>,
     data_dir: Arc<PathBuf>,
     settings: Arc<tokio::sync::Mutex<AppSettings>>,
@@ -48,12 +49,14 @@ pub(crate) struct AppSettings {
     embedding_model: curator_core::ipc::EmbeddingModel,
     #[serde(default)]
     detection_device: curator_core::ipc::DevicePreference,
-    #[serde(default = "default_detection_metrics_device")]
+    #[serde(default)]
     detection_metrics_device: curator_core::ipc::DevicePreference,
+    #[serde(default)]
+    ocr_device: curator_core::ipc::DevicePreference,
 }
 
 fn default_idle_timeout() -> u64 {
-    300
+    5 * 60
 }
 
 fn default_detection_metrics_device() -> curator_core::ipc::DevicePreference {
@@ -69,6 +72,7 @@ impl Default for AppSettings {
             embedding_model: curator_core::ipc::EmbeddingModel::ClipVitB32,
             detection_device: curator_core::ipc::DevicePreference::Auto,
             detection_metrics_device: curator_core::ipc::DevicePreference::Cpu,
+            ocr_device: curator_core::ipc::DevicePreference::Auto,
         }
     }
 }
@@ -137,6 +141,29 @@ fn download_detection_models(model_dir: &Path) -> Result<(), Error> {
         let mut file = fs::File::create(&dest)?;
         std::io::copy(&mut reader, &mut file)?;
         info!("Downloaded {}", rel_path);
+    }
+
+    // Copy OCR models from reference/ into .curator/models if missing
+    let ocr_files = [
+        ("PP-OCRv6_small_det_onnx/inference.onnx", "reference/PP-OCRv6_small_det_onnx/inference.onnx"),
+        ("PP-OCRv6_small_det_onnx/inference.yml", "reference/PP-OCRv6_small_det_onnx/inference.yml"),
+        ("PP-OCRv6_small_rec_onnx/inference.onnx", "reference/PP-OCRv6_small_rec_onnx/inference.onnx"),
+        ("PP-OCRv6_small_rec_onnx/inference.yml", "reference/PP-OCRv6_small_rec_onnx/inference.yml"),
+    ];
+    for (dest_rel, ref_rel) in &ocr_files {
+        let dest = model_dir.join(dest_rel);
+        if !dest.exists() {
+            let ref_path = Path::new(ref_rel);
+            if ref_path.exists() {
+                info!("Copying OCR file from reference: {:?} -> {:?}", ref_path, dest);
+                if let Some(parent) = dest.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::copy(&ref_path, &dest)?;
+            } else {
+                warn!("OCR reference file not found at {:?}", ref_path);
+            }
+        }
     }
 
     Ok(())
@@ -253,6 +280,9 @@ async fn main() -> Result<(), Error> {
     let detection = Arc::new(DetectionPipeline::new(detection_yolo, detection_ccip, db.clone(), crop_cache));
     info!("Detection pipeline configured (YOLO + CCIP, models load on first use)");
 
+    let ocr = Arc::new(curator_core::OcrDetector::new(&model_dir, settings.ocr_device.clone()));
+    info!("OCR detector configured (PP-OCRv6 small, models load on first use)");
+
     let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone());
     worker.start();
 
@@ -261,6 +291,7 @@ async fn main() -> Result<(), Error> {
     {
         let mm = model_manager.clone();
         let tg = tagger.clone();
+        let ocr_timeout = ocr.clone();
         let st = settings_arc.clone();
         tokio::spawn(async move {
             loop {
@@ -278,6 +309,9 @@ async fn main() -> Result<(), Error> {
                 if tg.is_loaded() && tg.idle_secs() >= timeout {
                     tg.unload();
                 }
+                if ocr_timeout.is_loaded() && ocr_timeout.idle_secs() >= timeout {
+                    ocr_timeout.unload();
+                }
             }
         });
     }
@@ -292,6 +326,7 @@ async fn main() -> Result<(), Error> {
             vector_index,
             tagger,
             detection,
+            ocr,
             service_key: Arc::new(service_key),
             data_dir: Arc::new(data_dir),
             settings: settings_arc,
@@ -340,6 +375,7 @@ impl Curator for CuratorServiceImpl {
             &self.ctx.vector_index,
             &self.ctx.tagger,
             &self.ctx.detection,
+            &self.ctx.ocr,
             &self.ctx.data_dir,
             &self.ctx.settings,
             &self.ctx.thumbnail_cache,

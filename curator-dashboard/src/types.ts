@@ -21,9 +21,11 @@ export type RequestPayload =
   | { RunTaggerBenchmark: null }
   | { GetSettings: null }
   | { ClearCropCache: null }
-  | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null; detection_device: string | null; detection_metrics_device: string | null } }
+  | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null; detection_device: string | null; detection_metrics_device: string | null; ocr_device: string | null } }
   | { ReindexVectors: null }
   | { ReindexFailedVectors: null }
+  | { RunOcr: { image_id: number } }
+  | { GetOcrDetections: { image_id: number } }
   | { GetTagStatistics: null }
   | { GetCharacterSuggestions: null }
   | { GetDashboardInit: null }
@@ -189,13 +191,13 @@ export type ResponsePayload =
   | { BatchTagResult: { processed: number; failed: number; skipped: number } }
   | { TaggerStatusResult: { loaded: boolean; model_path: string; total_tags: number } }
   | { BenchmarkResult: { clip_cpu_time_ms: number; clip_gpu_time_ms: number | null; clip_gpu_error: string | null; tagger_cpu_time_ms: number | null; tagger_gpu_time_ms: number | null; tagger_gpu_error: string | null; has_gpu: boolean } }
-  | { SettingsResult: { clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string; detection_device: string; detection_metrics_device: string } }
+  | { SettingsResult: { clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string; detection_device: string; detection_metrics_device: string; ocr_device: string } }
   | { TagStatisticsResult: { tags: TagStat[] } }
   | { DashboardInitResult: {
       image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number;
       tagger_loaded: boolean; tagger_model_path: string; tagger_total_tags: number;
       clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string;
-      detection_device: string; detection_metrics_device: string;
+      detection_device: string; detection_metrics_device: string; ocr_device: string;
       featured_images: ImageDetails[]; latest_images: ImageDetails[];
     } }
   | { ImportedFoldersResult: { folders: FolderDetails[] } }
@@ -245,7 +247,10 @@ export type ResponsePayload =
       tagger_preprocess_time_ms: number;
       yolo_preprocess_time_ms: number;
       ccip_extract_preprocess_time_ms: number;
+      ocr_det_preprocess_time_ms: number;
+      ocr_rec_preprocess_time_ms: number;
     } }
+  | { OcrDetectionsResult: { image_id: number; detections: OcrResult[] } }
   | { RandomImageResult: { image: ImageDetails; index: number } };
 
 export interface CharacterDetection {
@@ -284,4 +289,19 @@ export interface CardImageData {
   parsedMetadata?: ParsedMetadata;
   isMissing?: boolean;
   characterIdentities?: CharacterIdentitySummary[];
+}
+
+export interface OcrResult {
+  id: number;
+  image_id: number;
+  text: string;
+  confidence: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  x3: number;
+  y3: number;
 }

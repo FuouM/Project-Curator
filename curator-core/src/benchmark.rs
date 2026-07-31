@@ -582,6 +582,8 @@ pub struct SingleImageBenchmarkResult {
     pub tagger_preprocess_time_ms: f64,
     pub yolo_preprocess_time_ms: f64,
     pub ccip_extract_preprocess_time_ms: f64,
+    pub ocr_det_preprocess_time_ms: f64,
+    pub ocr_rec_preprocess_time_ms: f64,
 }
 
 pub async fn get_benchmark_images(
@@ -648,6 +650,15 @@ pub async fn run_single_image_benchmark(
     let _ = crate::detection::ccip::preprocess_ccip(&img, 384);
     let ccip_extract_preprocess_time_ms = start_ccip_pre.elapsed().as_secs_f64() * 1000.0;
 
+    // 7. OCR Preprocessing (Det & Rec)
+    let start_ocr_det = Instant::now();
+    let _ = crate::detection::ocr::preprocess_det(&img);
+    let ocr_det_preprocess_time_ms = start_ocr_det.elapsed().as_secs_f64() * 1000.0;
+
+    let start_ocr_rec = Instant::now();
+    let _ = crate::detection::ocr::preprocess_rec(&img);
+    let ocr_rec_preprocess_time_ms = start_ocr_rec.elapsed().as_secs_f64() * 1000.0;
+
     Ok(SingleImageBenchmarkResult {
         decode_time_ms,
         thumbnail_time_ms,
@@ -655,6 +666,8 @@ pub async fn run_single_image_benchmark(
         tagger_preprocess_time_ms,
         yolo_preprocess_time_ms,
         ccip_extract_preprocess_time_ms,
+        ocr_det_preprocess_time_ms,
+        ocr_rec_preprocess_time_ms,
     })
 }
 

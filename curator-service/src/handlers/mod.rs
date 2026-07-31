@@ -16,6 +16,7 @@ use sqlx::SqlitePool;
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{error, info, warn};
+use curator_core::image as core_image;
 
 use crate::AppSettings;
 
@@ -40,6 +41,7 @@ pub async fn handle_request(
     vector_index: &VectorIndex,
     tagger: &Arc<TaggerEngine>,
     detection: &Arc<DetectionPipeline>,
+    ocr: &Arc<curator_core::OcrDetector>,
     data_dir: &Path,
     settings: &Arc<tokio::sync::Mutex<AppSettings>>,
     thumbnail_cache: &ThumbnailCache,
@@ -396,6 +398,7 @@ pub async fn handle_request(
                 embedding_model: s.embedding_model,
                 detection_device: s.detection_device.clone(),
                 detection_metrics_device: s.detection_metrics_device.clone(),
+                ocr_device: s.ocr_device.clone(),
             }
         }
 
@@ -415,6 +418,7 @@ pub async fn handle_request(
             embedding_model,
             detection_device,
             detection_metrics_device,
+            ocr_device,
         } => {
             match settings::update_settings_logic(
                 settings::UpdateSettingsParams {
@@ -430,6 +434,7 @@ pub async fn handle_request(
                     embedding_model,
                     detection_device,
                     detection_metrics_device,
+                    ocr_device,
                 },
             )
             .await
@@ -441,6 +446,7 @@ pub async fn handle_request(
                     embedding_model: s.embedding_model,
                     detection_device: s.detection_device,
                     detection_metrics_device: s.detection_metrics_device,
+                    ocr_device: s.ocr_device,
                 },
                 Err(e) => Response::Error {
                     message: e.to_string(),
@@ -509,6 +515,7 @@ pub async fn handle_request(
                 embedding_model: settings_val.embedding_model,
                 detection_device: settings_val.detection_device,
                 detection_metrics_device: settings_val.detection_metrics_device,
+                ocr_device: settings_val.ocr_device,
                 featured_images,
                 latest_images,
             }
@@ -1013,6 +1020,106 @@ pub async fn handle_request(
                 message: format!("Failed to get random image: {:?}", e),
             },
         },
+
+        Request::RunOcr { image_id } => {
+            let row: Option<(String,)> = match sqlx::query_as("SELECT current_filepath FROM images WHERE id = ? AND deleted_at IS NULL")
+                .bind(image_id)
+                .fetch_optional(db)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => return Response::Error { message: format!("DB Error: {:?}", e) },
+            };
+
+            let filepath = match row {
+                Some(r) => r.0,
+                None => return Response::Error { message: format!("Image {} not found", image_id) },
+            };
+
+            let filepath_path = std::path::Path::new(&filepath);
+            if !filepath_path.exists() {
+                return Response::Error { message: format!("File not found: {:?}", filepath) };
+            }
+
+            let (rgb_buf, width, height) = match curator_core::image_decode::decode_rgb(filepath_path) {
+                Ok(res) => res,
+                Err(e) => return Response::Error { message: format!("Image decode failed: {:?}", e) },
+            };
+
+            let img = match core_image::ImageBuffer::<core_image::Rgb<u8>, Vec<u8>>::from_raw(width, height, rgb_buf) {
+                Some(i) => i,
+                None => return Response::Error { message: "Invalid image buffer".to_string() },
+            };
+
+            let ocr_clone = Arc::clone(ocr);
+            let detections_res = tokio::task::spawn_blocking(move || ocr_clone.run_ocr(&img)).await;
+
+            let detections = match detections_res {
+                Ok(Ok(dets)) => dets,
+                Ok(Err(e)) => return Response::Error { message: format!("OCR execution failed: {:?}", e) },
+                Err(e) => return Response::Error { message: format!("Task join panicked: {:?}", e) },
+            };
+
+            // Save detections to DB
+            if let Err(e) = sqlx::query("DELETE FROM image_ocr_detections WHERE image_id = ?")
+                .bind(image_id)
+                .execute(db)
+                .await
+            {
+                return Response::Error { message: format!("Failed to clear old OCR data: {:?}", e) };
+            }
+
+            for det in &detections {
+                let p = &det.polygon;
+                if let Err(e) = sqlx::query(
+                    "INSERT INTO image_ocr_detections (image_id, text, confidence, x0, y0, x1, y1, x2, y2, x3, y3) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                )
+                .bind(image_id)
+                .bind(&det.text)
+                .bind(det.confidence)
+                .bind(p[0][0])
+                .bind(p[0][1])
+                .bind(p[1][0])
+                .bind(p[1][1])
+                .bind(p[2][0])
+                .bind(p[2][1])
+                .bind(p[3][0])
+                .bind(p[3][1])
+                .execute(db)
+                .await
+                {
+                    return Response::Error { message: format!("Failed to insert OCR detection: {:?}", e) };
+                }
+            }
+
+            let results: Vec<curator_core::ipc::OcrResult> = match sqlx::query_as(
+                "SELECT id, image_id, text, confidence, x0, y0, x1, y1, x2, y2, x3, y3 FROM image_ocr_detections WHERE image_id = ?"
+            )
+            .bind(image_id)
+            .fetch_all(db)
+            .await
+            {
+                Ok(res) => res,
+                Err(e) => return Response::Error { message: format!("Failed to retrieve OCR results: {:?}", e) },
+            };
+
+            Response::OcrDetectionsResult { image_id, detections: results }
+        }
+
+        Request::GetOcrDetections { image_id } => {
+            let results: Vec<curator_core::ipc::OcrResult> = match sqlx::query_as(
+                "SELECT id, image_id, text, confidence, x0, y0, x1, y1, x2, y2, x3, y3 FROM image_ocr_detections WHERE image_id = ?"
+            )
+            .bind(image_id)
+            .fetch_all(db)
+            .await
+            {
+                Ok(res) => res,
+                Err(e) => return Response::Error { message: format!("Failed to query OCR detections: {:?}", e) },
+            };
+
+            Response::OcrDetectionsResult { image_id, detections: results }
+        }
     }
 }
 
