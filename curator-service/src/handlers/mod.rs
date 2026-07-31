@@ -1058,7 +1058,7 @@ pub async fn handle_request(
             let ocr_clone = Arc::clone(ocr);
             let detections_res = tokio::task::spawn_blocking(move || ocr_clone.run_ocr(&img)).await;
 
-            let detections = match detections_res {
+            let (detections, bubbles) = match detections_res {
                 Ok(Ok(dets)) => dets,
                 Ok(Err(e)) => return Response::Error { message: format!("OCR execution failed: {:?}", e) },
                 Err(e) => return Response::Error { message: format!("Task join panicked: {:?}", e) },
@@ -1076,7 +1076,7 @@ pub async fn handle_request(
             for det in &detections {
                 let p = &det.polygon;
                 if let Err(e) = sqlx::query(
-                    "INSERT INTO image_ocr_detections (image_id, text, confidence, x0, y0, x1, y1, x2, y2, x3, y3) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO image_ocr_detections (image_id, text, confidence, x0, y0, x1, y1, x2, y2, x3, y3, is_from_bubble) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 )
                 .bind(image_id)
                 .bind(&det.text)
@@ -1089,6 +1089,7 @@ pub async fn handle_request(
                 .bind(p[2][1])
                 .bind(p[3][0])
                 .bind(p[3][1])
+                .bind(det.is_from_bubble)
                 .execute(db)
                 .await
                 {
@@ -1097,7 +1098,7 @@ pub async fn handle_request(
             }
 
             let results: Vec<curator_core::ipc::OcrResult> = match sqlx::query_as(
-                "SELECT id, image_id, text, confidence, x0, y0, x1, y1, x2, y2, x3, y3 FROM image_ocr_detections WHERE image_id = ?"
+                "SELECT id, image_id, text, confidence, x0, y0, x1, y1, x2, y2, x3, y3, is_from_bubble FROM image_ocr_detections WHERE image_id = ?"
             )
             .bind(image_id)
             .fetch_all(db)
@@ -1107,12 +1108,35 @@ pub async fn handle_request(
                 Err(e) => return Response::Error { message: format!("Failed to retrieve OCR results: {:?}", e) },
             };
 
-            Response::OcrDetectionsResult { image_id, detections: results }
+            let bubble_box_results: Vec<curator_core::ipc::BubbleBoxResult> = bubbles.iter().map(|b| {
+                curator_core::ipc::BubbleBoxResult {
+                    x1: b.bbox[0],
+                    y1: b.bbox[1],
+                    x2: b.bbox[2],
+                    y2: b.bbox[3],
+                    confidence: b.confidence,
+                }
+            }).collect();
+
+            // Save bubble boxes to DB
+            let _ = sqlx::query("DELETE FROM image_ocr_bubble_boxes WHERE image_id = ?")
+                .bind(image_id).execute(db).await;
+            for b in &bubbles {
+                let _ = sqlx::query(
+                    "INSERT INTO image_ocr_bubble_boxes (image_id, x1, y1, x2, y2, confidence) VALUES (?, ?, ?, ?, ?, ?)"
+                )
+                .bind(image_id)
+                .bind(b.bbox[0]).bind(b.bbox[1]).bind(b.bbox[2]).bind(b.bbox[3])
+                .bind(b.confidence)
+                .execute(db).await;
+            }
+
+            Response::OcrDetectionsResult { image_id, detections: results, bubble_boxes: bubble_box_results }
         }
 
         Request::GetOcrDetections { image_id } => {
             let results: Vec<curator_core::ipc::OcrResult> = match sqlx::query_as(
-                "SELECT id, image_id, text, confidence, x0, y0, x1, y1, x2, y2, x3, y3 FROM image_ocr_detections WHERE image_id = ?"
+                "SELECT id, image_id, text, confidence, x0, y0, x1, y1, x2, y2, x3, y3, is_from_bubble FROM image_ocr_detections WHERE image_id = ?"
             )
             .bind(image_id)
             .fetch_all(db)
@@ -1122,7 +1146,18 @@ pub async fn handle_request(
                 Err(e) => return Response::Error { message: format!("Failed to query OCR detections: {:?}", e) },
             };
 
-            Response::OcrDetectionsResult { image_id, detections: results }
+            let bubble_boxes: Vec<curator_core::ipc::BubbleBoxResult> = match sqlx::query_as(
+                "SELECT x1, y1, x2, y2, confidence FROM image_ocr_bubble_boxes WHERE image_id = ?"
+            )
+            .bind(image_id)
+            .fetch_all(db)
+            .await
+            {
+                Ok(res) => res,
+                Err(_) => Vec::new(),
+            };
+
+            Response::OcrDetectionsResult { image_id, detections: results, bubble_boxes }
         }
     }
 }

@@ -90,6 +90,7 @@ async function toggleOcr() {
     // 1. Get existing OCR detections
     let resp = await callService({ GetOcrDetections: { image_id: currentViewerImageId } });
     let detections = ("OcrDetectionsResult" in resp) ? resp.OcrDetectionsResult.detections : [];
+    let bubbleBoxes = ("OcrDetectionsResult" in resp) ? (resp.OcrDetectionsResult as any).bubble_boxes ?? [] : [];
 
     // 2. If none exist in database, run OCR process on-demand
     if (detections.length === 0) {
@@ -98,6 +99,7 @@ async function toggleOcr() {
       resp = await callService({ RunOcr: { image_id: currentViewerImageId } });
       if (waitBtn) waitBtn.innerHTML = '<i class="bi bi-fonts"></i> OCR Text';
       detections = ("OcrDetectionsResult" in resp) ? resp.OcrDetectionsResult.detections : [];
+      bubbleBoxes = ("OcrDetectionsResult" in resp) ? (resp.OcrDetectionsResult as any).bubble_boxes ?? [] : [];
       // Update card OCR text directly
       const ocrText = detections.map((d: any) => d.text).join("\n");
       import("./cards").then(m => m.refreshCardOcr(currentViewerImageId!, ocrText));
@@ -131,8 +133,13 @@ async function toggleOcr() {
       const polyPath = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
       const ptsAttr = points.map(pt => `${pt[0]},${pt[1]}`).join(" ");
       polyPath.setAttribute("points", ptsAttr);
-      polyPath.setAttribute("fill", "rgba(52, 152, 219, 0.15)");
-      polyPath.setAttribute("stroke", "#3498db");
+      if (det.is_from_bubble) {
+        polyPath.setAttribute("fill", "rgba(155, 89, 182, 0.15)");
+        polyPath.setAttribute("stroke", "#9b59b6");
+      } else {
+        polyPath.setAttribute("fill", "rgba(52, 152, 219, 0.15)");
+        polyPath.setAttribute("stroke", "#3498db");
+      }
       polyPath.setAttribute("stroke-width", "2");
       ocrOverlay.appendChild(polyPath);
 
@@ -153,6 +160,21 @@ async function toggleOcr() {
       label.setAttribute("stroke-linejoin", "round");
       label.textContent = det.text;
       ocrOverlay.appendChild(label);
+    }
+
+    // Draw YOLO bubble detection boxes as dashed green rectangles
+    for (const bub of bubbleBoxes) {
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("x", String(bub.x1 * scaleX));
+      rect.setAttribute("y", String(bub.y1 * scaleY));
+      rect.setAttribute("width", String((bub.x2 - bub.x1) * scaleX));
+      rect.setAttribute("height", String((bub.y2 - bub.y1) * scaleY));
+      rect.setAttribute("fill", "none");
+      rect.setAttribute("stroke", "#2ecc71");
+      rect.setAttribute("stroke-width", "2");
+      rect.setAttribute("stroke-dasharray", "6,3");
+      rect.setAttribute("stroke-opacity", "0.8");
+      ocrOverlay.appendChild(rect);
     }
 
     ocrVisible = true;
@@ -292,8 +314,10 @@ export function setupImageViewer() {
       if (btn) btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Running...';
       const resp = await callService({ RunOcr: { image_id: currentViewerImageId } });
       const detections = ("OcrDetectionsResult" in resp) ? resp.OcrDetectionsResult.detections : [];
+      const bubbleBoxes = ("OcrDetectionsResult" in resp) ? (resp.OcrDetectionsResult as any).bubble_boxes ?? [] : [];
+      // Re-fetch from DB so the viewer shows stored data
+      ocrVisible = false;
       if (detections.length > 0) {
-        ocrVisible = false;
         toggleOcr();
       } else {
         const overlay = document.getElementById("image-viewer-ocr-overlay");

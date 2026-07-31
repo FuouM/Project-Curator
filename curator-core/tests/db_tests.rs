@@ -104,10 +104,10 @@ fn test_ocr_image_transcription_extraction() {
     let (rgb_buf, width, height) = curator_core::image_decode::decode_rgb(img_path).unwrap();
     let img = curator_core::image::ImageBuffer::<curator_core::image::Rgb<u8>, Vec<u8>>::from_raw(width, height, rgb_buf).unwrap();
 
-    let results = detector.run_ocr(&img).expect("Failed to run OCR");
-    println!("Extracted {} text blocks:", results.len());
+    let (results, bubbles) = detector.run_ocr(&img).expect("Failed to run OCR");
+    println!("Extracted {} text blocks, {} bubble detections:", results.len(), bubbles.len());
     for (idx, det) in results.iter().enumerate() {
-        println!("[{}] \"{}\" (conf: {:.2})", idx, det.text, det.confidence);
+        println!("[{}] \"{}\" (conf: {:.2}, bubble: {})", idx, det.text, det.confidence, det.is_from_bubble);
     }
 
     // Direct inspect detection probability map values if 0 text blocks were found

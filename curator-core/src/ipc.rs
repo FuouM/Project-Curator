@@ -595,6 +595,8 @@ pub enum Response {
     OcrDetectionsResult {
         image_id: i64,
         detections: Vec<OcrResult>,
+        #[serde(default)]
+        bubble_boxes: Vec<BubbleBoxResult>,
     },
 }
 
@@ -715,5 +717,16 @@ pub struct OcrResult {
     pub y2: i32,
     pub x3: i32,
     pub y3: i32,
+    pub is_from_bubble: bool,
+}
+
+/// YOLO bubble detection bounding box for overlay display.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct BubbleBoxResult {
+    pub x1: f32,
+    pub y1: f32,
+    pub x2: f32,
+    pub y2: f32,
+    pub confidence: f32,
 }
 

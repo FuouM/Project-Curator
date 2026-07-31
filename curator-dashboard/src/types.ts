@@ -252,7 +252,7 @@ export type ResponsePayload =
       ocr_det_preprocess_time_ms: number;
       ocr_rec_preprocess_time_ms: number;
     } }
-  | { OcrDetectionsResult: { image_id: number; detections: OcrResult[] } }
+  | { OcrDetectionsResult: { image_id: number; detections: OcrResult[]; bubble_boxes: BubbleBoxResult[] } }
   | { RandomImageResult: { image: ImageDetails; index: number } };
 
 export interface CharacterDetection {
@@ -307,4 +307,13 @@ export interface OcrResult {
   y2: number;
   x3: number;
   y3: number;
+  is_from_bubble: boolean;
+}
+
+export interface BubbleBoxResult {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  confidence: number;
 }
