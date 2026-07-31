@@ -443,6 +443,9 @@ function openImageInfoModal(img: ImageDetails) {
         <button class="win-button primary" id="detect-characters-btn" style="font-size:11px;">
           <i class="bi bi-bounding-box"></i> Detect Characters
         </button>
+        <button class="win-button" id="add-detection-btn" style="font-size:11px;">
+          <i class="bi bi-plus-lg"></i> Add Box
+        </button>
         <button class="win-button" id="refresh-detections-btn" style="font-size:11px;">
           <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
@@ -493,6 +496,8 @@ function openImageInfoModal(img: ImageDetails) {
         await callService({ DetectCharacters: { image_id: img.id } });
         await loadDetectionsForImage(img.id);
         await refreshCharacters();
+        import("./views/gallery").then(m => m.refreshGallery());
+        import("./views/dashboard").then(m => m.refreshDashboard());
       } catch (e: any) {
         console.error("Detection failed:", e);
       } finally {
@@ -500,6 +505,20 @@ function openImageInfoModal(img: ImageDetails) {
         detectBtn.innerHTML = '<i class="bi bi-bounding-box"></i> Detect Characters';
         if (loading) loading.style.display = "none";
       }
+    });
+  }
+
+  const addDetBtn = body.querySelector("#add-detection-btn") as HTMLButtonElement;
+  if (addDetBtn) {
+    addDetBtn.addEventListener("click", () => {
+      import("./bbox-editor").then(m => {
+        m.openBBoxEditor(null, img.id, img.current_filepath, 0, 0, 0, 0, () => {
+          loadDetectionsForImage(img.id);
+          refreshCharacters();
+          import("./views/gallery").then(m => m.refreshGallery());
+          import("./views/dashboard").then(m => m.refreshDashboard());
+        });
+      });
     });
   }
 
@@ -589,64 +608,89 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
   const assignedIdentity = det.identity_id !== null ? identities.find((i: any) => i.id === det.identity_id) : null;
   const dropdownId = `det-ac-${det.id}`;
 
-  if (assignedIdentity) {
-    infoEl.innerHTML = `
-      <div style="display:flex;align-items:center;gap:6px;">
-        <div style="position:relative;display:inline-block;">
-          <input class="det-name-input" value="${assignedIdentity.name}" style="font-weight:600;font-size:11px;padding:1px 4px;border:1px solid transparent;border-radius:2px;background:transparent;width:140px;" autocomplete="off" />
-          <div id="${dropdownId}" class="autocomplete-dropdown" style="display:none;"></div>
-        </div>
-        <span style="color:#888;">(${(det.confidence * 100).toFixed(1)}%)</span>
+  const currentName = assignedIdentity ? assignedIdentity.name : "";
+
+  infoEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div style="position:relative;display:inline-block;">
+        <input class="det-name-input" value="${currentName}" placeholder="Type character name..." style="font-weight:600;font-size:11px;padding:1px 4px;border:1px solid transparent;border-radius:2px;background:transparent;width:140px;" autocomplete="off" />
+        <div id="${dropdownId}" class="autocomplete-dropdown" style="display:none;z-index:10;"></div>
       </div>
-      <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
-        <select class="win-select detection-identity-select" data-detection-id="${det.id}" style="font-size:10px;padding:1px 4px;max-width:150px;">
-          <option value="">Unassigned</option>
-          ${identities.map((i: any) => `<option value="${i.id}" ${det.identity_id === i.id ? "selected" : ""}>${i.name}</option>`).join("")}
-        </select>
-      </div>
-    `;
-    const nameInput = infoEl.querySelector(".det-name-input") as HTMLInputElement;
-    attachAutocomplete({
-      input: nameInput,
-      dropdownId,
-      onSelect: async (newName) => {
-        if (newName !== assignedIdentity.name) {
-          await callService({ RenameCharacterIdentity: { identity_id: assignedIdentity.id, name: newName } });
-          await loadDetectionsForImage(imageId);
-          await refreshCharacters();
-        }
-      },
-      fetchItems: async (query) => {
-        const { getSuggestions } = await import("./views/characters");
-        const suggestions = await getSuggestions(query);
-        return suggestions.map((s) => ({ name: s.name, count: s.count }));
-      },
-    });
-    nameInput.addEventListener("blur", async () => {
-      const newName = nameInput.value.trim();
-      if (newName && newName !== assignedIdentity.name) {
-        await callService({ RenameCharacterIdentity: { identity_id: assignedIdentity.id, name: newName } });
+      <span style="color:#888;">(${(det.confidence * 100).toFixed(1)}%)</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
+      <select class="win-select detection-identity-select" data-detection-id="${det.id}" style="font-size:10px;padding:1px 4px;max-width:150px;">
+        <option value="">Unassigned</option>
+        ${identities.map((i: any) => `<option value="${i.id}" ${det.identity_id === i.id ? "selected" : ""}>${i.name}</option>`).join("")}
+      </select>
+    </div>
+  `;
+
+  const nameInput = infoEl.querySelector(".det-name-input") as HTMLInputElement;
+
+  const handleAssign = async (targetName: string) => {
+    const name = targetName.trim();
+    if (!name) {
+      if (det.identity_id !== null) {
+        await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: null } });
         await loadDetectionsForImage(imageId);
         await refreshCharacters();
+        import("./views/gallery").then(m => m.refreshGallery());
+        import("./views/dashboard").then(m => m.refreshDashboard());
       }
-    });
-    nameInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); nameInput.blur(); }
-    });
-  } else {
-    infoEl.innerHTML = `
-      <div style="display:flex;align-items:center;gap:6px;">
-        <span style="font-weight:600;color:#888;">Unassigned</span>
-        <span style="color:#888;">(${(det.confidence * 100).toFixed(1)}%)</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
-        <select class="win-select detection-identity-select" data-detection-id="${det.id}" style="font-size:10px;padding:1px 4px;max-width:150px;">
-          <option value="">Unassigned</option>
-          ${identities.map((i: any) => `<option value="${i.id}">${i.name}</option>`).join("")}
-        </select>
-      </div>
-    `;
-  }
+      return;
+    }
+
+    if (assignedIdentity && name.toLowerCase() === assignedIdentity.name.toLowerCase()) {
+      return;
+    }
+
+    const existing = identities.find(i => i.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: existing.id } });
+    } else {
+      const createResp = await callService({ CreateCharacterIdentity: { name } });
+      if (createResp && "CharacterIdentitiesList" in createResp) {
+        const newId = createResp.CharacterIdentitiesList.identities[0].id;
+        await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: newId } });
+      }
+    }
+    await loadDetectionsForImage(imageId);
+    await refreshCharacters();
+    import("./views/gallery").then(m => m.refreshGallery());
+    import("./views/dashboard").then(m => m.refreshDashboard());
+  };
+
+  attachAutocomplete({
+    input: nameInput,
+    dropdownId,
+    onSelect: async (selectedName) => {
+      await handleAssign(selectedName);
+    },
+    fetchItems: async (query) => {
+      const { getSuggestions } = await import("./views/characters");
+      const suggestions = await getSuggestions(query);
+      return suggestions.map((s) => ({ name: s.name, count: s.count }));
+    },
+  });
+
+  nameInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      nameInput.blur();
+    }
+  });
+
+  let blurTimeout: any = null;
+  nameInput.addEventListener("focus", () => {
+    if (blurTimeout) clearTimeout(blurTimeout);
+  });
+
+  nameInput.addEventListener("blur", () => {
+    blurTimeout = setTimeout(async () => {
+      await handleAssign(nameInput.value);
+    }, 250);
+  });
 
   detEl.appendChild(cropThumb);
   detEl.appendChild(infoEl);
@@ -654,6 +698,9 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
   const actionsEl = document.createElement("div");
   actionsEl.style.cssText = "display:flex;gap:4px;margin-left:auto;align-items:center;";
   actionsEl.innerHTML = `
+    <button class="win-button match-det-btn" style="font-size:10px;padding:2px 6px;" title="Auto-match identity">
+      <i class="bi bi-person-check"></i>
+    </button>
     <button class="win-button edit-bbox-btn" style="font-size:10px;padding:2px 6px;" title="Edit bounding box">
       <i class="bi bi-bounding-box"></i>
     </button>
@@ -662,6 +709,28 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
     </button>
   `;
   detEl.appendChild(actionsEl);
+
+  actionsEl.querySelector(".match-det-btn")?.addEventListener("click", async () => {
+    const matchBtn = actionsEl.querySelector(".match-det-btn") as HTMLButtonElement;
+    matchBtn.disabled = true;
+    matchBtn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+    try {
+      const resp = await callService({ IdentifyDetection: { detection_id: det.id } });
+      if ("IdentifyDetectionResult" in resp) {
+        loadDetectionsForImage(imageId);
+        refreshCharacters();
+        import("./views/gallery").then(m => m.refreshGallery());
+        import("./views/dashboard").then(m => m.refreshDashboard());
+      } else if ("Error" in resp) {
+        alert("Failed to match: " + resp.Error.message);
+      }
+    } catch (e: any) {
+      alert("Error trying to match identity: " + e.message);
+    } finally {
+      matchBtn.disabled = false;
+      matchBtn.innerHTML = '<i class="bi bi-person-check"></i>';
+    }
+  });
 
   actionsEl.querySelector(".edit-bbox-btn")?.addEventListener("click", () => {
     callService({ GetImage: { image_id: imageId } }).then((imgResp: any) => {
@@ -672,6 +741,8 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
             invalidateCropCache(det.id);
             loadDetectionsForImage(imageId);
             refreshCharacters();
+            import("./views/gallery").then(m => m.refreshGallery());
+            import("./views/dashboard").then(m => m.refreshDashboard());
           });
         });
       }
@@ -683,6 +754,8 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
     await callService({ DeleteDetection: { detection_id: det.id } });
     loadDetectionsForImage(imageId);
     refreshCharacters();
+    import("./views/gallery").then(m => m.refreshGallery());
+    import("./views/dashboard").then(m => m.refreshDashboard());
   });
 
   const select = detEl.querySelector(".detection-identity-select") as HTMLSelectElement;
@@ -692,6 +765,8 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
     await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: identityId } });
     await loadDetectionsForImage(imageId);
     await refreshCharacters();
+    import("./views/gallery").then(m => m.refreshGallery());
+    import("./views/dashboard").then(m => m.refreshDashboard());
   });
 
   return detEl;

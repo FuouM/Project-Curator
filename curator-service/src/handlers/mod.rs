@@ -881,6 +881,22 @@ pub async fn handle_request(
                 },
             }
         }
+        Request::AddDetection { image_id, x0, y0, x1, y1 } => {
+            match detection.add_detection(image_id, x0, y0, x1, y1).await {
+                Ok(det) => Response::AddDetectionResult { detection: det },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        Request::IdentifyDetection { detection_id } => {
+            match detection.identify_detection(detection_id).await {
+                Ok(ident_id) => Response::IdentifyDetectionResult { identity_id: ident_id },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
 
         Request::RunYoloBenchmark => {
             let det_dir = data_dir.join("models");

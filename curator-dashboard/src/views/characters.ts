@@ -12,6 +12,30 @@ interface SuggestionItem {
 
 
 
+function isPlaceholderName(name: string): boolean {
+  return /^Character \d+$/i.test(name.trim());
+}
+
+function compareIdentities(a: { name: string }, b: { name: string }): number {
+  const aIsPlaceholder = isPlaceholderName(a.name);
+  const bIsPlaceholder = isPlaceholderName(b.name);
+
+  if (aIsPlaceholder && !bIsPlaceholder) {
+    return 1;
+  }
+  if (!aIsPlaceholder && bIsPlaceholder) {
+    return -1;
+  }
+
+  if (aIsPlaceholder && bIsPlaceholder) {
+    const aNum = parseInt(a.name.replace(/\D/g, ""), 10) || 0;
+    const bNum = parseInt(b.name.replace(/\D/g, ""), 10) || 0;
+    return aNum - bNum;
+  }
+
+  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+}
+
 // Fetch suggestions matching the query text dynamically from the database
 export async function getSuggestions(query: string): Promise<SuggestionItem[]> {
   const items: SuggestionItem[] = [];
@@ -63,7 +87,15 @@ export async function getSuggestions(query: string): Promise<SuggestionItem[]> {
     }
   } catch (_) {}
 
-  return items.sort((a, b) => b.count - a.count);
+  return items.sort((a, b) => {
+    const aIsPlaceholder = isPlaceholderName(a.name);
+    const bIsPlaceholder = isPlaceholderName(b.name);
+
+    if (aIsPlaceholder && !bIsPlaceholder) return 1;
+    if (!aIsPlaceholder && bIsPlaceholder) return -1;
+
+    return b.count - a.count;
+  });
 }
 
 export function attachIdentityAutocomplete(
@@ -159,9 +191,12 @@ export function setupCharactersView() {
   });
 }
 
-export async function refreshCharacters() {
+export async function refreshCharacters(focusedIdentityId?: number) {
   const container = document.getElementById("characters-list-container");
   if (!container) return;
+
+  const mainPanel = document.querySelector(".main-panel");
+  const savedScrollTop = mainPanel ? mainPanel.scrollTop : 0;
 
   // Render initial card layout skeletons/placeholders to keep the tab immediate and responsive
   container.innerHTML = `
@@ -186,6 +221,9 @@ export async function refreshCharacters() {
       "CharacterIdentitiesList" in identitiesResp ? identitiesResp.CharacterIdentitiesList.identities : [];
     const unassigned: CharacterDetection[] =
       "UnassignedDetectionsList" in unassignedResp ? unassignedResp.UnassignedDetectionsList.detections : [];
+
+    // Sort identities alphabetically, keeping placeholders at the bottom
+    identities.sort(compareIdentities);
 
     container.innerHTML = "";
 
@@ -219,6 +257,7 @@ export async function refreshCharacters() {
     for (const identity of identities) {
       const card = document.createElement("div");
       card.className = "concept-card group-box";
+      card.setAttribute("data-card-id", String(identity.id));
       const dropdownId = `identity-ac-${identity.id}`;
       card.innerHTML = `
         <div class="concept-card-title">
@@ -253,12 +292,11 @@ export async function refreshCharacters() {
       `;
       container.appendChild(card);
 
-      // Autocomplete rename
       const nameInput = card.querySelector(".identity-name-input") as HTMLInputElement;
       attachIdentityAutocomplete(nameInput, dropdownId, async (newName) => {
         if (newName !== identity.name) {
           await callService({ RenameCharacterIdentity: { identity_id: identity.id, name: newName } });
-          await refreshCharacters();
+          await refreshCharacters(identity.id);
         }
       });
       nameInput.addEventListener("keydown", (e) => {
@@ -301,6 +339,18 @@ export async function refreshCharacters() {
   } catch (e) {
     console.error("Failed to load identities:", e);
     container.innerHTML = '<p style="color:#64748b;font-style:italic;">Failed to load identities.</p>';
+  } finally {
+    // Restore scroll position or scroll focused card into view
+    if (focusedIdentityId !== undefined) {
+      const targetCard = container.querySelector(`[data-card-id="${focusedIdentityId}"]`);
+      if (targetCard) {
+        targetCard.scrollIntoView({ block: "center", behavior: "smooth" });
+      } else if (mainPanel) {
+        mainPanel.scrollTop = savedScrollTop;
+      }
+    } else if (mainPanel) {
+      mainPanel.scrollTop = savedScrollTop;
+    }
   }
 }
 
@@ -437,17 +487,21 @@ function renderUnassignedDetection(
   cropThumb.innerHTML = '<i class="bi bi-image" style="color:#999;"></i>';
   loadCropForElement(cropThumb, det.id);
 
-  // Info + identity dropdown
+  // Info + identity inputs
   const infoEl = document.createElement("div");
   infoEl.style.cssText = "flex:1;min-width:0;";
+  const dropdownId = `assign-ac-${det.id}`;
   infoEl.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;">
       <span style="color:#888;">Image #${det.image_id}</span>
       <span style="color:#888;">(${(det.confidence * 100).toFixed(1)}%)</span>
     </div>
-    <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
-      <select class="win-select detection-identity-select" data-detection-id="${det.id}" style="font-size:10px;padding:1px 4px;max-width:180px;">
-        <option value="">Unassigned</option>
+    <div style="display:flex;align-items:center;gap:4px;margin-top:2px;position:relative;">
+      <input class="assign-identity-input" placeholder="Type character name..." style="font-size:10px;padding:2px 6px;width:150px;border:1px solid var(--sys-border-light,#d0d0d0);border-radius:2px;" autocomplete="off" />
+      <div id="${dropdownId}" class="autocomplete-dropdown" style="display:none;z-index:10;"></div>
+      <span style="font-size:10px;color:#999;margin:0 4px;">or</span>
+      <select class="win-select detection-identity-select" data-detection-id="${det.id}" style="font-size:10px;padding:1px 4px;max-width:150px;">
+        <option value="">Choose existing...</option>
         ${identities.map((i) => `<option value="${i.id}">${i.name}</option>`).join("")}
       </select>
     </div>
@@ -463,7 +517,57 @@ function renderUnassignedDetection(
     await refreshCharacters();
   });
 
-  // Identity assignment handler
+  // Autocomplete assignment handler
+  const assignInput = infoEl.querySelector(".assign-identity-input") as HTMLInputElement;
+  
+  const handleAssign = async (targetName: string) => {
+    const name = targetName.trim();
+    if (!name) return;
+    const existing = identities.find(i => i.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: existing.id } });
+    } else {
+      const createResp = await callService({ CreateCharacterIdentity: { name } });
+      if (createResp && "CharacterIdentitiesList" in createResp) {
+        const newId = createResp.CharacterIdentitiesList.identities[0].id;
+        await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: newId } });
+      }
+    }
+    await refreshCharacters();
+  };
+
+  attachAutocomplete({
+    input: assignInput,
+    dropdownId,
+    onSelect: async (selectedName) => {
+      await handleAssign(selectedName);
+    },
+    fetchItems: async (query) => {
+      const suggestions = await getSuggestions(query);
+      return suggestions.map((s) => ({ name: s.name, count: s.count }));
+    }
+  });
+
+  assignInput.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      assignInput.blur();
+    }
+  });
+
+  let blurTimeout: any = null;
+  assignInput.addEventListener("focus", () => {
+    if (blurTimeout) clearTimeout(blurTimeout);
+  });
+
+  assignInput.addEventListener("blur", () => {
+    // Timeout to allow dropdown items to be clicked first
+    blurTimeout = setTimeout(async () => {
+      await handleAssign(assignInput.value);
+    }, 250);
+  });
+
+  // Select dropdown assignment handler
   const select = infoEl.querySelector(".detection-identity-select") as HTMLSelectElement;
   select?.addEventListener("change", async () => {
     const val = select.value;

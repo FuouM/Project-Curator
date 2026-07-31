@@ -2,6 +2,7 @@ import { callService } from "./ipc";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 let currentDetId: number | null = null;
+let currentImageId: number | null = null;
 let imgNaturalWidth = 1;
 let imgNaturalHeight = 1;
 
@@ -22,8 +23,8 @@ let startBoxY1 = 0;
 let onSaveCallback: (() => void) | null = null;
 
 export function openBBoxEditor(
-  detectionId: number,
-  _imageId: number,
+  detectionId: number | null,
+  imageId: number,
   filePath: string,
   x0: number,
   y0: number,
@@ -32,6 +33,7 @@ export function openBBoxEditor(
   onSave?: () => void
 ) {
   currentDetId = detectionId;
+  currentImageId = imageId;
   boxX0 = x0;
   boxY0 = y0;
   boxX1 = x1;
@@ -59,6 +61,12 @@ export function openBBoxEditor(
   img.onload = () => {
     imgNaturalWidth = img.naturalWidth || 1;
     imgNaturalHeight = img.naturalHeight || 1;
+    if (boxX0 === 0 && boxY0 === 0 && boxX1 === 0 && boxY1 === 0) {
+      boxX0 = Math.round(imgNaturalWidth * 0.25);
+      boxY0 = Math.round(imgNaturalHeight * 0.25);
+      boxX1 = Math.round(imgNaturalWidth * 0.75);
+      boxY1 = Math.round(imgNaturalHeight * 0.75);
+    }
     showBox();
     setTimeout(() => {
       updateBBoxUI();
@@ -70,6 +78,12 @@ export function openBBoxEditor(
   if (img.complete) {
     imgNaturalWidth = img.naturalWidth || 1;
     imgNaturalHeight = img.naturalHeight || 1;
+    if (boxX0 === 0 && boxY0 === 0 && boxX1 === 0 && boxY1 === 0) {
+      boxX0 = Math.round(imgNaturalWidth * 0.25);
+      boxY0 = Math.round(imgNaturalHeight * 0.25);
+      boxX1 = Math.round(imgNaturalWidth * 0.75);
+      boxY1 = Math.round(imgNaturalHeight * 0.75);
+    }
     showBox();
     setTimeout(() => {
       updateBBoxUI();
@@ -275,31 +289,50 @@ function setupBBoxEvents() {
   // Save
   if (saveBtn) {
     saveBtn.onclick = async () => {
-      if (currentDetId === null) return;
       try {
         const x0 = Math.round(boxX0);
         const y0 = Math.round(boxY0);
         const x1 = Math.round(boxX1);
         const y1 = Math.round(boxY1);
 
-        const resp = await callService({
-          UpdateDetectionBoundingBox: {
-            detection_id: currentDetId,
-            x0,
-            y0,
-            x1,
-            y1,
-          },
-        });
+        if (currentDetId === null) {
+          if (currentImageId === null) return;
+          const resp = await callService({
+            AddDetection: {
+              image_id: currentImageId,
+              x0,
+              y0,
+              x1,
+              y1,
+            },
+          });
 
-        if ("Success" in resp) {
-          closeBBoxEditor();
-          if (onSaveCallback) onSaveCallback();
-        } else if ("Error" in resp) {
-          alert("Failed to save bounding box: " + resp.Error.message);
+          if ("AddDetectionResult" in resp || "Success" in resp) {
+            closeBBoxEditor();
+            if (onSaveCallback) onSaveCallback();
+          } else if ("Error" in resp) {
+            alert("Failed to add bounding box: " + resp.Error.message);
+          }
+        } else {
+          const resp = await callService({
+            UpdateDetectionBoundingBox: {
+              detection_id: currentDetId,
+              x0,
+              y0,
+              x1,
+              y1,
+            },
+          });
+
+          if ("Success" in resp) {
+            closeBBoxEditor();
+            if (onSaveCallback) onSaveCallback();
+          } else if ("Error" in resp) {
+            alert("Failed to save bounding box: " + resp.Error.message);
+          }
         }
       } catch (e: any) {
-        alert("Error updating bounding box: " + e.message);
+        alert("Error saving bounding box: " + e.message);
       }
     };
   }

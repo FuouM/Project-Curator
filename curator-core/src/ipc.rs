@@ -293,6 +293,18 @@ pub enum Request {
         x1: i32,
         y1: i32,
     },
+    /// Manually add a bounding box detection for an image.
+    AddDetection {
+        image_id: i64,
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        y1: i32,
+    },
+    /// Identify a single detection against known identities.
+    IdentifyDetection {
+        detection_id: i64,
+    },
     /// Run CPU vs GPU ONNX model benchmark for YOLO detector.
     RunYoloBenchmark,
     /// Run CPU vs GPU ONNX model benchmark for CCIP Feature extraction.
@@ -500,6 +512,14 @@ pub enum Response {
     CharacterDetectionsResult {
         image_id: i64,
         detections: Vec<crate::detection::StoredDetection>,
+    },
+    /// Result of adding a manual detection.
+    AddDetectionResult {
+        detection: crate::detection::StoredDetection,
+    },
+    /// Result of identifying a single detection.
+    IdentifyDetectionResult {
+        identity_id: Option<i64>,
     },
     /// On-the-fly crop thumbnail.
     DetectionCropResult {

@@ -59,6 +59,8 @@ export type RequestPayload =
   | { ListUnassignedDetections: null }
   | { DeleteDetection: { detection_id: number } }
   | { UpdateDetectionBoundingBox: { detection_id: number; x0: number; y0: number; x1: number; y1: number } }
+  | { AddDetection: { image_id: number; x0: number; y0: number; x1: number; y1: number } }
+  | { IdentifyDetection: { detection_id: number } }
   | { RunYoloBenchmark: null }
   | { RunCcipFeatBenchmark: null }
   | { RunCcipMetricsBenchmark: null }
@@ -214,6 +216,8 @@ export type ResponsePayload =
   | { DetectionResult: { image_id: number; detections: CharacterDetection[] } }
   | { DetectionBatchResult: { results: DetectionBatchItem[] } }
   | { CharacterDetectionsResult: { image_id: number; detections: CharacterDetection[] } }
+  | { AddDetectionResult: { detection: CharacterDetection } }
+  | { IdentifyDetectionResult: { identity_id: number | null } }
   | { DetectionCropResult: { crop_webp_bytes: number[] } }
   | { CharacterIdentitiesList: { identities: CharacterIdentity[] } }
   | { ReidentifyResult: { total_detections: number; matched: number; unmatched: number } }

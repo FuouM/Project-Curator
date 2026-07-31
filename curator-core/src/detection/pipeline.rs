@@ -438,6 +438,160 @@ impl DetectionPipeline {
         Ok(())
     }
 
+    /// Manually add a bounding box detection, extract its embedding,
+    /// set its identity to NULL (unassigned), store it, and warm up its crop cache.
+    pub async fn add_detection(&self, image_id: i64, x0: i32, y0: i32, x1: i32, y1: i32) -> Result<StoredDetection> {
+        // 1. Fetch image details
+        let image: Image = sqlx::query_as("SELECT * FROM images WHERE id = ? AND deleted_at IS NULL")
+            .bind(image_id)
+            .fetch_optional(&self.db)
+            .await?
+            .context(format!("Image {} not found", image_id))?;
+
+        let filepath = std::path::Path::new(&image.current_filepath);
+        if !filepath.exists() {
+            anyhow::bail!("Image file not found: {:?}", filepath);
+        }
+
+        // 2. Decode image
+        let (rgb_buf, width, height) = image_decode::decode_rgb(filepath)?;
+        let img = RgbImage::from_raw(width, height, rgb_buf)
+            .context("Failed to create RgbImage from decoded buffer")?;
+
+        // 3. Clamp coordinates to image dimensions
+        let x0 = x0.clamp(0, width as i32 - 1);
+        let y0 = y0.clamp(0, height as i32 - 1);
+        let x1 = x1.clamp(0, width as i32);
+        let y1 = y1.clamp(0, height as i32);
+
+        let det = Detection {
+            x0,
+            y0,
+            x1,
+            y1,
+            confidence: 1.0,
+        };
+
+        // 4. Extract crop & CCIP embedding
+        let crop = extract_crop(&img, &det)?;
+        let embedding = self.ccip.extract_embedding(&crop)?;
+        let embedding_bytes = f32_vec_to_bytes(&embedding);
+
+        // 5. Store in database (with identity_id = NULL)
+        let result = sqlx::query(
+            "INSERT INTO character_detections (image_id, x0, y0, x1, y1, confidence, ccip_embedding, identity_id) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)"
+        )
+        .bind(image_id)
+        .bind(det.x0)
+        .bind(det.y0)
+        .bind(det.x1)
+        .bind(det.y1)
+        .bind(det.confidence)
+        .bind(&embedding_bytes)
+        .execute(&self.db)
+        .await?;
+
+        let detection_id = result.last_insert_rowid();
+
+        let stored_det = StoredDetection {
+            id: detection_id,
+            image_id,
+            x0: det.x0,
+            y0: det.y0,
+            x1: det.x1,
+            y1: det.y1,
+            confidence: det.confidence,
+            has_embedding: true,
+            identity_id: None,
+        };
+
+        // 6. Cache crop thumbnail in background
+        let crops_cache = self.crop_cache.clone();
+        let stored_cloned = stored_det.clone();
+        tokio::spawn(async move {
+            if let Ok(crop) = extract_crop_padded(&img, &stored_cloned, 0.05) {
+                if let Ok(resized_raw) = resize_rgb_fast(&crop, CROP_THUMB_SIZE) {
+                    let webp_bytes = {
+                        let encoder = webp::Encoder::from_rgb(&resized_raw, CROP_THUMB_SIZE, CROP_THUMB_SIZE);
+                        let webp_memory = encoder.encode(WEBP_QUALITY);
+                        webp_memory.to_vec()
+                    };
+                    let _ = crops_cache.put(stored_cloned.id, CROP_THUMB_SIZE, &webp_bytes).await;
+                }
+            }
+        });
+
+        Ok(stored_det)
+    }
+
+    /// Identify a single detection against known identities.
+    /// Compare its embedding against known identities, assign it to the matching identity
+    /// or create a new one if no match is found.
+    pub async fn identify_detection(&self, detection_id: i64) -> Result<Option<i64>> {
+        let row: Option<(Option<Vec<u8>>, Option<i64>)> = sqlx::query_as(
+            "SELECT ccip_embedding, identity_id FROM character_detections WHERE id = ?"
+        )
+        .bind(detection_id)
+        .fetch_optional(&self.db)
+        .await?;
+
+        let (emb_bytes, current_identity) = match row {
+            Some((Some(bytes), ident)) => (bytes, ident),
+            _ => anyhow::bail!("Detection {} has no embedding or does not exist", detection_id),
+        };
+
+        let query_emb = bytes_to_f32_vec(&emb_bytes);
+
+        // Load current identities and their references
+        let identities = self.load_identities().await?;
+        let mut identity_embeddings: std::collections::HashMap<i64, Vec<Vec<f32>>> = std::collections::HashMap::new();
+        let rows: Vec<(i64, Vec<u8>)> = sqlx::query_as(
+            "SELECT identity_id, ccip_embedding FROM character_detections WHERE identity_id IS NOT NULL AND ccip_embedding IS NOT NULL"
+        )
+        .fetch_all(&self.db)
+        .await?;
+        for (ident_id, emb_bytes) in rows {
+            identity_embeddings.entry(ident_id).or_default().push(bytes_to_f32_vec(&emb_bytes));
+        }
+
+        // Find match
+        let mut best_identity: Option<i64> = None;
+        let mut best_diff = f32::MAX;
+
+        for identity in &identities {
+            if let Some(refs) = identity_embeddings.get(&identity.id) {
+                let (is_match, diff) = self.ccip.compare_embeddings(&query_emb, refs)?;
+                if is_match && diff < best_diff {
+                    best_diff = diff;
+                    best_identity = Some(identity.id);
+                }
+            }
+        }
+
+        // If no match, auto-create a new identity
+        let target_identity = match best_identity {
+            Some(id) => Some(id),
+            None => {
+                let new_id = self.create_next_identity().await?;
+                Some(new_id)
+            }
+        };
+
+        // Update database if it changed
+        if target_identity != current_identity {
+            sqlx::query("UPDATE character_detections SET identity_id = ? WHERE id = ?")
+                .bind(target_identity)
+                .bind(detection_id)
+                .execute(&self.db)
+                .await?;
+            self.cleanup_empty_identities().await?;
+        }
+
+        Ok(target_identity)
+    }
+
+
+
     /// Re-identify all detections against current character identities.
     pub async fn reidentify_all(&self) -> Result<ReidentifyResult> {
         let identities = self.load_identities().await?;
