@@ -183,6 +183,150 @@ export function setupBenchmark() {
       runBtn.innerHTML = '<i class="bi bi-play-fill"></i> Run Benchmark';
     }
   });
+
+  const runPipelineBtn = document.getElementById("run-image-proc-benchmark-btn");
+  const pipelineCountEl = getEl("benchmark-pipeline-count");
+  const pipelineDecodeEl = getEl("benchmark-pipeline-decode");
+  const pipelineThumbEl = getEl("benchmark-pipeline-thumbnail");
+  const pipelineClipPrepEl = getEl("benchmark-pipeline-clip-prep");
+  const pipelineTaggerPrepEl = getEl("benchmark-pipeline-tagger-prep");
+  const pipelineYoloPrepEl = getEl("benchmark-pipeline-yolo-prep");
+  const pipelineCcipPrepEl = getEl("benchmark-pipeline-ccip-prep");
+  const pipelineTotalEl = getEl("benchmark-pipeline-total");
+  const pipelineErrText = getEl("benchmark-pipeline-error-msg");
+
+  if (runPipelineBtn) {
+    runPipelineBtn.addEventListener("click", async () => {
+      runPipelineBtn.setAttribute("disabled", "true");
+      runPipelineBtn.textContent = "Benchmarking...";
+      if (pipelineErrText) pipelineErrText.textContent = "";
+
+      [
+        pipelineCountEl,
+        pipelineDecodeEl,
+        pipelineThumbEl,
+        pipelineClipPrepEl,
+        pipelineTaggerPrepEl,
+        pipelineYoloPrepEl,
+        pipelineCcipPrepEl,
+        pipelineTotalEl,
+      ].forEach((el) => {
+        if (el) el.textContent = "...";
+      });
+
+      try {
+        const inputN = document.getElementById("benchmark-pipeline-n") as HTMLInputElement | null;
+        const requestedN = inputN ? parseInt(inputN.value, 10) : 100;
+        const finalN = isNaN(requestedN) || requestedN <= 0 ? 100 : requestedN;
+
+        const listResp = await callService({ GetBenchmarkImages: { limit: finalN } });
+        if ("Error" in listResp) {
+          throw new Error(listResp.Error.message);
+        }
+        if (!("BenchmarkImagesResult" in listResp)) {
+          throw new Error("Invalid response format when fetching images.");
+        }
+
+        const filepaths = listResp.BenchmarkImagesResult.filepaths;
+        const totalCount = filepaths.length;
+        if (totalCount === 0) {
+          throw new Error("No benchmark images found in the database.");
+        }
+
+        let sumDecode = 0;
+        let sumThumb = 0;
+        let sumClip = 0;
+        let sumTagger = 0;
+        let sumYolo = 0;
+        let sumCcip = 0;
+        const startOverall = performance.now();
+
+        for (let i = 0; i < totalCount; i++) {
+          const path = filepaths[i];
+          runPipelineBtn.textContent = `Benchmarking (${i + 1}/${totalCount})...`;
+
+          const singleResp = await callService({ BenchmarkSingleImage: { filepath: path } });
+          if ("Error" in singleResp) {
+            console.error(`Error on image ${path}:`, singleResp.Error.message);
+            continue;
+          }
+          if (!("SingleImageBenchmarkResult" in singleResp)) {
+            continue;
+          }
+
+          const res = singleResp.SingleImageBenchmarkResult;
+          sumDecode += res.decode_time_ms;
+          sumThumb += res.thumbnail_time_ms;
+          sumClip += res.clip_preprocess_time_ms;
+          sumTagger += res.tagger_preprocess_time_ms;
+          sumYolo += res.yolo_preprocess_time_ms;
+          sumCcip += res.ccip_extract_preprocess_time_ms;
+
+          const currentProcessed = i + 1;
+          if (pipelineCountEl) pipelineCountEl.textContent = `${currentProcessed} / ${totalCount}`;
+
+          const formatMs = (sumMs: number) => {
+            const avg = sumMs / currentProcessed;
+            return `${sumMs.toFixed(1)} ms (avg ${avg.toFixed(1)} ms/img)`;
+          };
+
+          if (pipelineDecodeEl) pipelineDecodeEl.textContent = formatMs(sumDecode);
+          if (pipelineThumbEl) pipelineThumbEl.textContent = formatMs(sumThumb);
+          if (pipelineClipPrepEl) pipelineClipPrepEl.textContent = formatMs(sumClip);
+          if (pipelineTaggerPrepEl) pipelineTaggerPrepEl.textContent = formatMs(sumTagger);
+          if (pipelineYoloPrepEl) pipelineYoloPrepEl.textContent = formatMs(sumYolo);
+          if (pipelineCcipPrepEl) pipelineCcipPrepEl.textContent = formatMs(sumCcip);
+
+          const overallElapsed = performance.now() - startOverall;
+          if (pipelineTotalEl) pipelineTotalEl.textContent = `${overallElapsed.toFixed(1)} ms (avg ${(overallElapsed / currentProcessed).toFixed(1)} ms/img)`;
+        }
+      } catch (e: unknown) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        if (pipelineErrText) pipelineErrText.textContent = `Execution error: ${errMsg}`;
+        [
+          pipelineCountEl,
+          pipelineDecodeEl,
+          pipelineThumbEl,
+          pipelineClipPrepEl,
+          pipelineTaggerPrepEl,
+          pipelineYoloPrepEl,
+          pipelineCcipPrepEl,
+          pipelineTotalEl,
+        ].forEach((el) => {
+          if (el) el.textContent = "—";
+        });
+      } finally {
+        runPipelineBtn.removeAttribute("disabled");
+        runPipelineBtn.innerHTML = '<i class="bi bi-play-fill"></i> Run Pipeline Benchmark';
+      }
+    });
+    // Load initial maximum images hint on startup
+    refreshBenchmarkMaxImages();
+  }
+}
+
+
+export async function refreshBenchmarkMaxImages() {
+  try {
+    const statusResp = await callService({ GetStatus: null });
+    if ("StatusResult" in statusResp) {
+      const maxImages = statusResp.StatusResult.image_count;
+      const inputN = document.getElementById("benchmark-pipeline-n") as HTMLInputElement | null;
+      const maxHint = document.getElementById("benchmark-pipeline-max-hint");
+      if (inputN) {
+        inputN.max = maxImages.toString();
+        const currVal = parseInt(inputN.value, 10);
+        if (isNaN(currVal) || currVal > maxImages || currVal === 100) {
+          inputN.value = Math.min(100, maxImages).toString();
+        }
+      }
+      if (maxHint) {
+        maxHint.textContent = `(max ${maxImages})`;
+      }
+    }
+  } catch (e) {
+    console.error("Failed to load max images for benchmark", e);
+  }
 }
 
 export function updateBenchmarkModelHeader(_model: string | null) {}

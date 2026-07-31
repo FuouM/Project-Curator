@@ -205,13 +205,13 @@ impl YoloDetector {
     }
 }
 
-struct PadInfo {
+pub(crate) struct PadInfo {
     pad_x: u32,
     pad_y: u32,
     scale: f32,
 }
 
-fn preprocess_yolo(
+pub(crate) fn preprocess_yolo(
     image: &image::RgbImage,
     target_size: u32,
 ) -> Result<(Array4<f32>, PadInfo)> {
@@ -240,9 +240,9 @@ fn preprocess_yolo(
 
     let raw = image.as_raw();
     for y in 0..new_h {
-        let src_y = (y as f32 / scale).round() as u32;
+        let src_y = ((y as f32 / scale).round() as u32).min(h - 1);
         for x in 0..new_w {
-            let src_x = (x as f32 / scale).round() as u32;
+            let src_x = ((x as f32 / scale).round() as u32).min(w - 1);
             let src_idx = ((src_y * w + src_x) * 3) as usize;
             let dst_y = (pad_y + y) as usize;
             let dst_x = (pad_x + x) as usize;

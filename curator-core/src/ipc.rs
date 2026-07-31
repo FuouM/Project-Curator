@@ -299,6 +299,10 @@ pub enum Request {
     RunCcipFeatBenchmark,
     /// Run CPU vs GPU ONNX model benchmark for CCIP Metrics.
     RunCcipMetricsBenchmark,
+    /// Get up to limit valid image paths from the database for benchmarking.
+    GetBenchmarkImages { limit: usize },
+    /// Run CPU image processing and preprocessing on a single image.
+    BenchmarkSingleImage { filepath: String },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -529,6 +533,19 @@ pub enum Response {
         ccip_metrics_gpu_time_ms: Option<f64>,
         ccip_metrics_gpu_error: Option<String>,
         has_gpu: bool,
+    },
+    /// List of filepaths for benchmarking.
+    BenchmarkImagesResult {
+        filepaths: Vec<String>,
+    },
+    /// Timing results for a single image.
+    SingleImageBenchmarkResult {
+        decode_time_ms: f64,
+        thumbnail_time_ms: f64,
+        clip_preprocess_time_ms: f64,
+        tagger_preprocess_time_ms: f64,
+        yolo_preprocess_time_ms: f64,
+        ccip_extract_preprocess_time_ms: f64,
     },
 }
 

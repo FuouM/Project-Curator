@@ -7,3 +7,4 @@ pub use pipeline::DetectionPipeline;
 pub use types::*;
 pub use yolo::YoloDetector;
 pub use ccip::CCIPModel;
+pub use pipeline::extract_crop;

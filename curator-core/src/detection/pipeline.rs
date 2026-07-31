@@ -625,7 +625,7 @@ impl DetectionPipeline {
 
 }
 
-fn extract_crop(img: &RgbImage, det: &Detection) -> Result<RgbImage> {
+pub fn extract_crop(img: &RgbImage, det: &Detection) -> Result<RgbImage> {
     let w = img.width() as f32;
     let h = img.height() as f32;
     let bw = (det.x1 - det.x0) as f32;

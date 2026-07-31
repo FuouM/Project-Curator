@@ -753,6 +753,65 @@
             </div>
             <p style="font-size: 11px; color: red;" id="benchmark-error-msg"></p>
           </div>
+          <div class="group-box" style="display: flex; flex-direction: column; gap: 16px; margin-top: 16px;">
+            <div class="group-box-title">Image Processing & Preprocessing Benchmark (N = 100)</div>
+            <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">
+              Runs CPU image processing and input preprocessing stages (RGB decoding, thumbnailing, CLIP tensor prep, Tagger fast-image-resize tensor prep, YOLO letterbox tensor prep, and CCIP tensor prep) on up to 100 database images.
+            </p>
+            <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 11px;">
+                <label for="benchmark-pipeline-n">Number of images (N):</label>
+                <input type="number" id="benchmark-pipeline-n" class="win-input" value="100" min="1" style="width: 80px;" />
+                <span id="benchmark-pipeline-max-hint" style="color: #666;">(max ...)</span>
+              </div>
+              <button class="win-button" id="run-image-proc-benchmark-btn">
+                <i class="bi bi-play-fill"></i> Run Pipeline Benchmark
+              </button>
+            </div>
+            
+            <div class="group-box" style="padding: 12px; margin-top: 10px; background-color: #f6f6f6;">
+              <div class="group-box-title">Pipeline Results</div>
+              <div style="display: flex; flex-direction: column; gap: 12px; font-size: 11px;">
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #ccc; padding-bottom: 4px;">
+                  <span style="font-weight: bold;">Images Processed:</span>
+                  <span id="benchmark-pipeline-count">—</span>
+                </div>
+
+                <div style="margin-top: 4px;">
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>Image Decode:</span>
+                    <span id="benchmark-pipeline-decode">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>Thumbnail Generation:</span>
+                    <span id="benchmark-pipeline-thumbnail">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>CLIP Preprocessing:</span>
+                    <span id="benchmark-pipeline-clip-prep">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>Camie Tagger Preprocessing:</span>
+                    <span id="benchmark-pipeline-tagger-prep">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>YOLO Preprocessing:</span>
+                    <span id="benchmark-pipeline-yolo-prep">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+                    <span>CCIP Preprocessing:</span>
+                    <span id="benchmark-pipeline-ccip-prep">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding-top: 4px; border-top: 1px solid #777; font-weight: bold;">
+                    <span>Total Pipeline Time:</span>
+                    <span id="benchmark-pipeline-total">—</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: red;" id="benchmark-pipeline-error-msg"></p>
+          </div>
+
         </section>
 
         <!-- SETTINGS VIEW -->

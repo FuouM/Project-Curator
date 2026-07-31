@@ -61,7 +61,9 @@ export type RequestPayload =
   | { UpdateDetectionBoundingBox: { detection_id: number; x0: number; y0: number; x1: number; y1: number } }
   | { RunYoloBenchmark: null }
   | { RunCcipFeatBenchmark: null }
-  | { RunCcipMetricsBenchmark: null };
+  | { RunCcipMetricsBenchmark: null }
+  | { GetBenchmarkImages: { limit: number } }
+  | { BenchmarkSingleImage: { filepath: string } };
 
 export interface TokenBlock {
   token_type: string;
@@ -221,6 +223,17 @@ export type ResponsePayload =
       ccip_metrics_gpu_time_ms: number | null;
       ccip_metrics_gpu_error: string | null;
       has_gpu: boolean;
+    } }
+  | { BenchmarkImagesResult: {
+      filepaths: string[];
+    } }
+  | { SingleImageBenchmarkResult: {
+      decode_time_ms: number;
+      thumbnail_time_ms: number;
+      clip_preprocess_time_ms: number;
+      tagger_preprocess_time_ms: number;
+      yolo_preprocess_time_ms: number;
+      ccip_extract_preprocess_time_ms: number;
     } };
 
 export interface CharacterDetection {

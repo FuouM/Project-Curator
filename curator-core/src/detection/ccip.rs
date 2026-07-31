@@ -324,7 +324,7 @@ impl CCIPModel {
     }
 }
 
-fn preprocess_ccip(crop: &image::RgbImage, target_size: u32) -> Result<Array4<f32>> {
+pub(crate) fn preprocess_ccip(crop: &image::RgbImage, target_size: u32) -> Result<Array4<f32>> {
     let (w, h) = crop.dimensions();
     let s = target_size as usize;
     let mut tensor = Array4::<f32>::zeros((1, 3, s, s));

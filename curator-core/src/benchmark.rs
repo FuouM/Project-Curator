@@ -4,6 +4,14 @@ use ort::{inputs, session::Session, value::TensorRef};
 use std::path::Path;
 use std::time::Instant;
 
+use crate::image_decode;
+
+use crate::thumbnail;
+use crate::vector::ModelManager;
+use serde::{Deserialize, Serialize};
+
+
+
 const IMAGENET_MEAN: [f32; 3] = [0.485, 0.456, 0.406];
 const IMAGENET_STD: [f32; 3] = [0.229, 0.224, 0.225];
 const PAD_COLOR: [u8; 3] = [124, 116, 104];
@@ -565,3 +573,88 @@ pub fn run_detection_benchmark(
         has_gpu,
     })
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SingleImageBenchmarkResult {
+    pub decode_time_ms: f64,
+    pub thumbnail_time_ms: f64,
+    pub clip_preprocess_time_ms: f64,
+    pub tagger_preprocess_time_ms: f64,
+    pub yolo_preprocess_time_ms: f64,
+    pub ccip_extract_preprocess_time_ms: f64,
+}
+
+pub async fn get_benchmark_images(
+    db: &sqlx::SqlitePool,
+    limit: usize,
+) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT current_filepath FROM images WHERE deleted_at IS NULL AND is_missing = 0 LIMIT ?"
+    )
+    .bind(limit as i64)
+    .fetch_all(db)
+    .await?;
+
+    let mut valid_paths = Vec::new();
+    for (filepath,) in rows {
+        if std::path::Path::new(&filepath).exists() {
+            valid_paths.push(filepath);
+        }
+    }
+    Ok(valid_paths)
+}
+
+pub async fn run_single_image_benchmark(
+    model_manager: &ModelManager,
+    filepath: &str,
+) -> Result<SingleImageBenchmarkResult> {
+    let path = std::path::Path::new(filepath);
+    if !path.exists() {
+        anyhow::bail!("Image file does not exist: {}", filepath);
+    }
+
+    let mut resizer = fast_image_resize::Resizer::new();
+
+    // 1. Decode
+    let start_decode = Instant::now();
+    let (rgb_buf, width, height) = image_decode::decode_rgb(path)?;
+    let decode_time_ms = start_decode.elapsed().as_secs_f64() * 1000.0;
+
+    let img = image::RgbImage::from_raw(width, height, rgb_buf)
+        .ok_or_else(|| anyhow::anyhow!("Failed to parse raw RgbImage"))?;
+
+    // 2. Thumbnail
+    let start_thumb = Instant::now();
+    let _ = thumbnail::generate_thumbnail(path, 200);
+    let thumbnail_time_ms = start_thumb.elapsed().as_secs_f64() * 1000.0;
+
+    // 3. CLIP Preprocess
+    let start_clip_pre = Instant::now();
+    let _ = model_manager.preprocess_image_batch(&[path]);
+    let clip_preprocess_time_ms = start_clip_pre.elapsed().as_secs_f64() * 1000.0;
+
+    // 4. Tagger Preprocess
+    let start_tagger_pre = Instant::now();
+    let _ = crate::tagger::preprocess::preprocess_image(path, 512, &mut resizer);
+    let tagger_preprocess_time_ms = start_tagger_pre.elapsed().as_secs_f64() * 1000.0;
+
+    // 5. YOLO Preprocess
+    let start_yolo_pre = Instant::now();
+    let _ = crate::detection::yolo::preprocess_yolo(&img, 640);
+    let yolo_preprocess_time_ms = start_yolo_pre.elapsed().as_secs_f64() * 1000.0;
+
+    // 6. CCIP Crop & Preprocess
+    let start_ccip_pre = Instant::now();
+    let _ = crate::detection::ccip::preprocess_ccip(&img, 384);
+    let ccip_extract_preprocess_time_ms = start_ccip_pre.elapsed().as_secs_f64() * 1000.0;
+
+    Ok(SingleImageBenchmarkResult {
+        decode_time_ms,
+        thumbnail_time_ms,
+        clip_preprocess_time_ms,
+        tagger_preprocess_time_ms,
+        yolo_preprocess_time_ms,
+        ccip_extract_preprocess_time_ms,
+    })
+}
+

@@ -1,4 +1,4 @@
-mod preprocess;
+pub(crate) mod preprocess;
 mod types;
 
 use std::path::{Path, PathBuf};

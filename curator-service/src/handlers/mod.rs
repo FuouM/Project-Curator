@@ -965,6 +965,31 @@ pub async fn handle_request(
                 },
             }
         }
+
+        Request::GetBenchmarkImages { limit } => {
+            match curator_core::get_benchmark_images(db, limit).await {
+                Ok(filepaths) => Response::BenchmarkImagesResult { filepaths },
+                Err(e) => Response::Error {
+                    message: format!("Failed to fetch benchmark images: {:?}", e),
+                },
+            }
+        }
+
+        Request::BenchmarkSingleImage { filepath } => {
+            match curator_core::run_single_image_benchmark(model_manager, &filepath).await {
+                Ok(res) => Response::SingleImageBenchmarkResult {
+                    decode_time_ms: res.decode_time_ms,
+                    thumbnail_time_ms: res.thumbnail_time_ms,
+                    clip_preprocess_time_ms: res.clip_preprocess_time_ms,
+                    tagger_preprocess_time_ms: res.tagger_preprocess_time_ms,
+                    yolo_preprocess_time_ms: res.yolo_preprocess_time_ms,
+                    ccip_extract_preprocess_time_ms: res.ccip_extract_preprocess_time_ms,
+                },
+                Err(e) => Response::Error {
+                    message: format!("Failed to benchmark image {:?}: {:?}", filepath, e),
+                },
+            }
+        }
     }
 }
 

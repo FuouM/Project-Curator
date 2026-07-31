@@ -212,6 +212,7 @@ async fn main() -> Result<(), Error> {
             };
             Request::RunBenchmark {
                 embedding_model: emb_model,
+                run_tagger: None,
             }
         }
     };

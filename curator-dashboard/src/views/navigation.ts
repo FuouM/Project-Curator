@@ -1,5 +1,6 @@
 import { galleryPage, favoritesPage, setGalleryPage, setFavoritesPage, getImagesPerPage, setImagesPerPage } from "../state";
 import { refreshGallery, refreshFavorites, setupPaginationButtons, setupPageJump } from "./gallery";
+import { refreshBenchmarkMaxImages } from "./benchmark";
 import { refreshDashboard } from "./dashboard";
 import { refreshLogs, clearLogsData } from "./logs";
 import { refreshTagStats } from "./tagstats";
@@ -78,6 +79,8 @@ export function setupNavigation() {
         if (!container || container.children.length === 0 || container.querySelector(".skeleton-loader")) {
           refreshCharacters();
         }
+      } else if (view === "benchmark") {
+        refreshBenchmarkMaxImages();
       }
     });
   });
