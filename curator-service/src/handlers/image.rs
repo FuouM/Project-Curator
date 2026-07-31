@@ -626,7 +626,9 @@ pub async fn get_featured_image(db: &SqlitePool, data_dir: &Path) -> Option<Imag
         if parts.len() == 2 && parts[0] == today_str {
             if let Ok(id) = parts[1].parse::<i64>() {
                 if let Ok(img) = get_image_logic(id, db).await {
-                    return Some(img);
+                    if std::path::Path::new(&img.current_filepath).exists() {
+                        return Some(img);
+                    }
                 }
             }
         }
@@ -639,8 +641,10 @@ pub async fn get_featured_image(db: &SqlitePool, data_dir: &Path) -> Option<Imag
     .await
     {
         if let Ok(img) = get_image_logic(rand_id, db).await {
-            let _ = fs::write(&featured_file, format!("{}|{}", today_str, rand_id));
-            return Some(img);
+            if std::path::Path::new(&img.current_filepath).exists() {
+                let _ = fs::write(&featured_file, format!("{}|{}", today_str, rand_id));
+                return Some(img);
+            }
         }
     }
 
