@@ -27,9 +27,11 @@ pub struct OcrDetection {
 pub struct OcrDetector {
     det_model_path: PathBuf,
     rec_model_path: PathBuf,
+    cls_model_path: Option<PathBuf>,
     device: Mutex<DevicePreference>,
     pub det_session: Mutex<Option<Session>>,
     pub rec_session: Mutex<Option<Session>>,
+    pub cls_session: Mutex<Option<Session>>,
     pub rec_chars: Vec<String>,
     last_used: AtomicU64,
 }
@@ -43,6 +45,9 @@ impl OcrDetector {
             let dict  = dir.join("PP-OCRv6_medium_rec_onnx").join("inference.yml");
             (model, dict)
         };
+        // Optional angle classifier (PP-LCNet textline_ori) — rotates 180° if detected
+        let cls_model = dir.join("PP-LCNet_x1_0_textline_ori_onnx").join("inference.onnx");
+        let cls_model = if cls_model.exists() { Some(cls_model) } else { None };
 
         // Search upwards for onnxruntime.dll starting from current executable path
         if let Ok(exe_path) = std::env::current_exe() {
@@ -130,9 +135,11 @@ impl OcrDetector {
         Self {
             det_model_path: det_model,
             rec_model_path: rec_model,
+            cls_model_path: cls_model,
             device: Mutex::new(device),
             det_session: Mutex::new(None),
             rec_session: Mutex::new(None),
+            cls_session: Mutex::new(None),
             rec_chars,
             last_used: AtomicU64::new(now_secs()),
         }
@@ -149,10 +156,12 @@ impl OcrDetector {
     pub fn unload(&self) {
         let mut det = self.det_session.lock().unwrap();
         let mut rec = self.rec_session.lock().unwrap();
-        if det.is_some() || rec.is_some() {
+        let mut cls = self.cls_session.lock().unwrap();
+        if det.is_some() || rec.is_some() || cls.is_some() {
             tracing::info!("OCR: unloading models");
             *det = None;
             *rec = None;
+            *cls = None;
         }
     }
 
@@ -167,6 +176,7 @@ impl OcrDetector {
     fn load(&self) -> Result<()> {
         let mut det_guard = self.det_session.lock().unwrap();
         let mut rec_guard = self.rec_session.lock().unwrap();
+        let mut cls_guard = self.cls_session.lock().unwrap();
         if det_guard.is_some() && rec_guard.is_some() {
             return Ok(());
         }
@@ -192,6 +202,19 @@ impl OcrDetector {
 
         *det_guard = Some(det_sess);
         *rec_guard = Some(rec_sess);
+
+        // Load angle classifier if model file exists
+        if let Some(ref cls_path) = self.cls_model_path {
+            if cls_path.exists() && cls_guard.is_none() {
+                tracing::info!("Loading OCR angle classifier (device: {:?})", device);
+                let mut cls_builder = Session::builder()?.with_intra_threads(1)?;
+                apply_device_preference(&mut cls_builder, &device, "OCR Cls");
+                if let Ok(cls_sess) = cls_builder.commit_from_file(cls_path) {
+                    *cls_guard = Some(cls_sess);
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -201,16 +224,18 @@ impl OcrDetector {
 
         let mut det_guard = self.det_session.lock().unwrap();
         let mut rec_guard = self.rec_session.lock().unwrap();
+        let mut cls_guard = self.cls_session.lock().unwrap();
         let det_session = det_guard.as_mut().unwrap();
         let rec_session = rec_guard.as_mut().unwrap();
+        let cls_opt: &mut Option<Session> = &mut *cls_guard;
 
         let (ow, oh) = image.dimensions();
         let orig_w = ow as usize;
         let orig_h = oh as usize;
 
-        // 1. Preprocess for detection: resize keeping aspect ratio, round to multiple of 32
-        //    Reference: DetResizeForTest with limit_side_len=736, limit_type="min"
-        let (det_tensor, _resize_w, _resize_h) = preprocess_det(image)?;
+    // 1. Preprocess for detection: resize keeping aspect ratio, round to multiple of 32
+    //    Reference: DetResizeForTest with limit_side_len=960, limit_type="max"
+    let (det_tensor, _resize_w, _resize_h) = preprocess_det(image)?;
 
         // 2. Run detection model
         let outputs = det_session.run(inputs![TensorRef::from_array_view(&det_tensor)?])?;
@@ -230,19 +255,48 @@ impl OcrDetector {
         let quads = extract_boxes_from_map(
             pred_data,
             map_w, map_h,
-            0.2,   // segmentation threshold (from inference.yml)
-            0.45,  // box score threshold (from inference.yml)
-            1.4,   // unclip ratio (from inference.yml)
+            0.3,   // det_db_thresh (reference default)
+            0.6,   // det_db_box_thresh (reference default)
+            1.5,   // det_db_unclip_ratio (reference default)
             orig_w, orig_h,
         )?;
 
-        // 4. Process each polygon: perspective crop and recognize
+        // Sort boxes top-to-bottom, left-to-right, then merge fragmented boxes
+        let quads = sorted_boxes(quads);
+        let quads = merge_fragmented(quads);
+
+        // 4. Process each polygon: perspective crop, angle classify, and recognize
         let mut results = Vec::new();
         for poly in &quads {
-            let cropped_line = match get_rotate_crop_image(image, poly) {
+            let mut cropped_line = match get_rotate_crop_image(image, poly) {
                 Ok(c) => c,
                 Err(_) => continue,
             };
+
+            // Angle classification: rotate 180° if classifier detects upside-down text
+            if let Some(cls_sess) = cls_opt {
+                if let Ok(cls_tensor) = preprocess_cls(&cropped_line) {
+                    if let Ok(cls_outputs) = cls_sess.run(inputs![TensorRef::from_array_view(&cls_tensor)?]) {
+                        if let Some(cls_out) = cls_outputs.get("fetch_name_0")
+                            .or_else(|| cls_outputs.get("output_0"))
+                            .or_else(|| cls_outputs.get("output"))
+                        {
+                            if let Ok((cls_shape, cls_data)) = cls_out.try_extract_tensor::<f32>() {
+                                // Binary classifier: [0°, 180°] — index 1 = 180°
+                                let num_classes = cls_shape[cls_shape.len() - 1] as usize;
+                                if num_classes >= 2 {
+                                    let score_0 = cls_data[0];
+                                    let score_180 = cls_data[1];
+                                    if score_180 > score_0 && score_180 > 0.9 {
+                                        cropped_line = image::imageops::rotate180(&cropped_line);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             let rec_tensor = match preprocess_rec(&cropped_line) {
                 Ok(t) => t,
                 Err(_) => continue,
@@ -260,7 +314,7 @@ impl OcrDetector {
                     let seq_len  = rec_shape[1] as usize;
                     let num_classes = rec_shape[2] as usize;
                     let (text, confidence) = decode_ctc(rec_data, seq_len, num_classes, &self.rec_chars);
-                    if confidence > 0.3 && !text.trim().is_empty() {
+                    if confidence > 0.5 && !text.trim().is_empty() {
                         results.push(OcrDetection {
                             text,
                             confidence,
@@ -277,7 +331,7 @@ impl OcrDetector {
 
 /// Preprocess image for the DB text detection model.
 /// 
-/// Reference: DetResizeForTest with limit_side_len=736, limit_type="min"
+/// Reference: DetResizeForTest with limit_side_len=960, limit_type="max"
 /// then NormalizeImage(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225], scale=1/255)
 /// applied to BGR order, then ToCHWImage.
 ///
@@ -288,15 +342,18 @@ pub fn preprocess_det(image: &RgbImage) -> Result<(Array4<f32>, usize, usize)> {
     let orig_w = ow as usize;
     let orig_h = oh as usize;
 
-    // Compute resize dimensions: scale so min_side >= 736, multiple of 32
-    let limit = 736usize;
-    let ratio = if orig_h < orig_w {
-        limit as f32 / orig_h as f32
+    // Compute resize dimensions: scale so max side <= 960, multiple of 32
+    // limit_type="max": only downscale if max side > limit
+    let limit = 960usize;
+    let ratio = if orig_h.max(orig_w) > limit {
+        if orig_h > orig_w {
+            limit as f32 / orig_h as f32
+        } else {
+            limit as f32 / orig_w as f32
+        }
     } else {
-        limit as f32 / orig_w as f32
+        1.0f32
     };
-    // Only upscale if min side < limit
-    let ratio = if orig_h.min(orig_w) < limit { ratio } else { 1.0f32 };
 
     let resize_h_raw = (orig_h as f32 * ratio) as usize;
     let resize_w_raw = (orig_w as f32 * ratio) as usize;
@@ -340,13 +397,52 @@ pub fn preprocess_det(image: &RgbImage) -> Result<(Array4<f32>, usize, usize)> {
 
 /// Preprocess a cropped text line image for the CTC recognition model.
 ///
-/// Reference: resize_norm_img(img, [3, 48, 320], padding=True)
-/// - Keep aspect ratio, resize to H=48, pad width to 320
-/// - Normalize: /255, -0.5, /0.5 (applied to BGR, but since the formula is symmetric
-///   there's no mean/std difference between channels — we apply it identically)
+/// Reference: resize_norm_img in predict_rec.py — dynamic width expansion via max_wh_ratio.
+/// PaddleOCR computes `imgW = int(imgH * max_wh_ratio)` per batch with no hard cap.
+/// The ONNX model supports dynamic width up to ~3200 (from TRT shapes).
 pub fn preprocess_rec(image: &RgbImage) -> Result<Array4<f32>> {
     let target_h = 48usize;
-    let target_w = 320usize;
+
+    let (ow, oh) = image.dimensions();
+    let ratio = ow as f32 / oh as f32;
+    // Dynamic width: imgW = int(imgH * wh_ratio), matching PaddleOCR inference path.
+    // No hard upper cap — the model accepts dynamic width up to ~3200.
+    let target_w = ((target_h as f32 * ratio).ceil() as usize).max(32);
+
+    let resized = image::imageops::resize(image, target_w as u32, target_h as u32, image::imageops::FilterType::Triangle);
+    let data = resized.as_raw();
+
+    let mut tensor = Array4::<f32>::zeros((1, 3, target_h, target_w));
+    let slice = tensor.as_slice_mut().context("Tensor slice mapping failed")?;
+
+    let px_stride = target_h * target_w;
+
+    // Fill the resized content; remaining pixels in width stay 0.0 (padding)
+    // Note: The reference uses BGR image but normalize formula (val/255 - 0.5)/0.5
+    // is channel-agnostic, so we don't need channel swap here.
+    for y in 0..target_h {
+        for x in 0..target_w {
+            let src_base = (y * target_w + x) * 3;
+            let r = data[src_base]     as f32 / 255.0;
+            let g = data[src_base + 1] as f32 / 255.0;
+            let b = data[src_base + 2] as f32 / 255.0;
+
+            let pix_idx = y * target_w + x;
+            // CHW: channel 0=B(BGR order), channel 1=G, channel 2=R
+            slice[0 * px_stride + pix_idx] = (b - 0.5) / 0.5;
+            slice[1 * px_stride + pix_idx] = (g - 0.5) / 0.5;
+            slice[2 * px_stride + pix_idx] = (r - 0.5) / 0.5;
+        }
+    }
+
+    Ok(tensor)
+}
+
+/// Preprocess a cropped text line for the angle classifier model.
+/// Reference: resize_norm_img in predict_cls.py — resize to 48x192, normalize to [-1, 1]
+pub fn preprocess_cls(image: &RgbImage) -> Result<Array4<f32>> {
+    let target_h = 48usize;
+    let target_w = 192usize;
 
     let (ow, oh) = image.dimensions();
     let ratio = ow as f32 / oh as f32;
@@ -359,10 +455,6 @@ pub fn preprocess_rec(image: &RgbImage) -> Result<Array4<f32>> {
     let slice = tensor.as_slice_mut().context("Tensor slice mapping failed")?;
 
     let px_stride = target_h * target_w;
-
-    // Fill the resized content; remaining pixels in width stay 0.0 (padding)
-    // Note: The reference uses BGR image but normalize formula (val/255 - 0.5)/0.5
-    // is channel-agnostic, so we don't need channel swap here.
     for y in 0..target_h {
         for x in 0..resized_w {
             let src_base = (y * resized_w + x) * 3;
@@ -371,7 +463,6 @@ pub fn preprocess_rec(image: &RgbImage) -> Result<Array4<f32>> {
             let b = data[src_base + 2] as f32 / 255.0;
 
             let pix_idx = y * target_w + x;
-            // CHW: channel 0=B(BGR order), channel 1=G, channel 2=R
             slice[0 * px_stride + pix_idx] = (b - 0.5) / 0.5;
             slice[1 * px_stride + pix_idx] = (g - 0.5) / 0.5;
             slice[2 * px_stride + pix_idx] = (r - 0.5) / 0.5;
@@ -520,6 +611,98 @@ fn extract_boxes_from_map(
     Ok(boxes)
 }
 
+/// Sort text boxes top-to-bottom, left-to-right.
+/// Reference: sorted_boxes() in PaddleOCR predict_system.py
+/// Primary sort by top-left Y, secondary by top-left X.
+/// Boxes within 10px vertically are considered same-line and sorted left-to-right.
+fn sorted_boxes(mut boxes: Vec<[[i32; 2]; 4]>) -> Vec<[[i32; 2]; 4]> {
+    // Primary sort: top-left Y, then top-left X
+    boxes.sort_by(|a, b| {
+        a[0][1].cmp(&b[0][1])
+            .then(a[0][0].cmp(&b[0][0]))
+    });
+
+    // Bubble-sort pass: if two adjacent boxes are within 10px vertically
+    // but the later one has smaller X, swap them (left-to-right within same line)
+    let n = boxes.len();
+    for i in 0..n {
+        let mut j = i;
+        while j + 1 < n {
+            let y_diff = (boxes[j + 1][0][1] - boxes[j][0][1]).abs();
+            if y_diff < 10 && boxes[j + 1][0][0] < boxes[j][0][0] {
+                boxes.swap(j, j + 1);
+                j += 1;
+            } else {
+                break;
+            }
+        }
+    }
+
+    boxes
+}
+
+/// Merge fragmented text boxes that are close together.
+/// Reference: merge_fragmented() in PaddleOCR utility.py
+/// Merges boxes within x_threshold (10px) and y_threshold (10px).
+fn merge_fragmented(boxes: Vec<[[i32; 2]; 4]>) -> Vec<[[i32; 2]; 4]> {
+    if boxes.len() <= 1 {
+        return boxes;
+    }
+
+    let x_threshold = 10i32;
+    let y_threshold = 10i32;
+
+    fn box_extents(box_pts: &[[i32; 2]; 4]) -> (i32, i32, i32, i32) {
+        let xs: Vec<i32> = box_pts.iter().map(|p| p[0]).collect();
+        let ys: Vec<i32> = box_pts.iter().map(|p| p[1]).collect();
+        (*xs.iter().min().unwrap(), *xs.iter().max().unwrap(),
+         *ys.iter().min().unwrap(), *ys.iter().max().unwrap())
+    }
+
+    let mut merged: Vec<Vec<[i32; 2]>> = boxes.iter().map(|b| b.to_vec()).collect();
+    let mut changed = true;
+
+    while changed {
+        changed = false;
+        let mut visited = vec![false; merged.len()];
+        let mut new_merged = Vec::new();
+
+        for i in 0..merged.len() {
+            if visited[i] { continue; }
+            let mut current = merged[i].clone();
+            visited[i] = true;
+
+            for j in (i + 1)..merged.len() {
+                if visited[j] { continue; }
+                let (min_x1, max_x1, min_y1, max_y1) = box_extents(&current.clone().try_into().unwrap_or([[0; 2]; 4]));
+                let (min_x2, max_x2, min_y2, max_y2) = box_extents(&merged[j].clone().try_into().unwrap_or([[0; 2]; 4]));
+
+                if (min_y1 - min_y2).abs() <= y_threshold
+                    && (max_y1 - max_y2).abs() <= y_threshold
+                    && (max_x1 - min_x2).abs() <= x_threshold
+                {
+                    // Merge: take bounding box of both
+                    let nx_min = min_x1.min(min_x2);
+                    let nx_max = max_x1.max(max_x2);
+                    let ny_min = min_y1.min(min_y2);
+                    let ny_max = max_y1.max(max_y2);
+                    current = vec![
+                        [nx_min, ny_min], [nx_max, ny_min],
+                        [nx_max, ny_max], [nx_min, ny_max],
+                    ];
+                    visited[j] = true;
+                    changed = true;
+                }
+            }
+            new_merged.push(current);
+        }
+        merged = new_merged;
+    }
+
+    merged.into_iter()
+        .filter_map(|b| b.try_into().ok())
+        .collect()
+}
 
 
 /// Perspective warp to crop and flatten a rotated text line box.
