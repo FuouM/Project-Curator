@@ -1,0 +1,69 @@
+import { callService } from "../ipc";
+import { setStatusMessage } from "../utils";
+
+export function setupMaintenanceButtons() {
+  // Purge missing thumbnails
+  const purgeBtn = document.getElementById("purge-missing-thumbs-btn");
+  const purgeStatus = document.getElementById("purge-status-msg");
+  purgeBtn?.addEventListener("click", async () => {
+    if (!purgeStatus) return;
+    if (!confirm("Remove cached thumbnails for images that no longer exist on disk?")) return;
+    setStatusMessage(purgeStatus, "Purging...", "loading");
+    purgeBtn.setAttribute("disabled", "true");
+    try {
+      const resp = await callService({ PurgeMissingThumbnails: null });
+      if ("PurgeResult" in resp) {
+        setStatusMessage(purgeStatus, `Done! ${resp.PurgeResult.deleted_count} thumbnail(s) removed.`, "success");
+      } else if ("Error" in resp) {
+        setStatusMessage(purgeStatus, "Failed: " + resp.Error.message, "error");
+      }
+    } catch (e: any) {
+      setStatusMessage(purgeStatus, "Error: " + (e.message || e), "error");
+    }
+    purgeBtn.removeAttribute("disabled");
+  });
+
+  // Backfill folders button
+  const backfillBtn = document.getElementById("backfill-folders-btn");
+  const backfillStatus = document.getElementById("backfill-status-msg");
+  backfillBtn?.addEventListener("click", async () => {
+    if (!backfillStatus) return;
+    setStatusMessage(backfillStatus, "Backfilling folder assignments...", "loading");
+    backfillBtn.setAttribute("disabled", "true");
+    try {
+      const resp = await callService({ BackfillImageFolders: null });
+      if ("BackfillResult" in resp) {
+        const count = resp.BackfillResult.images_backfilled;
+        setStatusMessage(backfillStatus, `Done! ${count} image(s) assigned to folders.`, "success");
+      } else if ("Error" in resp) {
+        setStatusMessage(backfillStatus, "Failed: " + resp.Error.message, "error");
+      }
+    } catch (e: any) {
+      setStatusMessage(backfillStatus, "Error: " + (e.message || e), "error");
+    }
+    backfillBtn.removeAttribute("disabled");
+  });
+
+  // Clear crop cache button
+  const clearCropCacheBtn = document.getElementById("clear-crop-cache-btn");
+  const clearCropCacheStatus = document.getElementById("clear-crop-cache-status-msg");
+  clearCropCacheBtn?.addEventListener("click", async () => {
+    if (!clearCropCacheStatus) return;
+    if (!confirm("Are you sure you want to clear all cached bounding box crops?")) return;
+    setStatusMessage(clearCropCacheStatus, "Clearing crop cache...", "loading");
+    clearCropCacheBtn.setAttribute("disabled", "true");
+    try {
+      const resp = await callService({ ClearCropCache: null });
+      if ("Success" in resp) {
+        const cardsModule = await import("../cards");
+        cardsModule.clearAllCropCaches();
+        setStatusMessage(clearCropCacheStatus, "Crop cache cleared successfully.", "success");
+      } else if ("Error" in resp) {
+        setStatusMessage(clearCropCacheStatus, "Failed: " + resp.Error.message, "error");
+      }
+    } catch (e: any) {
+      setStatusMessage(clearCropCacheStatus, "Error: " + (e.message || e), "error");
+    }
+    clearCropCacheBtn.removeAttribute("disabled");
+  });
+}

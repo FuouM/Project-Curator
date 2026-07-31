@@ -5,7 +5,9 @@ import { imageBytesToPngBlob } from "./utils";
 import { getImageClickAction, isSelectMode, selectedImageIds } from "./state";
 import { openImageViewer } from "./image-viewer";
 import { callService } from "./ipc";
-import { refreshCharacters, attachAutocomplete } from "./views/characters";
+import { refreshCharacters } from "./views/characters";
+import { attachAutocomplete } from "./autocomplete";
+import { LruCache } from "./lru-cache";
 
 // --- Thumbnail Queue ---
 const MAX_CONCURRENT = 2;
@@ -16,56 +18,21 @@ let thumbLoaded = 0;
 let thumbHideTimer: number | null = null;
 
 // --- Thumbnail Cache (LRU, limited to 500 entries) ---
-const MAX_CACHE_SIZE = 500;
-const thumbCache = new Map<number, string>();
+const thumbCache = new LruCache<string>(500);
 
 function cacheThumbnail(imageId: number, url: string) {
-  if (thumbCache.has(imageId)) {
-    thumbCache.delete(imageId);
-  }
   thumbCache.set(imageId, url);
-
-  if (thumbCache.size > MAX_CACHE_SIZE) {
-    const oldestKey = thumbCache.keys().next().value;
-    if (oldestKey !== undefined) {
-      const oldestUrl = thumbCache.get(oldestKey);
-      if (oldestUrl && oldestUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(oldestUrl);
-      }
-      thumbCache.delete(oldestKey);
-    }
-  }
 }
 
 // --- Crop Cache (LRU, limited to 100 entries) ---
-const MAX_CROP_CACHE_SIZE = 100;
-const cropCache = new Map<number, string>();
+const cropCache = new LruCache<string>(100);
 
 function cacheCrop(detectionId: number, url: string) {
-  if (cropCache.has(detectionId)) {
-    cropCache.delete(detectionId);
-  }
   cropCache.set(detectionId, url);
-
-  if (cropCache.size > MAX_CROP_CACHE_SIZE) {
-    const oldestKey = cropCache.keys().next().value;
-    if (oldestKey !== undefined) {
-      const oldestUrl = cropCache.get(oldestKey);
-      if (oldestUrl && oldestUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(oldestUrl);
-      }
-      cropCache.delete(oldestKey);
-    }
-  }
 }
 
 export function getCachedCrop(detectionId: number): string | undefined {
-  const url = cropCache.get(detectionId);
-  if (url) {
-    cropCache.delete(detectionId);
-    cropCache.set(detectionId, url);
-  }
-  return url;
+  return cropCache.get(detectionId);
 }
 
 export function setCachedCrop(detectionId: number, url: string) {
@@ -73,23 +40,10 @@ export function setCachedCrop(detectionId: number, url: string) {
 }
 
 export function invalidateCropCache(detectionId: number) {
-  const url = cropCache.get(detectionId);
-  if (url && url.startsWith("blob:")) {
-    try {
-      URL.revokeObjectURL(url);
-    } catch (_) {}
-  }
   cropCache.delete(detectionId);
 }
 
 export function clearAllCropCaches() {
-  cropCache.forEach(url => {
-    if (url && url.startsWith("blob:")) {
-      try {
-        URL.revokeObjectURL(url);
-      } catch (_) {}
-    }
-  });
   cropCache.clear();
 }
 
@@ -583,147 +537,12 @@ async function loadDetectionsForImage(imageId: number) {
         return;
       }
 
-      // Load identities for the dropdown
       const idResp = await callService({ ListCharacterIdentities: null });
       const identities: any[] = "CharacterIdentitiesList" in idResp ? idResp.CharacterIdentitiesList.identities : [];
 
       for (const det of detections) {
-        const detEl = document.createElement("div");
-        detEl.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid var(--sys-border-light,#d0d0d0);border-radius:2px;background:var(--sys-window-bg,#fff);font-size:11px;";
-
-        // Crop thumbnail placeholder
-        const cropThumb = document.createElement("div");
-        cropThumb.className = "skeleton-pulse";
-        cropThumb.style.cssText = "width:48px;height:48px;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;";
-        cropThumb.innerHTML = '<i class="bi bi-image" style="color:#999;"></i>';
-
-        // Load crop async/sync from cache
-        if (cropCache.has(det.id)) {
-          const cachedUrl = cropCache.get(det.id)!;
-          // Refresh accessed entry in LRU crop cache
-          cropCache.delete(det.id);
-          cropCache.set(det.id, cachedUrl);
-          cropThumb.classList.remove("skeleton-pulse");
-          cropThumb.innerHTML = `<img src="${cachedUrl}" style="width:100%;height:100%;object-fit:cover;" />`;
-        } else {
-          callService({ GetDetectionCrop: { detection_id: det.id, max_size: 96 } }).then((cropResp: any) => {
-            if ("DetectionCropResult" in cropResp) {
-              const bytes = new Uint8Array(cropResp.DetectionCropResult.crop_webp_bytes);
-              const blob = new Blob([bytes], { type: "image/webp" });
-              const url = URL.createObjectURL(blob);
-              cacheCrop(det.id, url);
-              cropThumb.classList.remove("skeleton-pulse");
-              cropThumb.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" />`;
-            }
-          }).catch(() => {
-            cropThumb.classList.remove("skeleton-pulse");
-          });
-        }
-
-        const infoEl = document.createElement("div");
-        infoEl.style.cssText = "flex:1;min-width:0;";
-
-        const assignedIdentity = det.identity_id !== null ? identities.find((i: any) => i.id === det.identity_id) : null;
-        const dropdownId = `det-ac-${det.id}`;
-
-        if (assignedIdentity) {
-          infoEl.innerHTML = `
-            <div style="display:flex;align-items:center;gap:6px;">
-              <div style="position:relative;display:inline-block;">
-                <input class="det-name-input" value="${assignedIdentity.name}" style="font-weight:600;font-size:11px;padding:1px 4px;border:1px solid transparent;border-radius:2px;background:transparent;width:140px;" autocomplete="off" />
-                <div id="${dropdownId}" class="autocomplete-dropdown" style="display:none;"></div>
-              </div>
-              <span style="color:#888;">(${(det.confidence * 100).toFixed(1)}%)</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
-              <select class="win-select detection-identity-select" data-detection-id="${det.id}" style="font-size:10px;padding:1px 4px;max-width:150px;">
-                <option value="">Unassigned</option>
-                ${identities.map((i: any) => `<option value="${i.id}" ${det.identity_id === i.id ? "selected" : ""}>${i.name}</option>`).join("")}
-              </select>
-            </div>
-          `;
-          const nameInput = infoEl.querySelector(".det-name-input") as HTMLInputElement;
-          attachAutocomplete(nameInput, dropdownId, async (newName) => {
-            if (newName !== assignedIdentity.name) {
-              await callService({ RenameCharacterIdentity: { identity_id: assignedIdentity.id, name: newName } });
-              await loadDetectionsForImage(imageId);
-              await refreshCharacters();
-            }
-          });
-          nameInput.addEventListener("blur", async () => {
-            const newName = nameInput.value.trim();
-            if (newName && newName !== assignedIdentity.name) {
-              await callService({ RenameCharacterIdentity: { identity_id: assignedIdentity.id, name: newName } });
-              await loadDetectionsForImage(imageId);
-              await refreshCharacters();
-            }
-          });
-          nameInput.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") { e.preventDefault(); nameInput.blur(); }
-          });
-        } else {
-          infoEl.innerHTML = `
-            <div style="display:flex;align-items:center;gap:6px;">
-              <span style="font-weight:600;color:#888;">Unassigned</span>
-              <span style="color:#888;">(${(det.confidence * 100).toFixed(1)}%)</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
-              <select class="win-select detection-identity-select" data-detection-id="${det.id}" style="font-size:10px;padding:1px 4px;max-width:150px;">
-                <option value="">Unassigned</option>
-                ${identities.map((i: any) => `<option value="${i.id}">${i.name}</option>`).join("")}
-              </select>
-            </div>
-          `;
-        }
-
-        detEl.appendChild(cropThumb);
-        detEl.appendChild(infoEl);
-
-        const actionsEl = document.createElement("div");
-        actionsEl.style.cssText = "display:flex;gap:4px;margin-left:auto;align-items:center;";
-        actionsEl.innerHTML = `
-          <button class="win-button edit-bbox-btn" style="font-size:10px;padding:2px 6px;" title="Edit bounding box">
-            <i class="bi bi-bounding-box"></i>
-          </button>
-          <button class="win-button danger delete-det-btn" style="font-size:10px;padding:2px 6px;" title="Delete detection">
-            <i class="bi bi-trash"></i>
-          </button>
-        `;
-        detEl.appendChild(actionsEl);
-
-        actionsEl.querySelector(".edit-bbox-btn")?.addEventListener("click", () => {
-          callService({ GetImage: { image_id: imageId } }).then((imgResp: any) => {
-            if ("ImageResult" in imgResp) {
-              const fp = imgResp.ImageResult.image.current_filepath;
-              import("./bbox-editor").then(m => {
-                m.openBBoxEditor(det.id, imageId, fp, det.x0, det.y0, det.x1, det.y1, () => {
-                  invalidateCropCache(det.id);
-                  loadDetectionsForImage(imageId);
-                  refreshCharacters();
-                });
-              });
-            }
-          });
-        });
-
-        actionsEl.querySelector(".delete-det-btn")?.addEventListener("click", async () => {
-          if (!confirm("Are you sure you want to delete this detection? This will remove it from the system.")) return;
-          await callService({ DeleteDetection: { detection_id: det.id } });
-          loadDetectionsForImage(imageId);
-          refreshCharacters();
-        });
-
+        const detEl = renderDetectionRow(det, identities, imageId);
         list.appendChild(detEl);
-
-        // Identity assignment handler
-        const select = detEl.querySelector(".detection-identity-select") as HTMLSelectElement;
-        select?.addEventListener("change", async () => {
-          const val = select.value;
-          const identityId = val ? parseInt(val, 10) : null;
-          await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: identityId } });
-          await loadDetectionsForImage(imageId);
-          await refreshCharacters();
-        });
       }
     }
   } catch (e) {
@@ -734,6 +553,148 @@ async function loadDetectionsForImage(imageId: number) {
       empty.textContent = "Failed to load detections.";
     }
   }
+}
+
+function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLElement {
+  const detEl = document.createElement("div");
+  detEl.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid var(--sys-border-light,#d0d0d0);border-radius:2px;background:var(--sys-window-bg,#fff);font-size:11px;";
+
+  const cropThumb = document.createElement("div");
+  cropThumb.className = "skeleton-pulse";
+  cropThumb.style.cssText = "width:48px;height:48px;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;";
+  cropThumb.innerHTML = '<i class="bi bi-image" style="color:#999;"></i>';
+
+  const cachedCropUrl = cropCache.get(det.id);
+  if (cachedCropUrl) {
+    cropThumb.classList.remove("skeleton-pulse");
+    cropThumb.innerHTML = `<img src="${cachedCropUrl}" style="width:100%;height:100%;object-fit:cover;" />`;
+  } else {
+    callService({ GetDetectionCrop: { detection_id: det.id, max_size: 96 } }).then((cropResp: any) => {
+      if ("DetectionCropResult" in cropResp) {
+        const bytes = new Uint8Array(cropResp.DetectionCropResult.crop_webp_bytes);
+        const blob = new Blob([bytes], { type: "image/webp" });
+        const url = URL.createObjectURL(blob);
+        cacheCrop(det.id, url);
+        cropThumb.classList.remove("skeleton-pulse");
+        cropThumb.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" />`;
+      }
+    }).catch(() => {
+      cropThumb.classList.remove("skeleton-pulse");
+    });
+  }
+
+  const infoEl = document.createElement("div");
+  infoEl.style.cssText = "flex:1;min-width:0;";
+
+  const assignedIdentity = det.identity_id !== null ? identities.find((i: any) => i.id === det.identity_id) : null;
+  const dropdownId = `det-ac-${det.id}`;
+
+  if (assignedIdentity) {
+    infoEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div style="position:relative;display:inline-block;">
+          <input class="det-name-input" value="${assignedIdentity.name}" style="font-weight:600;font-size:11px;padding:1px 4px;border:1px solid transparent;border-radius:2px;background:transparent;width:140px;" autocomplete="off" />
+          <div id="${dropdownId}" class="autocomplete-dropdown" style="display:none;"></div>
+        </div>
+        <span style="color:#888;">(${(det.confidence * 100).toFixed(1)}%)</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
+        <select class="win-select detection-identity-select" data-detection-id="${det.id}" style="font-size:10px;padding:1px 4px;max-width:150px;">
+          <option value="">Unassigned</option>
+          ${identities.map((i: any) => `<option value="${i.id}" ${det.identity_id === i.id ? "selected" : ""}>${i.name}</option>`).join("")}
+        </select>
+      </div>
+    `;
+    const nameInput = infoEl.querySelector(".det-name-input") as HTMLInputElement;
+    attachAutocomplete({
+      input: nameInput,
+      dropdownId,
+      onSelect: async (newName) => {
+        if (newName !== assignedIdentity.name) {
+          await callService({ RenameCharacterIdentity: { identity_id: assignedIdentity.id, name: newName } });
+          await loadDetectionsForImage(imageId);
+          await refreshCharacters();
+        }
+      },
+      fetchItems: async (query) => {
+        const { getSuggestions } = await import("./views/characters");
+        const suggestions = await getSuggestions(query);
+        return suggestions.map((s) => ({ name: s.name, count: s.count }));
+      },
+    });
+    nameInput.addEventListener("blur", async () => {
+      const newName = nameInput.value.trim();
+      if (newName && newName !== assignedIdentity.name) {
+        await callService({ RenameCharacterIdentity: { identity_id: assignedIdentity.id, name: newName } });
+        await loadDetectionsForImage(imageId);
+        await refreshCharacters();
+      }
+    });
+    nameInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); nameInput.blur(); }
+    });
+  } else {
+    infoEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-weight:600;color:#888;">Unassigned</span>
+        <span style="color:#888;">(${(det.confidence * 100).toFixed(1)}%)</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
+        <select class="win-select detection-identity-select" data-detection-id="${det.id}" style="font-size:10px;padding:1px 4px;max-width:150px;">
+          <option value="">Unassigned</option>
+          ${identities.map((i: any) => `<option value="${i.id}">${i.name}</option>`).join("")}
+        </select>
+      </div>
+    `;
+  }
+
+  detEl.appendChild(cropThumb);
+  detEl.appendChild(infoEl);
+
+  const actionsEl = document.createElement("div");
+  actionsEl.style.cssText = "display:flex;gap:4px;margin-left:auto;align-items:center;";
+  actionsEl.innerHTML = `
+    <button class="win-button edit-bbox-btn" style="font-size:10px;padding:2px 6px;" title="Edit bounding box">
+      <i class="bi bi-bounding-box"></i>
+    </button>
+    <button class="win-button danger delete-det-btn" style="font-size:10px;padding:2px 6px;" title="Delete detection">
+      <i class="bi bi-trash"></i>
+    </button>
+  `;
+  detEl.appendChild(actionsEl);
+
+  actionsEl.querySelector(".edit-bbox-btn")?.addEventListener("click", () => {
+    callService({ GetImage: { image_id: imageId } }).then((imgResp: any) => {
+      if ("ImageResult" in imgResp) {
+        const fp = imgResp.ImageResult.image.current_filepath;
+        import("./bbox-editor").then(m => {
+          m.openBBoxEditor(det.id, imageId, fp, det.x0, det.y0, det.x1, det.y1, () => {
+            invalidateCropCache(det.id);
+            loadDetectionsForImage(imageId);
+            refreshCharacters();
+          });
+        });
+      }
+    });
+  });
+
+  actionsEl.querySelector(".delete-det-btn")?.addEventListener("click", async () => {
+    if (!confirm("Are you sure you want to delete this detection? This will remove it from the system.")) return;
+    await callService({ DeleteDetection: { detection_id: det.id } });
+    loadDetectionsForImage(imageId);
+    refreshCharacters();
+  });
+
+  const select = detEl.querySelector(".detection-identity-select") as HTMLSelectElement;
+  select?.addEventListener("change", async () => {
+    const val = select.value;
+    const identityId = val ? parseInt(val, 10) : null;
+    await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: identityId } });
+    await loadDetectionsForImage(imageId);
+    await refreshCharacters();
+  });
+
+  return detEl;
 }
 
 // --- Card Rendering (no per-card event handlers) ---
@@ -762,14 +723,8 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
       cacheThumbnail(img.id, convertFileSrc(img.filepath));
     }
 
-    const isCached = thumbCache.has(img.id);
-    let cachedSrc = "";
-    if (isCached) {
-      cachedSrc = thumbCache.get(img.id)!;
-      // Refresh accessed entry in the LRU cache
-      thumbCache.delete(img.id);
-      thumbCache.set(img.id, cachedSrc);
-    }
+    const cachedSrc = thumbCache.get(img.id);
+    const isCached = cachedSrc !== undefined;
     const isPending = !isCached;
     const imgClass = isCached ? "loaded" : "";
     const previewClass = isCached ? "image-preview" : "image-preview thumb-loading";

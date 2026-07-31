@@ -16,6 +16,12 @@
   --sys-status-text: #333333;
   --sys-menu-bg: #f9f9f9;
   --sys-menu-border: #d0d0d0;
+  --sys-text-subtle: #555555;
+  --sys-primary: #0078d4;
+  --z-dropdown: 100;
+  --z-modal: 9999;
+  --z-viewer: 10000;
+  --z-tooltip: 99999;
 }
 
 * {
@@ -54,21 +60,21 @@ body {
   display: none;
 }
 
-.skeleton-pulse {
+.hidden {
+  display: none !important;
+}
+
+.skeleton {
   background: linear-gradient(90deg, #e0e0e0 25%, #f0f0f0 50%, #e0e0e0 75%);
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+.skeleton-pulse {
   border-radius: 3px;
 }
 .skeleton-card {
-  background: linear-gradient(90deg, #e0e0e0 25%, #f0f0f0 50%, #e0e0e0 75%);
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.5s ease-in-out infinite;
 }
 .skeleton-text {
-  background: linear-gradient(90deg, #e0e0e0 25%, #f0f0f0 50%, #e0e0e0 75%);
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.5s ease-in-out infinite;
   border-radius: 2px;
 }
 @keyframes skeleton-shimmer {

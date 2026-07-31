@@ -179,7 +179,7 @@
   overflow-y: auto;
   background-color: var(--sys-window-bg, #ffffff);
   border: 1px solid var(--sys-border-dark, #a0a0a0);
-  z-index: 99999 !important;
+  z-index: var(--z-tooltip);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 .autocomplete-item {
@@ -214,7 +214,7 @@
   width: 100vw;
   height: 100vh;
   background-color: rgba(0, 0, 0, 0.4);
-  z-index: 9999;
+  z-index: var(--z-modal);
   align-items: center;
   justify-content: center;
 }
@@ -339,4 +339,18 @@
 }
 .log-tab:not(.active):hover {
   background-color: var(--sys-button-hover);
+}
+
+.win-select {
+  background-color: var(--sys-window-bg);
+  color: var(--sys-window-text);
+  border: 1px solid #7a7a7a;
+  padding: 0 4px;
+  height: 24px;
+  line-height: 24px;
+  outline: none;
+  font-size: 12px;
+}
+.win-select:focus {
+  border-color: var(--sys-border-focus);
 }

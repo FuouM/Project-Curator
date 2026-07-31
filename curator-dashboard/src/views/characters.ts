@@ -2,6 +2,7 @@ import { callService } from "../ipc";
 import { CharacterIdentity, CharacterDetection } from "../types";
 import { getCachedCrop, setCachedCrop } from "../cards";
 import { openImageViewer } from "../image-viewer";
+import { attachAutocomplete } from "../autocomplete";
 
 interface SuggestionItem {
   name: string;
@@ -18,7 +19,6 @@ export async function getSuggestions(query: string): Promise<SuggestionItem[]> {
 
   try {
     const [tagResp, idResp, conceptResp] = await Promise.all([
-      // Execute indexed pattern matches on database for instant response (sub-1ms query search)
       callService({ GetCharacterSuggestions: { query: query } }).catch(() => null),
       callService({ ListCharacterIdentities: null }).catch(() => null),
       callService({ ListConcepts: null }).catch(() => null)
@@ -66,97 +66,19 @@ export async function getSuggestions(query: string): Promise<SuggestionItem[]> {
   return items.sort((a, b) => b.count - a.count);
 }
 
-
-
-export function attachAutocomplete(
+export function attachIdentityAutocomplete(
   input: HTMLInputElement,
   dropdownId: string,
   onSelect: (value: string) => void
 ) {
-  const dropdown = (input.parentElement?.querySelector("#" + dropdownId) as HTMLElement)
-    || document.getElementById(dropdownId);
-  if (!dropdown) return;
-
-  let activeIndex = -1;
-
-  function showDropdown(query: string) {
-    if (!dropdown || !query) {
-      if (dropdown) dropdown.style.display = "none";
-      return;
-    }
-
-    const q = query.toLowerCase();
-    getSuggestions(q).then((matches) => {
-      if (!dropdown) return;
-      // Slice matches to fit dropdown
-      const itemsToRender = matches.slice(0, 15);
-
-      if (itemsToRender.length === 0) {
-        dropdown.style.display = "none";
-        return;
-      }
-
-      activeIndex = -1;
-      dropdown.innerHTML = itemsToRender.map((s, i) =>
-        `<div class="autocomplete-item" data-name="${s.name}" data-index="${i}">
-          <span class="autocomplete-item-tag">${s.name}</span>
-          <span class="autocomplete-item-count">${s.count}</span>
-        </div>`
-      ).join("");
-      dropdown.style.display = "block";
-
-      dropdown.querySelectorAll<HTMLElement>(".autocomplete-item").forEach((item) => {
-        item.addEventListener("mousedown", (e) => {
-          e.preventDefault();
-          const selectedName = item.getAttribute("data-name") || "";
-          input.value = selectedName;
-          if (dropdown) dropdown.style.display = "none";
-          onSelect(selectedName);
-        });
-      });
-    });
-  }
-
-  function setActive(index: number) {
-    if (!dropdown) return;
-    const items = dropdown.querySelectorAll<HTMLElement>(".autocomplete-item");
-    items.forEach((el, i) => el.classList.toggle("active", i === index));
-  }
-
-  input.addEventListener("input", () => {
-    showDropdown(input.value.trim());
-  });
-
-  input.addEventListener("focus", () => {
-    if (input.value.trim()) showDropdown(input.value.trim());
-  });
-
-  input.addEventListener("blur", () => {
-    setTimeout(() => { if (dropdown) dropdown.style.display = "none"; }, 150);
-  });
-
-  input.addEventListener("keydown", (e) => {
-    if (!dropdown) return;
-    const items = dropdown.querySelectorAll<HTMLElement>(".autocomplete-item");
-    if (dropdown.style.display === "none" || items.length === 0) return;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      activeIndex = Math.min(activeIndex + 1, items.length - 1);
-      setActive(activeIndex);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      activeIndex = Math.max(activeIndex - 1, 0);
-      setActive(activeIndex);
-    } else if (e.key === "Enter" && activeIndex >= 0) {
-      e.preventDefault();
-      const selectedName = items[activeIndex].getAttribute("data-name") || "";
-      input.value = selectedName;
-      dropdown.style.display = "none";
-      onSelect(selectedName);
-    } else if (e.key === "Escape") {
-      dropdown.style.display = "none";
-    }
+  attachAutocomplete({
+    input,
+    dropdownId,
+    onSelect,
+    fetchItems: async (query) => {
+      const suggestions = await getSuggestions(query);
+      return suggestions.map((s) => ({ name: s.name, count: s.count }));
+    },
   });
 }
 
@@ -333,7 +255,7 @@ export async function refreshCharacters() {
 
       // Autocomplete rename
       const nameInput = card.querySelector(".identity-name-input") as HTMLInputElement;
-      attachAutocomplete(nameInput, dropdownId, async (newName) => {
+      attachIdentityAutocomplete(nameInput, dropdownId, async (newName) => {
         if (newName !== identity.name) {
           await callService({ RenameCharacterIdentity: { identity_id: identity.id, name: newName } });
           await refreshCharacters();

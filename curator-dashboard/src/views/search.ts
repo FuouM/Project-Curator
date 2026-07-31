@@ -3,6 +3,8 @@ import { callService } from "../ipc";
 import { maskPath } from "../components";
 import { renderSearchResults } from "../cards";
 import { setupInputClearButtons } from "./concepts";
+import { setupSelectionToolbar } from "../selection-toolbar";
+import { attachAutocomplete } from "../autocomplete";
 
 export async function loadSearchConceptsDropdown() {
   const select = document.getElementById("search-concept-select") as HTMLSelectElement;
@@ -142,54 +144,7 @@ export function setupSearch() {
   });
 
   // Search Selection Toolbar Buttons
-  const searchToggleBtn = document.getElementById("search-toggle-select-mode-btn");
-  const searchSelectAllBtn = document.getElementById("search-select-all-btn");
-  const searchClearBtn = document.getElementById("search-clear-select-btn");
-  const searchTeachBtn = document.getElementById("search-teach-concept-btn");
-
-  searchToggleBtn?.addEventListener("click", async () => {
-    const { isSelectMode, setIsSelectMode, selectedImageIds } = await import("../state");
-    setIsSelectMode(!isSelectMode);
-    if (!isSelectMode) {
-      selectedImageIds.clear();
-      document.querySelectorAll(".image-card.selected").forEach((c) => c.classList.remove("selected"));
-      document.querySelectorAll(".card-select-checkbox").forEach((cb: any) => (cb.checked = false));
-    }
-    const { updateSelectionUI } = await import("./gallery");
-    updateSelectionUI();
-  });
-
-  searchSelectAllBtn?.addEventListener("click", async () => {
-    const { selectedImageIds } = await import("../state");
-    const cards = document.querySelectorAll("#search-results-grid .image-card");
-    cards.forEach((card: any) => {
-      const id = parseInt(card.dataset.imageId || "0");
-      if (id > 0) {
-        selectedImageIds.add(id);
-        card.classList.add("selected");
-        const cb = card.querySelector(".card-select-checkbox");
-        if (cb) cb.checked = true;
-      }
-    });
-    const { updateSelectionUI } = await import("./gallery");
-    updateSelectionUI();
-  });
-
-  searchClearBtn?.addEventListener("click", async () => {
-    const { selectedImageIds } = await import("../state");
-    selectedImageIds.clear();
-    document.querySelectorAll(".image-card.selected").forEach((c) => c.classList.remove("selected"));
-    document.querySelectorAll(".card-select-checkbox").forEach((cb: any) => (cb.checked = false));
-    const { updateSelectionUI } = await import("./gallery");
-    updateSelectionUI();
-  });
-
-  searchTeachBtn?.addEventListener("click", async () => {
-    const { selectedImageIds } = await import("../state");
-    if (selectedImageIds.size === 0) return;
-    const { openTeachConceptModal } = await import("./concepts");
-    openTeachConceptModal();
-  });
+  setupSelectionToolbar({ prefix: "search", gridSelector: "#search-results-grid" });
 }
 
 let allTags: { tag: string; count: number }[] = [];
@@ -209,114 +164,34 @@ function setupTagAutocomplete() {
   loadAllTags();
 
   const tagInput = document.getElementById("search-tag-input") as HTMLInputElement;
-  const dropdownEl = document.getElementById("search-tag-autocomplete");
-  if (!tagInput || !dropdownEl) return;
-  const dropdown = dropdownEl;
+  if (!tagInput) return;
 
-  let activeIndex = -1;
-
-  function showDropdown(query: string) {
-    if (!query || allTags.length === 0) {
-      dropdown.style.display = "none";
-      return;
-    }
-
-    const parts = query.split(',').map(t => t.trim());
-    const lastPart = parts[parts.length - 1];
-    if (!lastPart) {
-      dropdown.style.display = "none";
-      return;
-    }
-
-    const q = lastPart.toLowerCase();
-    const existingTags = new Set(parts.slice(0, -1).map(t => t.toLowerCase()));
-    const matches = allTags
-      .filter(t => t.tag.toLowerCase().includes(q) && !existingTags.has(t.tag.toLowerCase()))
-      .slice(0, 15);
-
-    if (matches.length === 0) {
-      dropdown.style.display = "none";
-      return;
-    }
-
-    activeIndex = -1;
-    dropdown.innerHTML = matches.map((t, i) =>
-      `<div class="autocomplete-item" data-tag="${t.tag}" data-index="${i}">
-        <span class="autocomplete-item-tag">${t.tag.replace(/_/g, '_\u200B')}</span>
-        <span class="autocomplete-item-count">${t.count}</span>
-      </div>`
-    ).join("");
-    dropdown.style.display = "block";
-
-    dropdown.querySelectorAll<HTMLElement>(".autocomplete-item").forEach((item) => {
-      item.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        const selectedTag = item.getAttribute("data-tag") || "";
-        const currentVal = tagInput.value.trim();
-        if (currentVal) {
-          const tags = currentVal.split(',').map(t => t.trim()).filter(t => t);
-          if (tags.length > 0) {
-            tags[tags.length - 1] = selectedTag;
-          } else {
-            tags.push(selectedTag);
-          }
-          tagInput.value = tags.join(', ');
-        } else {
-          tagInput.value = selectedTag;
-        }
-        dropdown.style.display = "none";
-        tagInput.focus();
-      });
-    });
-  }
-
-  function setActive(index: number) {
-    const items = dropdown.querySelectorAll<HTMLElement>(".autocomplete-item");
-    items.forEach((el, i) => el.classList.toggle("active", i === index));
-  }
-
-  tagInput.addEventListener("input", () => {
-    showDropdown(tagInput.value.trim());
-  });
-
-  tagInput.addEventListener("focus", () => {
-    if (tagInput.value.trim()) showDropdown(tagInput.value.trim());
-  });
-
-  tagInput.addEventListener("blur", () => {
-    setTimeout(() => { dropdown.style.display = "none"; }, 150);
-  });
-
-  tagInput.addEventListener("keydown", (e) => {
-    const items = dropdown.querySelectorAll<HTMLElement>(".autocomplete-item");
-    if (dropdown.style.display === "none" || items.length === 0) return;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      activeIndex = Math.min(activeIndex + 1, items.length - 1);
-      setActive(activeIndex);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      activeIndex = Math.max(activeIndex - 1, 0);
-      setActive(activeIndex);
-    } else if (e.key === "Enter" && activeIndex >= 0) {
-      e.preventDefault();
-      const selectedTag = items[activeIndex].getAttribute("data-tag") || "";
+  attachAutocomplete({
+    input: tagInput,
+    dropdownId: "search-tag-autocomplete",
+    onSelect: (selectedTag) => {
       const currentVal = tagInput.value.trim();
       if (currentVal) {
-        const tags = currentVal.split(',').map(t => t.trim()).filter(t => t);
+        const tags = currentVal.split(",").map((t) => t.trim()).filter((t) => t);
         if (tags.length > 0) {
           tags[tags.length - 1] = selectedTag;
         } else {
           tags.push(selectedTag);
         }
-        tagInput.value = tags.join(', ');
+        tagInput.value = tags.join(", ");
       } else {
         tagInput.value = selectedTag;
       }
-      dropdown.style.display = "none";
-    } else if (e.key === "Escape") {
-      dropdown.style.display = "none";
-    }
+    },
+    fetchItems: async (query) => {
+      const q = query.toLowerCase();
+      const parts = query.split(",").map((t) => t.trim());
+      const lastPart = parts[parts.length - 1];
+      if (!lastPart) return [];
+      const existingTags = new Set(parts.slice(0, -1).map((t) => t.toLowerCase()));
+      return allTags
+        .filter((t) => t.tag.toLowerCase().includes(q) && !existingTags.has(t.tag.toLowerCase()))
+        .map((t) => ({ name: t.tag, count: t.count }));
+    },
   });
 }

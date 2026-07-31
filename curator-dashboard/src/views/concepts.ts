@@ -4,6 +4,7 @@ import { selectedImageIds } from "../state";
 import { renderImages } from "../cards";
 import { refreshDashboard } from "./dashboard";
 import { loadSearchConceptsDropdown } from "./search";
+import { setupSelectionToolbar } from "../selection-toolbar";
 
 export function setupInputClearButtons() {
   const inputs = document.querySelectorAll<HTMLInputElement>('.input-field.has-clear');
@@ -84,6 +85,12 @@ export async function openTeachConceptModal() {
   newRadio?.addEventListener("change", updateModeUI);
   existingSelect?.addEventListener("change", syncSelectedConceptUI);
 
+  if (thRange) {
+    thRange.addEventListener("input", () => {
+      if (thVal) thVal.textContent = thRange.value;
+    });
+  }
+
   if (existingSelect) {
     try {
       const resp = await callService({ ListConcepts: null });
@@ -158,53 +165,7 @@ export function setupConcepts() {
   cancelTeachModal?.addEventListener("click", () => teachModal?.classList.remove("active"));
 
   // Gallery Selection Toolbar Buttons
-  const toggleSelectBtn = document.getElementById("toggle-select-mode-btn");
-  const selectAllBtn = document.getElementById("gallery-select-all-btn");
-  const clearSelectBtn = document.getElementById("gallery-clear-select-btn");
-  const teachConceptBtn = document.getElementById("gallery-teach-concept-btn");
-
-  toggleSelectBtn?.addEventListener("click", async () => {
-    const { isSelectMode, setIsSelectMode, selectedImageIds } = await import("../state");
-    setIsSelectMode(!isSelectMode);
-    toggleSelectBtn.classList.toggle("primary", isSelectMode);
-    if (!isSelectMode) {
-      selectedImageIds.clear();
-      document.querySelectorAll(".image-card.selected").forEach((c) => c.classList.remove("selected"));
-      document.querySelectorAll(".card-select-checkbox").forEach((cb: any) => (cb.checked = false));
-    }
-    const { updateSelectionUI } = await import("./gallery");
-    updateSelectionUI();
-  });
-
-  selectAllBtn?.addEventListener("click", async () => {
-    const { selectedImageIds } = await import("../state");
-    const cards = document.querySelectorAll("#gallery-grid .image-card");
-    cards.forEach((card: any) => {
-      const id = parseInt(card.dataset.imageId || "0");
-      if (id > 0) {
-        selectedImageIds.add(id);
-        card.classList.add("selected");
-        const cb = card.querySelector(".card-select-checkbox");
-        if (cb) cb.checked = true;
-      }
-    });
-    const { updateSelectionUI } = await import("./gallery");
-    updateSelectionUI();
-  });
-
-  clearSelectBtn?.addEventListener("click", async () => {
-    const { selectedImageIds } = await import("../state");
-    selectedImageIds.clear();
-    document.querySelectorAll(".image-card.selected").forEach((c) => c.classList.remove("selected"));
-    document.querySelectorAll(".card-select-checkbox").forEach((cb: any) => (cb.checked = false));
-    const { updateSelectionUI } = await import("./gallery");
-    updateSelectionUI();
-  });
-
-  teachConceptBtn?.addEventListener("click", () => {
-    if (selectedImageIds.size === 0) return;
-    openTeachConceptModal();
-  });
+  setupSelectionToolbar({ prefix: "gallery", gridSelector: "#gallery-grid" });
 
   // Teach Concept Form Submit
   const teachForm = document.getElementById("teach-concept-form") as HTMLFormElement;

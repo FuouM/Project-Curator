@@ -26,35 +26,6 @@
   text-decoration: underline;
 }
 
-.tool-strip {
-  background-color: var(--sys-control-bg);
-  border-bottom: 1px solid var(--sys-border-dark);
-  padding: 4px 8px;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.tool-strip-btn {
-  background-color: transparent;
-  border: 1px solid transparent;
-  padding: 4px 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  border-radius: 2px;
-}
-.tool-strip-btn:hover {
-  background-color: var(--sys-button-hover);
-  border-color: #70adeb;
-}
-.tool-strip-separator {
-  width: 1px;
-  height: 16px;
-  background-color: var(--sys-border-dark);
-  margin: 0 4px;
-}
-
 .sidebar {
   width: 240px;
   background-color: var(--sys-window-bg);

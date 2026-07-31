@@ -85,7 +85,7 @@ export function updateSelectionUI() {
   const teachCountSpan = document.getElementById("teach-select-count");
   const searchTeachCountSpan = document.getElementById("search-teach-select-count");
 
-  const toggleBtn = document.getElementById("toggle-select-mode-btn");
+  const toggleBtn = document.getElementById("gallery-toggle-select-mode-btn");
   const searchToggleBtn = document.getElementById("search-toggle-select-mode-btn");
 
   const selectAllBtn = document.getElementById("gallery-select-all-btn");
