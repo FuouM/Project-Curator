@@ -119,6 +119,7 @@ export interface ImageDetails {
   parsed_metadata?: ParsedMetadata;
   is_missing: boolean;
   character_identities: CharacterIdentitySummary[];
+  ocr_text?: string;
 }
 
 export interface CharacterIdentitySummary {
@@ -289,6 +290,7 @@ export interface CardImageData {
   parsedMetadata?: ParsedMetadata;
   isMissing?: boolean;
   characterIdentities?: CharacterIdentitySummary[];
+  ocrText?: string;
 }
 
 export interface OcrResult {

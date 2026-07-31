@@ -134,6 +134,9 @@ export function renderFeaturedDay(featured: ImageDetails) {
   const srcUrl = convertFileSrc(featured.current_filepath);
   const badgeClass = featured.vector_state === "ready" ? "badge-ready" : "badge-pending";
   const parsedHtml = featured.parsed_metadata ? renderParsedMetadataHtml(featured.parsed_metadata) : "";
+  const ocrHtml = featured.ocr_text
+    ? `<div class="ocr-block" onclick="this.classList.toggle('expanded')"><i class="bi bi-file-earmark-text ocr-icon"></i><span class="ocr-block-text">${featured.ocr_text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`
+    : "";
 
   container.innerHTML = `
     <div class="featured-layout">
@@ -167,6 +170,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
           </button>
         </div>
         ${parsedHtml ? `<div class="parsed-metadata-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
+        ${ocrHtml}
         <div class="tag-list" style="margin-top: 6px;">
           ${featured.tags.length > 0 ? featured.tags.map(t => getTagPillHtml(t)).join("") : '<span style="color: #999; font-style: italic; font-size: 11px;">No tags</span>'}
         </div>

@@ -94,3 +94,35 @@
   transform: scale(1.2);
   color: #0e6b38;
 }
+
+.ocr-block {
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 2px;
+  padding: 2px 6px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.ocr-block.expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+}
+.ocr-icon {
+  display: inline;
+  color: #495057;
+  margin-right: 3px;
+  vertical-align: baseline;
+  position: relative;
+  top: 1px;
+}
+.ocr-block-text {
+  color: #383d41;
+  word-break: break-word;
+}

@@ -793,6 +793,10 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
       ? `<div class="identity-list">${img.characterIdentities.map(ci => `<span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> ${ci.name}</span>`).join("")}</div>`
       : "";
 
+    const ocrHtml = img.ocrText
+      ? `<div class="ocr-block" onclick="this.classList.toggle('expanded')"><i class="bi bi-file-earmark-text ocr-icon"></i><span class="ocr-block-text">${img.ocrText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`
+      : "";
+
     const missingBadge = img.isMissing
       ? '<div class="badge-missing"><i class="bi bi-exclamation-triangle"></i> Missing</div>'
       : "";
@@ -831,6 +835,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
           </button>
         </div>
         ${parsedHtml ? `<div class="parsed-metadata-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
+        ${ocrHtml}
         ${identityHtml}
         <div class="tag-list">
           ${tagHtml}
@@ -883,6 +888,7 @@ export function renderImages(images: ImageDetails[], gridId: string) {
     parsedMetadata: img.parsed_metadata,
     isMissing: img.is_missing,
     characterIdentities: img.character_identities,
+    ocrText: img.ocr_text,
   }));
 
   renderCards(cards, grid);

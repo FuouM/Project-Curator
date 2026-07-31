@@ -632,6 +632,8 @@ pub struct ImageDetails {
     pub is_missing: bool,
     #[serde(default)]
     pub character_identities: Vec<CharacterIdentitySummary>,
+    #[serde(default)]
+    pub ocr_text: Option<String>,
 }
 
 /// Lightweight character identity reference for card display.

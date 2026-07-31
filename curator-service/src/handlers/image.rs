@@ -303,6 +303,13 @@ pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDeta
     .map(|(id, name)| curator_core::ipc::CharacterIdentitySummary { id, name })
     .collect();
 
+    let ocr_text: Option<String> = sqlx::query_scalar::<_, String>(
+        "SELECT GROUP_CONCAT(text, CHAR(10)) FROM image_ocr_detections WHERE image_id = ?"
+    )
+    .bind(image_id)
+    .fetch_optional(db)
+    .await?;
+
     Ok(ImageDetails {
         id: img.id,
         sha256: img.sha256,
@@ -316,6 +323,7 @@ pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDeta
         parsed_metadata,
         is_missing: img.is_missing,
         character_identities,
+        ocr_text,
     })
 }
 
@@ -360,6 +368,7 @@ pub async fn batch_get_images_logic(ids: &[i64], db: &SqlitePool) -> Result<Vec<
                 parsed_metadata: None,
                 is_missing,
                 character_identities: Vec::new(),
+                ocr_text: None,
             },
         );
     }
@@ -437,6 +446,22 @@ pub async fn batch_get_images_logic(ids: &[i64], db: &SqlitePool) -> Result<Vec<
         }
     }
 
+    let ocr_sql = format!(
+        "SELECT image_id, GROUP_CONCAT(text, CHAR(10)) FROM image_ocr_detections WHERE image_id IN ({}) GROUP BY image_id",
+        placeholders
+    );
+    let mut ocr_q = sqlx::query_as::<_, (i64, String)>(&ocr_sql);
+    for id in ids {
+        ocr_q = ocr_q.bind(id);
+    }
+    if let Ok(ocr_rows) = ocr_q.fetch_all(db).await {
+        for (img_id, text) in ocr_rows {
+            if let Some(img) = image_map.get_mut(&img_id) {
+                img.ocr_text = Some(text);
+            }
+        }
+    }
+
     let mut images: Vec<ImageDetails> = Vec::with_capacity(image_order.len());
     for id in image_order {
         if let Some(mut img) = image_map.remove(&id) {
@@ -502,6 +527,7 @@ async fn fetch_image_details_batch(ids: &[i64], db: &SqlitePool) -> Result<Vec<I
             parsed_metadata: None,
             is_missing,
             character_identities: Vec::new(),
+            ocr_text: None,
         });
         if let (Some(name), Some(category)) = (tag_name, tag_category) {
             if source_name.as_deref() != Some("filename_parser") {
@@ -583,6 +609,22 @@ async fn fetch_image_details_batch(ids: &[i64], db: &SqlitePool) -> Result<Vec<I
                         id: identity_id,
                         name: identity_name,
                     });
+                }
+            }
+        }
+
+        let ocr_query = format!(
+            "SELECT image_id, GROUP_CONCAT(text, CHAR(10)) FROM image_ocr_detections WHERE image_id IN ({}) GROUP BY image_id",
+            ph
+        );
+        let mut ocr_q = sqlx::query_as::<_, (i64, String)>(&ocr_query);
+        for id in &img_ids {
+            ocr_q = ocr_q.bind(id);
+        }
+        if let Ok(ocr_rows) = ocr_q.fetch_all(db).await {
+            for (img_id, text) in ocr_rows {
+                if let Some(img) = image_map.get_mut(&img_id) {
+                    img.ocr_text = Some(text);
                 }
             }
         }
