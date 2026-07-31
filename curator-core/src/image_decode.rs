@@ -1,17 +1,18 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
-/// Fast RGB decode: turbojpeg for JPEG, png crate for PNG, image crate for others.
+/// Fast RGB decode: turbojpeg for JPEG, png crate for PNG, webp crate for WebP, image crate for others.
 /// Returns `(rgb_pixels, width, height)`.
 pub fn decode_rgb(path: &Path) -> Result<(Vec<u8>, u32, u32)> {
     let data = std::fs::read(path).with_context(|| format!("Cannot read image {:?}", path))?;
     let is_jpeg = data.len() >= 2 && data[0] == 0xFF && data[1] == 0xD8;
     let is_png = data.len() >= 8 && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
+    let is_webp = data.len() >= 12 && &data[0..4] == b"RIFF" && &data[8..12] == b"WEBP";
 
     let (rgb_buf, width, height) = if is_jpeg {
         let image = turbojpeg::decompress(&data, turbojpeg::PixelFormat::RGB)
             .with_context(|| format!("turbojpeg decode failed for {:?}", path))?;
-        (image.pixels.to_vec(), image.width as u32, image.height as u32)
+        (image.pixels, image.width as u32, image.height as u32)
     } else if is_png {
         match decode_png_fast(&data, path) {
             Ok(res) => res,
@@ -22,6 +23,12 @@ pub fn decode_rgb(path: &Path) -> Result<(Vec<u8>, u32, u32)> {
                 (rgb.into_raw(), w, h)
             }
         }
+    } else if is_webp {
+        let decoder = webp::Decoder::new(&data);
+        let webp_img = decoder.decode()
+            .ok_or_else(|| anyhow::anyhow!("WebP decode failed for {:?}", path))?;
+        let (w, h) = (webp_img.width(), webp_img.height());
+        (webp_img.to_vec(), w, h)
     } else {
         let img = image::open(path).with_context(|| format!("Cannot open image {:?}", path))?;
         let rgb = img.to_rgb8();
@@ -114,6 +121,8 @@ pub fn decode_and_resize_single_image(
         fast_image_resize::PixelType::U8x3,
     )?;
 
+    // Reuse destination buffer inside target size instead of allocating every time if possible.
+    // fast_image_resize's Image type allocates a new vector when created via from_vec_u8.
     let mut dst_image = fast_image_resize::images::Image::from_vec_u8(
         target_size,
         target_size,
@@ -130,3 +139,4 @@ pub fn decode_and_resize_single_image(
     resizer.resize(&src_image, &mut dst_image, Some(&opts))?;
     Ok(dst_image.buffer().to_vec())
 }
+

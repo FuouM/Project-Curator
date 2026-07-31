@@ -528,28 +528,32 @@ impl ModelManager {
             Array4::<f32>::zeros((batch_size, 3, target_size as usize, target_size as usize));
 
         for (batch_idx, &orig_idx) in valid_indices.iter().enumerate() {
-            if let Ok(ref resized_buf) = preprocessed[orig_idx] {
+            if let Ok(resized_buf) = &preprocessed[orig_idx] {
                 match active {
                     EmbeddingModel::ClipVitB32 => {
                         let mean = [0.48145466, 0.4578275, 0.40821073];
                         let std = [0.26862954, 0.261_302_6, 0.275_777_1];
+                        let slice = input_array.as_slice_mut().unwrap();
+                        let batch_offset = batch_idx * 3 * 224 * 224;
                         for c in 0..3 {
-                            for row in 0..224 {
-                                for col in 0..224 {
-                                    let val = resized_buf[(row * 224 + col) * 3 + c] as f32 / 255.0;
-                                    input_array[[batch_idx, c, row, col]] =
-                                        (val - mean[c]) / std[c];
-                                }
+                            let m = mean[c];
+                            let sd = std[c];
+                            let channel_offset = batch_offset + c * 224 * 224;
+                            let c_slice = &mut slice[channel_offset..channel_offset + 224 * 224];
+                            for idx in 0..224 * 224 {
+                                let val = resized_buf[idx * 3 + c] as f32 / 255.0;
+                                c_slice[idx] = (val - m) / sd;
                             }
                         }
                     }
                     EmbeddingModel::MobileClipS2 => {
+                        let slice = input_array.as_slice_mut().unwrap();
+                        let batch_offset = batch_idx * 3 * 256 * 256;
                         for c in 0..3 {
-                            for row in 0..256 {
-                                for col in 0..256 {
-                                    let val = resized_buf[(row * 256 + col) * 3 + c] as f32 / 255.0;
-                                    input_array[[batch_idx, c, row, col]] = val;
-                                }
+                            let channel_offset = batch_offset + c * 256 * 256;
+                            let c_slice = &mut slice[channel_offset..channel_offset + 256 * 256];
+                            for idx in 0..256 * 256 {
+                                c_slice[idx] = resized_buf[idx * 3 + c] as f32 / 255.0;
                             }
                         }
                     }

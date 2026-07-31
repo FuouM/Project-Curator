@@ -9,7 +9,7 @@ const PAD_COLOR: [u8; 3] = [124, 116, 104];
 #[test]
 fn test_decode_benchmark() {
     let path =
-        std::path::Path::new(r"L:\Convoy\4chan org - Anime & Manga - 289375778\1766273121471.jpg");
+        std::path::Path::new(r".\test_images\Yoshitani-Ayako_Urabe-Mikoto_Nazo-no-Kanojo-X.jpg");
     if !path.exists() {
         println!("Test image not found, skipping");
         return;
@@ -47,7 +47,7 @@ fn test_decode_benchmark() {
 #[test]
 fn test_full_preprocess_benchmark() {
     let path =
-        std::path::Path::new(r"L:\Convoy\4chan org - Anime & Manga - 289375778\1766273121471.jpg");
+        std::path::Path::new(r".\test_images\Yoshitani-Ayako_Urabe-Mikoto_Nazo-no-Kanojo-X.jpg");
     if !path.exists() {
         println!("Test image not found, skipping");
         return;

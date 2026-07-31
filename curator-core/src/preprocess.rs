@@ -30,30 +30,39 @@ pub fn build_tensor(
     let nw = new_w as usize;
     let nh = new_h as usize;
 
-    for c in 0..3usize {
+    // Precompute pad values for each channel
+    let pad_vals = [
+        (pad_color[0] as f32 / 255.0 - mean[0]) / std[0],
+        (pad_color[1] as f32 / 255.0 - mean[1]) / std[1],
+        (pad_color[2] as f32 / 255.0 - mean[2]) / std[2],
+    ];
+
+    // Pre-fill each channel with its respective pad value directly
+    for c in 0..3 {
+        let pad_val = pad_vals[c];
+        let dst_base = c * s * s;
+        slice[dst_base..dst_base + s * s].fill(pad_val);
+    }
+
+    // Paste resized image data with optimized channel mapping
+    for c in 0..3 {
         let m = mean[c];
         let sd = std[c];
-        let pad_val = (pad_color[c] as f32 / 255.0 - m) / sd;
         let dst_base = c * s * s;
 
-        // Fill entire channel with pad color
-        for y in 0..s {
-            let rs = dst_base + y * s;
-            for x in 0..s {
-                slice[rs + x] = pad_val;
-            }
-        }
-
-        // Paste resized image data
         for y in 0..nh {
             let src_row = y * nw * 3 + c;
             let dst_row = dst_base + (paste_y + y) * s + paste_x;
+            let src_slice = &data[src_row..];
+            let dst_slice = &mut slice[dst_row..dst_row + nw];
+
             for x in 0..nw {
-                let val = data[src_row + x * 3] as f32 / 255.0;
-                slice[dst_row + x] = (val - m) / sd;
+                let val = src_slice[x * 3] as f32 / 255.0;
+                dst_slice[x] = (val - m) / sd;
             }
         }
     }
 
     tensor
 }
+
