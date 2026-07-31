@@ -66,6 +66,23 @@
   color: #005499;
   margin-right: 2px;
 }
+.tag-pill.tag-identity {
+  background-color: #fde8e8;
+  border: 1px solid #f5c6cb;
+  color: #842029;
+  font-weight: 600;
+}
+.tag-pill.tag-identity i {
+  margin-right: 2px;
+}
+.identity-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--sys-border-light, #d0d0d0);
+}
 .tag-confirm-btn {
   cursor: pointer;
   color: #107c41;

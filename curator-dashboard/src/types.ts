@@ -114,6 +114,12 @@ export interface ImageDetails {
   favorite: boolean;
   parsed_metadata?: ParsedMetadata;
   is_missing: boolean;
+  character_identities: CharacterIdentitySummary[];
+}
+
+export interface CharacterIdentitySummary {
+  id: number;
+  name: string;
 }
 
 export interface TagSummary {
@@ -273,4 +279,5 @@ export interface CardImageData {
   emptyMessage?: string;
   parsedMetadata?: ParsedMetadata;
   isMissing?: boolean;
+  characterIdentities?: CharacterIdentitySummary[];
 }

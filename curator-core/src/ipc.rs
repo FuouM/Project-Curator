@@ -592,6 +592,15 @@ pub struct ImageDetails {
     pub parsed_metadata: Option<ParsedMetadata>,
     #[serde(default)]
     pub is_missing: bool,
+    #[serde(default)]
+    pub character_identities: Vec<CharacterIdentitySummary>,
+}
+
+/// Lightweight character identity reference for card display.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharacterIdentitySummary {
+    pub id: i64,
+    pub name: String,
 }
 
 // ParsedMetadata is defined in filename_parser and re-used here

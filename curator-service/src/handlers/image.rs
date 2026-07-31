@@ -289,6 +289,20 @@ pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDeta
         }
     });
 
+    let character_identities: Vec<curator_core::ipc::CharacterIdentitySummary> = sqlx::query_as::<_, (i64, String)>(
+        "SELECT ci.id, ci.name
+         FROM character_detections cd
+         JOIN character_identities ci ON cd.identity_id = ci.id
+         WHERE cd.image_id = ? AND cd.identity_id IS NOT NULL
+         GROUP BY ci.id"
+    )
+    .bind(image_id)
+    .fetch_all(db)
+    .await?
+    .into_iter()
+    .map(|(id, name)| curator_core::ipc::CharacterIdentitySummary { id, name })
+    .collect();
+
     Ok(ImageDetails {
         id: img.id,
         sha256: img.sha256,
@@ -301,6 +315,7 @@ pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDeta
         favorite: img.favorite,
         parsed_metadata,
         is_missing: img.is_missing,
+        character_identities,
     })
 }
 
@@ -344,6 +359,7 @@ pub async fn batch_get_images_logic(ids: &[i64], db: &SqlitePool) -> Result<Vec<
                 favorite,
                 parsed_metadata: None,
                 is_missing,
+                character_identities: Vec::new(),
             },
         );
     }
@@ -485,6 +501,7 @@ async fn fetch_image_details_batch(ids: &[i64], db: &SqlitePool) -> Result<Vec<I
             favorite,
             parsed_metadata: None,
             is_missing,
+            character_identities: Vec::new(),
         });
         if let (Some(name), Some(category)) = (tag_name, tag_category) {
             if source_name.as_deref() != Some("filename_parser") {
@@ -542,6 +559,29 @@ async fn fetch_image_details_batch(ids: &[i64], db: &SqlitePool) -> Result<Vec<I
                         extracted_tags,
                         raw_matched,
                         partial: false,
+                    });
+                }
+            }
+        }
+
+        // Fetch character identities for these images
+        let ci_query = format!(
+            "SELECT DISTINCT cd.image_id, ci.id, ci.name
+             FROM character_detections cd
+             JOIN character_identities ci ON cd.identity_id = ci.id
+             WHERE cd.image_id IN ({}) AND cd.identity_id IS NOT NULL",
+            ph
+        );
+        let mut ci_q = sqlx::query_as::<_, (i64, i64, String)>(&ci_query);
+        for id in &img_ids {
+            ci_q = ci_q.bind(id);
+        }
+        if let Ok(ci_rows) = ci_q.fetch_all(db).await {
+            for (img_id, identity_id, identity_name) in ci_rows {
+                if let Some(img) = image_map.get_mut(&img_id) {
+                    img.character_identities.push(curator_core::ipc::CharacterIdentitySummary {
+                        id: identity_id,
+                        name: identity_name,
                     });
                 }
             }

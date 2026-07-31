@@ -714,6 +714,10 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
     const tagHtml = renderTagListHtml(img.tags);
     const parsedHtml = img.parsedMetadata ? renderParsedMetadataHtml(img.parsedMetadata) : "";
 
+    const identityHtml = (img.characterIdentities && img.characterIdentities.length > 0)
+      ? `<div class="identity-list">${img.characterIdentities.map(ci => `<span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> ${ci.name}</span>`).join("")}</div>`
+      : "";
+
     const missingBadge = img.isMissing
       ? '<div class="badge-missing"><i class="bi bi-exclamation-triangle"></i> Missing</div>'
       : "";
@@ -752,6 +756,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
           </button>
         </div>
         ${parsedHtml ? `<div class="parsed-metadata-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
+        ${identityHtml}
         <div class="tag-list">
           ${tagHtml}
         </div>
@@ -802,6 +807,7 @@ export function renderImages(images: ImageDetails[], gridId: string) {
     badgeHtml: `<div class="vector-badge ${img.vector_state === "ready" ? "badge-ready" : "badge-pending"}">${img.vector_state}</div>`,
     parsedMetadata: img.parsed_metadata,
     isMissing: img.is_missing,
+    characterIdentities: img.character_identities,
   }));
 
   renderCards(cards, grid);
