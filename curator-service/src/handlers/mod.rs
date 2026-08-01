@@ -1140,7 +1140,7 @@ pub async fn handle_request(
             if !path.exists() {
                 return Response::Error { message: "Manga Bubble YOLO model file not found.".to_string() };
             }
-            match curator_core::run_onnx_benchmark(&path, 640) {
+            match curator_core::run_onnx_benchmark(&path, 1280) {
                 Ok((cpu, gpu, err, has_gpu)) => Response::DetectionBenchmarkResult {
                     yolo_cpu_time_ms: None,
                     yolo_gpu_time_ms: None,
