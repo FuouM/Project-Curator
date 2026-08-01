@@ -1,6 +1,7 @@
 import { callService } from "../ipc";
 
 interface BenchmarkConfig {
+  key: string;
   label: string;
   cpuEl: HTMLElement | null;
   gpuEl: HTMLElement | null;
@@ -44,6 +45,7 @@ export function setupBenchmark() {
 
   const benchmarks: BenchmarkConfig[] = [
     {
+      key: "clip",
       label: "CLIP ViT-B/32",
       cpuEl: getEl("benchmark-clip-cpu"),
       gpuEl: getEl("benchmark-clip-gpu"),
@@ -66,6 +68,7 @@ export function setupBenchmark() {
       },
     },
     {
+      key: "tagger",
       label: "Camie Tagger",
       cpuEl: getEl("benchmark-tagger-cpu"),
       gpuEl: getEl("benchmark-tagger-gpu"),
@@ -87,6 +90,7 @@ export function setupBenchmark() {
       },
     },
     {
+      key: "mclip",
       label: "MobileCLIP-S2",
       cpuEl: getEl("benchmark-mclip-cpu"),
       gpuEl: getEl("benchmark-mclip-gpu"),
@@ -99,6 +103,7 @@ export function setupBenchmark() {
       },
     },
     {
+      key: "yolo",
       label: "YOLO Person Detection",
       cpuEl: getEl("benchmark-yolo-cpu"),
       gpuEl: getEl("benchmark-yolo-gpu"),
@@ -112,6 +117,7 @@ export function setupBenchmark() {
       },
     },
     {
+      key: "ccip-feat",
       label: "CCIP Feature Extraction",
       cpuEl: getEl("benchmark-ccip-feat-cpu"),
       gpuEl: getEl("benchmark-ccip-feat-gpu"),
@@ -125,6 +131,7 @@ export function setupBenchmark() {
       },
     },
     {
+      key: "ccip-metrics",
       label: "CCIP Metrics",
       cpuEl: getEl("benchmark-ccip-metrics-cpu"),
       gpuEl: getEl("benchmark-ccip-metrics-gpu"),
@@ -138,6 +145,7 @@ export function setupBenchmark() {
       },
     },
     {
+      key: "ocr-det",
       label: "OCR Text Detection",
       cpuEl: getEl("benchmark-ocr-det-cpu"),
       gpuEl: getEl("benchmark-ocr-det-gpu"),
@@ -151,6 +159,7 @@ export function setupBenchmark() {
       },
     },
     {
+      key: "ocr-rec",
       label: "OCR Text Recognition",
       cpuEl: getEl("benchmark-ocr-rec-cpu"),
       gpuEl: getEl("benchmark-ocr-rec-gpu"),
@@ -164,6 +173,7 @@ export function setupBenchmark() {
       },
     },
     {
+      key: "ocr-cls",
       label: "OCR Text Line Classification",
       cpuEl: getEl("benchmark-ocr-cls-cpu"),
       gpuEl: getEl("benchmark-ocr-cls-gpu"),
@@ -177,6 +187,7 @@ export function setupBenchmark() {
       },
     },
     {
+      key: "manga-bubble",
       label: "Manga Bubble YOLO",
       cpuEl: getEl("benchmark-manga-bubble-cpu"),
       gpuEl: getEl("benchmark-manga-bubble-gpu"),
@@ -201,38 +212,68 @@ export function setupBenchmark() {
     if (errText) errText.textContent = "";
   }
 
+  function appendBenchError(msg: string) {
+    if (!errText) return;
+    const existing = errText.textContent || "";
+    errText.textContent = existing ? `${existing}\n${msg}` : msg;
+  }
+
+  async function runSingleBenchmark(bench: BenchmarkConfig) {
+    if (bench.cpuEl) bench.cpuEl.textContent = "Running...";
+    if (bench.gpuEl) bench.gpuEl.textContent = "Running...";
+    if (bench.speedupEl) bench.speedupEl.textContent = "Calculating...";
+
+    const resp = await bench.run();
+    if ("Error" in resp) {
+      appendBenchError(`${bench.label}: ${resp.Error.message}`);
+      return;
+    }
+    const result = bench.extractResult(resp);
+    if (result) {
+      displayThroughput(bench.cpuEl, bench.gpuEl, bench.speedupEl, result.cpuMs, result.gpuMs, result.gpuErr);
+    } else {
+      if (bench.cpuEl) bench.cpuEl.textContent = "N/A";
+      if (bench.gpuEl) bench.gpuEl.textContent = "N/A";
+      if (bench.speedupEl) bench.speedupEl.textContent = "—";
+    }
+  }
+
+  const allRunButtons = document.querySelectorAll<HTMLButtonElement>("[data-benchmark-key]");
+  function setAllRunButtonsDisabled(disabled: boolean) {
+    allRunButtons.forEach((b) => { b.disabled = disabled; });
+  }
+
+  // Per-card "Run" buttons for single benchmarks
+  allRunButtons.forEach((btn) => {
+    const key = btn.dataset.benchmarkKey;
+    const bench = benchmarks.find((b) => b.key === key);
+    if (!bench) return;
+    btn.addEventListener("click", async () => {
+      if (errText) errText.textContent = "";
+      try {
+        await runSingleBenchmark(bench);
+      } catch (e: any) {
+        appendBenchError(`${bench.label}: ${e.message || e}`);
+      }
+    });
+  });
+
   runBtn.addEventListener("click", async () => {
     runBtn.setAttribute("disabled", "true");
     runBtn.textContent = "Benchmarking...";
     initBenchmarkUI();
+    setAllRunButtonsDisabled(true);
 
     try {
       for (const bench of benchmarks) {
-        if (bench.cpuEl) bench.cpuEl.textContent = "Running...";
-        if (bench.gpuEl) bench.gpuEl.textContent = "Running...";
-        if (bench.speedupEl) bench.speedupEl.textContent = "Calculating...";
-
-        const resp = await bench.run();
-
-        if ("Error" in resp) {
-          const existing = errText?.textContent || "";
-          if (errText) {
-            errText.textContent = existing
-              ? `${existing}\n${bench.label}: ${resp.Error.message}`
-              : `${bench.label}: ${resp.Error.message}`;
-          }
-        } else {
-          const result = bench.extractResult(resp);
-          if (result) {
-            displayThroughput(bench.cpuEl, bench.gpuEl, bench.speedupEl, result.cpuMs, result.gpuMs, result.gpuErr);
-          }
-        }
+        await runSingleBenchmark(bench);
       }
     } catch (e: any) {
-      if (errText) errText.textContent = `Execution error: ${e.message || e}`;
+      appendBenchError(`Execution error: ${e.message || e}`);
     } finally {
       runBtn.removeAttribute("disabled");
       runBtn.innerHTML = '<i class="bi bi-play-fill"></i> Run Benchmark';
+      setAllRunButtonsDisabled(false);
     }
   });
 
