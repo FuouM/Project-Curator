@@ -68,6 +68,19 @@ export function setupBenchmark() {
       },
     },
     {
+      key: "mclip",
+      label: "MobileCLIP-S2",
+      cpuEl: getEl("benchmark-mclip-cpu"),
+      gpuEl: getEl("benchmark-mclip-gpu"),
+      speedupEl: getEl("benchmark-mclip-speedup"),
+      run: () => callService({ RunBenchmark: { embedding_model: "mobileclip-s2", run_tagger: false } }).catch((e: any) => ({ Error: { message: e.message } })),
+      extractResult: (resp) => {
+        if (!("BenchmarkResult" in resp)) return null;
+        const { clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error } = resp.BenchmarkResult;
+        return { cpuMs: clip_cpu_time_ms, gpuMs: clip_gpu_time_ms, gpuErr: clip_gpu_error };
+      },
+    },
+    {
       key: "tagger",
       label: "Camie Tagger",
       cpuEl: getEl("benchmark-tagger-cpu"),
@@ -87,19 +100,6 @@ export function setupBenchmark() {
           return null;
         }
         return { cpuMs: tagger_cpu_time_ms, gpuMs: tagger_gpu_time_ms, gpuErr: tagger_gpu_error };
-      },
-    },
-    {
-      key: "mclip",
-      label: "MobileCLIP-S2",
-      cpuEl: getEl("benchmark-mclip-cpu"),
-      gpuEl: getEl("benchmark-mclip-gpu"),
-      speedupEl: getEl("benchmark-mclip-speedup"),
-      run: () => callService({ RunBenchmark: { embedding_model: "mobileclip-s2", run_tagger: false } }).catch((e: any) => ({ Error: { message: e.message } })),
-      extractResult: (resp) => {
-        if (!("BenchmarkResult" in resp)) return null;
-        const { clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error } = resp.BenchmarkResult;
-        return { cpuMs: clip_cpu_time_ms, gpuMs: clip_gpu_time_ms, gpuErr: clip_gpu_error };
       },
     },
     {
