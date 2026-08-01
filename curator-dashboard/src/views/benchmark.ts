@@ -218,23 +218,52 @@ export function setupBenchmark() {
     errText.textContent = existing ? `${existing}\n${msg}` : msg;
   }
 
-  async function runSingleBenchmark(bench: BenchmarkConfig) {
-    if (bench.cpuEl) bench.cpuEl.textContent = "Running...";
-    if (bench.gpuEl) bench.gpuEl.textContent = "Running...";
-    if (bench.speedupEl) bench.speedupEl.textContent = "Calculating...";
+  let runningTick: ReturnType<typeof setInterval> | null = null;
 
-    const resp = await bench.run();
-    if ("Error" in resp) {
-      appendBenchError(`${bench.label}: ${resp.Error.message}`);
-      return;
+  function setRunningText(bench: BenchmarkConfig, text: string) {
+    if (bench.cpuEl) bench.cpuEl.textContent = text;
+    if (bench.gpuEl) bench.gpuEl.textContent = text;
+    if (bench.speedupEl) bench.speedupEl.textContent = text;
+  }
+
+  // Cycles a braille spinner after "Running " on the active card. Braille
+  // glyphs are single-width, so the status text never shifts horizontally.
+  function startRunningAnimation(bench: BenchmarkConfig) {
+    const braille = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let idx = 0;
+    setRunningText(bench, `Running ${braille[0]}`);
+    stopRunningAnimation();
+    runningTick = setInterval(() => {
+      idx = (idx + 1) % braille.length;
+      setRunningText(bench, `Running ${braille[idx]}`);
+    }, 120);
+  }
+
+  function stopRunningAnimation() {
+    if (runningTick !== null) {
+      clearInterval(runningTick);
+      runningTick = null;
     }
-    const result = bench.extractResult(resp);
-    if (result) {
-      displayThroughput(bench.cpuEl, bench.gpuEl, bench.speedupEl, result.cpuMs, result.gpuMs, result.gpuErr);
-    } else {
-      if (bench.cpuEl) bench.cpuEl.textContent = "N/A";
-      if (bench.gpuEl) bench.gpuEl.textContent = "N/A";
-      if (bench.speedupEl) bench.speedupEl.textContent = "—";
+  }
+
+  async function runSingleBenchmark(bench: BenchmarkConfig) {
+    startRunningAnimation(bench);
+    try {
+      const resp = await bench.run();
+      if ("Error" in resp) {
+        appendBenchError(`${bench.label}: ${resp.Error.message}`);
+        return;
+      }
+      const result = bench.extractResult(resp);
+      if (result) {
+        displayThroughput(bench.cpuEl, bench.gpuEl, bench.speedupEl, result.cpuMs, result.gpuMs, result.gpuErr);
+      } else {
+        if (bench.cpuEl) bench.cpuEl.textContent = "N/A";
+        if (bench.gpuEl) bench.gpuEl.textContent = "N/A";
+        if (bench.speedupEl) bench.speedupEl.textContent = "—";
+      }
+    } finally {
+      stopRunningAnimation();
     }
   }
 
@@ -265,12 +294,15 @@ export function setupBenchmark() {
     setAllRunButtonsDisabled(true);
 
     try {
-      for (const bench of benchmarks) {
-        await runSingleBenchmark(bench);
+      const total = benchmarks.length;
+      for (let i = 0; i < total; i++) {
+        runBtn.textContent = `Benchmarking ${i + 1}/${total}: ${benchmarks[i].label}...`;
+        await runSingleBenchmark(benchmarks[i]);
       }
     } catch (e: any) {
       appendBenchError(`Execution error: ${e.message || e}`);
     } finally {
+      stopRunningAnimation();
       runBtn.removeAttribute("disabled");
       runBtn.innerHTML = '<i class="bi bi-play-fill"></i> Run Benchmark';
       setAllRunButtonsDisabled(false);
