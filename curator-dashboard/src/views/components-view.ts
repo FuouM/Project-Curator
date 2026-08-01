@@ -960,3 +960,13 @@ export function refreshComponentStylesheet() {
 
   setupInputClearButtons();
 }
+
+// ---------------------------------------------------------------------------
+// HTML Template
+// ---------------------------------------------------------------------------
+
+export function renderComponentsHtml(): string {
+  return `
+    <div id="components-showcase-container" style="display: flex; flex-direction: column; gap: 16px;"></div>
+  `;
+}

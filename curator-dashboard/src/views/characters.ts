@@ -598,3 +598,32 @@ function renderUnassignedDetection(
   row.appendChild(deleteBtn);
   container.appendChild(row);
 }
+
+// ---------------------------------------------------------------------------
+// HTML Template
+// ---------------------------------------------------------------------------
+
+export function renderCharactersHtml(): string {
+  return `
+    <div class="group-box">
+      <div class="group-box-title"><i class="bi bi-bounding-box"></i> Character Identities</div>
+      <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+        <p style="margin: 0; font-size: 12px; color: var(--sys-text-subtle);">
+          Manage auto-discovered character identities from YOLO + CCIP detection.
+        </p>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="win-button" id="refresh-identities-btn" title="Refresh identities list">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+          </button>
+          <button type="button" class="win-button" id="reidentify-all-btn" title="Re-identify all detections against current identities">
+            <i class="bi bi-arrow-clockwise"></i> Reidentify All
+          </button>
+          <button type="button" class="win-button primary" id="create-identity-btn">
+            <i class="bi bi-plus-lg"></i> New Identity
+          </button>
+        </div>
+      </div>
+      <div id="characters-list-container" class="concepts-grid"></div>
+    </div>
+  `;
+}

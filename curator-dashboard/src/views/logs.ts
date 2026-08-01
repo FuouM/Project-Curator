@@ -221,3 +221,25 @@ export async function clearLogsData() {
     alert("Failed to clear logs: " + e);
   }
 }
+
+// ---------------------------------------------------------------------------
+// HTML Template
+// ---------------------------------------------------------------------------
+
+export function renderLogsHtml(): string {
+  return `
+    <div class="group-box" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+      <div class="group-box-title">System Diagnostic Logs</div>
+      <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
+        <div style="display: flex; gap: 0;">
+          <button class="win-button log-tab active" id="log-tab-dashboard" style="border-radius: 2px 0 0 2px;">Dashboard</button>
+          <button class="win-button log-tab" id="log-tab-service" style="border-radius: 0 2px 2px 0;">Service</button>
+        </div>
+        <div style="flex: 1;"></div>
+        <button class="win-button" id="refresh-logs-btn"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+        <button class="win-button" id="clear-logs-btn"><i class="bi bi-x-lg"></i> Clear</button>
+      </div>
+      <div id="log-content" style="flex: 1; font-family: 'Consolas', monospace; font-size: 11px; background-color: #1e1e1e; color: #cccccc; border: 1px solid #7a7a7a; padding: 8px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;"></div>
+    </div>
+  `;
+}

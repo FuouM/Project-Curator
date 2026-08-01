@@ -553,11 +553,35 @@ export function setupConcepts() {
             }
           });
         });
-      } else if ("Error" in resp) {
-        grid.innerHTML = `<div style="grid-column: 1 / -1; color: #ef4444; padding: 6px; font-size: 11px;">Error: ${resp.Error.message}</div>`;
       }
     } catch (e: any) {
       grid.innerHTML = `<div style="grid-column: 1 / -1; color: #ef4444; padding: 6px; font-size: 11px;">Error: ${e.message || e}</div>`;
     }
   };
+}
+
+// ---------------------------------------------------------------------------
+// HTML Template
+// ---------------------------------------------------------------------------
+
+export function renderConceptsHtml(): string {
+  return `
+    <div class="group-box">
+      <div class="group-box-title"><i class="bi bi-magic"></i> Custom Concept Learning (Few-Shot Prototype Tagging)</div>
+      <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+        <p style="margin: 0; font-size: 12px; color: var(--sys-text-subtle);">
+          Teach Curator new characters, copyrights, or series from sample images without model retraining.
+        </p>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="win-button danger" id="clean-auto-concept-tags-btn" title="Remove automatically applied concept tags from non-sample images">
+            <i class="bi bi-eraser"></i> Clean Auto-Tags
+          </button>
+          <button type="button" class="win-button primary" id="refresh-concepts-btn">
+            <i class="bi bi-arrow-clockwise"></i> Refresh Concepts
+          </button>
+        </div>
+      </div>
+      <div id="concepts-list-container" class="concepts-grid"></div>
+    </div>
+  `;
 }

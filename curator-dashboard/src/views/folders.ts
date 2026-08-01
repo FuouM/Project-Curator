@@ -257,3 +257,18 @@ async function handleReconcileClick() {
     panel.innerHTML = `<p style="color: #a80000;">Error: ${e.message || e}</p>`;
   }
 }
+
+// ---------------------------------------------------------------------------
+// HTML Template
+// ---------------------------------------------------------------------------
+
+export function renderFoldersHtml(): string {
+  return `
+    <div class="group-box">
+      <div class="group-box-title">Imported Folders</div>
+      <div id="folders-content">
+        <p style="color: #666; font-style: italic;">Loading folders...</p>
+      </div>
+    </div>
+  `;
+}

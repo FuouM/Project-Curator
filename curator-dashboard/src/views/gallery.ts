@@ -49,6 +49,80 @@ export async function refreshPaginatedImages(
   }
 }
 
+// ---------------------------------------------------------------------------
+// HTML Templates
+// ---------------------------------------------------------------------------
+
+export function renderGalleryHtml(): string {
+  return `
+    <div class="group-box">
+      <div class="group-box-title">All Images</div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" class="win-button" id="gallery-toggle-select-mode-btn">
+            <i class="bi bi-check2-square"></i> Select Mode
+          </button>
+          <span id="gallery-selected-count" style="font-size: 11px; color: var(--sys-text-subtle); display: none;">0 selected</span>
+          <button type="button" class="win-button" id="gallery-select-all-btn" style="display: none; font-size: 11px;">Select All</button>
+          <button type="button" class="win-button" id="gallery-clear-select-btn" style="display: none; font-size: 11px;">Clear</button>
+          <button type="button" class="win-button primary" id="gallery-teach-concept-btn" style="display: none; font-size: 11px;">
+            <i class="bi bi-magic"></i> Teach Concept (<span id="teach-select-count">0</span>)
+          </button>
+          <button type="button" class="win-button" id="gallery-lucky-btn">
+            <i class="bi bi-shuffle"></i> I'm Feeling Lucky
+          </button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <label style="font-size: 11px; color: #555555; display: flex; align-items: center; gap: 4px;">
+            Show:
+            <select class="input-field" id="gallery-per-page-select" style="width: 60px; height: 22px; font-size: 11px; padding: 1px 4px;">
+              <option value="12">12</option>
+              <option value="24">24</option>
+              <option value="48">48</option>
+              <option value="96">96</option>
+            </select>
+          </label>
+          <span id="gallery-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
+          <input type="number" id="gallery-page-jump" min="1" style="width: 50px; font-size: 11px; padding: 2px 4px;" placeholder="#" />
+          <button class="win-button" id="gallery-jump-btn" style="font-size: 11px; padding: 2px 6px;">Go</button>
+          <button class="win-button" id="gallery-prev-btn" disabled><i class="bi bi-caret-left-fill"></i> Prev</button>
+          <button class="win-button" id="gallery-next-btn">Next <i class="bi bi-caret-right-fill"></i></button>
+        </div>
+      </div>
+      <div class="image-grid" id="gallery-grid">
+        <!-- Dynamically populated -->
+      </div>
+    </div>
+  `;
+}
+
+export function renderFavoritesHtml(): string {
+  return `
+    <div class="group-box">
+      <div class="group-box-title">Favorite Images</div>
+      <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 1rem; gap: 10px;">
+        <label style="font-size: 11px; color: #555555; display: flex; align-items: center; gap: 4px;">
+          Show:
+          <select class="input-field" id="favorites-per-page-select" style="width: 60px; height: 22px; font-size: 11px; padding: 1px 4px;">
+            <option value="12">12</option>
+            <option value="24">24</option>
+            <option value="48">48</option>
+            <option value="96">96</option>
+          </select>
+        </label>
+        <span id="favorites-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
+        <input type="number" id="favorites-page-jump" min="1" style="width: 50px; font-size: 11px; padding: 2px 4px;" placeholder="#" />
+        <button class="win-button" id="favorites-jump-btn" style="font-size: 11px; padding: 2px 6px;">Go</button>
+        <button class="win-button" id="favorites-prev-btn" disabled><i class="bi bi-caret-left-fill"></i> Prev</button>
+        <button class="win-button" id="favorites-next-btn">Next <i class="bi bi-caret-right-fill"></i></button>
+      </div>
+      <div class="image-grid" id="favorites-grid">
+        <!-- Dynamically populated -->
+      </div>
+    </div>
+  `;
+}
+
 export function setupPaginationButtons(prevId: string, nextId: string, pageRef: { value: number }, refreshFn: () => Promise<void>) {
   document.getElementById(prevId)?.addEventListener("click", () => {
     if (pageRef.value > 0) { pageRef.value--; refreshFn(); }

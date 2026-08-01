@@ -64,8 +64,8 @@ body {
   display: none !important;
 }
 
-.skeleton {
-  background: linear-gradient(90deg, #e0e0e0 25%, #f0f0f0 50%, #e0e0e0 75%);
+.skeleton, .skeleton-pulse {
+  background: linear-gradient(90deg, var(--sys-control-bg, #e0e0e0) 25%, var(--sys-window-bg, #f0f0f0) 50%, var(--sys-control-bg, #e0e0e0) 75%);
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.5s ease-in-out infinite;
 }

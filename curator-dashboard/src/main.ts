@@ -4,13 +4,24 @@ import { setupLogTabs } from "./views/logs";
 import { setupBenchmark } from "./views/benchmark";
 import { setupSettings } from "./views/settings";
 import { setupImport } from "./views/import";
-import { setupSearch } from "./views/search";
+import { setupSearch, renderSearchHtml } from "./views/search";
 import { setupTags } from "./views/tags";
 import { setupConcepts } from "./views/concepts";
 import { setupFilenameParserView } from "./views/filename-parser";
 import { setupNavigation, navigateToView } from "./views/navigation";
 import { callService } from "./ipc";
-import { updateStatusIndicators, updateTaggerIndicators, applySettingsToUI, startStatusPolling, renderFeaturedDay } from "./views/dashboard";
+import { updateStatusIndicators, updateTaggerIndicators, applySettingsToUI, startStatusPolling, renderFeaturedDay, renderDashboardHtml } from "./views/dashboard";
+import { renderGalleryHtml, renderFavoritesHtml } from "./views/gallery";
+import { renderTagstatsHtml } from "./views/tagstats";
+import { renderFoldersHtml } from "./views/folders";
+import { renderImportHtml } from "./views/import";
+import { renderConceptsHtml } from "./views/concepts";
+import { renderCharactersHtml } from "./views/characters";
+import { renderFilenameParserHtml } from "./views/filename-parser";
+import { renderLogsHtml } from "./views/logs";
+import { renderBenchmarkHtml } from "./views/benchmark";
+import { renderSettingsHtml } from "./views/settings";
+import { renderComponentsHtml } from "./views/components-view";
 import { renderImages, setupGridDelegation } from "./cards";
 import { setGalleryPage, getImagesPerPage, setLuckyHighlightId } from "./state";
 import { refreshGallery } from "./views/gallery";
@@ -91,6 +102,37 @@ function setupWindowStateListener() {
 
 function init() {
   restoreWindowState();
+
+  // Render all view templates dynamically into their shell elements
+  const viewDashboard = document.getElementById("view-dashboard");
+  if (viewDashboard) viewDashboard.innerHTML = renderDashboardHtml();
+  const viewGallery = document.getElementById("view-gallery");
+  if (viewGallery) viewGallery.innerHTML = renderGalleryHtml();
+  const viewFavorites = document.getElementById("view-favorites");
+  if (viewFavorites) viewFavorites.innerHTML = renderFavoritesHtml();
+  const viewTagstats = document.getElementById("view-tagstats");
+  if (viewTagstats) viewTagstats.innerHTML = renderTagstatsHtml();
+  const viewFolders = document.getElementById("view-folders");
+  if (viewFolders) viewFolders.innerHTML = renderFoldersHtml();
+  const viewImport = document.getElementById("view-import");
+  if (viewImport) viewImport.innerHTML = renderImportHtml();
+  const viewConcepts = document.getElementById("view-concepts");
+  if (viewConcepts) viewConcepts.innerHTML = renderConceptsHtml();
+  const viewCharacters = document.getElementById("view-characters");
+  if (viewCharacters) viewCharacters.innerHTML = renderCharactersHtml();
+  const viewFilenameParser = document.getElementById("view-filename-parser");
+  if (viewFilenameParser) viewFilenameParser.innerHTML = renderFilenameParserHtml();
+  const viewSearch = document.getElementById("view-search");
+  if (viewSearch) viewSearch.innerHTML = renderSearchHtml();
+  const viewLogs = document.getElementById("view-logs");
+  if (viewLogs) viewLogs.innerHTML = renderLogsHtml();
+  const viewBenchmark = document.getElementById("view-benchmark");
+  if (viewBenchmark) viewBenchmark.innerHTML = renderBenchmarkHtml();
+  const viewSettings = document.getElementById("view-settings");
+  if (viewSettings) viewSettings.innerHTML = renderSettingsHtml();
+  const viewComponents = document.getElementById("view-components");
+  if (viewComponents) viewComponents.innerHTML = renderComponentsHtml();
+
   setupNavigation();
   setupImport();
   setupSearch();

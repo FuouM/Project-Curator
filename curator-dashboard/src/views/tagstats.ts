@@ -143,3 +143,18 @@ export async function refreshTagStats() {
     container.innerHTML = `<p style="color: #a80000;">Error: ${e.message || e}</p>`;
   }
 }
+
+// ---------------------------------------------------------------------------
+// HTML Template
+// ---------------------------------------------------------------------------
+
+export function renderTagstatsHtml(): string {
+  return `
+    <div class="group-box">
+      <div class="group-box-title">Tag Distribution &amp; Statistics</div>
+      <div id="tagstats-content">
+        <p style="color: #666; font-style: italic;">Loading tag statistics...</p>
+      </div>
+    </div>
+  `;
+}

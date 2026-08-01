@@ -115,5 +115,5 @@ export function buildOcrLabelSvg(boxes: OcrPreviewBox[], viewW: number, viewH: n
       `font-weight="600" paint-order="stroke" stroke="rgba(0,0,0,0.8)" ` +
       `stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">${b.text}</text>`;
   }
-  return `<svg viewBox="0 0 ${viewW} ${viewH}" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg" style="display:block; background:#c8c8c8;">${polys}${labels}</svg>`;
+  return `<svg viewBox="0 0 ${viewW} ${viewH}" width="100%" xmlns="http://www.w3.org/2000/svg" style="display:block; background:#c8c8c8; height: auto;">${polys}${labels}</svg>`;
 }

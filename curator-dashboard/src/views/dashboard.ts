@@ -233,3 +233,67 @@ export function applySettingsToUI(resp: any) {
   if (detMetricsSelect) detMetricsSelect.value = s.detection_metrics_device;
   if (ocrDeviceSelect) ocrDeviceSelect.value = s.ocr_device;
 }
+
+// ---------------------------------------------------------------------------
+// HTML Template
+// ---------------------------------------------------------------------------
+
+export function renderDashboardHtml(): string {
+  return `
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Images</div>
+        <div class="stat-value" id="stat-images" style="display: flex; align-items: center; gap: 6px;">
+          <span class="skeleton-text skeleton-pulse" style="width: 24px; height: 14px; display: inline-block;"></span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Indexed Vectors</div>
+        <div class="stat-value" id="stat-vectors" style="display: flex; align-items: center; gap: 6px;">
+          <span class="skeleton-text skeleton-pulse" style="width: 24px; height: 14px; display: inline-block;"></span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Pending Jobs</div>
+        <div class="stat-value" id="stat-pending" style="display: flex; align-items: center; gap: 6px;">
+          <span class="skeleton-text skeleton-pulse" style="width: 24px; height: 14px; display: inline-block;"></span>
+        </div>
+      </div>
+      <div class="stat-card" id="tagger-stat-card">
+        <div class="stat-label">AI Tagger</div>
+        <div class="stat-value" id="stat-tagger" style="font-size: 13px;">
+          <span class="skeleton-text skeleton-pulse" style="width: 60px; height: 14px; display: inline-block;"></span>
+        </div>
+        <div id="stat-tagger-detail" style="font-size: 11px; color: #888; margin-top: 4px; line-height: 1.4;">—</div>
+      </div>
+    </div>
+
+    <div class="dashboard-bottom-row">
+      <!-- Feature of the Day Panel -->
+      <div class="group-box featured-panel" style="flex: 1; min-width: 300px; align-self: flex-start;">
+        <div class="group-box-title">Feature of the Day</div>
+        <div id="featured-day-content" style="display: flex; flex-direction: column; gap: 12px; justify-content: flex-start;">
+          <div class="skeleton-card skeleton-pulse" style="width: 100%; height: 200px; border-radius: 4px;"></div>
+        </div>
+        <div style="margin-top: 8px;">
+          <button type="button" class="win-button" id="dashboard-lucky-btn" style="width: 100%;">
+            <i class="bi bi-shuffle"></i> I'm Feeling Lucky
+          </button>
+        </div>
+      </div>
+
+      <!-- Latest Imports Panel -->
+      <div class="group-box imports-panel" style="flex: 1.5; min-width: 350px;">
+        <div class="group-box-title">Latest Imports</div>
+        <div class="imports-scroll">
+          <div class="image-grid" id="latest-imports-grid">
+            <div class="skeleton-card skeleton-pulse" style="width: 100%; height: 240px; border-radius: 4px;"></div>
+            <div class="skeleton-card skeleton-pulse" style="width: 100%; height: 240px; border-radius: 4px;"></div>
+            <div class="skeleton-card skeleton-pulse" style="width: 100%; height: 240px; border-radius: 4px;"></div>
+            <div class="skeleton-card skeleton-pulse" style="width: 100%; height: 240px; border-radius: 4px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}

@@ -455,3 +455,131 @@ export async function refreshBenchmarkMaxImages() {
 }
 
 export function updateBenchmarkModelHeader(_model: string | null) {}
+
+// ---------------------------------------------------------------------------
+// HTML Template
+// ---------------------------------------------------------------------------
+
+interface BenchmarkCardDef {
+  key: string;
+  label: string;
+  size: string;
+}
+
+const BENCHMARK_CARDS: BenchmarkCardDef[] = [
+  { key: "clip",         label: "CLIP ViT-B/32",               size: "224x224"   },
+  { key: "mclip",        label: "MobileCLIP-S2",               size: "256x256"   },
+  { key: "tagger",       label: "Camie Tagger v2",             size: "512x512"   },
+  { key: "yolo",         label: "YOLO Person Detection",       size: "640x640"   },
+  { key: "ccip-feat",    label: "CCIP Feature Extraction",     size: "384x384"   },
+  { key: "ccip-metrics", label: "CCIP Metrics",                size: "16x768"    },
+  { key: "ocr-det",      label: "OCR Text Detection",          size: "960x960"   },
+  { key: "ocr-rec",      label: "OCR Text Recognition",        size: "48x320"    },
+  { key: "ocr-cls",      label: "OCR Line Classification",     size: "80x160"    },
+  { key: "manga-bubble", label: "Manga Bubble YOLO",           size: "1280x1280" },
+];
+
+function benchmarkCardHtml(card: BenchmarkCardDef): string {
+  return `
+    <div class="group-box" style="padding: 10px; margin: 0;">
+      <button class="win-button" data-benchmark-key="${card.key}" title="Run ${card.label} benchmark"
+        style="position: absolute; top: -9px; right: 4px; height: 18px; padding: 0 7px; font-size: 11px; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
+        <i class="bi bi-play-fill" style="font-size: 12px;"></i>
+      </button>
+      <div class="group-box-title">${card.label} <span style="font-weight: normal; font-size: 10px; color: #666;">(${card.size})</span></div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+          <span>CPU Throughput</span>
+          <span id="benchmark-${card.key}-cpu" style="text-align: right;">—</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+          <span>GPU Throughput</span>
+          <span id="benchmark-${card.key}-gpu" style="text-align: right;">—</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid #eee; padding-top: 4px;">
+          <span>Throughput Factor</span>
+          <span id="benchmark-${card.key}-speedup" style="text-align: right; font-weight: bold;">—</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+export function renderBenchmarkHtml(): string {
+  return `
+    <div class="group-box" style="display: flex; flex-direction: column; gap: 16px;">
+      <div class="group-box-title">Hardware Throughput Benchmark</div>
+      <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">
+        Measure inference latency on CPU vs GPU. Runs all available models (CLIP, Tagger, YOLO, CCIP) and reports average speed and throughput factor.
+      </p>
+      <div style="display: flex; gap: 16px; align-items: center;">
+        <button class="win-button" id="run-benchmark-btn">
+          <i class="bi bi-play-fill"></i> Run Benchmark
+        </button>
+      </div>
+
+      <div class="group-box" style="padding: 12px; margin-top: 10px; background-color: #f6f6f6;">
+        <div class="group-box-title">Results</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #ccc; padding-bottom: 6px; margin-bottom: 10px;">
+          <span style="font-weight: bold; font-size: 11px;">GPU Provider Support:</span>
+          <span id="benchmark-gpu-loaded" style="font-size: 11px;">—</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px;">
+          ${BENCHMARK_CARDS.map(benchmarkCardHtml).join("")}
+        </div>
+      </div>
+      <p style="font-size: 11px; color: red;" id="benchmark-error-msg"></p>
+    </div>
+
+    <div class="group-box" style="display: flex; flex-direction: column; gap: 16px; margin-top: 16px;">
+      <div class="group-box-title">Image Processing &amp; Preprocessing Benchmark (N = 100)</div>
+      <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">
+        Runs CPU image processing and input preprocessing stages (RGB decoding, thumbnailing, CLIP tensor prep, Tagger fast-image-resize tensor prep, YOLO letterbox tensor prep, and CCIP tensor prep) on up to 100 database images.
+      </p>
+      <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 11px;">
+          <label for="benchmark-pipeline-n">Number of images (N):</label>
+          <input type="number" id="benchmark-pipeline-n" class="win-input" value="100" min="1" style="width: 80px;" />
+          <span id="benchmark-pipeline-max-hint" style="color: #666;">(max ...)</span>
+        </div>
+        <button class="win-button" id="run-image-proc-benchmark-btn">
+          <i class="bi bi-play-fill"></i> Run Pipeline Benchmark
+        </button>
+      </div>
+
+      <div class="group-box" style="padding: 12px; margin-top: 10px; background-color: #f6f6f6;">
+        <div class="group-box-title">Pipeline Results</div>
+        <div style="display: flex; flex-direction: column; gap: 12px; font-size: 11px;">
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #ccc; padding-bottom: 4px;">
+            <span style="font-weight: bold;">Images Processed:</span>
+            <span id="benchmark-pipeline-count">—</span>
+          </div>
+          <div style="margin-top: 4px;">
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+              <span>Image Decode:</span><span id="benchmark-pipeline-decode">—</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+              <span>Thumbnail Generation:</span><span id="benchmark-pipeline-thumbnail">—</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+              <span>CLIP Preprocessing:</span><span id="benchmark-pipeline-clip-prep">—</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+              <span>Camie Tagger Preprocessing:</span><span id="benchmark-pipeline-tagger-prep">—</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+              <span>YOLO Preprocessing:</span><span id="benchmark-pipeline-yolo-prep">—</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+              <span>CCIP Preprocessing:</span><span id="benchmark-pipeline-ccip-prep">—</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding-top: 4px; border-top: 1px solid #777; font-weight: bold;">
+              <span>Total Pipeline Time:</span><span id="benchmark-pipeline-total">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p style="font-size: 11px; color: red;" id="benchmark-pipeline-error-msg"></p>
+    </div>
+  `;
+}
