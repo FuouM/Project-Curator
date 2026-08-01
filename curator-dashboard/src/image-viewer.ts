@@ -73,6 +73,58 @@ function updateOcrButton(active: boolean) {
   }
 }
 
+interface PlacedLabel {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+function estimateLabelWidth(text: string, fontSize: number): number {
+  let w = 0;
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    // CJK ideographs/radicals, kana, Hangul, and fullwidth forms are ~1em wide
+    if ((code >= 0x2e80 && code <= 0x9fff) ||
+        (code >= 0xac00 && code <= 0xd7af) ||
+        (code >= 0x3040 && code <= 0x30ff) ||
+        (code >= 0xff00 && code <= 0xffef)) {
+      w += fontSize;
+    } else {
+      w += fontSize * 0.6;
+    }
+  }
+  return w;
+}
+
+// Pushes a label downwards until it no longer overlaps any previously placed
+// label, so stacked/overlapping OCR boxes never draw text on top of each other.
+function placeLabelAvoidingOverlap(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  placed: PlacedLabel[],
+  pad: number,
+): { x: number; y: number } {
+  let lx = x;
+  let ly = y;
+  let guard = 0;
+  while (guard++ < 64) {
+    let hit: PlacedLabel | null = null;
+    for (const p of placed) {
+      if (lx < p.x + p.w + pad && lx + w + pad > p.x &&
+          ly < p.y + p.h + pad && ly + h + pad > p.y) {
+        hit = p;
+        break;
+      }
+    }
+    if (!hit) break;
+    ly = hit.y + hit.h + pad;
+  }
+  return { x: lx, y: ly };
+}
+
 async function toggleOcr() {
   if (!currentViewerImageId) return;
 
@@ -121,15 +173,33 @@ async function toggleOcr() {
     ocrOverlay.innerHTML = "";
     ocrOverlay.setAttribute("viewBox", `0 0 ${img.clientWidth} ${img.clientHeight}`);
 
-    for (const det of detections) {
-      // Draw polygon points path: p0 -> p1 -> p2 -> p3 -> close
+    // Draw top-to-bottom so overlap resolution pushes text into unclaimed space
+    const sortedDetections = [...detections].sort(
+      (a: any, b: any) =>
+        (Math.min(a.y0, a.y1, a.y2, a.y3) - Math.min(b.y0, b.y1, b.y2, b.y3)) ||
+        (Math.min(a.x0, a.x1, a.x2, a.x3) - Math.min(b.x0, b.x1, b.x2, b.x3)),
+    );
+
+    // Collect per-detection polygon geometry so all boxes can be drawn first
+    // and all text labels afterwards (keeping text on top of the boxes).
+    const boxGeom: { det: any; points: number[][]; minX: number; minY: number }[] = [];
+    for (const det of sortedDetections) {
       const points = [
         [det.x0 * scaleX, det.y0 * scaleY],
         [det.x1 * scaleX, det.y1 * scaleY],
         [det.x2 * scaleX, det.y2 * scaleY],
         [det.x3 * scaleX, det.y3 * scaleY],
       ];
-      
+      boxGeom.push({
+        det,
+        points,
+        minX: Math.min(points[0][0], points[1][0], points[2][0], points[3][0]),
+        minY: Math.min(points[0][1], points[1][1], points[2][1], points[3][1]),
+      });
+    }
+
+    // Pass 1: draw polygon boxes
+    for (const { det, points } of boxGeom) {
       const polyPath = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
       const ptsAttr = points.map(pt => `${pt[0]},${pt[1]}`).join(" ");
       polyPath.setAttribute("points", ptsAttr);
@@ -142,24 +212,6 @@ async function toggleOcr() {
       }
       polyPath.setAttribute("stroke-width", "2");
       ocrOverlay.appendChild(polyPath);
-
-      // Render text label centered inside the polygon bounds
-      const minX = Math.min(points[0][0], points[1][0], points[2][0], points[3][0]);
-      const minY = Math.min(points[0][1], points[1][1], points[2][1], points[3][1]);
-
-      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      label.setAttribute("x", String(minX + 4));
-      label.setAttribute("y", String(minY + 14));
-      label.setAttribute("fill", "#ffffff");
-      label.setAttribute("font-size", "12");
-      label.setAttribute("font-weight", "600");
-      label.setAttribute("paint-order", "stroke");
-      label.setAttribute("stroke", "rgba(0,0,0,0.8)");
-      label.setAttribute("stroke-width", "3");
-      label.setAttribute("stroke-linecap", "round");
-      label.setAttribute("stroke-linejoin", "round");
-      label.textContent = det.text;
-      ocrOverlay.appendChild(label);
     }
 
     // Draw YOLO bubble detection boxes as dashed green rectangles
@@ -175,6 +227,31 @@ async function toggleOcr() {
       rect.setAttribute("stroke-dasharray", "6,3");
       rect.setAttribute("stroke-opacity", "0.8");
       ocrOverlay.appendChild(rect);
+    }
+
+    // Pass 2: draw text labels on top, shifting each below any previous label
+    // so overlapping boxes don't stack text on top of one another.
+    const placedLabels: PlacedLabel[] = [];
+    const fontSize = 12;
+    for (const { det, minX, minY } of boxGeom) {
+      const labelW = estimateLabelWidth(det.text, fontSize);
+      const labelH = fontSize + 4;
+      const pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placedLabels, 3);
+      placedLabels.push({ x: pos.x, y: pos.y, w: labelW, h: labelH });
+
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("x", String(pos.x));
+      label.setAttribute("y", String(pos.y + fontSize));
+      label.setAttribute("fill", "#ffffff");
+      label.setAttribute("font-size", String(fontSize));
+      label.setAttribute("font-weight", "600");
+      label.setAttribute("paint-order", "stroke");
+      label.setAttribute("stroke", "rgba(0,0,0,0.8)");
+      label.setAttribute("stroke-width", "5");
+      label.setAttribute("stroke-linecap", "round");
+      label.setAttribute("stroke-linejoin", "round");
+      label.textContent = det.text;
+      ocrOverlay.appendChild(label);
     }
 
     ocrVisible = true;
