@@ -5,6 +5,7 @@ import { applySettingsToUI, refreshTaggerStatus } from "./dashboard";
 import { updateBenchmarkModelHeader } from "./benchmark";
 import { updateReindexProgress, startReindexPolling } from "./settings-reindex";
 import { setupMaintenanceButtons } from "./settings-maintenance";
+import { buildOcrLabelSvg, getOcrTextSettings } from "../ocr-text";
 
 export function setupSettings() {
   const clipSelect = document.getElementById("settings-clip-device") as HTMLSelectElement;
@@ -64,6 +65,39 @@ export function setupSettings() {
       } else {
         document.body.classList.remove("hide-favorite-btn");
       }
+    });
+  }
+
+  // OCR text rendering settings (localStorage) with live preview
+  const ocrFontSizeSelect = document.getElementById("settings-ocr-font-size") as HTMLSelectElement;
+  const ocrStrokeWidthSelect = document.getElementById("settings-ocr-stroke-width") as HTMLSelectElement;
+  const { fontSize, strokeWidth } = getOcrTextSettings();
+  if (ocrFontSizeSelect) ocrFontSizeSelect.value = fontSize.toString();
+  if (ocrStrokeWidthSelect) ocrStrokeWidthSelect.value = strokeWidth.toString();
+
+  const OCR_PREVIEW_BOXES = [
+    { pts: [[20, 20], [150, 18], [152, 42], [22, 44]], text: "Lorem ipsum", color: "#3498db", fill: "rgba(52, 152, 219, 0.15)" },
+    { pts: [[60, 34], [230, 30], [233, 64], [63, 68]], text: "overlapping labels", color: "#9b59b6", fill: "rgba(155, 89, 182, 0.15)" },
+    { pts: [[30, 78], [210, 74], [214, 108], [34, 112]], text: "pushed below", color: "#3498db", fill: "rgba(52, 152, 219, 0.15)" },
+  ];
+
+  function renderOcrPreview() {
+    const preview = document.getElementById("settings-ocr-preview");
+    if (!preview) return;
+    preview.innerHTML = buildOcrLabelSvg(OCR_PREVIEW_BOXES, 260, 130);
+  }
+  renderOcrPreview();
+
+  if (ocrFontSizeSelect) {
+    ocrFontSizeSelect.addEventListener("change", () => {
+      localStorage.setItem("curator-ocr-font-size", ocrFontSizeSelect.value);
+      renderOcrPreview();
+    });
+  }
+  if (ocrStrokeWidthSelect) {
+    ocrStrokeWidthSelect.addEventListener("change", () => {
+      localStorage.setItem("curator-ocr-stroke-width", ocrStrokeWidthSelect.value);
+      renderOcrPreview();
     });
   }
 

@@ -3,6 +3,7 @@ import { maskPath } from "./components";
 import { logJS } from "./utils";
 import { getImageClickAction } from "./state";
 import { callService } from "./ipc";
+import { estimateLabelWidth, getOcrTextSettings, placeLabelAvoidingOverlap, type PlacedLabel } from "./ocr-text";
 
 let currentViewerPath: string | null = null;
 let currentViewerImageId: number | null = null;
@@ -71,58 +72,6 @@ function updateOcrButton(active: boolean) {
     btn.classList.remove("active");
     btn.style.background = "";
   }
-}
-
-interface PlacedLabel {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-function estimateLabelWidth(text: string, fontSize: number): number {
-  let w = 0;
-  for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0;
-    // CJK ideographs/radicals, kana, Hangul, and fullwidth forms are ~1em wide
-    if ((code >= 0x2e80 && code <= 0x9fff) ||
-        (code >= 0xac00 && code <= 0xd7af) ||
-        (code >= 0x3040 && code <= 0x30ff) ||
-        (code >= 0xff00 && code <= 0xffef)) {
-      w += fontSize;
-    } else {
-      w += fontSize * 0.6;
-    }
-  }
-  return w;
-}
-
-// Pushes a label downwards until it no longer overlaps any previously placed
-// label, so stacked/overlapping OCR boxes never draw text on top of each other.
-function placeLabelAvoidingOverlap(
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  placed: PlacedLabel[],
-  pad: number,
-): { x: number; y: number } {
-  let lx = x;
-  let ly = y;
-  let guard = 0;
-  while (guard++ < 64) {
-    let hit: PlacedLabel | null = null;
-    for (const p of placed) {
-      if (lx < p.x + p.w + pad && lx + w + pad > p.x &&
-          ly < p.y + p.h + pad && ly + h + pad > p.y) {
-        hit = p;
-        break;
-      }
-    }
-    if (!hit) break;
-    ly = hit.y + hit.h + pad;
-  }
-  return { x: lx, y: ly };
 }
 
 async function toggleOcr() {
@@ -231,8 +180,8 @@ async function toggleOcr() {
 
     // Pass 2: draw text labels on top, shifting each below any previous label
     // so overlapping boxes don't stack text on top of one another.
+    const { fontSize, strokeWidth } = getOcrTextSettings();
     const placedLabels: PlacedLabel[] = [];
-    const fontSize = 12;
     for (const { det, minX, minY } of boxGeom) {
       const labelW = estimateLabelWidth(det.text, fontSize);
       const labelH = fontSize + 4;
@@ -243,11 +192,11 @@ async function toggleOcr() {
       label.setAttribute("x", String(pos.x));
       label.setAttribute("y", String(pos.y + fontSize));
       label.setAttribute("fill", "#ffffff");
-      label.setAttribute("font-size", String(fontSize));
+      label.style.fontSize = `${fontSize}px`;
       label.setAttribute("font-weight", "600");
       label.setAttribute("paint-order", "stroke");
       label.setAttribute("stroke", "rgba(0,0,0,0.8)");
-      label.setAttribute("stroke-width", "5");
+      label.setAttribute("stroke-width", String(strokeWidth));
       label.setAttribute("stroke-linecap", "round");
       label.setAttribute("stroke-linejoin", "round");
       label.textContent = det.text;
