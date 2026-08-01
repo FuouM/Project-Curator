@@ -1,3 +1,4 @@
+use curator_core::concept::vector_to_bytes;
 use curator_core::db::models::Image;
 use curator_core::ipc::EmbeddingModel;
 use curator_core::vector::{ModelManager, VectorIndex};
@@ -13,6 +14,8 @@ pub struct BackgroundWorker {
     model_manager: Arc<ModelManager>,
     vector_index: Arc<VectorIndex>,
 }
+
+const INDEX_SAVE_BATCH_INTERVAL: u32 = 8;
 
 struct PreprocessedBatch {
     images: Vec<Image>,
@@ -34,9 +37,54 @@ impl BackgroundWorker {
     }
 
     pub fn start(self) {
-        // Reset any leftover 'preprocessing' states to 'pending' on startup
+        // Reset any leftover 'preprocessing' states to 'pending' on startup,
+        // and reconcile debounced-index saves: any 'ready' row for the active
+        // source that is missing from the on-disk USearch index (e.g. after a
+        // crash between batches) is reset to 'pending' so it is re-indexed.
         let db_startup = self.db.clone();
+        let vi_startup = self.vector_index.clone();
+        let mm_startup = self.model_manager.clone();
         tokio::spawn(async move {
+            let active = mm_startup.active_model();
+            let source_name = match active {
+                EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
+                EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
+            };
+            if let Ok((source_id,)) =
+                sqlx::query_as::<_, (i64,)>("SELECT id FROM sources WHERE name = ? LIMIT 1")
+                    .bind(source_name)
+                    .fetch_one(&db_startup)
+                    .await
+            {
+                let ready_ids: Vec<(i64,)> = sqlx::query_as(
+                    "SELECT image_id FROM image_vectors WHERE source_id = ? AND vector_state = 'ready'",
+                )
+                .bind(source_id)
+                .fetch_all(&db_startup)
+                .await
+                .unwrap_or_default();
+                let stale: Vec<i64> = ready_ids
+                    .into_iter()
+                    .map(|r| r.0)
+                    .filter(|id| !vi_startup.contains(*id as u64))
+                    .collect();
+                if !stale.is_empty() {
+                    let ph = stale.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                    let sql = format!(
+                        "UPDATE image_vectors SET vector_state = 'pending' WHERE source_id = ? AND image_id IN ({})",
+                        ph
+                    );
+                    let mut q = sqlx::query(&sql).bind(source_id);
+                    for id in &stale {
+                        q = q.bind(*id);
+                    }
+                    if let Err(e) = q.execute(&db_startup).await {
+                        warn!("Failed to reconcile stale index state on startup: {:?}", e);
+                    } else {
+                        warn!("Reset {} ready rows missing from index to pending", stale.len());
+                    }
+                }
+            }
             if let Err(e) = sqlx::query("UPDATE image_vectors SET vector_state = 'pending' WHERE vector_state = 'preprocessing'")
                 .execute(&db_startup)
                 .await
@@ -191,6 +239,7 @@ impl BackgroundWorker {
 
         tokio::spawn(async move {
             info!("Pipelined indexing/inference stage started.");
+            let mut batches_since_save: u32 = 0;
             while let Some(batch) = rx.recv().await {
                 info!(
                     "Indexing preprocessed batch of {} images...",
@@ -211,11 +260,21 @@ impl BackgroundWorker {
                 match inference_res {
                     Ok(Ok(embeddings_results)) => {
                         let mut added_any = false;
+
+                        // Batch all per-image state updates into a single transaction
+                        let mut tx = match db_inf.begin().await {
+                            Ok(tx) => tx,
+                            Err(e) => {
+                                error!("Failed to begin index state transaction: {:?}", e);
+                                continue;
+                            }
+                        };
                         for (image, emb_res) in images.into_iter().zip(embeddings_results) {
                             match emb_res {
                                 Ok(embedding) => {
-                                    // Add to USearch index in memory (persisted once after batch)
-                                    if let Err(e) = vi_inf.add_without_save(image.id as u64, &embedding) {
+                                    // Add to USearch index in memory (persisted periodically)
+                                    if let Err(e) = vi_inf.add_without_save(image.id as u64, &embedding)
+                                    {
                                         error!(
                                             "Failed to index vector in USearch for image {}: {:?}",
                                             image.id, e
@@ -223,7 +282,7 @@ impl BackgroundWorker {
                                         let _ = sqlx::query("UPDATE image_vectors SET vector_state = 'failed' WHERE image_id = ? AND source_id = ?")
                                             .bind(image.id)
                                             .bind(source_id)
-                                            .execute(&db_inf)
+                                            .execute(&mut *tx)
                                             .await;
                                         continue;
                                     }
@@ -235,17 +294,23 @@ impl BackgroundWorker {
                                         sha2::Sha256::digest(bytemuck::cast_slice(&embedding))
                                     );
 
+                                    // Persist the embedding BLOB alongside the ready state so
+                                    // concept prototype rebuilds reuse it instead of re-running
+                                    // full ONNX inference per sample image.
+                                    let vector_blob = vector_to_bytes(&embedding);
+
                                     // Update SQLite database to set state to ready
                                     let update_res = sqlx::query(
                                         "UPDATE image_vectors 
-                                         SET vector_state = 'ready', vector_id = ?, vector_checksum = ?, created_at = CURRENT_TIMESTAMP
+                                         SET vector_state = 'ready', vector_id = ?, vector_checksum = ?, vector = ?, created_at = CURRENT_TIMESTAMP
                                          WHERE image_id = ? AND source_id = ?"
                                     )
                                     .bind(image.id.to_string())
                                     .bind(checksum)
+                                    .bind(vector_blob)
                                     .bind(image.id)
                                     .bind(source_id)
-                                    .execute(&db_inf)
+                                    .execute(&mut *tx)
                                     .await;
 
                                     if let Err(e) = update_res {
@@ -257,12 +322,20 @@ impl BackgroundWorker {
                                     let _ = sqlx::query("UPDATE image_vectors SET vector_state = 'failed' WHERE image_id = ? AND source_id = ?")
                                         .bind(image.id)
                                         .bind(source_id)
-                                        .execute(&db_inf)
+                                        .execute(&mut *tx)
                                         .await;
                                 }
                             }
                         }
-                        if added_any {
+                        if let Err(e) = tx.commit().await {
+                            error!("Failed to commit index state transaction: {:?}", e);
+                        }
+
+                        // Debounce USearch persistence: a full index save is expensive,
+                        // so only flush to disk every N batches instead of every batch.
+                        batches_since_save += 1;
+                        if added_any && batches_since_save >= INDEX_SAVE_BATCH_INTERVAL {
+                            batches_since_save = 0;
                             if let Err(e) = vi_inf.save() {
                                 error!("Failed to save USearch index after batch processing: {:?}", e);
                             }

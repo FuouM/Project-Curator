@@ -24,6 +24,10 @@ function cacheThumbnail(imageId: number, url: string) {
   thumbCache.set(imageId, url);
 }
 
+export function invalidateThumbnailCache() {
+  thumbCache.clear();
+}
+
 // --- Crop Cache (LRU, limited to 100 entries) ---
 const cropCache = new LruCache<string>(100);
 
@@ -106,6 +110,8 @@ function updateThumbProgress() {
 }
 
 // --- Lazy Loading via IntersectionObserver (queues jobs, does not invoke directly) ---
+const observedThumbs = new Set<HTMLImageElement>();
+
 const lazyObserver = new IntersectionObserver((entries) => {
   for (const entry of entries) {
     if (entry.isIntersecting) {
@@ -129,9 +135,18 @@ const lazyObserver = new IntersectionObserver((entries) => {
         }
       }
       lazyObserver.unobserve(img);
+      observedThumbs.delete(img);
     }
   }
 }, { rootMargin: "300px" });
+
+function clearObservedThumbs() {
+  if (observedThumbs.size === 0) return;
+  for (const el of observedThumbs) {
+    lazyObserver.unobserve(el);
+  }
+  observedThumbs.clear();
+}
 
 // --- Tag Pill Helpers ---
 
@@ -309,8 +324,8 @@ export function attachCardEventHandlers(
   _imageData: any,
   _previewSelector: string,
   _isFeatured: boolean
-) {
-  container.addEventListener("click", (e) => {
+): () => void {
+  const handler = (e: Event) => {
     const target = e.target as HTMLElement;
     if (target.closest(".star-btn")) {
       handleStarClick(container, imageId);
@@ -342,7 +357,9 @@ export function attachCardEventHandlers(
       }
       return;
     }
-  });
+  };
+  container.addEventListener("click", handler);
+  return () => container.removeEventListener("click", handler);
 }
 
 function handleStarClick(card: HTMLElement, imageId: number) {
@@ -775,6 +792,7 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
 // --- Card Rendering (no per-card event handlers) ---
 
 export function renderCards(cards: CardImageData[], grid: HTMLElement) {
+  clearObservedThumbs();
   grid.innerHTML = "";
 
   const fragment = document.createDocumentFragment();
@@ -865,6 +883,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
   updateThumbProgress();
 
   grid.querySelectorAll<HTMLElement>("img[data-thumb-id][data-pending='1']").forEach(img => {
+    observedThumbs.add(img as HTMLImageElement);
     lazyObserver.observe(img);
   });
 }

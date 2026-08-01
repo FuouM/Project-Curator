@@ -1223,7 +1223,8 @@ pub async fn handle_request(
                 return Response::Error { message: format!("File not found: {:?}", filepath) };
             }
 
-            let (rgb_buf, width, height) = match curator_core::image_decode::decode_rgb(filepath_path) {
+            // Decode is CPU-bound — off the reactor thread.
+            let (rgb_buf, width, height) = match tokio::task::block_in_place(|| curator_core::image_decode::decode_rgb(filepath_path)) {
                 Ok(res) => res,
                 Err(e) => return Response::Error { message: format!("Image decode failed: {:?}", e) },
             };
@@ -1242,10 +1243,15 @@ pub async fn handle_request(
                 Err(e) => return Response::Error { message: format!("Task join panicked: {:?}", e) },
             };
 
-            // Save detections to DB
+            // Replace old detections + bubbles and insert new ones in a single transaction
+            let mut tx = match db.begin().await {
+                Ok(tx) => tx,
+                Err(e) => return Response::Error { message: format!("Failed to begin OCR transaction: {:?}", e) },
+            };
+
             if let Err(e) = sqlx::query("DELETE FROM image_ocr_detections WHERE image_id = ?")
                 .bind(image_id)
-                .execute(db)
+                .execute(&mut *tx)
                 .await
             {
                 return Response::Error { message: format!("Failed to clear old OCR data: {:?}", e) };
@@ -1268,11 +1274,34 @@ pub async fn handle_request(
                 .bind(p[3][0])
                 .bind(p[3][1])
                 .bind(det.is_from_bubble)
-                .execute(db)
+                .execute(&mut *tx)
                 .await
                 {
                     return Response::Error { message: format!("Failed to insert OCR detection: {:?}", e) };
                 }
+            }
+
+            if let Err(e) = sqlx::query("DELETE FROM image_ocr_bubble_boxes WHERE image_id = ?")
+                .bind(image_id).execute(&mut *tx).await
+            {
+                return Response::Error { message: format!("Failed to clear old OCR bubbles: {:?}", e) };
+            }
+            for b in &bubbles {
+                if let Err(e) = sqlx::query(
+                    "INSERT INTO image_ocr_bubble_boxes (image_id, x1, y1, x2, y2, confidence) VALUES (?, ?, ?, ?, ?, ?)"
+                )
+                .bind(image_id)
+                .bind(b.bbox[0]).bind(b.bbox[1]).bind(b.bbox[2]).bind(b.bbox[3])
+                .bind(b.confidence)
+                .execute(&mut *tx)
+                .await
+                {
+                    return Response::Error { message: format!("Failed to insert OCR bubble box: {:?}", e) };
+                }
+            }
+
+            if let Err(e) = tx.commit().await {
+                return Response::Error { message: format!("Failed to commit OCR transaction: {:?}", e) };
             }
 
             let results: Vec<curator_core::ipc::OcrResult> = match sqlx::query_as(
@@ -1295,19 +1324,6 @@ pub async fn handle_request(
                     confidence: b.confidence,
                 }
             }).collect();
-
-            // Save bubble boxes to DB
-            let _ = sqlx::query("DELETE FROM image_ocr_bubble_boxes WHERE image_id = ?")
-                .bind(image_id).execute(db).await;
-            for b in &bubbles {
-                let _ = sqlx::query(
-                    "INSERT INTO image_ocr_bubble_boxes (image_id, x1, y1, x2, y2, confidence) VALUES (?, ?, ?, ?, ?, ?)"
-                )
-                .bind(image_id)
-                .bind(b.bbox[0]).bind(b.bbox[1]).bind(b.bbox[2]).bind(b.bbox[3])
-                .bind(b.confidence)
-                .execute(db).await;
-            }
 
             Response::OcrDetectionsResult { image_id, detections: results, bubble_boxes: bubble_box_results }
         }

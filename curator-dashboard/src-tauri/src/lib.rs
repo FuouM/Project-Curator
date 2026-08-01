@@ -119,8 +119,42 @@ static IMAGES_DB: OnceCell<SqlitePool> = OnceCell::const_new();
 
 async fn pipe_request(request_json: &str) -> Result<String, String> {
     let client_mutex = get_grpc_client();
-    let mut guard = client_mutex.lock().await;
+    let mut client = {
+        let mut guard = client_mutex.lock().await;
+        ensure_client(&mut guard).await?
+    };
 
+    let grpc_req = curator_core::grpc::CuratorRequest {
+        request_json: request_json.to_string(),
+    };
+
+    match client.call(grpc_req).await {
+        Ok(grpc_resp) => Ok(grpc_resp.into_inner().response_json),
+        Err(e) => {
+            log_dashboard_event(&format!("gRPC call failed, attempting reconnect: {:?}", e));
+            let mut client = {
+                let mut guard = client_mutex.lock().await;
+                *guard = None;
+                ensure_client(&mut guard).await?
+            };
+            let grpc_req = curator_core::grpc::CuratorRequest {
+                request_json: request_json.to_string(),
+            };
+            client
+                .call(grpc_req)
+                .await
+                .map(|resp| resp.into_inner().response_json)
+                .map_err(|e2| format!("Retry also failed: {:?}", e2))
+        }
+    }
+}
+
+/// Connects (and if needed spawns + waits for) the Curator Service, then returns
+/// a cloned client. The global mutex is only held during connect, never across
+/// the actual gRPC call, so concurrent IPC calls are no longer serialized.
+async fn ensure_client(
+    guard: &mut Option<CuratorClient<Channel>>,
+) -> Result<CuratorClient<Channel>, String> {
     if guard.is_none() {
         match curator_core::ipc::grpc_helper::connect_ipc().await {
             Ok(channel) => {
@@ -144,46 +178,21 @@ async fn pipe_request(request_json: &str) -> Result<String, String> {
             }
         }
     }
-
-    let mut client = guard.clone().unwrap();
-    let grpc_req = curator_core::grpc::CuratorRequest {
-        request_json: request_json.to_string(),
-    };
-
-    match client.call(grpc_req).await {
-        Ok(grpc_resp) => Ok(grpc_resp.into_inner().response_json),
-        Err(e) => {
-            log_dashboard_event(&format!("gRPC call failed, attempting reconnect: {:?}", e));
-            *guard = None;
-            spawn_service();
-            let start = std::time::Instant::now();
-            let mut connected = false;
-            while start.elapsed() < std::time::Duration::from_secs(3) {
-                if let Ok(channel) = curator_core::ipc::grpc_helper::connect_ipc().await {
-                    *guard = Some(CuratorClient::new(channel));
-                    connected = true;
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            }
-            if !connected {
-                return Err("Failed to reconnect to Curator Service".to_string());
-            }
-
-            let mut client = guard.clone().unwrap();
-            let grpc_req = curator_core::grpc::CuratorRequest {
-                request_json: request_json.to_string(),
-            };
-            client.call(grpc_req).await
-                .map(|resp| resp.into_inner().response_json)
-                .map_err(|e2| format!("Retry also failed: {:?}", e2))
-        }
-    }
+    Ok(guard.clone().unwrap())
 }
 
 #[tauri::command]
 async fn send_to_service(request_json: String) -> Result<String, String> {
-    log_dashboard_event(&format!("send_to_service: {}", request_json));
+    let cmd = request_json
+        .trim()
+        .trim_start_matches('{')
+        .trim_start()
+        .trim_start_matches('"')
+        .split('"')
+        .next()
+        .unwrap_or("unknown")
+        .to_string();
+    log_dashboard_event(&format!("send_to_service: {}", cmd));
     pipe_request(&request_json).await
 }
 
@@ -275,12 +284,7 @@ async fn get_thumbnail(image_id: i64) -> Result<Vec<u8>, String> {
         ThumbnailCache::open(db_path).await.expect("Failed to open thumbnail cache")
     }).await;
 
-    // Try cache first
-    if let Some(data) = cache.get(image_id).await {
-        return Ok(data);
-    }
-
-    // Cache miss — generate locally
+    // Cache miss — generate locally (after fetching mtime so the cache key is accurate)
     let db = IMAGES_DB.get_or_init(|| async {
         let db_path = THUMB_DB_PATH.get().expect("THUMB_DB_PATH not set");
         let images_db_path = db_path.parent().unwrap().join("curator.db");
@@ -292,15 +296,22 @@ async fn get_thumbnail(image_id: i64) -> Result<Vec<u8>, String> {
         SqlitePool::connect_with(opts).await.expect("Failed to open images DB")
     }).await;
 
-    let row: Option<(String,)> = sqlx::query_as(
-        "SELECT current_filepath FROM images WHERE id = ? AND deleted_at IS NULL",
+    let row: Option<(String, i64)> = sqlx::query_as(
+        "SELECT current_filepath, mtime FROM images WHERE id = ? AND deleted_at IS NULL",
     )
     .bind(image_id)
     .fetch_optional(db)
     .await
     .map_err(|e| e.to_string())?;
 
-    let filepath = row.map(|r| r.0).ok_or("Image not found")?;
+    let (filepath, mtime) = row.ok_or("Image not found")?;
+
+    // Cache is keyed on (image_id, width, mtime) to avoid stale thumbnails
+    // when a file is replaced and wrong-size blobs across width changes.
+    if let Some(data) = cache.get(image_id, 200, mtime).await {
+        return Ok(data);
+    }
+
     let thumb_path: std::path::PathBuf = filepath.into();
 
     let webp_bytes = tokio::task::spawn_blocking(move || generate_thumbnail(&thumb_path, 200))
@@ -308,7 +319,7 @@ async fn get_thumbnail(image_id: i64) -> Result<Vec<u8>, String> {
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
 
-    let _ = cache.put(image_id, 200, &webp_bytes).await;
+    let _ = cache.put(image_id, 200, mtime, &webp_bytes).await;
     Ok(webp_bytes)
 }
 

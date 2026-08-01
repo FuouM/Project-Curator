@@ -349,7 +349,7 @@ pub fn preprocess_det(image: &RgbImage) -> Result<(Array4<f32>, usize, usize)> {
 
             // CHW channel 0 = B (BGR index 0), channel 1 = G, channel 2 = R
             let pix_idx = y * resize_w + x;
-            slice[0 * px_stride + pix_idx] = (b - mean_bgr[0]) / std_bgr[0]; // B channel
+            slice[pix_idx] = (b - mean_bgr[0]) / std_bgr[0]; // B channel
             slice[1 * px_stride + pix_idx] = (g - mean_bgr[1]) / std_bgr[1]; // G channel
             slice[2 * px_stride + pix_idx] = (r - mean_bgr[2]) / std_bgr[2]; // R channel
         }
@@ -392,7 +392,7 @@ pub fn preprocess_rec(image: &RgbImage) -> Result<Array4<f32>> {
 
             let pix_idx = y * target_w + x;
             // CHW: channel 0=B(BGR order), channel 1=G, channel 2=R
-            slice[0 * px_stride + pix_idx] = (b - 0.5) / 0.5;
+            slice[pix_idx] = (b - 0.5) / 0.5;
             slice[1 * px_stride + pix_idx] = (g - 0.5) / 0.5;
             slice[2 * px_stride + pix_idx] = (r - 0.5) / 0.5;
         }
@@ -430,7 +430,7 @@ pub fn preprocess_cls(image: &RgbImage) -> Result<Array4<f32>> {
 
             let pix_idx = y * target_w + x;
             // BGR order: channel 0=B, 1=G, 2=R
-            slice[0 * px_stride + pix_idx] = (b - 0.485) / 0.229;
+            slice[pix_idx] = (b - 0.485) / 0.229;
             slice[1 * px_stride + pix_idx] = (g - 0.456) / 0.224;
             slice[2 * px_stride + pix_idx] = (r - 0.406) / 0.225;
         }
@@ -947,7 +947,7 @@ impl MangaBubbleDetector {
                 let dst_y = y + pad_y;
                 let dst_x = x + pad_x;
                 let pix_idx = dst_y * input_size + dst_x;
-                slice[0 * px_stride + pix_idx] = r;
+                slice[pix_idx] = r;
                 slice[1 * px_stride + pix_idx] = g;
                 slice[2 * px_stride + pix_idx] = b;
             }

@@ -6,7 +6,6 @@ use tracing::info;
 
 use crate::image_decode::decode_rgb;
 
-const THUMBNAIL_WIDTH: u32 = 200;
 const WEBP_QUALITY: f32 = 80.0;
 const DEFAULT_MAX_ENTRIES: usize = 200_000;
 const EVICTION_CHECK_INTERVAL: u64 = 1000;
@@ -34,12 +33,24 @@ impl ThumbnailCache {
             "CREATE TABLE IF NOT EXISTS thumbnails (
                 image_id   INTEGER PRIMARY KEY,
                 width      INTEGER NOT NULL,
+                mtime      INTEGER NOT NULL DEFAULT 0,
                 data       BLOB NOT NULL,
                 created_at INTEGER NOT NULL
             )",
         )
         .execute(&db)
         .await?;
+
+        // Backward-compatible cache schema migration: cache DB is rebuildable,
+        // so a missing mtime column just means all cached entries are stale.
+        let cols: Vec<String> = sqlx::query_scalar("SELECT name FROM pragma_table_info('thumbnails')")
+            .fetch_all(&db)
+            .await?;
+        if !cols.iter().any(|name| name == "mtime") {
+            sqlx::query("ALTER TABLE thumbnails ADD COLUMN mtime INTEGER NOT NULL DEFAULT 0")
+                .execute(&db)
+                .await?;
+        }
 
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_thumbnails_created_at ON thumbnails(created_at)",
@@ -54,27 +65,32 @@ impl ThumbnailCache {
         }))
     }
 
-    pub async fn get(&self, image_id: i64) -> Option<Vec<u8>> {
-        let row: Option<(Vec<u8>,)> = sqlx::query_as("SELECT data FROM thumbnails WHERE image_id = ?")
-            .bind(image_id)
-            .fetch_optional(&self.db)
-            .await
-            .ok()?;
+    pub async fn get(&self, image_id: i64, width: u32, mtime: i64) -> Option<Vec<u8>> {
+        let row: Option<(Vec<u8>,)> = sqlx::query_as(
+            "SELECT data FROM thumbnails WHERE image_id = ? AND width = ? AND mtime = ?",
+        )
+        .bind(image_id)
+        .bind(width)
+        .bind(mtime)
+        .fetch_optional(&self.db)
+        .await
+        .ok()?;
 
         row.map(|(data,)| data)
     }
 
-    pub async fn put(&self, image_id: i64, width: u32, data: &[u8]) -> Result<()> {
+    pub async fn put(&self, image_id: i64, width: u32, mtime: i64, data: &[u8]) -> Result<()> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
 
         sqlx::query(
-            "INSERT OR REPLACE INTO thumbnails (image_id, width, data, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO thumbnails (image_id, width, mtime, data, created_at) VALUES (?, ?, ?, ?, ?)",
         )
         .bind(image_id)
         .bind(width)
+        .bind(mtime)
         .bind(data)
         .bind(now)
         .execute(&self.db)

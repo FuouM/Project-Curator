@@ -20,6 +20,8 @@ export function attachAutocomplete(options: AutocompleteOptions) {
   if (!dropdown) return;
 
   let activeIndex = -1;
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let fetchSeq = 0;
 
   function showDropdown(query: string) {
     if (!dropdown || !query) {
@@ -27,8 +29,10 @@ export function attachAutocomplete(options: AutocompleteOptions) {
       return;
     }
 
+    const seq = ++fetchSeq;
     fetchItems(query).then((matches) => {
-      if (!dropdown) return;
+      // Ignore stale responses arriving after a newer keystroke.
+      if (!dropdown || seq !== fetchSeq) return;
       const itemsToRender = matches.slice(0, maxItems);
 
       if (itemsToRender.length === 0) {
@@ -67,7 +71,8 @@ export function attachAutocomplete(options: AutocompleteOptions) {
   }
 
   input.addEventListener("input", () => {
-    showDropdown(input.value.trim());
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => showDropdown(input.value.trim()), 150);
   });
 
   input.addEventListener("focus", () => {

@@ -37,18 +37,41 @@ function compareIdentities(a: { name: string }, b: { name: string }): number {
 }
 
 // Fetch suggestions matching the query text dynamically from the database
+const IDENTITY_CONCEPT_CACHE_TTL = 30000;
+let identityConceptCache: {
+  identities: CharacterIdentity[];
+  concepts: any[];
+  ts: number;
+} | null = null;
+
 export async function getSuggestions(query: string): Promise<SuggestionItem[]> {
   const items: SuggestionItem[] = [];
   const seen = new Set<string>();
+  const q = query.toLowerCase();
 
   try {
-    const [tagResp, idResp, conceptResp] = await Promise.all([
-      callService({ GetCharacterSuggestions: { query: query } }).catch(() => null),
-      callService({ ListCharacterIdentities: null }).catch(() => null),
-      callService({ ListConcepts: null }).catch(() => null)
-    ]);
+    const tagResp = await callService({ GetCharacterSuggestions: { query: query } }).catch(
+      () => null
+    );
 
-    const q = query.toLowerCase();
+    let identities: CharacterIdentity[] = [];
+    let concepts: any[] = [];
+    if (identityConceptCache && Date.now() - identityConceptCache.ts < IDENTITY_CONCEPT_CACHE_TTL) {
+      identities = identityConceptCache.identities;
+      concepts = identityConceptCache.concepts;
+    } else {
+      const [idResp, conceptResp] = await Promise.all([
+        callService({ ListCharacterIdentities: null }).catch(() => null),
+        callService({ ListConcepts: null }).catch(() => null)
+      ]);
+      identities = (idResp && "CharacterIdentitiesList" in idResp)
+        ? idResp.CharacterIdentitiesList.identities
+        : [];
+      concepts = (conceptResp && "ConceptListResult" in conceptResp)
+        ? conceptResp.ConceptListResult.concepts
+        : [];
+      identityConceptCache = { identities, concepts, ts: Date.now() };
+    }
 
     if (tagResp && "TagStatisticsResult" in tagResp) {
       const tags = tagResp.TagStatisticsResult.tags;
@@ -62,27 +85,21 @@ export async function getSuggestions(query: string): Promise<SuggestionItem[]> {
       }
     }
 
-    if (idResp && "CharacterIdentitiesList" in idResp) {
-      const idents = idResp.CharacterIdentitiesList.identities;
-      const len = idents.length;
-      for (let i = 0; i < len; i++) {
-        const identity = idents[i];
-        if (identity.name.toLowerCase().includes(q) && !seen.has(identity.name)) {
-          seen.add(identity.name);
-          items.push({ name: identity.name, count: identity.detection_count, source: "identity" });
-        }
+    const idLen = identities.length;
+    for (let i = 0; i < idLen; i++) {
+      const identity = identities[i];
+      if (identity.name.toLowerCase().includes(q) && !seen.has(identity.name)) {
+        seen.add(identity.name);
+        items.push({ name: identity.name, count: identity.detection_count, source: "identity" });
       }
     }
 
-    if (conceptResp && "ConceptListResult" in conceptResp) {
-      const concepts = conceptResp.ConceptListResult.concepts;
-      const len = concepts.length;
-      for (let i = 0; i < len; i++) {
-        const concept = concepts[i];
-        if (concept.name.toLowerCase().includes(q) && !seen.has(concept.name)) {
-          seen.add(concept.name);
-          items.push({ name: concept.name, count: concept.sample_count, source: "concept" });
-        }
+    const conceptLen = concepts.length;
+    for (let i = 0; i < conceptLen; i++) {
+      const concept = concepts[i];
+      if (concept.name.toLowerCase().includes(q) && !seen.has(concept.name)) {
+        seen.add(concept.name);
+        items.push({ name: concept.name, count: concept.sample_count, source: "concept" });
       }
     }
   } catch (_) {}

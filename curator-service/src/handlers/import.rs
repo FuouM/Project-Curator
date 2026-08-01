@@ -246,11 +246,13 @@ pub async fn import_image_logic(
         let mut first_sha = String::new();
         let mut imported_any = false;
 
+        // Batch all per-image statements in a single transaction.
+        let mut tx = db.begin().await?;
         for item in prepped_images {
             let existing: Option<(i64, String)> =
                 sqlx::query_as("SELECT id, current_filepath FROM images WHERE sha256 = ?")
                     .bind(&item.sha256)
-                    .fetch_optional(db)
+                    .fetch_optional(&mut *tx)
                     .await?;
 
             let img_id = if let Some((id, _old_path)) = existing {
@@ -262,7 +264,7 @@ pub async fn import_image_logic(
                 .bind(&item.phash)
                 .bind(folder_id)
                 .bind(id)
-                .execute(db)
+                .execute(&mut *tx)
                 .await;
 
                 let vec_exists: Option<(String,)> = sqlx::query_as(
@@ -270,7 +272,7 @@ pub async fn import_image_logic(
                 )
                 .bind(id)
                 .bind(clip_source_id)
-                .fetch_optional(db)
+                .fetch_optional(&mut *tx)
                 .await
                 .unwrap_or(None);
 
@@ -280,7 +282,7 @@ pub async fn import_image_logic(
                     )
                     .bind(id)
                     .bind(clip_source_id)
-                    .execute(db)
+                    .execute(&mut *tx)
                     .await;
                 }
                 id
@@ -293,7 +295,7 @@ pub async fn import_image_logic(
                 .bind(&item.path_str)
                 .bind(item.mtime)
                 .bind(Some(folder_id))
-                .execute(db)
+                .execute(&mut *tx)
                 .await?
                 .last_insert_rowid();
 
@@ -302,7 +304,7 @@ pub async fn import_image_logic(
                 )
                 .bind(id)
                 .bind(clip_source_id)
-                .execute(db)
+                .execute(&mut *tx)
                 .await;
 
                 id
@@ -314,6 +316,7 @@ pub async fn import_image_logic(
                 imported_any = true;
             }
         }
+        tx.commit().await?;
 
         if imported_any {
             Ok((first_id, first_sha, total_count, Some(folder_id)))
@@ -348,7 +351,10 @@ pub async fn backfill_image_folders(db: &SqlitePool) -> Result<i64> {
     .await?;
 
     let mut backfilled: i64 = 0;
+    // Memoize folder lookups so each unique directory is resolved once.
+    let mut folder_cache: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
 
+    let mut tx = db.begin().await?;
     for img in images {
         let path = Path::new(&img.current_filepath);
         let parent_dir = match path.parent() {
@@ -360,16 +366,24 @@ pub async fn backfill_image_folders(db: &SqlitePool) -> Result<i64> {
             continue;
         }
 
-        let folder_id = get_or_create_folder(parent_dir, db).await?;
+        let folder_id = match folder_cache.get(parent_dir) {
+            Some(id) => *id,
+            None => {
+                let id = get_or_create_folder(parent_dir, db).await?;
+                folder_cache.insert(parent_dir.to_string(), id);
+                id
+            }
+        };
 
         sqlx::query("UPDATE images SET folder_id = ? WHERE id = ?")
             .bind(folder_id)
             .bind(img.id)
-            .execute(db)
+            .execute(&mut *tx)
             .await?;
 
         backfilled += 1;
     }
+    tx.commit().await?;
 
     info!("Backfilled {} images with folder assignments", backfilled);
     Ok(backfilled)

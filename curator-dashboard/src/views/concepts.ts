@@ -37,49 +37,58 @@ export function setupInputClearButtons() {
   });
 }
 
-export async function openTeachConceptModal() {
-  const teachModal = document.getElementById("teach-concept-modal");
-  const existingSelect = document.getElementById("teach-concept-existing-select") as HTMLSelectElement;
+let fetchedConceptsCache: any[] = [];
+
+function syncSelectedConceptUI() {
   const existingRadio = document.getElementById("target-type-existing") as HTMLInputElement;
-  const newRadio = document.getElementById("target-type-new") as HTMLInputElement;
-  const existingGroup = document.getElementById("teach-existing-concept-group");
-  const newGroup = document.getElementById("teach-new-concept-group");
-  const nameInput = document.getElementById("teach-concept-name") as HTMLInputElement;
+  const existingSelect = document.getElementById("teach-concept-existing-select") as HTMLSelectElement;
   const catSelect = document.getElementById("teach-concept-category") as HTMLSelectElement;
   const thRange = document.getElementById("teach-concept-threshold") as HTMLInputElement;
   const thVal = document.getElementById("teach-th-val");
+  if (!existingRadio?.checked || !existingSelect) return;
+  const selectedName = existingSelect.value;
+  const concept = fetchedConceptsCache.find((c: any) => c.name === selectedName);
+  if (concept) {
+    if (catSelect && concept.category) catSelect.value = concept.category;
+    if (thRange && concept.threshold) {
+      thRange.value = concept.threshold.toString();
+      if (thVal) thVal.textContent = parseFloat(concept.threshold).toFixed(2);
+    }
+  }
+}
+
+function updateModeUI() {
+  const existingRadio = document.getElementById("target-type-existing") as HTMLInputElement;
+  const existingGroup = document.getElementById("teach-existing-concept-group");
+  const newGroup = document.getElementById("teach-new-concept-group");
+  const nameInput = document.getElementById("teach-concept-name") as HTMLInputElement;
+  const existingSelect = document.getElementById("teach-concept-existing-select") as HTMLSelectElement;
   const submitBtn = document.getElementById("teach-concept-submit-btn");
 
-  let fetchedConcepts: any[] = [];
+  const isExisting = existingRadio?.checked ?? true;
+  if (existingGroup) existingGroup.style.display = isExisting ? "block" : "none";
+  if (newGroup) newGroup.style.display = isExisting ? "none" : "block";
+  if (nameInput) nameInput.required = !isExisting;
+  if (existingSelect) existingSelect.required = isExisting;
+  if (submitBtn) {
+    submitBtn.innerHTML = isExisting
+      ? `<i class="bi bi-plus-lg"></i> Add Samples to Concept`
+      : `<i class="bi bi-check-lg"></i> Create New Concept`;
+  }
+  if (isExisting) {
+    syncSelectedConceptUI();
+  }
+}
 
-  const syncSelectedConceptUI = () => {
-    if (!existingRadio?.checked || !existingSelect) return;
-    const selectedName = existingSelect.value;
-    const concept = fetchedConcepts.find((c: any) => c.name === selectedName);
-    if (concept) {
-      if (catSelect && concept.category) catSelect.value = concept.category;
-      if (thRange && concept.threshold) {
-        thRange.value = concept.threshold.toString();
-        if (thVal) thVal.textContent = parseFloat(concept.threshold).toFixed(2);
-      }
-    }
-  };
-
-  const updateModeUI = () => {
-    const isExisting = existingRadio?.checked ?? true;
-    if (existingGroup) existingGroup.style.display = isExisting ? "block" : "none";
-    if (newGroup) newGroup.style.display = isExisting ? "none" : "block";
-    if (nameInput) nameInput.required = !isExisting;
-    if (existingSelect) existingSelect.required = isExisting;
-    if (submitBtn) {
-      submitBtn.innerHTML = isExisting
-        ? `<i class="bi bi-plus-lg"></i> Add Samples to Concept`
-        : `<i class="bi bi-check-lg"></i> Create New Concept`;
-    }
-    if (isExisting) {
-      syncSelectedConceptUI();
-    }
-  };
+let teachModalListenersBound = false;
+function bindTeachModalListeners() {
+  if (teachModalListenersBound) return;
+  teachModalListenersBound = true;
+  const existingRadio = document.getElementById("target-type-existing") as HTMLInputElement;
+  const newRadio = document.getElementById("target-type-new") as HTMLInputElement;
+  const existingSelect = document.getElementById("teach-concept-existing-select") as HTMLSelectElement;
+  const thRange = document.getElementById("teach-concept-threshold") as HTMLInputElement;
+  const thVal = document.getElementById("teach-th-val");
 
   existingRadio?.addEventListener("change", updateModeUI);
   newRadio?.addEventListener("change", updateModeUI);
@@ -90,14 +99,22 @@ export async function openTeachConceptModal() {
       if (thVal) thVal.textContent = thRange.value;
     });
   }
+}
+
+export async function openTeachConceptModal() {
+  bindTeachModalListeners();
+  const teachModal = document.getElementById("teach-concept-modal");
+  const existingSelect = document.getElementById("teach-concept-existing-select") as HTMLSelectElement;
+  const existingRadio = document.getElementById("target-type-existing") as HTMLInputElement;
+  const newRadio = document.getElementById("target-type-new") as HTMLInputElement;
 
   if (existingSelect) {
     try {
       const resp = await callService({ ListConcepts: null });
       if ("ConceptListResult" in resp) {
-        fetchedConcepts = resp.ConceptListResult.concepts;
-        if (fetchedConcepts.length > 0) {
-          existingSelect.innerHTML = fetchedConcepts
+        fetchedConceptsCache = resp.ConceptListResult.concepts;
+        if (fetchedConceptsCache.length > 0) {
+          existingSelect.innerHTML = fetchedConceptsCache
             .map((c: any) => `<option value="${c.name}">${c.name} [${c.category.toUpperCase()}] (${c.sample_count} samples)</option>`)
             .join("");
           if (existingRadio) existingRadio.checked = true;
@@ -515,24 +532,26 @@ export function setupConcepts() {
 
         renderImages(samples, `concept-samples-grid-${conceptId}`);
 
-        const sampleCards = grid.querySelectorAll(".image-card");
-        sampleCards.forEach((cardEl) => {
-          const imgId = cardEl.getAttribute("data-image-id") || cardEl.getAttribute("data-id");
-          if (imgId) {
-            const infoEl = cardEl.querySelector(".image-info");
-            if (infoEl) {
-              const btn = document.createElement("button");
-              btn.type = "button";
-              btn.className = "win-button danger";
-              btn.style.cssText = "padding: 2px 6px; font-size: 10px; margin-top: 4px; width: 100%;";
-              btn.innerHTML = `<i class="bi bi-trash"></i> Remove Sample`;
-              btn.onclick = (e) => {
-                e.stopPropagation();
-                (window as any).removeConceptSample(conceptId, parseInt(imgId));
-              };
-              infoEl.appendChild(btn);
+        requestAnimationFrame(() => {
+          const sampleCards = grid.querySelectorAll(".image-card");
+          sampleCards.forEach((cardEl) => {
+            const imgId = cardEl.getAttribute("data-image-id") || cardEl.getAttribute("data-id");
+            if (imgId) {
+              const infoEl = cardEl.querySelector(".image-info");
+              if (infoEl) {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "win-button danger";
+                btn.style.cssText = "padding: 2px 6px; font-size: 10px; margin-top: 4px; width: 100%;";
+                btn.innerHTML = `<i class="bi bi-trash"></i> Remove Sample`;
+                btn.onclick = (e) => {
+                  e.stopPropagation();
+                  (window as any).removeConceptSample(conceptId, parseInt(imgId));
+                };
+                infoEl.appendChild(btn);
+              }
             }
-          }
+          });
         });
       } else if ("Error" in resp) {
         grid.innerHTML = `<div style="grid-column: 1 / -1; color: #ef4444; padding: 6px; font-size: 11px;">Error: ${resp.Error.message}</div>`;

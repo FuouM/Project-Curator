@@ -56,13 +56,14 @@ impl DetectionPipeline {
         self.cleanup_empty_identities().await?;
 
         let t_decode = std::time::Instant::now();
-        let (rgb_buf, width, height) = image_decode::decode_rgb(filepath)?;
+        // Decode + YOLO + CCIP are CPU-bound — keep them off the reactor thread.
+        let (rgb_buf, width, height) = tokio::task::block_in_place(|| image_decode::decode_rgb(filepath))?;
         let img = RgbImage::from_raw(width, height, rgb_buf)
             .context("Failed to create RgbImage from decoded buffer")?;
         let decode_ms = t_decode.elapsed().as_millis();
 
         let t_yolo = std::time::Instant::now();
-        let detections = self.yolo.detect_persons(&img)?;
+        let detections = tokio::task::block_in_place(|| self.yolo.detect_persons(&img))?;
         let yolo_ms = t_yolo.elapsed().as_millis();
 
         let mut identities = self.load_identities().await?;
@@ -89,16 +90,33 @@ impl DetectionPipeline {
             for det in &detections {
                 let t_ccip = std::time::Instant::now();
                 let crop = extract_crop(&img, det)?;
-                let embedding = self.ccip.extract_embedding(&crop)?;
+                let embedding = tokio::task::block_in_place(|| self.ccip.extract_embedding(&crop))?;
                 ccip_ms += t_ccip.elapsed().as_millis();
 
                 let t_match = std::time::Instant::now();
                 let mut matched_identity: Option<i64> = None;
+                // Batch ALL identities into a single metrics-model inference per
+                // detection (was one inference per identity).
+                let mut refs_flat: Vec<Vec<f32>> = Vec::new();
+                let mut id_bounds: Vec<(i64, usize, usize)> = Vec::new();
                 for identity in &identities {
                     if let Some(refs) = identity_embeddings.get(&identity.id) {
-                        let (is_match, _diff) = self.ccip.compare_embeddings(&embedding, refs)?;
-                        if is_match {
-                            matched_identity = Some(identity.id);
+                        let start = refs_flat.len();
+                        refs_flat.extend(refs.iter().cloned());
+                        id_bounds.push((identity.id, start, refs_flat.len()));
+                    }
+                }
+                if !refs_flat.is_empty() {
+                    let diffs = tokio::task::block_in_place(|| {
+                        self.ccip.compute_mean_differences(&embedding, &refs_flat)
+                    })?;
+                    for (ident_id, start, end) in id_bounds {
+                        if start == end {
+                            continue;
+                        }
+                        let mean: f32 = diffs[start..end].iter().sum::<f32>() / (end - start) as f32;
+                        if mean <= crate::detection::ccip::DEFAULT_MATCH_THRESHOLD {
+                            matched_identity = Some(ident_id);
                             break;
                         }
                     }
@@ -393,7 +411,7 @@ impl DetectionPipeline {
         }
 
         // 4. Decode image
-        let (rgb_buf, width, height) = image_decode::decode_rgb(filepath)?;
+        let (rgb_buf, width, height) = tokio::task::block_in_place(|| image_decode::decode_rgb(filepath))?;
         let img = RgbImage::from_raw(width, height, rgb_buf)
             .context("Failed to create RgbImage from decoded buffer")?;
 
@@ -417,7 +435,7 @@ impl DetectionPipeline {
         };
 
         let crop = extract_crop_padded(&img, &det, 0.0)?;
-        let embedding = self.ccip.extract_embedding(&crop)?;
+        let embedding = tokio::task::block_in_place(|| self.ccip.extract_embedding(&crop))?;
         let embedding_bytes = f32_vec_to_bytes(&embedding);
 
         // 6. Update database
@@ -454,7 +472,7 @@ impl DetectionPipeline {
         }
 
         // 2. Decode image
-        let (rgb_buf, width, height) = image_decode::decode_rgb(filepath)?;
+        let (rgb_buf, width, height) = tokio::task::block_in_place(|| image_decode::decode_rgb(filepath))?;
         let img = RgbImage::from_raw(width, height, rgb_buf)
             .context("Failed to create RgbImage from decoded buffer")?;
 
@@ -474,7 +492,7 @@ impl DetectionPipeline {
 
         // 4. Extract crop & CCIP embedding
         let crop = extract_crop(&img, &det)?;
-        let embedding = self.ccip.extract_embedding(&crop)?;
+        let embedding = tokio::task::block_in_place(|| self.ccip.extract_embedding(&crop))?;
         let embedding_bytes = f32_vec_to_bytes(&embedding);
 
         // 5. Store in database (with identity_id = NULL)
@@ -554,16 +572,31 @@ impl DetectionPipeline {
             identity_embeddings.entry(ident_id).or_default().push(bytes_to_f32_vec(&emb_bytes));
         }
 
-        // Find match
+        // Find match (single batched metrics inference across all identities)
         let mut best_identity: Option<i64> = None;
         let mut best_diff = f32::MAX;
 
+        let mut refs_flat: Vec<Vec<f32>> = Vec::new();
+        let mut id_bounds: Vec<(i64, usize, usize)> = Vec::new();
         for identity in &identities {
             if let Some(refs) = identity_embeddings.get(&identity.id) {
-                let (is_match, diff) = self.ccip.compare_embeddings(&query_emb, refs)?;
-                if is_match && diff < best_diff {
-                    best_diff = diff;
-                    best_identity = Some(identity.id);
+                let start = refs_flat.len();
+                refs_flat.extend(refs.iter().cloned());
+                id_bounds.push((identity.id, start, refs_flat.len()));
+            }
+        }
+        if !refs_flat.is_empty() {
+            let diffs = tokio::task::block_in_place(|| {
+                self.ccip.compute_mean_differences(&query_emb, &refs_flat)
+            })?;
+            for (ident_id, start, end) in id_bounds {
+                if start == end {
+                    continue;
+                }
+                let mean: f32 = diffs[start..end].iter().sum::<f32>() / (end - start) as f32;
+                if mean <= crate::detection::ccip::DEFAULT_MATCH_THRESHOLD && mean < best_diff {
+                    best_diff = mean;
+                    best_identity = Some(ident_id);
                 }
             }
         }
@@ -616,18 +649,38 @@ impl DetectionPipeline {
                 identity_embeddings.entry(ident_id).or_default().push(bytes_to_f32_vec(&emb_bytes));
             }
 
+            // Batch all reassignment UPDATEs into a single transaction.
+            let mut tx = self.db.begin().await?;
             for (det_id, emb_bytes) in &detections {
                 let query_emb = bytes_to_f32_vec(emb_bytes);
 
                 let mut best_identity: Option<i64> = None;
                 let mut best_diff = f32::MAX;
 
+                // Single batched metrics inference across all identities per detection.
+                let mut refs_flat: Vec<Vec<f32>> = Vec::new();
+                let mut id_bounds: Vec<(i64, usize, usize)> = Vec::new();
                 for identity in &identities {
                     if let Some(refs) = identity_embeddings.get(&identity.id) {
-                        let (is_match, diff) = self.ccip.compare_embeddings(&query_emb, refs)?;
-                        if is_match && diff < best_diff {
-                            best_diff = diff;
-                            best_identity = Some(identity.id);
+                        let start = refs_flat.len();
+                        refs_flat.extend(refs.iter().cloned());
+                        id_bounds.push((identity.id, start, refs_flat.len()));
+                    }
+                }
+                if !refs_flat.is_empty() {
+                    let diffs = tokio::task::block_in_place(|| {
+                        self.ccip.compute_mean_differences(&query_emb, &refs_flat)
+                    })?;
+                    for (ident_id, start, end) in id_bounds {
+                        if start == end {
+                            continue;
+                        }
+                        let mean: f32 =
+                            diffs[start..end].iter().sum::<f32>() / (end - start) as f32;
+                        if mean <= crate::detection::ccip::DEFAULT_MATCH_THRESHOLD && mean < best_diff
+                        {
+                            best_diff = mean;
+                            best_identity = Some(ident_id);
                         }
                     }
                 }
@@ -635,13 +688,14 @@ impl DetectionPipeline {
                 sqlx::query("UPDATE character_detections SET identity_id = ? WHERE id = ?")
                     .bind(best_identity)
                     .bind(det_id)
-                    .execute(&self.db)
+                    .execute(&mut *tx)
                     .await?;
 
                 if best_identity.is_some() {
                     matched += 1;
                 }
             }
+            tx.commit().await?;
         }
 
         Ok(ReidentifyResult {

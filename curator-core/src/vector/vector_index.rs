@@ -68,6 +68,10 @@ impl VectorIndex {
         Ok(())
     }
 
+    pub fn contains(&self, id: u64) -> bool {
+        self.index.contains(id)
+    }
+
     pub fn search(&self, query: &[f32], limit: usize) -> Result<Vec<(u64, f32)>, Error> {
         let results = self
             .index

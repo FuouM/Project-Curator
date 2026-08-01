@@ -192,7 +192,7 @@ pub async fn search_logic(
     if let Some(img_path) = query_image_path {
         let path = std::path::Path::new(&img_path);
         if path.exists() {
-            if let Ok(data) = std::fs::read(path) {
+            if let Ok(data) = tokio::fs::read(path).await {
                 let sha256 = format!("{:x}", sha2::Sha256::digest(&data));
                 let rows: Vec<(i64,)> =
                     sqlx::query_as("SELECT id FROM images WHERE sha256 = ? AND deleted_at IS NULL")
@@ -208,7 +208,9 @@ pub async fn search_logic(
                 }
             }
 
-            if let Ok(query_ahash) = curator_core::vector::compute_ahash(path) {
+            // Perceptual hash decodes the image (CPU-bound) — off the reactor.
+            let query_ahash = tokio::task::block_in_place(|| curator_core::vector::compute_ahash(path));
+            if let Ok(query_ahash) = query_ahash {
                 let query_val = u64::from_str_radix(&query_ahash, 16).unwrap_or(0);
                 let rows: Vec<(i64, String)> = sqlx::query_as(
                     "SELECT id, phash FROM images WHERE phash IS NOT NULL AND deleted_at IS NULL",
@@ -228,7 +230,8 @@ pub async fn search_logic(
                 }
             }
 
-            let query_vector = model_manager.generate_image_embedding(path)?;
+            // CLIP image embedding = full decode + resize + ONNX (CPU-bound) — off the reactor.
+            let query_vector = tokio::task::block_in_place(|| model_manager.generate_image_embedding(path))?;
             let results = vector_index.search(&query_vector, limit.max(100))?;
 
             let mut ids = std::collections::HashSet::new();
@@ -245,8 +248,8 @@ pub async fn search_logic(
         if !text.trim().is_empty() {
             let mut ids = std::collections::HashSet::new();
 
-            // 1. Text embedding semantic match
-            let query_vector = model_manager.generate_text_embedding(text)?;
+            // Text embedding via ONNX (CPU-bound) — off the reactor.
+            let query_vector = tokio::task::block_in_place(|| model_manager.generate_text_embedding(text))?;
             let results = vector_index.search(&query_vector, limit.max(100))?;
             for (id, dist) in results {
                 let id_i64 = id as i64;

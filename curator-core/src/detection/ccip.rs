@@ -9,7 +9,7 @@ use tracing::{debug, info};
 
 const CCIP_INPUT_SIZE: u32 = 384;
 const CCIP_EMBEDDING_DIM: usize = 768;
-const DEFAULT_MATCH_THRESHOLD: f32 = 0.178;
+pub const DEFAULT_MATCH_THRESHOLD: f32 = 0.178;
 
 const CLIP_MEAN: [f32; 3] = [0.48145466, 0.4578275, 0.40821073];
 const CLIP_STD: [f32; 3] = [0.26862954, 0.2613026, 0.27577711];
@@ -125,6 +125,51 @@ impl CCIPModel {
         Ok((is_match, mean_diff))
     }
 
+    /// Batch compute the per-reference mean differences between a query embedding
+    /// and a flat list of reference embeddings in a single metrics-model inference.
+    /// Returns one difference per reference (same order as `references`).
+    pub fn compute_mean_differences(
+        &self,
+        query: &[f32],
+        references: &[Vec<f32>],
+    ) -> Result<Vec<f32>> {
+        if references.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let n = 1 + references.len();
+        let mut input_vec = Vec::with_capacity(n * CCIP_EMBEDDING_DIM);
+        input_vec.extend_from_slice(query);
+        for r in references {
+            input_vec.extend_from_slice(r);
+        }
+
+        let input_array =
+            Array2::from_shape_vec((n, CCIP_EMBEDDING_DIM), input_vec)
+                .context("Failed to build CCIP metrics input")?;
+
+        let diffs = self.metrics_session.with_session(|session| {
+            let outputs = session
+                .run(inputs![TensorRef::from_array_view(&input_array)?])
+                .context("CCIP metrics inference failed")?;
+
+            let output_tensor = outputs
+                .get("output")
+                .context("Failed to get output from CCIP metrics model")?;
+            let (_, data) = output_tensor.try_extract_tensor::<f32>()?;
+
+            // Output is [N, N] pairwise difference matrix. Row 0 is the query;
+            // columns 1..N are the per-reference differences.
+            let mut diffs = Vec::with_capacity(n - 1);
+            for j in 1..n {
+                diffs.push(data[j]);
+            }
+            Ok(diffs)
+        })?;
+
+        Ok(diffs)
+    }
+
     /// Compute mean difference between a query embedding and reference embeddings
     /// using the metrics model.
     pub fn compute_mean_difference(
@@ -157,7 +202,7 @@ impl CCIPModel {
             // We want the mean of differences between query (row 0) and all references (rows 1..N)
             let mut total_diff = 0.0f32;
             for j in 1..n {
-                total_diff += data[0 * n + j];
+                total_diff += data[j];
             }
             let mean_diff = total_diff / (n - 1) as f32;
             Ok(mean_diff)

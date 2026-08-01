@@ -109,21 +109,23 @@ pub async fn tag_image_logic(
 
     let mut tag_summaries: Vec<TagSummary> = Vec::with_capacity(predictions.len());
 
+    // All per-tag writes in one transaction; tags upsert with RETURNING id
+    // removes the extra SELECT round-trip per prediction.
+    let mut tx = db.begin().await?;
     for pred in &predictions {
         if blacklisted_names.contains(&pred.tag) {
             info!("Skipping blacklisted AI tag '{}' for image {}", pred.tag, image_id);
             continue;
         }
-        sqlx::query("INSERT OR IGNORE INTO tags (name, category) VALUES (?, ?)")
-            .bind(&pred.tag)
-            .bind(&pred.category)
-            .execute(db)
-            .await?;
-
-        let tag_row: (i64,) = sqlx::query_as("SELECT id FROM tags WHERE name = ? LIMIT 1")
-            .bind(&pred.tag)
-            .fetch_one(db)
-            .await?;
+        let tag_row: (i64,) = sqlx::query_as(
+            "INSERT INTO tags (name, category) VALUES (?, ?)
+             ON CONFLICT(name) DO UPDATE SET category = excluded.category
+             RETURNING id",
+        )
+        .bind(&pred.tag)
+        .bind(&pred.category)
+        .fetch_one(&mut *tx)
+        .await?;
         let tag_id = tag_row.0;
 
         sqlx::query(
@@ -136,7 +138,7 @@ pub async fn tag_image_logic(
         .bind(source_id)
         .bind(pred.confidence)
         .bind(&transaction_id)
-        .execute(db)
+        .execute(&mut *tx)
         .await?;
 
         tag_summaries.push(TagSummary {
@@ -147,6 +149,7 @@ pub async fn tag_image_logic(
             is_blacklisted: false,
         });
     }
+    tx.commit().await?;
 
     info!(
         "Auto-tagged image {} with {} tags (tx: {})",
@@ -646,10 +649,6 @@ pub async fn get_thumbnail_logic(
     cache: &ThumbnailCache,
     db: &SqlitePool,
 ) -> Result<(Option<Vec<u8>>, bool)> {
-    if let Some(cached) = cache.get(image_id).await {
-        return Ok((Some(cached), false));
-    }
-
     let row: Option<(String, i64, bool)> = sqlx::query_as(
         "SELECT current_filepath, mtime, is_missing FROM images WHERE id = ? AND deleted_at IS NULL",
     )
@@ -657,7 +656,7 @@ pub async fn get_thumbnail_logic(
     .fetch_optional(db)
     .await?;
 
-    let (filepath, _mtime, is_missing) = match row {
+    let (filepath, mtime, is_missing) = match row {
         Some(r) => r,
         None => return Ok((None, true)),
     };
@@ -666,12 +665,19 @@ pub async fn get_thumbnail_logic(
         return Ok((None, true));
     }
 
+    // Cache is keyed on (image_id, width, mtime) so a replaced file with the
+    // same path never serves a stale thumbnail and a width change never serves
+    // a wrong-size blob.
+    if let Some(cached) = cache.get(image_id, width, mtime).await {
+        return Ok((Some(cached), false));
+    }
+
     let thumb_path: std::path::PathBuf = filepath.into();
     match tokio::task::spawn_blocking(move || thumbnail::generate_thumbnail(&thumb_path, width))
         .await
     {
         Ok(Ok(webp_bytes)) => {
-            let _ = cache.put(image_id, width, &webp_bytes).await;
+            let _ = cache.put(image_id, width, mtime, &webp_bytes).await;
             Ok((Some(webp_bytes), false))
         }
         _ => Ok((None, true)),

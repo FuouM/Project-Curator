@@ -28,7 +28,11 @@ pub fn decode_rgb(path: &Path) -> Result<(Vec<u8>, u32, u32)> {
         let webp_img = decoder.decode()
             .ok_or_else(|| anyhow::anyhow!("WebP decode failed for {:?}", path))?;
         let (w, h) = (webp_img.width(), webp_img.height());
-        (webp_img.to_vec(), w, h)
+        // The webp crate decodes to RGBA; the contract here is RGB (U8x3).
+        // Converting also drops the 33% extra alpha channel.
+        let rgba = webp_img.to_vec();
+        let rgb: Vec<u8> = rgba.chunks_exact(4).flat_map(|c| [c[0], c[1], c[2]]).collect();
+        (rgb, w, h)
     } else {
         let img = image::open(path).with_context(|| format!("Cannot open image {:?}", path))?;
         let rgb = img.to_rgb8();

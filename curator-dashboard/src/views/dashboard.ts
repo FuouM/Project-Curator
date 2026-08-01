@@ -4,6 +4,8 @@ import { maskPath } from "../components";
 import { renderImages, attachCardEventHandlers, getTagPillHtml, renderParsedMetadataHtml } from "../cards";
 import { ImageDetails } from "../types";
 
+let featuredCardCleanup: (() => void) | null = null;
+
 export async function refreshDashboard() {
   try {
     const [statusResp, taggerResp] = await Promise.all([
@@ -131,6 +133,11 @@ export function renderFeaturedDay(featured: ImageDetails) {
   const container = document.getElementById("featured-day-content");
   if (!container) return;
 
+  if (featuredCardCleanup) {
+    featuredCardCleanup();
+    featuredCardCleanup = null;
+  }
+
   const srcUrl = convertFileSrc(featured.current_filepath);
   const badgeClass = featured.vector_state === "ready" ? "badge-ready" : "badge-pending";
   const parsedHtml = featured.parsed_metadata ? renderParsedMetadataHtml(featured.parsed_metadata) : "";
@@ -178,7 +185,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
     </div>
   `;
 
-  attachCardEventHandlers(container, featured.id, featured.current_filepath, featured, ".featured-preview", true);
+  featuredCardCleanup = attachCardEventHandlers(container, featured.id, featured.current_filepath, featured, ".featured-preview", true);
 
   const tagList = container.querySelector(".featured-details .tag-list") as HTMLElement;
   const card = container.querySelector(".featured-card") as HTMLElement;

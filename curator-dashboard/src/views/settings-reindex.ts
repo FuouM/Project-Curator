@@ -1,4 +1,5 @@
 import { callService } from "../ipc";
+import { invalidateThumbnailCache } from "../cards";
 
 let reindexPollInterval: number | null = null;
 
@@ -40,6 +41,8 @@ export function updateReindexProgress(
       idxText.textContent = `Indexing progress: ${total}/${total} (100%)`;
       status.textContent = "Completed";
       status.style.color = "#10b981";
+      // Re-index may change source files; drop stale thumbnail blobs so cards re-fetch.
+      invalidateThumbnailCache();
       setTimeout(() => {
         if (status.textContent === "Completed") {
           container.style.display = "none";

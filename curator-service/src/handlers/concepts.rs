@@ -50,6 +50,8 @@ pub async fn apply_concept_tags_to_samples(
     .await?;
     let tag_id = tag_row.0;
 
+    // Batch sample tag links in one transaction.
+    let mut tx = db.begin().await?;
     for &img_id in sample_image_ids {
         let _ = sqlx::query(
             "INSERT INTO image_tags (image_id, tag_id, source_id, confidence, is_deleted)
@@ -59,9 +61,10 @@ pub async fn apply_concept_tags_to_samples(
         .bind(img_id)
         .bind(tag_id)
         .bind(concept_source_id)
-        .execute(db)
+        .execute(&mut *tx)
         .await;
     }
+    tx.commit().await?;
     Ok(())
 }
 
@@ -119,7 +122,10 @@ pub async fn recompute_concept_prototype_logic(
                 for (path_str,) in image_paths {
                     let path = Path::new(&path_str);
                     if path.exists() {
-                        if let Ok(vec) = model_manager.generate_image_embedding(path) {
+                        // Full decode + ONNX inference — off the reactor.
+                        if let Ok(vec) = tokio::task::block_in_place(|| {
+                            model_manager.generate_image_embedding(path)
+                        }) {
                             sample_vectors.push(vec);
                         }
                     }
@@ -129,7 +135,8 @@ pub async fn recompute_concept_prototype_logic(
     }
 
     let prompt_text = format!("anime artwork of {}", concept.name.replace('_', " "));
-    let text_vec = model_manager.generate_text_embedding(&prompt_text).ok();
+    // Text embedding via ONNX — off the reactor.
+    let text_vec = tokio::task::block_in_place(|| model_manager.generate_text_embedding(&prompt_text)).ok();
 
     // Fast SQLite vector BLOB pre-fetch for background negative contrast subspace
     let neg_rows: Vec<(Vec<u8>,)> = sqlx::query_as(
@@ -227,15 +234,18 @@ pub async fn create_concept_logic(
         }
     };
 
+    // Batch sample inserts in one transaction.
+    let mut tx = db.begin().await?;
     for &img_id in sample_image_ids {
         let _ = sqlx::query(
             "INSERT OR IGNORE INTO custom_concept_samples (concept_id, image_id) VALUES (?, ?)"
         )
         .bind(concept_id)
         .bind(img_id)
-        .execute(db)
+        .execute(&mut *tx)
         .await;
     }
+    tx.commit().await?;
 
     recompute_concept_prototype_logic(db, concept_id, model_manager).await?;
     let concept = get_custom_concept_by_id(db, concept_id).await?;
@@ -281,12 +291,11 @@ pub async fn get_concept_samples_logic(
     .fetch_all(db)
     .await?;
 
-    let mut samples = Vec::new();
-    for (img_id,) in sample_rows {
-        if let Ok(details) = super::image::get_image_logic(img_id, db).await {
-            samples.push(details);
-        }
-    }
+    let ids: Vec<i64> = sample_rows.into_iter().map(|r| r.0).collect();
+    // Batch-fetch all sample details (4 queries total) instead of N×6.
+    let samples = super::image::batch_get_images_logic(&ids, db)
+        .await
+        .unwrap_or_default();
     Ok(samples)
 }
 
@@ -329,15 +338,18 @@ pub async fn add_concept_samples_logic(
     image_ids: &[i64],
     model_manager: &ModelManager,
 ) -> Result<CustomConcept> {
+    // Batch sample inserts in one transaction.
+    let mut tx = db.begin().await?;
     for &img_id in image_ids {
         let _ = sqlx::query(
             "INSERT OR IGNORE INTO custom_concept_samples (concept_id, image_id) VALUES (?, ?)"
         )
         .bind(concept_id)
         .bind(img_id)
-        .execute(db)
+        .execute(&mut *tx)
         .await;
     }
+    tx.commit().await?;
 
     recompute_concept_prototype_logic(db, concept_id, model_manager).await?;
     let concept = get_custom_concept_by_id(db, concept_id).await?;
@@ -482,7 +494,8 @@ pub async fn rescan_concept_logic(
         return Ok(0);
     }
 
-    let results = vector_index.search(&proto_vec, 10000)?;
+    // HNSW expansion of 10k candidates is CPU-bound — off the reactor.
+    let results = tokio::task::block_in_place(|| vector_index.search(&proto_vec, 10000))?;
     let mut match_count = 0usize;
     for (_id, dist) in results {
         let sim = 1.0 - dist;

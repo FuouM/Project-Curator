@@ -156,7 +156,7 @@ pub(crate) fn preprocess_yolo(
 
     for y in 0..s {
         for x in 0..s {
-            slice[0 * s * s + y * s + x] = pad_r;
+            slice[y * s + x] = pad_r;
             slice[1 * s * s + y * s + x] = pad_g;
             slice[2 * s * s + y * s + x] = pad_b;
         }
@@ -171,7 +171,7 @@ pub(crate) fn preprocess_yolo(
             let dst_y = (pad_y + y) as usize;
             let dst_x = (pad_x + x) as usize;
 
-            slice[0 * s * s + dst_y * s + dst_x] = raw[src_idx] as f32 / 255.0;
+            slice[dst_y * s + dst_x] = raw[src_idx] as f32 / 255.0;
             slice[1 * s * s + dst_y * s + dst_x] = raw[src_idx + 1] as f32 / 255.0;
             slice[2 * s * s + dst_y * s + dst_x] = raw[src_idx + 2] as f32 / 255.0;
         }
@@ -196,11 +196,11 @@ fn postprocess_yolo(
     let mut candidates: Vec<(f32, f32, f32, f32, f32)> = Vec::new();
 
     for i in 0..num_boxes {
-        let cx = data[0 * num_features * num_boxes + 0 * num_boxes + i];
-        let cy = data[0 * num_features * num_boxes + 1 * num_boxes + i];
-        let w = data[0 * num_features * num_boxes + 2 * num_boxes + i];
-        let h = data[0 * num_features * num_boxes + 3 * num_boxes + i];
-        let conf = data[0 * num_features * num_boxes + 4 * num_boxes + i];
+        let cx = data[i];
+        let cy = data[1 * num_boxes + i];
+        let w = data[2 * num_boxes + i];
+        let h = data[3 * num_boxes + i];
+        let conf = data[4 * num_boxes + i];
 
         if conf >= confidence_threshold {
             candidates.push((cx, cy, w, h, conf));

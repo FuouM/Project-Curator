@@ -9,19 +9,20 @@ pub async fn add_tag_logic(
     category: &str,
     db: &SqlitePool,
 ) -> Result<()> {
-    sqlx::query("INSERT OR IGNORE INTO tags (name, category) VALUES (?, ?)")
-        .bind(tag)
-        .bind(category)
-        .execute(db)
-        .await?;
-
-    let tag_row: (i64,) = sqlx::query_as("SELECT id FROM tags WHERE name = ? LIMIT 1")
-        .bind(tag)
-        .fetch_one(db)
-        .await?;
-    let tag_id = tag_row.0;
-
     let source_id = resolve_source_id(db, "user").await?;
+
+    // Upsert tag with RETURNING id + insert image_tag in one transaction.
+    let mut tx = db.begin().await?;
+    let tag_row: (i64,) = sqlx::query_as(
+        "INSERT INTO tags (name, category) VALUES (?, ?)
+         ON CONFLICT(name) DO UPDATE SET category = excluded.category
+         RETURNING id",
+    )
+    .bind(tag)
+    .bind(category)
+    .fetch_one(&mut *tx)
+    .await?;
+    let tag_id = tag_row.0;
 
     sqlx::query(
         "INSERT OR REPLACE INTO image_tags (image_id, tag_id, source_id, confidence, is_deleted)
@@ -30,8 +31,9 @@ pub async fn add_tag_logic(
     .bind(image_id)
     .bind(tag_id)
     .bind(source_id)
-    .execute(db)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
 
     Ok(())
 }
