@@ -1070,7 +1070,7 @@ pub async fn handle_request(
             if !path.exists() {
                 return Response::Error { message: "OCR Recognition model file not found.".to_string() };
             }
-            match curator_core::run_onnx_benchmark_2d(&path, 48, 320) {
+            match curator_core::run_onnx_benchmark_4d(&path, 48, 320) {
                 Ok((cpu, gpu, err, has_gpu)) => Response::DetectionBenchmarkResult {
                     yolo_cpu_time_ms: None,
                     yolo_gpu_time_ms: None,
@@ -1105,7 +1105,7 @@ pub async fn handle_request(
             if !path.exists() {
                 return Response::Error { message: "OCR Classification model file not found.".to_string() };
             }
-            match curator_core::run_onnx_benchmark_2d(&path, 80, 160) {
+            match curator_core::run_onnx_benchmark_4d(&path, 80, 160) {
                 Ok((cpu, gpu, err, has_gpu)) => Response::DetectionBenchmarkResult {
                     yolo_cpu_time_ms: None,
                     yolo_gpu_time_ms: None,

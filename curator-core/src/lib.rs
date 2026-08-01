@@ -17,7 +17,7 @@ pub use onnx::ManagedSession;
 
 pub use benchmark::{
     benchmark_preprocess, run_detection_benchmark, run_onnx_benchmark,
-    run_onnx_benchmark_2d, get_benchmark_images, run_single_image_benchmark,
+    run_onnx_benchmark_2d, run_onnx_benchmark_4d, get_benchmark_images, run_single_image_benchmark,
     DetectionBenchmarkResult, SingleImageBenchmarkResult,
 };
 pub use crop_cache::CropCache;
