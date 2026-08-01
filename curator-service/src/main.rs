@@ -49,7 +49,7 @@ pub(crate) struct AppSettings {
     embedding_model: curator_core::ipc::EmbeddingModel,
     #[serde(default)]
     detection_device: curator_core::ipc::DevicePreference,
-    #[serde(default)]
+    #[serde(default = "default_detection_metrics_device")]
     detection_metrics_device: curator_core::ipc::DevicePreference,
     #[serde(default)]
     ocr_device: curator_core::ipc::DevicePreference,
