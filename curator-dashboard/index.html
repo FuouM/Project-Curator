@@ -666,169 +666,189 @@
             
             <div class="group-box" style="padding: 12px; margin-top: 10px; background-color: #f6f6f6;">
               <div class="group-box-title">Results</div>
-              <div style="display: flex; flex-direction: column; gap: 12px; font-size: 11px;">
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #ccc; padding-bottom: 4px;">
-                  <span style="font-weight: bold;">GPU Provider Support:</span>
-                  <span id="benchmark-gpu-loaded">—</span>
-                </div>
- 
-                <div style="margin-top: 4px;">
-                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">CLIP ViT-B/32 Vision Model (224x224)</div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>CPU Throughput:</span>
-                    <span id="benchmark-clip-cpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>GPU Throughput:</span>
-                    <span id="benchmark-clip-gpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
-                    <span>Throughput Factor:</span>
-                    <span id="benchmark-clip-speedup">—</span>
+              <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #ccc; padding-bottom: 6px; margin-bottom: 10px;">
+                <span style="font-weight: bold; font-size: 11px;">GPU Provider Support:</span>
+                <span id="benchmark-gpu-loaded" style="font-size: 11px;">—</span>
+              </div>
+
+              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px;">
+                <div class="group-box" style="padding: 10px; margin: 0;">
+                  <div class="group-box-title">CLIP ViT-B/32 <span style="font-weight: normal; font-size: 10px; color: #666;">(224x224)</span></div>
+                  <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>CPU Throughput</span>
+                      <span id="benchmark-clip-cpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>GPU Throughput</span>
+                      <span id="benchmark-clip-gpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid #eee; padding-top: 4px;">
+                      <span>Throughput Factor</span>
+                      <span id="benchmark-clip-speedup" style="text-align: right; font-weight: bold;">—</span>
+                    </div>
                   </div>
                 </div>
 
-                <div style="margin-top: 8px;">
-                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">MobileCLIP-S2 Vision Model (256x256)</div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>CPU Throughput:</span>
-                    <span id="benchmark-mclip-cpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>GPU Throughput:</span>
-                    <span id="benchmark-mclip-gpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
-                    <span>Throughput Factor:</span>
-                    <span id="benchmark-mclip-speedup">—</span>
-                  </div>
-                </div>
-
-                <div style="margin-top: 8px;">
-                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">Camie Tagger v2 Model (512x512)</div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>CPU Throughput:</span>
-                    <span id="benchmark-tagger-cpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>GPU Throughput:</span>
-                    <span id="benchmark-tagger-gpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
-                    <span>Throughput Factor:</span>
-                    <span id="benchmark-tagger-speedup">—</span>
+                <div class="group-box" style="padding: 10px; margin: 0;">
+                  <div class="group-box-title">MobileCLIP-S2 <span style="font-weight: normal; font-size: 10px; color: #666;">(256x256)</span></div>
+                  <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>CPU Throughput</span>
+                      <span id="benchmark-mclip-cpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>GPU Throughput</span>
+                      <span id="benchmark-mclip-gpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid #eee; padding-top: 4px;">
+                      <span>Throughput Factor</span>
+                      <span id="benchmark-mclip-speedup" style="text-align: right; font-weight: bold;">—</span>
+                    </div>
                   </div>
                 </div>
 
-                <div style="margin-top: 8px;">
-                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">YOLO Person Detection (640x640)</div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>CPU Throughput:</span>
-                    <span id="benchmark-yolo-cpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>GPU Throughput:</span>
-                    <span id="benchmark-yolo-gpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
-                    <span>Throughput Factor:</span>
-                    <span id="benchmark-yolo-speedup">—</span>
-                  </div>
-                </div>
-
-                <div style="margin-top: 8px;">
-                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">CCIP Feature Extraction (384x384)</div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>CPU Throughput:</span>
-                    <span id="benchmark-ccip-feat-cpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>GPU Throughput:</span>
-                    <span id="benchmark-ccip-feat-gpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
-                    <span>Throughput Factor:</span>
-                    <span id="benchmark-ccip-feat-speedup">—</span>
+                <div class="group-box" style="padding: 10px; margin: 0;">
+                  <div class="group-box-title">Camie Tagger v2 <span style="font-weight: normal; font-size: 10px; color: #666;">(512x512)</span></div>
+                  <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>CPU Throughput</span>
+                      <span id="benchmark-tagger-cpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>GPU Throughput</span>
+                      <span id="benchmark-tagger-gpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid #eee; padding-top: 4px;">
+                      <span>Throughput Factor</span>
+                      <span id="benchmark-tagger-speedup" style="text-align: right; font-weight: bold;">—</span>
+                    </div>
                   </div>
                 </div>
 
-                <div style="margin-top: 8px;">
-                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">CCIP Metrics (16x768)</div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>CPU Throughput:</span>
-                    <span id="benchmark-ccip-metrics-cpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>GPU Throughput:</span>
-                    <span id="benchmark-ccip-metrics-gpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
-                    <span>Throughput Factor:</span>
-                    <span id="benchmark-ccip-metrics-speedup">—</span>
-                  </div>
-                </div>
-
-                <div style="margin-top: 8px;">
-                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">OCR Text Detection (960x960)</div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>CPU Throughput:</span>
-                    <span id="benchmark-ocr-det-cpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>GPU Throughput:</span>
-                    <span id="benchmark-ocr-det-gpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
-                    <span>Throughput Factor:</span>
-                    <span id="benchmark-ocr-det-speedup">—</span>
+                <div class="group-box" style="padding: 10px; margin: 0;">
+                  <div class="group-box-title">YOLO Person Detection <span style="font-weight: normal; font-size: 10px; color: #666;">(640x640)</span></div>
+                  <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>CPU Throughput</span>
+                      <span id="benchmark-yolo-cpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>GPU Throughput</span>
+                      <span id="benchmark-yolo-gpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid #eee; padding-top: 4px;">
+                      <span>Throughput Factor</span>
+                      <span id="benchmark-yolo-speedup" style="text-align: right; font-weight: bold;">—</span>
+                    </div>
                   </div>
                 </div>
 
-                <div style="margin-top: 8px;">
-                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">OCR Text Recognition (48x320)</div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>CPU Throughput:</span>
-                    <span id="benchmark-ocr-rec-cpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>GPU Throughput:</span>
-                    <span id="benchmark-ocr-rec-gpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
-                    <span>Throughput Factor:</span>
-                    <span id="benchmark-ocr-rec-speedup">—</span>
-                  </div>
-                </div>
-
-                <div style="margin-top: 8px;">
-                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">OCR Text Line Classification (80x160)</div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>CPU Throughput:</span>
-                    <span id="benchmark-ocr-cls-cpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>GPU Throughput:</span>
-                    <span id="benchmark-ocr-cls-gpu">—</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
-                    <span>Throughput Factor:</span>
-                    <span id="benchmark-ocr-cls-speedup">—</span>
+                <div class="group-box" style="padding: 10px; margin: 0;">
+                  <div class="group-box-title">CCIP Feature Extraction <span style="font-weight: normal; font-size: 10px; color: #666;">(384x384)</span></div>
+                  <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>CPU Throughput</span>
+                      <span id="benchmark-ccip-feat-cpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>GPU Throughput</span>
+                      <span id="benchmark-ccip-feat-gpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid #eee; padding-top: 4px;">
+                      <span>Throughput Factor</span>
+                      <span id="benchmark-ccip-feat-speedup" style="text-align: right; font-weight: bold;">—</span>
+                    </div>
                   </div>
                 </div>
 
-                <div style="margin-top: 8px;">
-                  <div style="font-weight: bold; font-size: 12px; border-bottom: 1px solid #777; padding-bottom: 2px; margin-bottom: 6px;">Manga Bubble YOLO (1280x1280)</div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>CPU Throughput:</span>
-                    <span id="benchmark-manga-bubble-cpu">—</span>
+                <div class="group-box" style="padding: 10px; margin: 0;">
+                  <div class="group-box-title">CCIP Metrics <span style="font-weight: normal; font-size: 10px; color: #666;">(16x768)</span></div>
+                  <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>CPU Throughput</span>
+                      <span id="benchmark-ccip-metrics-cpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>GPU Throughput</span>
+                      <span id="benchmark-ccip-metrics-gpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid #eee; padding-top: 4px;">
+                      <span>Throughput Factor</span>
+                      <span id="benchmark-ccip-metrics-speedup" style="text-align: right; font-weight: bold;">—</span>
+                    </div>
                   </div>
-                  <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
-                    <span>GPU Throughput:</span>
-                    <span id="benchmark-manga-bubble-gpu">—</span>
+                </div>
+
+                <div class="group-box" style="padding: 10px; margin: 0;">
+                  <div class="group-box-title">OCR Text Detection <span style="font-weight: normal; font-size: 10px; color: #666;">(960x960)</span></div>
+                  <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>CPU Throughput</span>
+                      <span id="benchmark-ocr-det-cpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>GPU Throughput</span>
+                      <span id="benchmark-ocr-det-gpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid #eee; padding-top: 4px;">
+                      <span>Throughput Factor</span>
+                      <span id="benchmark-ocr-det-speedup" style="text-align: right; font-weight: bold;">—</span>
+                    </div>
                   </div>
-                  <div style="display: flex; justify-content: space-between; padding-top: 2px;">
-                    <span>Throughput Factor:</span>
-                    <span id="benchmark-manga-bubble-speedup">—</span>
+                </div>
+
+                <div class="group-box" style="padding: 10px; margin: 0;">
+                  <div class="group-box-title">OCR Text Recognition <span style="font-weight: normal; font-size: 10px; color: #666;">(48x320)</span></div>
+                  <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>CPU Throughput</span>
+                      <span id="benchmark-ocr-rec-cpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>GPU Throughput</span>
+                      <span id="benchmark-ocr-rec-gpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid #eee; padding-top: 4px;">
+                      <span>Throughput Factor</span>
+                      <span id="benchmark-ocr-rec-speedup" style="text-align: right; font-weight: bold;">—</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="group-box" style="padding: 10px; margin: 0;">
+                  <div class="group-box-title">OCR Line Classification <span style="font-weight: normal; font-size: 10px; color: #666;">(80x160)</span></div>
+                  <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>CPU Throughput</span>
+                      <span id="benchmark-ocr-cls-cpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>GPU Throughput</span>
+                      <span id="benchmark-ocr-cls-gpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid #eee; padding-top: 4px;">
+                      <span>Throughput Factor</span>
+                      <span id="benchmark-ocr-cls-speedup" style="text-align: right; font-weight: bold;">—</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="group-box" style="padding: 10px; margin: 0;">
+                  <div class="group-box-title">Manga Bubble YOLO <span style="font-weight: normal; font-size: 10px; color: #666;">(1280x1280)</span></div>
+                  <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>CPU Throughput</span>
+                      <span id="benchmark-manga-bubble-cpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <span>GPU Throughput</span>
+                      <span id="benchmark-manga-bubble-gpu" style="text-align: right;">—</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid #eee; padding-top: 4px;">
+                      <span>Throughput Factor</span>
+                      <span id="benchmark-manga-bubble-speedup" style="text-align: right; font-weight: bold;">—</span>
+                    </div>
                   </div>
                 </div>
               </div>
