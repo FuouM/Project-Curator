@@ -931,9 +931,9 @@
           </div>
 
           <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
-            <div class="group-box-title">Image Viewing</div>
+            <div class="group-box-title">Image Viewer</div>
             <p style="font-size: 11px; color: #333333;">
-              Choose what happens when you click an image in the Gallery.
+              Configure how images open in the viewer and how OCR result text labels are drawn on detection boxes.
             </p>
             <div class="form-group">
               <label style="font-weight: 600; min-width: 120px;">Click Action:</label>
@@ -942,47 +942,32 @@
                 <option value="external">Open with Default Application</option>
               </select>
             </div>
-          </div>
-
-          <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
-            <div class="group-box-title">OCR Text Rendering</div>
-            <p style="font-size: 11px; color: #333333;">
-              Adjust how OCR result text labels are drawn on top of detection boxes in the Image Viewer.
-            </p>
-            <div style="display: flex; gap: 16px; flex-wrap: wrap;">
-              <div class="form-group">
-                <label style="font-weight: 600; min-width: 120px;">Font Size:</label>
-                <select class="input-field" id="settings-ocr-font-size" style="width: 140px;">
-                  <option value="10">Small (10px)</option>
-                  <option value="12" selected>Normal (12px)</option>
-                  <option value="14">Large (14px)</option>
-                  <option value="16">Extra Large (16px)</option>
-                </select>
+            <div style="border-top: 1px solid #e5e7eb; margin: 4px 0; padding-top: 12px;">
+              <label style="font-weight: 600; display: block; margin-bottom: 6px;">OCR Text Rendering:</label>
+              <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                <div class="form-group">
+                  <label style="font-weight: 600; min-width: 120px;">Font Size:</label>
+                  <select class="input-field" id="settings-ocr-font-size" style="width: 140px;">
+                    <option value="10">Small (10px)</option>
+                    <option value="12" selected>Normal (12px)</option>
+                    <option value="14">Large (14px)</option>
+                    <option value="16">Extra Large (16px)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label style="font-weight: 600; min-width: 120px;">Text Outline:</label>
+                  <select class="input-field" id="settings-ocr-stroke-width" style="width: 140px;">
+                    <option value="0">None</option>
+                    <option value="2">Thin (2px)</option>
+                    <option value="3">Medium (3px)</option>
+                    <option value="5" selected>Thick (5px)</option>
+                  </select>
+                </div>
               </div>
-              <div class="form-group">
-                <label style="font-weight: 600; min-width: 120px;">Text Outline:</label>
-                <select class="input-field" id="settings-ocr-stroke-width" style="width: 140px;">
-                  <option value="0">None</option>
-                  <option value="2">Thin (2px)</option>
-                  <option value="3">Medium (3px)</option>
-                  <option value="5" selected>Thick (5px)</option>
-                </select>
+              <div style="margin-top: 4px;">
+                <label style="font-weight: 600; display: block; margin-bottom: 4px;">Preview:</label>
+                <div id="settings-ocr-preview" style="border: 1px solid #cccccc; border-radius: 4px; overflow: hidden; max-width: 420px;"></div>
               </div>
-            </div>
-            <div style="margin-top: 4px;">
-              <label style="font-weight: 600; display: block; margin-bottom: 4px;">Preview:</label>
-              <div id="settings-ocr-preview" style="border: 1px solid #cccccc; border-radius: 4px; overflow: hidden; max-width: 420px;"></div>
-            </div>
-          </div>
-
-          <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
-            <div class="group-box-title">Thumbnail Cache</div>
-            <p style="font-size: 11px; color: #333333;">
-              Purge cached thumbnails for images that are no longer present on disk.
-            </p>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <button class="win-button danger" id="purge-missing-thumbs-btn"><i class="bi bi-trash"></i> Purge Missing Thumbnails</button>
-              <span id="purge-status-msg" style="font-size: 11px;"></span>
             </div>
           </div>
 
@@ -1142,6 +1127,17 @@
 
             <div style="background-color: #e8f5e9; border: 1px solid #a5d6a7; padding: 8px; border-radius: 2px; color: #2e7d32; font-size: 11px;">
               <strong>Note:</strong> Device changes take effect immediately. Models are automatically unloaded after the idle timeout, then reloaded on the next inference call.
+            </div>
+          </div>
+
+          <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+            <div class="group-box-title">Thumbnail Cache</div>
+            <p style="font-size: 11px; color: #333333;">
+              Purge cached thumbnails for images that are no longer present on disk.
+            </p>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="win-button danger" id="purge-missing-thumbs-btn"><i class="bi bi-trash"></i> Purge Missing Thumbnails</button>
+              <span id="purge-status-msg" style="font-size: 11px;"></span>
             </div>
           </div>
 
