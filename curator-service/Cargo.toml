@@ -5,17 +5,16 @@ edition = "2024"
 
 [dependencies]
 curator-core = { path = "../curator-core" }
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-anyhow = "1"
-tracing = "0.1"
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uuid = { version = "1", features = ["v4", "serde"] }
-clap = { version = "4", features = ["derive"] }
+uuid = { workspace = true }
+clap = { workspace = true }
 sha2 = "0.10"
 bytemuck = "1"
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "macros", "chrono", "uuid"] }
-ureq = "3"
-tonic = { version = "0.12", features = ["transport"] }
-
+sqlx = { workspace = true }
+ureq = { workspace = true }
+tonic = { workspace = true }
