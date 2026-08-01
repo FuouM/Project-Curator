@@ -40,7 +40,8 @@ export function estimateLabelWidth(text: string, fontSize: number): number {
 }
 
 // Pushes a label downwards until it no longer overlaps any previously placed
-// label, so stacked/overlapping OCR boxes never draw text on top of each other.
+// label (stopping at the overlay bounds), so stacked/overlapping OCR boxes
+// never draw text on top of each other and text never runs off the edges.
 export function placeLabelAvoidingOverlap(
   x: number,
   y: number,
@@ -48,9 +49,11 @@ export function placeLabelAvoidingOverlap(
   h: number,
   placed: PlacedLabel[],
   pad: number,
+  bounds?: { w: number; h: number },
 ): { x: number; y: number } {
   let lx = x;
   let ly = y;
+  const maxY = bounds ? bounds.h - h : Number.POSITIVE_INFINITY;
   let guard = 0;
   while (guard++ < 64) {
     let hit: PlacedLabel | null = null;
@@ -62,7 +65,16 @@ export function placeLabelAvoidingOverlap(
       }
     }
     if (!hit) break;
-    ly = hit.y + hit.h + pad;
+    const nextY = hit.y + hit.h + pad;
+    if (nextY > maxY) break;
+    ly = nextY;
+  }
+  // Clamp into the overlay bounds so labels at the edges are never lost.
+  if (bounds) {
+    if (lx + w > bounds.w) lx = Math.max(0, bounds.w - w);
+    if (lx < 0) lx = 0;
+    if (ly + h > bounds.h) ly = Math.max(0, bounds.h - h);
+    if (ly < 0) ly = 0;
   }
   return { x: lx, y: ly };
 }
@@ -96,7 +108,7 @@ export function buildOcrLabelSvg(boxes: OcrPreviewBox[], viewW: number, viewH: n
     const minX = Math.min(b.pts[0][0], b.pts[1][0], b.pts[2][0], b.pts[3][0]);
     const minY = Math.min(b.pts[0][1], b.pts[1][1], b.pts[2][1], b.pts[3][1]);
     const labelW = estimateLabelWidth(b.text, fontSize);
-    const pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placed, 3);
+    const pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placed, 3, { w: viewW, h: viewH });
     placed.push({ x: pos.x, y: pos.y, w: labelW, h: labelH });
     labels +=
       `<text x="${pos.x}" y="${pos.y + fontSize}" fill="#ffffff" style="font-size:${fontSize}px" ` +

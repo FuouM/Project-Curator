@@ -185,7 +185,10 @@ async function toggleOcr() {
     for (const { det, minX, minY } of boxGeom) {
       const labelW = estimateLabelWidth(det.text, fontSize);
       const labelH = fontSize + 4;
-      const pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placedLabels, 3);
+      const pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placedLabels, 3, {
+        w: img.clientWidth,
+        h: img.clientHeight,
+      });
       placedLabels.push({ x: pos.x, y: pos.y, w: labelW, h: labelH });
 
       const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
