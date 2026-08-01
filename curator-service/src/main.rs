@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, trace, warn};
+use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use curator_core::grpc::curator_server::{Curator, CuratorServer};
 use curator_core::grpc::{CuratorRequest, CuratorResponse};
@@ -356,19 +356,7 @@ impl Curator for CuratorServiceImpl {
         let req_payload = request.into_inner();
         let request_str = req_payload.request_json;
 
-        // Cheaply extract the command name from the externally-tagged JSON
-        // request without a full parse or allocation (avoids formatting the
-        // entire payload into the log on every IPC call).
-        let cmd = {
-            let s = request_str.trim();
-            let s = s.strip_prefix('{').unwrap_or(s);
-            let s = s.trim_start();
-            let s = s.strip_prefix('"').unwrap_or(s);
-            let end = s.find('"').unwrap_or(s.len());
-            &s[..end.min(64)]
-        };
-        info!("Received gRPC request: {}", cmd);
-        trace!("Received gRPC request payload: {}", request_str);
+        info!("Received gRPC Request: {}", request_str);
 
         let request_parsed: Request = match serde_json::from_str(&request_str) {
             Ok(r) => r,
@@ -396,8 +384,7 @@ impl Curator for CuratorServiceImpl {
         .await;
 
         let response_json = serde_json::to_string(&response).map_err(|e| Status::internal(e.to_string()))?;
-        info!("Sending gRPC response ({} bytes)", response_json.len());
-        trace!("Sending gRPC response payload: {}", response_json);
+        info!("Sending gRPC Response: {}", response_json);
         Ok(TonicResponse::new(CuratorResponse { response_json }))
     }
 }

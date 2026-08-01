@@ -183,16 +183,7 @@ async fn ensure_client(
 
 #[tauri::command]
 async fn send_to_service(request_json: String) -> Result<String, String> {
-    let cmd = request_json
-        .trim()
-        .trim_start_matches('{')
-        .trim_start()
-        .trim_start_matches('"')
-        .split('"')
-        .next()
-        .unwrap_or("unknown")
-        .to_string();
-    log_dashboard_event(&format!("send_to_service: {}", cmd));
+    log_dashboard_event(&format!("send_to_service: {}", request_json));
     pipe_request(&request_json).await
 }
 
