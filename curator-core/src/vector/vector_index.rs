@@ -40,7 +40,7 @@ impl VectorIndex {
         Ok(instance)
     }
 
-    pub fn add(&self, id: u64, vector: &[f32]) -> Result<(), Error> {
+    pub fn add_without_save(&self, id: u64, vector: &[f32]) -> Result<(), Error> {
         let size = self.index.size();
         let capacity = self.index.capacity();
         if size >= capacity {
@@ -51,6 +51,19 @@ impl VectorIndex {
         self.index
             .add(id, vector)
             .map_err(|e| anyhow::anyhow!("Failed to add vector: {:?}", e))?;
+        Ok(())
+    }
+
+    pub fn add(&self, id: u64, vector: &[f32]) -> Result<(), Error> {
+        self.add_without_save(id, vector)?;
+        self.save()?;
+        Ok(())
+    }
+
+    pub fn add_batch(&self, items: &[(u64, Vec<f32>)]) -> Result<(), Error> {
+        for (id, vector) in items {
+            self.add_without_save(*id, vector)?;
+        }
         self.save()?;
         Ok(())
     }

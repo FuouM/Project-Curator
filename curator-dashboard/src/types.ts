@@ -13,7 +13,6 @@ export type RequestPayload =
   | { GetImage: { image_id: number } }
   | { GetThumbnail: { image_id: number; width?: number } }
   | { PurgeMissingThumbnails: null }
-  | { ValidatePlugin: { manifest_path: string } }
   | { TagImage: { image_id: number; threshold: number | null; force: boolean | null } }
   | { TagImageBatch: { image_ids: number[]; threshold: number | null; force: boolean | null } }
   | { GetTaggerStatus: null }

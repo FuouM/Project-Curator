@@ -136,8 +136,10 @@ pub async fn search_logic(
                         .bind(&concept.name)
                         .fetch_all(db)
                         .await
-                        .unwrap_or_default();
-
+                        .unwrap_or_else(|e| {
+                            tracing::warn!("Failed to query concept tagged images: {:?}", e);
+                            Vec::new()
+                        });
                         for r in tagged_images {
                             ids.insert(r.0);
                             vector_scores.entry(r.0).or_insert(1.0);
@@ -158,7 +160,10 @@ pub async fn search_logic(
         .bind(char_id)
         .fetch_all(db)
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to query character detections: {:?}", e);
+            Vec::new()
+        });
         let ids: std::collections::HashSet<i64> = rows.into_iter().map(|r| r.0).collect();
         candidate_ids = Some(match candidate_ids.take() {
             Some(existing) => existing.intersection(&ids).copied().collect(),
@@ -173,7 +178,10 @@ pub async fn search_logic(
         )
         .fetch_all(db)
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to query OCR detections: {:?}", e);
+            Vec::new()
+        });
         let ids: std::collections::HashSet<i64> = rows.into_iter().map(|r| r.0).collect();
         candidate_ids = Some(match candidate_ids.take() {
             Some(existing) => existing.intersection(&ids).copied().collect(),
@@ -191,7 +199,10 @@ pub async fn search_logic(
                         .bind(&sha256)
                         .fetch_all(db)
                         .await
-                        .unwrap_or_default();
+                        .unwrap_or_else(|e| {
+                            tracing::warn!("Failed to query exact sha256 matches: {:?}", e);
+                            Vec::new()
+                        });
                 for r in rows {
                     exact_matches.insert(r.0);
                 }
@@ -204,7 +215,10 @@ pub async fn search_logic(
                 )
                 .fetch_all(db)
                 .await
-                .unwrap_or_default();
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to query phashes: {:?}", e);
+                    Vec::new()
+                });
                 for (id, db_phash) in rows {
                     let db_val = u64::from_str_radix(&db_phash, 16).unwrap_or(0);
                     let dist = (query_val ^ db_val).count_ones();
@@ -253,7 +267,10 @@ pub async fn search_logic(
             .bind(ocr_text)
             .fetch_all(db)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to query OCR FTS: {:?}", e);
+                Vec::new()
+            });
             let mut ids = std::collections::HashSet::new();
             for (id,) in fts_rows {
                 ids.insert(id);
@@ -327,8 +344,10 @@ pub async fn search_logic(
             for val in &bind_values {
                 query = query.bind(val);
             }
-            let parsed_rows: Vec<(i64,)> = query.fetch_all(db).await.unwrap_or_default();
-
+            let parsed_rows: Vec<(i64,)> = query.fetch_all(db).await.unwrap_or_else(|e| {
+                tracing::warn!("Failed to query parsed metadata: {:?}", e);
+                Vec::new()
+            });
             for (id,) in parsed_rows {
                 parse_matches.insert(id);
             }
@@ -346,7 +365,10 @@ pub async fn search_logic(
             .bind(&pattern)
             .fetch_all(db)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to query filename filter: {:?}", e);
+                Vec::new()
+            });
             for (id,) in rows {
                 filename_matches.insert(id);
             }
@@ -418,7 +440,10 @@ pub async fn search_logic(
         ids
     };
 
-    let batch_details = batch_get_images_logic(&target_ids, db).await.unwrap_or_default();
+    let batch_details = batch_get_images_logic(&target_ids, db).await.unwrap_or_else(|e| {
+        tracing::warn!("Failed to batch get image details in search: {:?}", e);
+        Vec::new()
+    });
     let details_map: std::collections::HashMap<i64, _> =
         batch_details.into_iter().map(|d| (d.id, d)).collect();
 

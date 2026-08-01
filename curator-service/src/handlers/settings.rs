@@ -33,28 +33,20 @@ pub async fn query_status(
     };
     let source_id = resolve_source_id(db, source_name).await.unwrap_or_default();
 
-    let images: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM images WHERE deleted_at IS NULL")
-        .fetch_one(db)
-        .await?;
-    let vectors: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'ready' AND source_id = ?",
+    let row: (i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT 
+            (SELECT COUNT(*) FROM images WHERE deleted_at IS NULL) as images,
+            (SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'ready' AND source_id = ?) as vectors,
+            (SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'pending' AND source_id = ?) as pending,
+            (SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'preprocessing' AND source_id = ?) as preprocessing"
     )
+    .bind(source_id)
+    .bind(source_id)
     .bind(source_id)
     .fetch_one(db)
     .await?;
-    let pending: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'pending' AND source_id = ?",
-    )
-    .bind(source_id)
-    .fetch_one(db)
-    .await?;
-    let preprocessing: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM image_vectors WHERE vector_state = 'preprocessing' AND source_id = ?",
-    )
-    .bind(source_id)
-    .fetch_one(db)
-    .await?;
-    Ok((images.0, vectors.0, pending.0, preprocessing.0))
+
+    Ok((row.0, row.1, row.2, row.3))
 }
 
 pub async fn update_settings_logic(
@@ -101,9 +93,6 @@ pub async fn update_settings_logic(
     if let Some(ref od) = ocr_device {
         s.ocr_device = od.clone();
     }
-    if let Err(e) = crate::save_settings(data_dir, &s) {
-        warn!("Failed to save settings: {:?}", e);
-    }
     let clip = s.clip_device.clone();
     let tagger_dev = s.tagger_device.clone();
     let idle = s.idle_timeout_secs;
@@ -111,8 +100,17 @@ pub async fn update_settings_logic(
     let det_dev = s.detection_device.clone();
     let det_met_dev = s.detection_metrics_device.clone();
     let ocr_dev = s.ocr_device.clone();
+
+    let settings_to_save = s.clone();
+    let data_dir_buf = data_dir.to_path_buf();
     drop(s);
 
+    let save_res = tokio::task::spawn_blocking(move || {
+        crate::save_settings(&data_dir_buf, &settings_to_save)
+    }).await;
+    if let Ok(Err(e)) = save_res {
+        warn!("Failed to save settings: {:?}", e);
+    }
     if clip_device.is_some() {
         model_manager.set_device(clip.clone());
     }

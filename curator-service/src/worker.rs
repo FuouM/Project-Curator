@@ -210,11 +210,12 @@ impl BackgroundWorker {
 
                 match inference_res {
                     Ok(Ok(embeddings_results)) => {
+                        let mut added_any = false;
                         for (image, emb_res) in images.into_iter().zip(embeddings_results) {
                             match emb_res {
                                 Ok(embedding) => {
-                                    // Save to USearch index
-                                    if let Err(e) = vi_inf.add(image.id as u64, &embedding) {
+                                    // Add to USearch index in memory (persisted once after batch)
+                                    if let Err(e) = vi_inf.add_without_save(image.id as u64, &embedding) {
                                         error!(
                                             "Failed to index vector in USearch for image {}: {:?}",
                                             image.id, e
@@ -226,6 +227,7 @@ impl BackgroundWorker {
                                             .await;
                                         continue;
                                     }
+                                    added_any = true;
 
                                     // Compute checksum (simple SHA256 of the embedding floats for auditing)
                                     let checksum = format!(
@@ -247,23 +249,22 @@ impl BackgroundWorker {
                                     .await;
 
                                     if let Err(e) = update_res {
-                                        error!(
-                                            "Failed to update database vector state for image {}: {:?}",
-                                            image.id, e
-                                        );
+                                        error!("Failed to update image_vectors in DB for image {}: {:?}", image.id, e);
                                     }
                                 }
                                 Err(e) => {
-                                    error!(
-                                        "Failed to generate embedding for image {}: {:?}",
-                                        image.id, e
-                                    );
+                                    error!("Inference error for image {}: {:?}", image.id, e);
                                     let _ = sqlx::query("UPDATE image_vectors SET vector_state = 'failed' WHERE image_id = ? AND source_id = ?")
                                         .bind(image.id)
                                         .bind(source_id)
                                         .execute(&db_inf)
                                         .await;
                                 }
+                            }
+                        }
+                        if added_any {
+                            if let Err(e) = vi_inf.save() {
+                                error!("Failed to save USearch index after batch processing: {:?}", e);
                             }
                         }
                     }

@@ -9,9 +9,11 @@ use crate::image_decode::decode_rgb;
 const THUMBNAIL_WIDTH: u32 = 200;
 const WEBP_QUALITY: f32 = 80.0;
 const DEFAULT_MAX_ENTRIES: usize = 200_000;
+const EVICTION_CHECK_INTERVAL: u64 = 1000;
 
 pub struct ThumbnailCache {
     db: SqlitePool,
+    op_count: std::sync::atomic::AtomicU64,
 }
 
 impl ThumbnailCache {
@@ -46,7 +48,10 @@ impl ThumbnailCache {
         .await?;
 
         info!("Thumbnail cache opened at {:?}", path);
-        Ok(Arc::new(Self { db }))
+        Ok(Arc::new(Self {
+            db,
+            op_count: std::sync::atomic::AtomicU64::new(0),
+        }))
     }
 
     pub async fn get(&self, image_id: i64) -> Option<Vec<u8>> {
@@ -75,7 +80,10 @@ impl ThumbnailCache {
         .execute(&self.db)
         .await?;
 
-        self.evict_if_needed(DEFAULT_MAX_ENTRIES).await?;
+        let cnt = self.op_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        if cnt % EVICTION_CHECK_INTERVAL == 0 {
+            self.evict_if_needed(DEFAULT_MAX_ENTRIES).await?;
+        }
         Ok(())
     }
 

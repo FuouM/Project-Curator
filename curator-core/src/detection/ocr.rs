@@ -619,30 +619,40 @@ fn merge_fragmented(boxes: Vec<[[i32; 2]; 4]>) -> Vec<[[i32; 2]; 4]> {
     let x_threshold = 10i32;
     let y_threshold = 10i32;
 
-    fn box_extents(box_pts: &[[i32; 2]; 4]) -> (i32, i32, i32, i32) {
-        let xs: Vec<i32> = box_pts.iter().map(|p| p[0]).collect();
-        let ys: Vec<i32> = box_pts.iter().map(|p| p[1]).collect();
-        (*xs.iter().min().unwrap(), *xs.iter().max().unwrap(),
-         *ys.iter().min().unwrap(), *ys.iter().max().unwrap())
+    fn box_extents(box_pts: &[[i32; 2]]) -> (i32, i32, i32, i32) {
+        if box_pts.is_empty() {
+            return (0, 0, 0, 0);
+        }
+        let mut min_x = box_pts[0][0];
+        let mut max_x = box_pts[0][0];
+        let mut min_y = box_pts[0][1];
+        let mut max_y = box_pts[0][1];
+        for pt in &box_pts[1..] {
+            min_x = min_x.min(pt[0]);
+            max_x = max_x.max(pt[0]);
+            min_y = min_y.min(pt[1]);
+            max_y = max_y.max(pt[1]);
+        }
+        (min_x, max_x, min_y, max_y)
     }
 
-    let mut merged: Vec<Vec<[i32; 2]>> = boxes.iter().map(|b| b.to_vec()).collect();
+    let mut merged: Vec<[[i32; 2]; 4]> = boxes;
     let mut changed = true;
 
     while changed {
         changed = false;
         let mut visited = vec![false; merged.len()];
-        let mut new_merged = Vec::new();
+        let mut new_merged = Vec::with_capacity(merged.len());
 
         for i in 0..merged.len() {
             if visited[i] { continue; }
-            let mut current = merged[i].clone();
+            let mut current = merged[i];
             visited[i] = true;
 
             for j in (i + 1)..merged.len() {
                 if visited[j] { continue; }
-                let (min_x1, max_x1, min_y1, max_y1) = box_extents(&current.clone().try_into().unwrap_or([[0; 2]; 4]));
-                let (min_x2, max_x2, min_y2, max_y2) = box_extents(&merged[j].clone().try_into().unwrap_or([[0; 2]; 4]));
+                let (min_x1, max_x1, min_y1, max_y1) = box_extents(&current);
+                let (min_x2, max_x2, min_y2, max_y2) = box_extents(&merged[j]);
 
                 if (min_y1 - min_y2).abs() <= y_threshold
                     && (max_y1 - max_y2).abs() <= y_threshold
@@ -653,7 +663,7 @@ fn merge_fragmented(boxes: Vec<[[i32; 2]; 4]>) -> Vec<[[i32; 2]; 4]> {
                     let nx_max = max_x1.max(max_x2);
                     let ny_min = min_y1.min(min_y2);
                     let ny_max = max_y1.max(max_y2);
-                    current = vec![
+                    current = [
                         [nx_min, ny_min], [nx_max, ny_min],
                         [nx_max, ny_max], [nx_min, ny_max],
                     ];
@@ -666,9 +676,7 @@ fn merge_fragmented(boxes: Vec<[[i32; 2]; 4]>) -> Vec<[[i32; 2]; 4]> {
         merged = new_merged;
     }
 
-    merged.into_iter()
-        .filter_map(|b| b.try_into().ok())
-        .collect()
+    merged
 }
 
 

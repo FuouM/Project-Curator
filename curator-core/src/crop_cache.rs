@@ -5,9 +5,11 @@ use std::sync::Arc;
 use tracing::info;
 
 const DEFAULT_MAX_ENTRIES: usize = 200_000;
+const EVICTION_CHECK_INTERVAL: u64 = 1000;
 
 pub struct CropCache {
     db: SqlitePool,
+    op_count: std::sync::atomic::AtomicU64,
 }
 
 impl CropCache {
@@ -42,7 +44,10 @@ impl CropCache {
         .await?;
 
         info!("Crop cache opened at {:?}", path);
-        Ok(Arc::new(Self { db }))
+        Ok(Arc::new(Self {
+            db,
+            op_count: std::sync::atomic::AtomicU64::new(0),
+        }))
     }
 
     pub async fn get(&self, detection_id: i64) -> Option<Vec<u8>> {
@@ -86,8 +91,10 @@ impl CropCache {
         .bind(now)
         .execute(&self.db)
         .await?;
-
-        self.evict_if_needed(DEFAULT_MAX_ENTRIES).await?;
+        let cnt = self.op_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        if cnt % EVICTION_CHECK_INTERVAL == 0 {
+            self.evict_if_needed(DEFAULT_MAX_ENTRIES).await?;
+        }
         Ok(())
     }
 
@@ -113,8 +120,10 @@ impl CropCache {
             .await?;
         }
         tx.commit().await?;
-
-        self.evict_if_needed(DEFAULT_MAX_ENTRIES).await?;
+        let cnt = self.op_count.fetch_add(crops.len() as u64, std::sync::atomic::Ordering::Relaxed) + crops.len() as u64;
+        if cnt % EVICTION_CHECK_INTERVAL == 0 || crops.len() as u64 >= EVICTION_CHECK_INTERVAL {
+            self.evict_if_needed(DEFAULT_MAX_ENTRIES).await?;
+        }
         Ok(())
     }
 
