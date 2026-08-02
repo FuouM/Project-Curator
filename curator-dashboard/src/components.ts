@@ -181,18 +181,16 @@ export interface ButtonOptions {
   style?: string;
   className?: string;
   id?: string;
-  onClick?: string;
 }
 
-export function renderButton(text: string, options?: ButtonOptions): string {
+export function renderButton(text: string, options?: ButtonOptions): SafeHtml {
   const className = options?.className ?? "win-button";
   const disabledAttr = options?.disabled ? "disabled" : "";
   const styleAttr = options?.style ? `style="${options.style}"` : "";
   const idAttr = options?.id ? `id="${options.id}"` : "";
-  const onClickAttr = options?.onClick ? `onclick="${options.onClick}"` : "";
   const iconHtml = options?.icon ? `<i class="${options.icon}"></i> ` : "";
 
-  return `<button class="${className}" ${disabledAttr} ${styleAttr} ${idAttr} ${onClickAttr}>${iconHtml}${text}</button>`;
+  return html`<button class="${className}" ${disabledAttr} ${styleAttr} ${idAttr}>${iconHtml}${text}</button>`;
 }
 
 // --- Input Field Component ---
@@ -204,7 +202,7 @@ export interface InputOptions {
   hasClear?: boolean;
 }
 
-export function renderInputField(options?: InputOptions): string {
+export function renderInputField(options?: InputOptions): SafeHtml {
   const idAttr = options?.id ? `id="${options.id}"` : "";
   const placeholderAttr = options?.placeholder ? `placeholder="${options.placeholder}"` : "";
   const valueAttr = options?.value ? `value="${options.value}"` : "";
@@ -213,7 +211,7 @@ export function renderInputField(options?: InputOptions): string {
 
   if (hasClear) {
     const wrapperClass = options?.value ? "input-wrapper has-value" : "input-wrapper";
-    return `
+    return html`
       <div class="${wrapperClass}" ${styleAttr}>
         <input class="input-field has-clear" ${idAttr} ${placeholderAttr} ${valueAttr} style="width: 100%;" />
         <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
@@ -221,7 +219,7 @@ export function renderInputField(options?: InputOptions): string {
     `;
   }
 
-  return `<input class="input-field" ${idAttr} ${placeholderAttr} ${valueAttr} ${styleAttr} />`;
+  return html`<input class="input-field" ${idAttr} ${placeholderAttr} ${valueAttr} ${styleAttr} />`;
 }
 
 // --- Stat Card Component ---
@@ -231,12 +229,12 @@ export interface StatCardOptions {
   title?: string;
 }
 
-export function renderStatCard(label: string, value: string, options?: StatCardOptions): string {
+export function renderStatCard(label: string, value: string, options?: StatCardOptions): SafeHtml {
   const idAttr = options?.id ? `id="${options.id}"` : "";
   const styleAttr = options?.style ? `style="${options.style}"` : "";
   const titleAttr = options?.title ? `title="${options.title}"` : "";
 
-  return `
+  return html`
     <div class="stat-card" ${idAttr} ${styleAttr} ${titleAttr}>
       <div class="stat-label">${label}</div>
       <div class="stat-value">${value}</div>
@@ -253,20 +251,20 @@ export interface ImageCardOptions {
   tagPillsHtml?: string;
 }
 
-export function renderImageCard(srcUrl: string, filepath: string, options?: ImageCardOptions): string {
+export function renderImageCard(srcUrl: string, filepath: string, options?: ImageCardOptions): SafeHtml {
   const badgeClass = options?.badgeClass ?? "badge-ready";
   const badgeText = options?.badgeText ?? "Ready";
   const tagPills = options?.tagPillsHtml ?? "";
   const extraCount = options?.extraTagCount ?? 0;
   
   const extraTagHtml = extraCount > 0 
-    ? `<span class="tag-pill" style="background-color: #f0f0f0; color: #555555; font-style: italic;">+${extraCount} more</span>` 
+    ? `<span class="tag-pill tag-pill-overflow">+${extraCount} more</span>` 
     : "";
 
-  return `
+  return html`
     <div class="image-card">
       <div class="image-preview">
-        <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+        <img src="${srcUrl}" alt="Image Preview" data-action="img-fallback" style="width: 100%; height: 100%; object-fit: cover;" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
         <div class="vector-badge ${badgeClass}">${badgeText}</div>
       </div>
@@ -281,9 +279,9 @@ export function renderImageCard(srcUrl: string, filepath: string, options?: Imag
 }
 
 // --- Group Box Component ---
-export function renderGroupBox(title: string, contentHtml: string, options?: { style?: string }): string {
+export function renderGroupBox(title: string, contentHtml: string, options?: { style?: string }): SafeHtml {
   const styleAttr = options?.style ? `style="${options.style}"` : "";
-  return `
+  return html`
     <div class="group-box" ${styleAttr}>
       <div class="group-box-title">${title}</div>
       ${contentHtml}
@@ -299,5 +297,29 @@ export const SHOWCASE_COMPONENTS: Record<string, { name: string; description: st
   renderConceptCard: {
     name: "Concept Card",
     description: "Custom concept definition card with threshold slider, sample grid, and action buttons.",
+  },
+  renderTagPill: {
+    name: "Tag Pill",
+    description: "Tag pill with category-based styling, optional delete button, and tooltip.",
+  },
+  renderImageCard: {
+    name: "Image Card",
+    description: "Image thumbnail card with badge, filepath, and tag pills.",
+  },
+  renderButton: {
+    name: "Button",
+    description: "Standard button with optional icon, disabled state, and variants.",
+  },
+  renderInputField: {
+    name: "Input Field",
+    description: "Text input with optional clear button and placeholder.",
+  },
+  renderStatCard: {
+    name: "Stat Card",
+    description: "Statistic display card with label and value.",
+  },
+  renderGroupBox: {
+    name: "Group Box",
+    description: "Titled container for grouping related content.",
   },
 };

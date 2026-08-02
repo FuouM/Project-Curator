@@ -50,7 +50,7 @@ export async function refreshModalTags(imgId: number) {
         if (img.blacklisted_tags && img.blacklisted_tags.length > 0) {
           blacklistGroup.style.display = "block";
           blacklistContainer.innerHTML = img.blacklisted_tags
-            .map((t: any) => `<span class="tag-pill tag-meta" style="background-color: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444;" title="Blacklisted negative sample — AI auto-tagging will skip this tag"><i class="bi bi-slash-circle"></i> ${t.tag.replace(/_/g, '_\u200B')} <i class="bi bi-arrow-counterclockwise" style="cursor: pointer; margin-left: 4px;" title="Restore (Un-blacklist)" onclick="window.unblacklistTag(${imgId}, '${t.tag.replace(/'/g, "\\'")}')"></i></span>`)
+            .map((t: any) => `<span class="tag-pill tag-meta" style="background-color: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444;" title="Blacklisted negative sample — AI auto-tagging will skip this tag"><i class="bi bi-slash-circle"></i> ${t.tag.replace(/_/g, '_\u200B')} <i class="bi bi-arrow-counterclockwise" style="cursor: pointer; margin-left: 4px;" title="Restore (Un-blacklist)" data-action="unblacklist-tag" data-image-id="${imgId}" data-tag-name="${t.tag.replace(/'/g, "\\'")}"></i></span>`)
             .join("");
         } else {
           blacklistGroup.style.display = "none";
@@ -217,22 +217,33 @@ export function setupTags() {
     document.getElementById("add-tag-modal")?.classList.remove("active");
   });
 
-  // Expose window globals for inline onclick handlers
-  (window as any).handleAutoTag = handleModalAutoTag;
-  (window as any).openTags = (imgId: number, path: string) => {
-    openTagModal(imgId, path);
-  };
-  (window as any).unblacklistTag = async (imgId: number, tagName: string) => {
-    try {
-      const resp = await callService({ UnblacklistTag: { image_id: imgId, tag: tagName } });
-      if ("Success" in resp) {
-        await refreshModalTags(imgId);
-        await refreshCardTags(imgId);
-      } else if ("Error" in resp) {
-        alert("Failed to un-blacklist tag: " + resp.Error.message);
+  // Document-level delegation for tag actions
+  document.addEventListener("click", async (e) => {
+    const target = e.target as HTMLElement;
+    const actionEl = target.closest("[data-action]") as HTMLElement;
+    if (!actionEl) return;
+
+    const action = actionEl.dataset.action;
+    if (action === "open-tags") {
+      const imgId = parseInt(actionEl.dataset.imageId || "0");
+      const fp = actionEl.dataset.filepath || "";
+      if (imgId) openTagModal(imgId, fp);
+    } else if (action === "unblacklist-tag") {
+      const imgId = parseInt(actionEl.dataset.imageId || "0");
+      const tagName = actionEl.dataset.tagName || "";
+      if (imgId && tagName) {
+        try {
+          const resp = await callService({ UnblacklistTag: { image_id: imgId, tag: tagName } });
+          if ("Success" in resp) {
+            await refreshModalTags(imgId);
+            await refreshCardTags(imgId);
+          } else if ("Error" in resp) {
+            alert("Failed to un-blacklist tag: " + resp.Error.message);
+          }
+        } catch (e: any) {
+          alert("Error un-blacklisting tag: " + e.message);
+        }
       }
-    } catch (e: any) {
-      alert("Error un-blacklisting tag: " + e.message);
     }
-  };
+  });
 }

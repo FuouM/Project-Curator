@@ -6,6 +6,7 @@ import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId }
 import { openImageViewer } from "./image-viewer";
 import { callService } from "./ipc";
 import { refreshCharacters } from "./views/characters";
+import { openTagModal } from "./views/tags";
 import { attachAutocomplete } from "./autocomplete";
 import { LruCache } from "./lru-cache";
 
@@ -258,7 +259,7 @@ export function setupGridDelegation(grid: HTMLElement) {
       const action = actionBtn.dataset.action;
       const fp = card.dataset.filepath || "";
       if (action === "open-tags") {
-        (window as any).openTags(imageId, fp);
+        openTagModal(imageId, fp);
       } else if (action === "find-similar") {
         (window as any).findSimilar(fp);
       }

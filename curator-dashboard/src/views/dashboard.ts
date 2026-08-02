@@ -152,7 +152,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
           <i class="bi ${featured.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
         </div>
         <div class="image-preview featured-preview">
-          <img src="${srcUrl}" alt="Featured Image" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+          <img src="${srcUrl}" alt="Featured Image" data-action="img-fallback" style="width: 100%; height: 100%; object-fit: cover;" />
           <span style="display: none;"><i class="bi bi-image"></i></span>
           <div class="vector-badge ${badgeClass}">${featured.vector_state}</div>
           <div class="featured-badge-overlay"><i class="bi bi-stars"></i> Feature of the Day</div>
@@ -160,7 +160,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
           <div class="info-btn" title="View image details" data-id="${featured.id}"><i class="bi bi-info-circle"></i></div>
         </div>
         <div style="display: flex; gap: 4px; margin-top: 4px;">
-          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.openTags(${featured.id}, '${featured.current_filepath.replace(/\\/g, '\\\\')}')">
+          <button class="win-button" style="font-size: 11px; flex: 1;" data-action="open-tags" data-image-id="${featured.id}" data-filepath="${featured.current_filepath.replace(/\\/g, '\\\\')}">
             <i class="bi bi-tag"></i> Tags
           </button>
           <button class="win-button" style="font-size: 11px; flex: 1;" id="featured-search-btn">

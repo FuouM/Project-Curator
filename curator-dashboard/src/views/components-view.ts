@@ -878,6 +878,125 @@ const componentRegistry: ComponentMetadata[] = [
         `
       }
     ]
+  },
+  {
+    key: "renderTagPill",
+    name: "Tag Pill",
+    description: "Tag pill with category-based styling, optional delete button, and tooltip.",
+    variants: [
+      {
+        name: "Tag Pill Variants",
+        render: () => `
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+            ${renderTagPill({ tag: "user_tag", category: "user" }, { isDeletable: true })}
+            ${renderTagPill({ tag: "character_name", category: "character" })}
+            ${renderTagPill({ tag: "series_title", category: "copyright" })}
+            ${renderTagPill({ tag: "meta_info", category: "meta" })}
+            ${renderTagPill({ tag: "artist_name", category: "artist" })}
+            ${renderTagPill({ tag: "generic_tag", category: "general" })}
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    key: "renderImageCard",
+    name: "Image Card",
+    description: "Image thumbnail card with badge, filepath, and tag pills.",
+    variants: [
+      {
+        name: "Image Cards (Ready vs Pending)",
+        render: () => `
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; width: 100%;">
+            ${renderImageCard("", "C:\\Users\\demo\\Pictures\\sample_image.png", {
+              badgeClass: "badge-ready",
+              badgeText: "Ready",
+              tagPillsHtml: [
+                renderTagPill({ tag: "user-tag", category: "user" }, { isDeletable: true }),
+                renderTagPill({ tag: "character", category: "character" })
+              ].join("")
+            })}
+            ${renderImageCard("", "C:\\Users\\demo\\Pictures\\another_photo.jpg", {
+              badgeClass: "badge-pending",
+              badgeText: "Pending",
+              tagPillsHtml: [
+                renderTagPill({ tag: "meta-tag", category: "meta" })
+              ].join("")
+            })}
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    key: "renderButton",
+    name: "Button",
+    description: "Standard button with optional icon, disabled state, and variants.",
+    variants: [
+      {
+        name: "Button Variants",
+        render: () => `
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+            ${renderButton("Default")}
+            ${renderButton("With Icon", { icon: "bi bi-gear" })}
+            ${renderButton("Primary", { className: "win-button primary" })}
+            ${renderButton("Danger", { className: "win-button danger" })}
+            ${renderButton("Disabled", { disabled: true })}
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    key: "renderInputField",
+    name: "Input Field",
+    description: "Text input with optional clear button and placeholder.",
+    variants: [
+      {
+        name: "Input Field Variants",
+        render: () => `
+          <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; width: 100%;">
+            ${renderInputField({ placeholder: "Enter text..." })}
+            ${renderInputField({ value: "With value" })}
+            ${renderInputField({ hasClear: true, value: "Clearable..." })}
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    key: "renderStatCard",
+    name: "Stat Card",
+    description: "Statistic display card with label and value.",
+    variants: [
+      {
+        name: "Stat Card Variants",
+        render: () => `
+          <div class="stats-grid" style="width: 100%;">
+            ${renderStatCard("Total Images", "1,234")}
+            ${renderStatCard("Tagged", "891", { style: "color: var(--sys-border-focus);" })}
+            ${renderStatCard("Pending", "343")}
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    key: "renderGroupBox",
+    name: "Group Box",
+    description: "Titled container for grouping related content.",
+    variants: [
+      {
+        name: "Group Box Example",
+        render: () => `
+          ${renderGroupBox("Sample Group", `
+            <div class="group-box-body">
+              <p style="font-size: 12px; color: #555;">This is grouped content inside a titled box.</p>
+            </div>
+          `)}
+        `
+      }
+    ]
   }
 ];
 
