@@ -1,4 +1,4 @@
-import { renderGroupBox, renderButton, renderInputField, renderStatCard, renderImageCard, renderTagPill, renderConceptCardHtml } from "../components";
+import { renderGroupBox, renderButton, renderInputField, renderStatCard, renderImageCard, renderTagPill, renderConceptCard, SHOWCASE_COMPONENTS } from "../components";
 import { setupInputClearButtons } from "./concepts";
 
 const COLLAPSE_STATE_KEY = "curator-component-collapse-states";
@@ -11,6 +11,7 @@ interface ComponentVariant {
 interface ComponentMetadata {
   name: string;
   description: string;
+  key?: string;
   variants: ComponentVariant[];
 }
 
@@ -660,17 +661,18 @@ const componentRegistry: ComponentMetadata[] = [
   {
     name: "Concept Cards",
     description: "Custom concept definition cards with category badges, threshold sliders, and action buttons.",
+    key: "renderConceptCard",
     variants: [
       {
         name: "Full Concept Card",
-        render: () => renderConceptCardHtml({
+        render: () => renderConceptCard({
           id: 1,
           name: "Sample Concept",
           category: "character",
           threshold: 0.75,
-          sample_count: 12,
-          created_at: "2026-01-15T10:30:00",
-          updated_at: "2026-07-20T14:22:00"
+          sampleCount: 12,
+          createdAt: "2026-01-15T10:30:00",
+          updatedAt: "2026-07-20T14:22:00"
         })
       },
       {
@@ -678,14 +680,14 @@ const componentRegistry: ComponentMetadata[] = [
         render: () => `
           <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; width: 100%;">
             ${[
-              { name: "Character Concept", category: "character", threshold: 0.70, sample_count: 8, id: 10 },
-              { name: "Copyright Concept", category: "copyright", threshold: 0.80, sample_count: 5, id: 11 },
-              { name: "General Concept", category: "general", threshold: 0.65, sample_count: 20, id: 12 },
-              { name: "Artist Concept", category: "artist", threshold: 0.85, sample_count: 3, id: 13 }
-            ].map(c => renderConceptCardHtml({
+              { name: "Character Concept", category: "character", threshold: 0.70, sampleCount: 8, id: 10 },
+              { name: "Copyright Concept", category: "copyright", threshold: 0.80, sampleCount: 5, id: 11 },
+              { name: "General Concept", category: "general", threshold: 0.65, sampleCount: 20, id: 12 },
+              { name: "Artist Concept", category: "artist", threshold: 0.85, sampleCount: 3, id: 13 }
+            ].map(c => renderConceptCard({
               ...c,
-              created_at: "2026-01-15T10:30:00",
-              updated_at: "2026-07-20T14:22:00"
+              createdAt: "2026-01-15T10:30:00",
+              updatedAt: "2026-07-20T14:22:00"
             })).join("")}
           </div>
         `
@@ -910,7 +912,21 @@ export function refreshComponentStylesheet() {
 
   const collapsedStates = getCollapsedStates();
 
-  container.innerHTML = componentRegistry.map(comp => {
+  const entriesToRender: ComponentMetadata[] = [];
+  for (const name of Object.keys(SHOWCASE_COMPONENTS)) {
+    const meta = componentRegistry.find(c => c.key === name);
+    if (meta) {
+      entriesToRender.push(meta);
+    } else {
+      entriesToRender.push({
+        name,
+        description: `No showcase metadata registered for \`${name}\``,
+        variants: [],
+      });
+    }
+  }
+
+  container.innerHTML = entriesToRender.map(comp => {
     const variantsHtml = comp.variants.map(v => `
       <div style="margin-bottom: 14px;">
         <div style="font-size: 11px; font-weight: bold; color: #444; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${v.name}</div>
@@ -935,13 +951,12 @@ export function refreshComponentStylesheet() {
   // Add collapse buttons and restore states
   const groupBoxes = container.querySelectorAll(".group-box");
   groupBoxes.forEach((groupBox, index) => {
-    if (index >= componentRegistry.length) return;
+    if (index >= entriesToRender.length) return;
     
-    const comp = componentRegistry[index];
+    const comp = entriesToRender[index];
     const title = groupBox.querySelector(".group-box-title");
     if (!title) return;
 
-    // Add collapse button to title
     const collapseBtn = document.createElement("button");
     collapseBtn.className = "group-box-collapse-btn";
     collapseBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
@@ -952,7 +967,6 @@ export function refreshComponentStylesheet() {
     });
     title.appendChild(collapseBtn);
 
-    // Restore collapsed state
     if (collapsedStates[comp.name]) {
       groupBox.classList.add("collapsed");
     }

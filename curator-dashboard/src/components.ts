@@ -1,3 +1,24 @@
+// ── UI System Foundation ──────────────────────────────────────────────
+
+export type SafeHtml = string & { __html: true };
+export function html(strings: TemplateStringsArray, ...values: unknown[]): SafeHtml {
+  return String.raw(strings, ...values) as SafeHtml;
+}
+
+export const TOKENS = {
+  space: { xs: '2px', sm: '4px', md: '8px', lg: '12px', xl: '16px', '2xl': '24px' },
+  radius: { sm: '2px', md: '4px', lg: '8px' },
+  text: { xs: '9px', sm: '11px', md: '13px', lg: '15px' },
+  color: {
+    accent:   'var(--sys-highlight-bg)',
+    danger:   '#a80000',
+    subtle:   'var(--sys-text-subtle)',
+    border:   'var(--sys-border-dark)',
+    surface:  'var(--sys-window-bg)',
+    control:  'var(--sys-control-bg)',
+  },
+} as const;
+
 export interface TagSummary {
   tag: string;
   category: string;
@@ -88,46 +109,69 @@ export interface CustomConceptData {
   updated_at: string;
 }
 
-export function renderConceptCardHtml(c: CustomConceptData): string {
-  const catClass = c.category.toLowerCase();
-  
-  return `
-    <div class="concept-card group-box" id="concept-card-${c.id}" data-concept-id="${c.id}">
+export interface ConceptCardProps {
+  id: number;
+  name: string;
+  category: string;
+  threshold: number;
+  sampleCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function renderConceptCard(props: ConceptCardProps): SafeHtml {
+  const catClass = props.category.toLowerCase();
+
+  return html`
+    <div class="concept-card group-box" id="concept-card-${props.id}" data-concept-id="${props.id}">
       <div class="group-box-title concept-card-title">
-        <i class="bi bi-stars concept-sparkle"></i> ${c.name}
-        <span class="concept-badge ${catClass}">${c.category}</span>
+        <i class="bi bi-stars concept-sparkle"></i> ${props.name}
+        <span class="concept-badge ${catClass}">${props.category}</span>
       </div>
       <div class="concept-card-body">
         <div class="concept-info-row">
           <span class="concept-info-label"><i class="bi bi-images"></i> Ground-Truth Samples:</span>
-          <span class="concept-info-val"><strong>${c.sample_count}</strong> ${c.sample_count === 1 ? 'sample' : 'samples'}</span>
+          <span class="concept-info-val"><strong>${props.sampleCount}</strong> ${props.sampleCount === 1 ? 'sample' : 'samples'}</span>
         </div>
         <div class="concept-threshold-box">
           <div class="concept-threshold-header">
             <span><i class="bi bi-sliders"></i> Similarity Threshold:</span>
-            <span class="concept-threshold-val" id="concept-th-val-${c.id}">${(c.threshold * 100).toFixed(0)}% (${c.threshold.toFixed(2)})</span>
+            <span class="concept-threshold-val" id="concept-th-val-${props.id}">${(props.threshold * 100).toFixed(0)}% (${props.threshold.toFixed(2)})</span>
           </div>
-          <input type="range" class="concept-threshold-slider" min="0.40" max="0.95" step="0.01" value="${c.threshold.toFixed(2)}" data-concept-id="${c.id}" oninput="const v = parseFloat(this.value); const el = document.getElementById('concept-th-val-${c.id}'); if (el) el.textContent = Math.round(v * 100) + '% (' + v.toFixed(2) + ')';" onchange="window.updateConceptThreshold(${c.id}, this.value)">
+          <input type="range" class="concept-threshold-slider" min="0.40" max="0.95" step="0.01" value="${props.threshold.toFixed(2)}" data-concept-id="${props.id}" data-action="update-threshold">
         </div>
 
-        <div class="concept-samples-panel" id="concept-samples-panel-${c.id}" style="display: none; margin-top: 6px; padding: 8px; background-color: var(--sys-window-bg); border: 1px solid var(--sys-border-dark); border-radius: 2px;">
-          <div style="font-size: 11px; font-weight: 600; color: var(--sys-control-text); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+        <div class="concept-samples-panel" id="concept-samples-panel-${props.id}" style="display: none; margin-top: 6px; padding: 8px; background-color: var(--sys-window-bg); border: 1px solid var(--sys-border-dark); border-radius: 2px;">
+          <div class="flex-row items-center justify-between" style="font-size: 11px; font-weight: 600; color: var(--sys-control-text); margin-bottom: 6px;">
             <span><i class="bi bi-images"></i> Ground-Truth Sample Thumbnails:</span>
-            <span onclick="window.closeConceptSamples(${c.id})" style="cursor: pointer; font-size: 14px; font-weight: bold; color: var(--sys-text-subtle);" title="Close samples">&times;</span>
+            <span data-action="close-samples" data-concept-id="${props.id}" style="cursor: pointer; font-size: 14px; font-weight: bold; color: var(--sys-text-subtle);" title="Close samples"><i class="bi bi-x-lg"></i></span>
           </div>
-          <div id="concept-samples-grid-${c.id}" class="image-grid" style="max-height: 400px; overflow-y: auto; padding: 4px;">
+          <div id="concept-samples-grid-${props.id}" class="image-grid" style="max-height: 400px; overflow-y: auto; padding: 4px;">
           </div>
         </div>
 
-        <div class="concept-meta-date"><i class="bi bi-clock-history"></i> Updated: ${c.updated_at.split('.')[0]}</div>
+        <div class="concept-meta-date"><i class="bi bi-clock-history"></i> Updated: ${props.updatedAt.split('.')[0]}</div>
       </div>
       <div class="concept-card-actions">
-        <button type="button" class="win-button" onclick="window.viewConceptSamples(${c.id}, '${c.name.replace(/'/g, "\\'")}')"><i class="bi bi-images"></i> Samples (${c.sample_count})</button>
-        <button type="button" class="win-button primary" id="concept-rescan-btn-${c.id}" onclick="window.rescanConcept(${c.id})"><i class="bi bi-search"></i> Rescan</button>
-        <button type="button" class="win-button danger" onclick="window.deleteConcept(${c.id})"><i class="bi bi-trash"></i> Delete</button>
+        <button type="button" class="win-button" data-action="view-samples" data-concept-id="${props.id}" data-concept-name="${props.name.replace(/'/g, "\\'")}"><i class="bi bi-images"></i> Samples (${props.sampleCount})</button>
+        <button type="button" class="win-button primary" id="concept-rescan-btn-${props.id}" data-action="rescan-concept" data-concept-id="${props.id}"><i class="bi bi-search"></i> Rescan</button>
+        <button type="button" class="win-button danger" data-action="delete-concept" data-concept-id="${props.id}"><i class="bi bi-trash"></i> Delete</button>
       </div>
     </div>
   `;
+}
+
+/** @deprecated Use renderConceptCard with ConceptCardProps instead */
+export function renderConceptCardHtml(c: CustomConceptData): SafeHtml {
+  return renderConceptCard({
+    id: c.id,
+    name: c.name,
+    category: c.category,
+    threshold: c.threshold,
+    sampleCount: c.sample_count,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
+  });
 }
 
 // --- Button Component ---
@@ -335,3 +379,14 @@ export function renderDeviceSelect(id: string, defaultVal: string = "auto"): str
     </select>
   `;
 }
+
+// ── Component Dev View Registry ──────────────────────────────────────
+// Only render* functions listed here appear in the component dev view.
+// Each key must match an exported function name in this file.
+
+export const SHOWCASE_COMPONENTS: Record<string, { name: string; description: string }> = {
+  renderConceptCard: {
+    name: "Concept Card",
+    description: "Custom concept definition card with threshold slider, sample grid, and action buttons.",
+  },
+};
