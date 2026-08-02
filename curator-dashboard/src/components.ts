@@ -62,7 +62,7 @@ export function maskPath(fullPath: string): string {
 }
 
 // --- Tag Pill Component ---
-export function renderTagPill(t: TagSummary, options?: { isDeletable?: boolean; imageId?: number }): string {
+export function renderTagPill(t: TagSummary, options?: { isDeletable?: boolean; imageId?: number }): SafeHtml {
   let styleClass = "tag-rank-3";
   
   if (t.source_name === "ai:custom-concepts" || t.source_name === "custom-concept") {
@@ -93,10 +93,10 @@ export function renderTagPill(t: TagSummary, options?: { isDeletable?: boolean; 
   const sparkIcon = styleClass === "custom-concept" ? `<i class="bi bi-stars concept-spark"></i>` : "";
 
   const deleteBtn = isDeletable && imageId > 0
-    ? ` <span class="tag-remove-btn" title="Remove tag" onclick="window.removeTag(${imageId}, '${t.tag.replace(/'/g, "\\'")}')">&times;</span>`
+    ? ` <span class="tag-remove-btn" data-action="remove-tag" data-image-id="${imageId}" data-tag-name="${t.tag.replace(/'/g, "\\'")}" title="Remove tag"><i class="bi bi-x-lg"></i></span>`
     : "";
 
-  return `<span class="tag-pill ${styleClass}">${sparkIcon}${t.tag.replace(/_/g, '_\u200B')}${deleteBtn}</span>`;
+  return html`<span class="tag-pill ${styleClass}">${sparkIcon}${t.tag.replace(/_/g, '_\u200B')}${deleteBtn}</span>`;
 }
 
 export interface CustomConceptData {
@@ -288,95 +288,6 @@ export function renderGroupBox(title: string, contentHtml: string, options?: { s
       <div class="group-box-title">${title}</div>
       ${contentHtml}
     </div>
-  `;
-}
-
-// --- Pagination Bar Component ---
-// Renders the per-page selector, page indicator, jump input, and Prev/Next buttons.
-// All element IDs are namespaced with `prefix` (e.g. "gallery", "favorites").
-export function renderPaginationBar(prefix: string): string {
-  return `
-    <label style="font-size: 11px; color: #555555; display: flex; align-items: center; gap: 4px;">
-      Show:
-      <select class="input-field" id="${prefix}-per-page-select" style="width: 60px; height: 22px; font-size: 11px; padding: 1px 4px;">
-        <option value="12">12</option>
-        <option value="24">24</option>
-        <option value="48">48</option>
-        <option value="96">96</option>
-      </select>
-    </label>
-    <span id="${prefix}-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
-    <input type="number" id="${prefix}-page-jump" min="1" style="width: 50px; font-size: 11px; padding: 2px 4px;" placeholder="#" />
-    <button class="win-button" id="${prefix}-jump-btn" style="font-size: 11px; padding: 2px 6px;">Go</button>
-    <button class="win-button" id="${prefix}-prev-btn" disabled><i class="bi bi-caret-left-fill"></i> Prev</button>
-    <button class="win-button" id="${prefix}-next-btn">Next <i class="bi bi-caret-right-fill"></i></button>
-  `;
-}
-
-// --- Select-Mode Bar Component ---
-// Renders the Select Mode toggle, count display, Select All, Clear, and Teach Concept buttons.
-// `teachCountId` defaults to `${prefix}-teach-count` but callers can override it to match legacy IDs.
-// `extraButtonsHtml` is appended after the Teach Concept button (e.g. the "I'm Feeling Lucky" button in gallery).
-export interface SelectModeBarOptions {
-  teachCountId?: string;
-  extraButtonsHtml?: string;
-}
-
-export function renderSelectModeBar(prefix: string, options?: SelectModeBarOptions): string {
-  const teachCountId = options?.teachCountId ?? `${prefix}-teach-count`;
-  const extra = options?.extraButtonsHtml ?? "";
-  return `
-    <button type="button" class="win-button" id="${prefix}-toggle-select-mode-btn">
-      <i class="bi bi-check2-square"></i> Select Mode
-    </button>
-    <span id="${prefix}-selected-count" style="font-size: 11px; color: var(--sys-text-subtle); display: none;">0 selected</span>
-    <button type="button" class="win-button" id="${prefix}-select-all-btn" style="display: none; font-size: 11px;">Select All</button>
-    <button type="button" class="win-button" id="${prefix}-clear-select-btn" style="display: none; font-size: 11px;">Clear</button>
-    <button type="button" class="win-button primary" id="${prefix}-teach-concept-btn" style="display: none; font-size: 11px;">
-      <i class="bi bi-magic"></i> Teach Concept (<span id="${teachCountId}">0</span>)
-    </button>
-    ${extra}
-  `;
-}
-
-// --- Benchmark Model Card Component ---
-// Renders a group-box card with per-run button + CPU/GPU/Speedup rows.
-// `key` is used both for the data-benchmark-key attribute and the element ID prefixes.
-export function renderBenchmarkCard(key: string, label: string, size: string): string {
-  return `
-    <div class="group-box" style="padding: 10px; margin: 0;">
-      <button class="win-button" data-benchmark-key="${key}" title="Run ${label} benchmark" style="position: absolute; top: -9px; right: 4px; height: 18px; padding: 0 7px; font-size: 11px; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
-        <i class="bi bi-play-fill" style="font-size: 12px;"></i>
-      </button>
-      <div class="group-box-title">${label} <span style="font-weight: normal; font-size: 10px; color: #666;">(${size})</span></div>
-      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
-        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
-          <span>CPU Throughput</span>
-          <span id="benchmark-${key}-cpu" style="text-align: right;">—</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
-          <span>GPU Throughput</span>
-          <span id="benchmark-${key}-gpu" style="text-align: right;">—</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid #eee; padding-top: 4px;">
-          <span>Throughput Factor</span>
-          <span id="benchmark-${key}-speedup" style="text-align: right; font-weight: bold;">—</span>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-// --- Model Device Select Component ---
-// Renders a CPU/GPU/Auto <select> with a namespaced id.
-// `defaultVal` can be "auto" | "cpu" | "gpu".
-export function renderDeviceSelect(id: string, defaultVal: string = "auto"): string {
-  return `
-    <select class="input-field" id="${id}" style="width: 180px;">
-      <option value="auto"${defaultVal === "auto" ? " selected" : ""}>Auto (GPU if available)</option>
-      <option value="cpu"${defaultVal === "cpu" ? " selected" : ""}>CPU Only</option>
-      <option value="gpu"${defaultVal === "gpu" ? " selected" : ""}>GPU Only</option>
-    </select>
   `;
 }
 

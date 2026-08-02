@@ -1,5 +1,5 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { renderTagPill, maskPath } from "./components";
+import { renderTagPill, maskPath, SafeHtml } from "./components";
 import { CardImageData, ImageDetails, SearchMatch, TagSummary, ParsedMetadata } from "./types";
 import { imageBytesToPngBlob } from "./utils";
 import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId } from "./state";
@@ -150,15 +150,15 @@ function clearObservedThumbs() {
 
 // --- Tag Pill Helpers ---
 
-export function getTagPillHtml(t: TagSummary, isDeletable = false, imageId = 0): string {
+export function getTagPillHtml(t: TagSummary, isDeletable = false, imageId = 0): SafeHtml {
   return renderTagPill(t, { isDeletable, imageId });
 }
 
-export function renderTagListHtml(tags: TagSummary[], maxVisible = 10): string {
+export function renderTagListHtml(tags: TagSummary[], maxVisible = 10): SafeHtml {
   const display = tags.slice(0, maxVisible);
   const extraCount = tags.length - maxVisible;
-  return display.map(t => getTagPillHtml(t)).join("") +
-    (extraCount > 0 ? `<span class="tag-pill" style="background-color: #f0f0f0; color: #555555; font-style: italic;">+${extraCount} more</span>` : "");
+  return (display.map(t => getTagPillHtml(t)).join("") +
+    (extraCount > 0 ? `<span class="tag-pill tag-pill-overflow">+${extraCount} more</span>` : "")) as SafeHtml;
 }
 
 export function renderParsedMetadataHtml(meta: ParsedMetadata): string {

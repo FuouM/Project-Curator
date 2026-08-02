@@ -44,3 +44,9 @@
 
 .w-full { width: 100%; }
 .min-w-0 { min-width: 0; }
+
+.tag-pill-overflow {
+  background-color: #f0f0f0;
+  color: #555555;
+  font-style: italic;
+}

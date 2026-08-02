@@ -140,7 +140,45 @@ export async function handleModalAutoTag() {
   }
 }
 
+// --- Module-level tag handlers ---
+
+async function removeTag(imgId: number, tagName: string) {
+  if (!confirm(`Are you sure you want to remove the tag "${tagName}"?`)) return;
+  try {
+    const resp = await callService({ RemoveTag: { image_id: imgId, tag: tagName } });
+    if ("Success" in resp) {
+      await refreshModalTags(imgId);
+      await refreshCardTags(imgId);
+    } else if ("Error" in resp) {
+      alert("Failed to remove tag: " + resp.Error.message);
+    }
+  } catch (e: any) {
+    alert("Error calling tag removal: " + e.message);
+  }
+}
+
+// --- Delegation for tag actions ---
+
+function setupTagDelegation() {
+  document.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+    const actionEl = target.closest<HTMLElement>("[data-action]");
+    if (!actionEl) return;
+
+    const action = actionEl.dataset.action;
+
+    if (action === "remove-tag") {
+      const imgId = parseInt(actionEl.dataset.imageId || "");
+      const tagName = actionEl.dataset.tagName || "";
+      if (imgId && tagName) {
+        removeTag(imgId, tagName);
+      }
+    }
+  });
+}
+
 export function setupTags() {
+  setupTagDelegation();
   // Tag form submission
   const tagForm = document.getElementById("tag-form");
   const tagImgId = document.getElementById("tag-image-id") as HTMLInputElement;
@@ -183,20 +221,6 @@ export function setupTags() {
   (window as any).handleAutoTag = handleModalAutoTag;
   (window as any).openTags = (imgId: number, path: string) => {
     openTagModal(imgId, path);
-  };
-  (window as any).removeTag = async (imgId: number, tagName: string) => {
-    if (!confirm(`Are you sure you want to remove the tag "${tagName}"?`)) return;
-    try {
-      const resp = await callService({ RemoveTag: { image_id: imgId, tag: tagName } });
-      if ("Success" in resp) {
-        await refreshModalTags(imgId);
-        await refreshCardTags(imgId);
-      } else if ("Error" in resp) {
-        alert("Failed to remove tag: " + resp.Error.message);
-      }
-    } catch (e: any) {
-      alert("Error calling tag removal: " + e.message);
-    }
   };
   (window as any).unblacklistTag = async (imgId: number, tagName: string) => {
     try {
