@@ -340,6 +340,22 @@ pub enum Request {
     GetOcrDetections {
         image_id: i64,
     },
+
+    // ── Ephemeral Image Processing (Toolbox) ─────────────────────────
+    /// Run the Camie Tagger on an arbitrary image path without persisting any tags.
+    EphemeralTagImage {
+        path: String,
+        threshold: Option<f32>,
+    },
+    /// Run OCR on an arbitrary image path without persisting any detections.
+    EphemeralRunOcr {
+        path: String,
+    },
+    /// Detect characters in an arbitrary image path, matching against known
+    /// identities read-only (no new identities or detections are created).
+    EphemeralDetectCharacters {
+        path: String,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -620,6 +636,25 @@ pub enum Response {
         #[serde(default)]
         bubble_boxes: Vec<BubbleBoxResult>,
     },
+
+    // ── Ephemeral Image Processing Results (Toolbox) ─────────────────
+    /// Result of ephemeral auto-tagging on an arbitrary image path.
+    EphemeralTagResult {
+        path: String,
+        tags: Vec<TagSummary>,
+    },
+    /// Result of ephemeral OCR on an arbitrary image path.
+    EphemeralOcrResult {
+        path: String,
+        detections: Vec<EphemeralOcrDetection>,
+        #[serde(default)]
+        bubble_boxes: Vec<BubbleBoxResult>,
+    },
+    /// Result of ephemeral character detection on an arbitrary image path.
+    EphemeralDetectionResult {
+        path: String,
+        detections: Vec<crate::detection::StoredDetection>,
+    },
 }
 
 
@@ -750,5 +785,21 @@ pub struct BubbleBoxResult {
     pub x2: f32,
     pub y2: f32,
     pub confidence: f32,
+}
+
+/// Ephemeral OCR detection (no DB id/image_id) returned by the Toolbox.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EphemeralOcrDetection {
+    pub text: String,
+    pub confidence: f32,
+    pub x0: i32,
+    pub y0: i32,
+    pub x1: i32,
+    pub y1: i32,
+    pub x2: i32,
+    pub y2: i32,
+    pub x3: i32,
+    pub y3: i32,
+    pub is_from_bubble: bool,
 }
 

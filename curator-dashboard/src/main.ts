@@ -9,6 +9,7 @@ import { setupTags } from "./views/tags";
 import { setupConcepts } from "./views/concepts";
 import { setupFilenameParserView } from "./views/filename-parser";
 import { setupNavigation, navigateToView } from "./views/navigation";
+import { setupToolbox, renderToolboxHtml } from "./views/toolbox";
 import { callService } from "./ipc";
 import { updateStatusIndicators, updateTaggerIndicators, applySettingsToUI, startStatusPolling, renderFeaturedDay, renderDashboardHtml } from "./views/dashboard";
 import { renderGalleryHtml, renderFavoritesHtml } from "./views/gallery";
@@ -122,6 +123,8 @@ function init() {
   if (viewCharacters) viewCharacters.innerHTML = renderCharactersHtml();
   const viewFilenameParser = document.getElementById("view-filename-parser");
   if (viewFilenameParser) viewFilenameParser.innerHTML = renderFilenameParserHtml();
+  const viewToolbox = document.getElementById("view-toolbox");
+  if (viewToolbox) viewToolbox.innerHTML = renderToolboxHtml();
   const viewSearch = document.getElementById("view-search");
   if (viewSearch) viewSearch.innerHTML = renderSearchHtml();
   const viewLogs = document.getElementById("view-logs");
@@ -141,6 +144,7 @@ function init() {
   setupLogTabs();
   setupConcepts();
   setupFilenameParserView();
+  setupToolbox();
   setupBenchmark();
   setupSettings();
 

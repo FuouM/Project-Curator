@@ -1353,6 +1353,142 @@ pub async fn handle_request(
 
             Response::OcrDetectionsResult { image_id, detections: results, bubble_boxes }
         }
+
+        // ── Ephemeral Image Processing (Toolbox) ──────────────────────
+        Request::EphemeralTagImage { path, threshold } => {
+            let threshold = threshold.unwrap_or(0.5);
+            let path_for_log = path.clone();
+            let res = tokio::task::block_in_place(|| tagger.tag_image(&path, threshold));
+            match res {
+                Ok(preds) => {
+                    info!(
+                        "EphemeralTagImage {:?}: {} predictions at threshold {}",
+                        path_for_log,
+                        preds.len(),
+                        threshold
+                    );
+                    let tags: Vec<curator_core::ipc::TagSummary> = preds
+                        .iter()
+                        .map(|p| curator_core::ipc::TagSummary {
+                            tag: p.tag.clone(),
+                            category: p.category.clone(),
+                            confidence: p.confidence,
+                            source_name: Some("ai:camie".to_string()),
+                            is_blacklisted: false,
+                        })
+                        .collect();
+                    Response::EphemeralTagResult { path, tags }
+                }
+                Err(e) => Response::Error {
+                    message: format!("Ephemeral tagging failed: {:?}", e),
+                },
+            }
+        }
+
+        Request::EphemeralRunOcr { path } => {
+            let path_path = std::path::Path::new(&path);
+            if !path_path.exists() {
+                return Response::Error {
+                    message: format!("File not found: {:?}", path),
+                };
+            }
+
+            let (rgb_buf, width, height) =
+                match tokio::task::block_in_place(|| curator_core::image_decode::decode_rgb(path_path))
+                {
+                    Ok(res) => res,
+                    Err(e) => {
+                        return Response::Error {
+                            message: format!("Image decode failed: {:?}", e),
+                        }
+                    }
+                };
+
+            let img = match core_image::ImageBuffer::<core_image::Rgb<u8>, Vec<u8>>::from_raw(
+                width, height, rgb_buf,
+            ) {
+                Some(i) => i,
+                None => return Response::Error { message: "Invalid image buffer".to_string() },
+            };
+
+            let ocr_clone = Arc::clone(ocr);
+            let detections_res =
+                tokio::task::spawn_blocking(move || ocr_clone.run_ocr(&img)).await;
+
+            let (detections, bubbles) = match detections_res {
+                Ok(Ok(dets)) => dets,
+                Ok(Err(e)) => {
+                    return Response::Error {
+                        message: format!("OCR execution failed: {:?}", e),
+                    }
+                }
+                Err(e) => {
+                    return Response::Error {
+                        message: format!("Task join panicked: {:?}", e),
+                    }
+                }
+            };
+
+            let det_results: Vec<curator_core::ipc::EphemeralOcrDetection> = detections
+                .iter()
+                .map(|det| {
+                    let p = &det.polygon;
+                    curator_core::ipc::EphemeralOcrDetection {
+                        text: det.text.clone(),
+                        confidence: det.confidence,
+                        x0: p[0][0],
+                        y0: p[0][1],
+                        x1: p[1][0],
+                        y1: p[1][1],
+                        x2: p[2][0],
+                        y2: p[2][1],
+                        x3: p[3][0],
+                        y3: p[3][1],
+                        is_from_bubble: det.is_from_bubble,
+                    }
+                })
+                .collect();
+
+            let bubble_results: Vec<curator_core::ipc::BubbleBoxResult> = bubbles
+                .iter()
+                .map(|b| curator_core::ipc::BubbleBoxResult {
+                    x1: b.bbox[0],
+                    y1: b.bbox[1],
+                    x2: b.bbox[2],
+                    y2: b.bbox[3],
+                    confidence: b.confidence,
+                })
+                .collect();
+
+            info!(
+                "EphemeralRunOcr {:?}: {} text detections, {} bubbles",
+                path,
+                det_results.len(),
+                bubble_results.len()
+            );
+            Response::EphemeralOcrResult {
+                path,
+                detections: det_results,
+                bubble_boxes: bubble_results,
+            }
+        }
+
+        Request::EphemeralDetectCharacters { path } => {
+            let path_ref = std::path::Path::new(&path);
+            match detection.detect_image_path(path_ref).await {
+                Ok(detections) => {
+                    info!(
+                        "EphemeralDetectCharacters {:?}: {} detections",
+                        path,
+                        detections.len()
+                    );
+                    Response::EphemeralDetectionResult { path, detections }
+                }
+                Err(e) => Response::Error {
+                    message: format!("Ephemeral detection failed: {:?}", e),
+                },
+            }
+        }
     }
 }
 

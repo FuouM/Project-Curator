@@ -24,6 +24,7 @@ const subtitles: Record<string, { title: string; sub: string }> = {
   components: { title: "Component Stylesheet", sub: "A showcase and reference of the application's UI components and styles." },
   concepts: { title: "Custom Concepts", sub: "Teach Curator new characters, copyrights, or series from sample images without model retraining." },
   characters: { title: "Character Identities", sub: "Manage auto-discovered character identities from YOLO + CCIP detection." },
+  toolbox: { title: "Image Toolbox", sub: "Run reverse search, auto-tagging, OCR, and character detection on any image without touching your library." },
   "filename-parser": { title: "Filename Parser & Tagger", sub: "Extract structured tags, timestamps, artist names, and artwork IDs directly from image filenames." }
 };
 

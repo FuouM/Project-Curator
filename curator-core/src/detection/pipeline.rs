@@ -7,6 +7,7 @@ use crate::image_decode;
 use anyhow::{Context, Result};
 use image::RgbImage;
 use sqlx::sqlite::SqlitePool;
+use std::path::Path;
 use std::sync::Arc;
 use tracing::{info, warn};
 
@@ -227,6 +228,93 @@ impl DetectionPipeline {
             }
         }
         Ok(results)
+    }
+
+    /// Detect characters in an arbitrary image path (ephemeral, no DB writes).
+    ///
+    /// Decodes the file, runs YOLO person detection, extracts CCIP embeddings for
+    /// each crop, and matches against existing character identities read-only.
+    /// No identities or detections are created/persisted — unmatched detections
+    /// carry `identity_id: None`.
+    pub async fn detect_image_path(&self, path: &Path) -> Result<Vec<StoredDetection>> {
+        if !path.exists() {
+            anyhow::bail!("Image file not found: {:?}", path);
+        }
+
+        let (rgb_buf, width, height) =
+            tokio::task::block_in_place(|| image_decode::decode_rgb(path))?;
+        let img = RgbImage::from_raw(width, height, rgb_buf)
+            .context("Failed to create RgbImage from decoded buffer")?;
+
+        let detections = tokio::task::block_in_place(|| self.yolo.detect_persons(&img))?;
+        if detections.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Pre-load identity reference embeddings (read-only) for batch matching.
+        let identities = self.load_identities().await?;
+        let mut identity_embeddings: std::collections::HashMap<i64, Vec<Vec<f32>>> =
+            std::collections::HashMap::new();
+        let rows: Vec<(i64, Vec<u8>)> = sqlx::query_as(
+            "SELECT identity_id, ccip_embedding FROM character_detections \
+             WHERE identity_id IS NOT NULL AND ccip_embedding IS NOT NULL"
+        )
+        .fetch_all(&self.db)
+        .await?;
+        for (ident_id, emb_bytes) in rows {
+            identity_embeddings
+                .entry(ident_id)
+                .or_default()
+                .push(bytes_to_f32_vec(&emb_bytes));
+        }
+
+        let mut stored = Vec::new();
+        for det in &detections {
+            let crop = extract_crop(&img, det)?;
+            let embedding =
+                tokio::task::block_in_place(|| self.ccip.extract_embedding(&crop))?;
+
+            let mut matched_identity: Option<i64> = None;
+            let mut refs_flat: Vec<Vec<f32>> = Vec::new();
+            let mut id_bounds: Vec<(i64, usize, usize)> = Vec::new();
+            for identity in &identities {
+                if let Some(refs) = identity_embeddings.get(&identity.id) {
+                    let start = refs_flat.len();
+                    refs_flat.extend(refs.iter().cloned());
+                    id_bounds.push((identity.id, start, refs_flat.len()));
+                }
+            }
+            if !refs_flat.is_empty() {
+                let diffs = tokio::task::block_in_place(|| {
+                    self.ccip.compute_mean_differences(&embedding, &refs_flat)
+                })?;
+                for (ident_id, start, end) in id_bounds {
+                    if start == end {
+                        continue;
+                    }
+                    let mean: f32 =
+                        diffs[start..end].iter().sum::<f32>() / (end - start) as f32;
+                    if mean <= crate::detection::ccip::DEFAULT_MATCH_THRESHOLD {
+                        matched_identity = Some(ident_id);
+                        break;
+                    }
+                }
+            }
+
+            stored.push(StoredDetection {
+                id: 0,
+                image_id: 0,
+                x0: det.x0,
+                y0: det.y0,
+                x1: det.x1,
+                y1: det.y1,
+                confidence: det.confidence,
+                has_embedding: true,
+                identity_id: matched_identity,
+            });
+        }
+
+        Ok(stored)
     }
 
     /// Get all detections for an image.
