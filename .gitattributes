@@ -1,0 +1,23 @@
+# Git attributes for Project Curator
+# Ensure consistent line endings for text files
+* text=auto
+
+# Rust source files
+*.rs text eol=lf
+
+# PowerShell scripts
+*.ps1 text eol=crlf
+
+# TOML / config files
+*.toml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.css text eol=lf
+*.ts text eol=lf
+*.html text eol=lf
+
+# Test & asset images — treat as binary so git never tries to diff or merge them
+assets/test_images/*.jpg binary
+assets/test_images/*.jpeg binary
+assets/test_images/*.png binary
+assets/test_images/*.webp binary

@@ -10,6 +10,7 @@ const PAD_COLOR: [u8; 3] = [124, 116, 104];
 fn test_decode_benchmark() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent().unwrap()
+        .join("assets")
         .join("test_images")
         .join("Yoshitani-Ayako_Urabe-Mikoto_Nazo-no-Kanojo-X.jpg");
     let path = path.as_path();
@@ -51,6 +52,7 @@ fn test_decode_benchmark() {
 fn test_full_preprocess_benchmark() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent().unwrap()
+        .join("assets")
         .join("test_images")
         .join("Yoshitani-Ayako_Urabe-Mikoto_Nazo-no-Kanojo-X.jpg");
     let path = path.as_path();
@@ -275,6 +277,7 @@ async fn test_vector_indexing_and_clip_inference() {
 
     let test_image_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent().unwrap()
+        .join("assets")
         .join("test_images")
         .join("augh.png");
     let test_image_path = test_image_path.to_str().expect("path is valid UTF-8");

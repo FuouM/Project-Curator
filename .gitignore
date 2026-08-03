@@ -1,4 +1,6 @@
 test_images
+!assets/test_images
+
 .curator/
 .curator_test/
 .rust/
