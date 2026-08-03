@@ -1426,15 +1426,17 @@ export function refreshComponentStylesheet() {
 
   const collapsedStates = getCollapsedStates();
 
-  const entriesToRender: ComponentMetadata[] = [];
+  // Render all hand-crafted componentRegistry entries first
+  const entriesToRender: ComponentMetadata[] = [...componentRegistry];
+
+  // Then append any SHOWCASE_COMPONENTS keys not already covered by a registry key
+  const registryKeys = new Set(componentRegistry.map(c => c.key).filter(Boolean));
   for (const name of Object.keys(SHOWCASE_COMPONENTS)) {
-    const meta = componentRegistry.find(c => c.key === name);
-    if (meta) {
-      entriesToRender.push(meta);
-    } else {
+    if (!registryKeys.has(name)) {
       entriesToRender.push({
-        name,
-        description: `No showcase metadata registered for \`${name}\``,
+        name: SHOWCASE_COMPONENTS[name].name,
+        description: SHOWCASE_COMPONENTS[name].description,
+        key: name,
         variants: [],
       });
     }
