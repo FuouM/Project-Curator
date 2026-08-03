@@ -1,4 +1,5 @@
 import { callService } from "../ipc";
+import { SafeHtml, html } from "../components";
 import { setStatusMessage } from "../utils";
 import { setupBrowseButton } from "../cards";
 import { refreshDashboard } from "./dashboard";
@@ -123,8 +124,8 @@ function startImportProgressPolling(targetFolderId: number, expectedBatchCount: 
 // HTML Template
 // ---------------------------------------------------------------------------
 
-export function renderImportHtml(): string {
-  return `
+export function renderImportHtml(): SafeHtml {
+  return html`
     <div class="group-box">
       <div class="group-box-title"><i class="bi bi-box-arrow-in-down"></i> Import Images / Folders</div>
       <form id="import-form">

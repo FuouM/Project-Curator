@@ -159,26 +159,7 @@ async function removeTag(imgId: number, tagName: string) {
 
 // --- Delegation for tag actions ---
 
-function setupTagDelegation() {
-  document.addEventListener("click", (e) => {
-    const target = e.target as HTMLElement;
-    const actionEl = target.closest<HTMLElement>("[data-action]");
-    if (!actionEl) return;
-
-    const action = actionEl.dataset.action;
-
-    if (action === "remove-tag") {
-      const imgId = parseInt(actionEl.dataset.imageId || "");
-      const tagName = actionEl.dataset.tagName || "";
-      if (imgId && tagName) {
-        removeTag(imgId, tagName);
-      }
-    }
-  });
-}
-
 export function setupTags() {
-  setupTagDelegation();
   // Tag form submission
   const tagForm = document.getElementById("tag-form");
   const tagImgId = document.getElementById("tag-image-id") as HTMLInputElement;
@@ -224,7 +205,11 @@ export function setupTags() {
     if (!actionEl) return;
 
     const action = actionEl.dataset.action;
-    if (action === "open-tags") {
+    if (action === "remove-tag") {
+      const imgId = parseInt(actionEl.dataset.imageId || "");
+      const tagName = actionEl.dataset.tagName || "";
+      if (imgId && tagName) removeTag(imgId, tagName);
+    } else if (action === "open-tags") {
       const imgId = parseInt(actionEl.dataset.imageId || "0");
       const fp = actionEl.dataset.filepath || "";
       if (imgId) openTagModal(imgId, fp);

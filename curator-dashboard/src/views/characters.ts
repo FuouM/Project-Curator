@@ -1,4 +1,5 @@
 import { callService } from "../ipc";
+import { SafeHtml, html } from "../components";
 import { CharacterIdentity, CharacterDetection } from "../types";
 import { getCachedCrop, setCachedCrop } from "../cards";
 import { openImageViewer } from "../image-viewer";
@@ -603,8 +604,8 @@ function renderUnassignedDetection(
 // HTML Template
 // ---------------------------------------------------------------------------
 
-export function renderCharactersHtml(): string {
-  return `
+export function renderCharactersHtml(): SafeHtml {
+  return html`
     <div class="group-box">
       <div class="group-box-title"><i class="bi bi-bounding-box"></i> Character Identities</div>
       <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">

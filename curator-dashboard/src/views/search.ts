@@ -1,6 +1,6 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { callService } from "../ipc";
-import { maskPath } from "../components";
+import { maskPath, SafeHtml, html } from "../components";
 import { renderSearchResults } from "../cards";
 import { setupInputClearButtons } from "./concepts";
 import { setupSelectionToolbar } from "../selection-toolbar";
@@ -204,8 +204,8 @@ function setupTagAutocomplete() {
 // HTML Template
 // ---------------------------------------------------------------------------
 
-export function renderSearchHtml(): string {
-  return `
+export function renderSearchHtml(): SafeHtml {
+  return html`
     <div class="group-box">
       <div class="group-box-title">General Search</div>
       <form id="search-form">

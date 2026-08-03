@@ -1,5 +1,5 @@
 import { callService } from "../ipc";
-import { renderConceptCard } from "../components";
+import { renderConceptCard, SafeHtml, html } from "../components";
 import { selectedImageIds } from "../state";
 import { renderImages } from "../cards";
 import { refreshDashboard } from "./dashboard";
@@ -577,28 +577,6 @@ export function setupConcepts() {
     }
   });
 
-  // Keep findSimilar on window — shared with gallery/dashboard cards
-  (window as any).findSimilar = (path: string) => {
-    const searchNavItem = document.querySelector('.nav-item[data-view="search"]') as HTMLElement;
-    if (searchNavItem) {
-      searchNavItem.click();
-
-      const queryInput = document.getElementById("search-text-input") as HTMLInputElement;
-      const tagInput = document.getElementById("search-tag-input") as HTMLInputElement;
-      const imageInput = document.getElementById("search-image-path-input") as HTMLInputElement;
-
-      if (queryInput) { queryInput.value = ""; queryInput.dispatchEvent(new Event('change')); }
-      if (tagInput) { tagInput.value = ""; tagInput.dispatchEvent(new Event('change')); }
-      if (imageInput) {
-        imageInput.value = path;
-        imageInput.dispatchEvent(new Event("change"));
-        setTimeout(() => {
-          document.getElementById("search-form")?.dispatchEvent(new Event("submit"));
-        }, 50);
-      }
-    }
-  };
-
   // Delegation setup for concept cards
   const conceptsContainer = document.getElementById("concepts-list-container");
   if (conceptsContainer) {
@@ -606,12 +584,33 @@ export function setupConcepts() {
   }
 }
 
+export async function findSimilar(path: string): Promise<void> {
+  const searchNavItem = document.querySelector('.nav-item[data-view="search"]') as HTMLElement;
+  if (searchNavItem) {
+    searchNavItem.click();
+
+    const queryInput = document.getElementById("search-text-input") as HTMLInputElement;
+    const tagInput = document.getElementById("search-tag-input") as HTMLInputElement;
+    const imageInput = document.getElementById("search-image-path-input") as HTMLInputElement;
+
+    if (queryInput) { queryInput.value = ""; queryInput.dispatchEvent(new Event('change')); }
+    if (tagInput) { tagInput.value = ""; tagInput.dispatchEvent(new Event('change')); }
+    if (imageInput) {
+      imageInput.value = path;
+      imageInput.dispatchEvent(new Event("change"));
+      setTimeout(() => {
+        document.getElementById("search-form")?.dispatchEvent(new Event("submit"));
+      }, 50);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // HTML Template
 // ---------------------------------------------------------------------------
 
-export function renderConceptsHtml(): string {
-  return `
+export function renderConceptsHtml(): SafeHtml {
+  return html`
     <div class="group-box">
       <div class="group-box-title"><i class="bi bi-magic"></i> Custom Concept Learning (Few-Shot Prototype Tagging)</div>
       <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">

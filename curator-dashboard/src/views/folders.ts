@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { callService } from "../ipc";
 import { logJS, escapeHtml, formatDate } from "../utils";
-import { maskPath } from "../components";
+import { maskPath, SafeHtml, html } from "../components";
 import type { DuplicateFolderGroup } from "../types";
 
 let duplicateGroups: DuplicateFolderGroup[] = [];
@@ -24,13 +24,13 @@ export async function refreshFolders() {
       return;
     }
 
-    let html = `<div style="margin-bottom: 8px; display: flex; gap: 6px;">
+    let content = `<div style="margin-bottom: 8px; display: flex; gap: 6px;">
       <button class="win-button" id="folders-reconcile-btn" style="font-size: 11px; padding: 3px 10px;">
         <i class="bi bi-arrow-left-right"></i> Reconcile Duplicates
       </button>
     </div>`;
 
-    html += `<table class="folders-table">
+    content += `<table class="folders-table">
       <thead>
         <tr>
           <th style="text-align: left;">Status</th>
@@ -58,7 +58,7 @@ export async function refreshFolders() {
 
       const rowClass = folder.is_missing ? 'folders-row missing' : 'folders-row';
 
-      html += `<tr class="${rowClass}" data-folder-id="${folder.id}" data-folder-path="${escapeHtml(folder.path)}">
+      content += `<tr class="${rowClass}" data-folder-id="${folder.id}" data-folder-path="${escapeHtml(folder.path)}">
         <td style="text-align: center;">${statusIcon}</td>
         <td style="font-weight: 600;">${escapeHtml(folder.name)}</td>
         <td style="font-size: 11px; color: #555; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(folder.path)}">${maskPath(folder.path)}</td>
@@ -68,7 +68,7 @@ export async function refreshFolders() {
         <td style="text-align: center; white-space: nowrap;">`;
 
       if (folder.is_missing) {
-        html += `
+        content += `
           <button class="win-button folders-update-btn" data-folder-id="${folder.id}" style="font-size: 11px; padding: 2px 8px; margin-right: 4px;" title="Update folder path">
             <i class="bi bi-pencil"></i> Update Path
           </button>
@@ -76,18 +76,18 @@ export async function refreshFolders() {
             <i class="bi bi-trash"></i> Remove
           </button>`;
       } else {
-        html += `
+        content += `
           <button class="win-button folders-open-btn" data-path="${escapeHtml(folder.path)}" style="font-size: 11px; padding: 2px 8px;">
             <i class="bi bi-folder2-open"></i> Open
           </button>`;
       }
 
-      html += `</td></tr>`;
+      content += `</td></tr>`;
     }
 
-    html += '</tbody></table>';
-    html += '<div id="folders-reconcile-panel" style="display: none; margin-top: 12px;"></div>';
-    container.innerHTML = html;
+    content += '</tbody></table>';
+    content += '<div id="folders-reconcile-panel" style="display: none; margin-top: 12px;"></div>';
+    container.innerHTML = content;
 
     // Reconcile button
     document.getElementById("folders-reconcile-btn")?.addEventListener("click", handleReconcileClick);
@@ -181,7 +181,7 @@ async function handleReconcileClick() {
       return;
     }
 
-    let html = `
+    let reconcileContent = `
       <div class="group-box">
         <div class="group-box-title"><i class="bi bi-arrow-left-right"></i> Duplicate Folders Detected</div>
         <p style="color: #555; font-size: 12px; margin: 0 0 10px 0;">
@@ -191,14 +191,14 @@ async function handleReconcileClick() {
 
     for (let gi = 0; gi < duplicateGroups.length; gi++) {
       const group = duplicateGroups[gi];
-      html += `
+      reconcileContent += `
         <div style="border: 1px solid #d0d0d0; border-radius: 3px; padding: 8px; margin-bottom: 8px; background: #fafafa;">
           <div style="font-weight: 600; font-size: 12px; margin-bottom: 6px; color: #333;">
             Group ${gi + 1} — ${group.shared_image_count} shared image(s)
           </div>`;
 
       for (const folder of group.folders) {
-        html += `
+        reconcileContent += `
           <div style="display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #e8e8e8;">
             <div style="flex: 1; min-width: 0;">
               <div style="font-weight: 600; font-size: 12px;">${escapeHtml(folder.name)}</div>
@@ -213,11 +213,11 @@ async function handleReconcileClick() {
           </div>`;
       }
 
-      html += `</div>`;
+      reconcileContent += `</div>`;
     }
 
-    html += `</div>`;
-    panel.innerHTML = html;
+    reconcileContent += `</div>`;
+    panel.innerHTML = reconcileContent;
 
     // Attach merge handlers
     panel.querySelectorAll<HTMLElement>(".folders-merge-keep-btn").forEach((btn) => {
@@ -262,8 +262,8 @@ async function handleReconcileClick() {
 // HTML Template
 // ---------------------------------------------------------------------------
 
-export function renderFoldersHtml(): string {
-  return `
+export function renderFoldersHtml(): SafeHtml {
+  return html`
     <div class="group-box">
       <div class="group-box-title">Imported Folders</div>
       <div id="folders-content">

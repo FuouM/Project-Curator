@@ -1,4 +1,5 @@
 import { callService } from "../ipc";
+import { SafeHtml, html } from "../components";
 import { TokenBlock, ParsedMetadata, BatchPreviewItem } from "../types";
 import { escapeHtml } from "../utils";
 
@@ -688,8 +689,8 @@ export async function runBatchParsing() {
 // HTML Template
 // ---------------------------------------------------------------------------
 
-export function renderFilenameParserHtml(): string {
-  return `
+export function renderFilenameParserHtml(): SafeHtml {
+  return html`
     <div style="display: flex; flex-direction: column; gap: 16px;">
       <!-- Mode Selection & Rule Config Header -->
       <div class="group-box">
