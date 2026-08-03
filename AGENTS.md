@@ -1,160 +1,158 @@
 # AGENTS.md
 
-Welcome to **Project Curator**, a high-performance local AI image curation, tagging, and semantic vector search system.
+This document establishes the architecture, development rules, safety mandates, and design system specifications for **Project Curator**. All AI agents and developers operating in this repository must strictly adhere to these guidelines.
 
 ---
 
 ## 1. Project Architecture & Workspace Structure
 
-This repository is organized as a Cargo workspace alongside a Tauri v2 desktop application frontend:
+The repository is structured as a Rust Cargo workspace coupled with a Tauri v2 desktop frontend:
 
-* `curator-core/` – Core Rust engine containing image processing, fast PNG decoding, CLIP vector embeddings (ONNX Runtime DirectML/CPU), vector similarity indexing, and SQLite database storage.
-* `curator-service/` – Background service worker managing indexing pipelines, ONNX inference, and IPC/gRPC interface.
-* `curator-cli/` – Command-line interface for headless indexing, batch tagging, and debugging queries.
-* `curator-dashboard/` – Desktop GUI built with Tauri v2 + Vite + TypeScript/Vanilla CSS.
-  * `curator-dashboard/src-tauri/` – Rust backend glue for Tauri app (workspace member).
-  * `curator-dashboard/src/` – TypeScript frontend UI components and IPC calls.
-* `.curator/` – Default local cache directory holding model weights (`models/`), vector indexes, and application state.
+```bash
+project-curator/
+├── curator-core/       # Core Rust engine: PNG decoding, CLIP embeddings, vector indexing, SQLite
+├── curator-service/    # Background daemon: task queues, ONNX model pipeline, Named Pipe server
+├── curator-cli/        # Scriptable CLI: headless indexing, batch query, agentic execution
+├── curator-dashboard/  # Native-looking desktop UI (Tauri v2 + Vite + TypeScript)
+│   ├── src-tauri/      # Rust backend glue for Tauri app (workspace member)
+│   └── src/            # TypeScript frontend UI components, rendering, and IPC
+└── .curator/           # Local runtime state: cached models, vector indexes, SQLite database
+```
 
----
-
-## 2. Local Environment Setup & PowerShell Scripts
-
-Always use the project's dedicated PowerShell scripts for environment configuration and launcher workflows:
-
-### Environment Initialization
-
-* **Load Rust Environment**: Always source `env.ps1` before running `cargo` or `rustc` commands:
-
-  ```powershell
-  . .\env.ps1
-  ```
-
-  *(Sets `RUSTUP_HOME` to `.rust\.rustup`, `CARGO_HOME` to `.rust\.cargo`, and prepends `.rust\.cargo\bin` to `$env:PATH`)*.
-
-* **Download ONNX Runtime (DirectML)**:
-
-  ```powershell
-  .\download_ort.ps1
-  ```
-
-  *(Fetches Microsoft.ML.OnnxRuntime.DirectML v1.24.4 and copies `onnxruntime.dll` to project root)*.
-
-* **Full Dev Mode Launcher**:
-
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File .\dev.ps1
-  ```
-
-  *(Automates stopping `curator-service`, building service binary, and launching Tauri dev server)*.
-
-* **Python Environment (if needed for scripts or debug validation)**:
-  Use portable PyTorch/CUDA environment or local ComfyUI python executable if available.
+* **Core IPC Bus:** High-throughput, asynchronous communication between components occurs via local Windows Named Pipes (`\\.\pipe\curator_ipc`).
+* **Storage Philosophy:** Relational metadata resides in SQLite; dense vector embeddings reside in an isolated dynamic vector index. Original source files are never mutated.
 
 ---
 
-## 3. Common Development & Build Commands
+## 2. Environment Setup & Development Workflows
 
-### Rust Workspace Commands
+### PowerShell Environment Commands
+
+Always execute commands within the project's isolated environment:
+
+```powershell
+# 1. Load local Rust toolchain environment
+## Sets RUSTUP_HOME to .rust\.rustup, 
+## CARGO_HOME to .rust\.cargo, 
+## and prepends .rust\.cargo\bin to $env:PATH
+. .\env.ps1
+
+# 2. Fetch DirectML ONNX Runtime binary (Microsoft.ML.OnnxRuntime.DirectML v1.24.4)
+.\download_ort.ps1
+
+# 3. Launch full development server (stops background service, builds, and starts Tauri GUI)
+.\dev.ps1
+```
+
+* **Python Environment**:
+  Use `scripts/venv` (If already set up) or ask the User for an environment.
+
+---
+
+### Build & Test Verification
 
 ```powershell
 # Sourcing environment first
 . .\env.ps1
 
-# Run unit & integration tests
+# Execute unit/integration tests
 cargo test -p curator-core
 cargo test -p curator-service
 
-# Check workspace code style
+# Workspace linting
 cargo clippy --all-targets
+
+# Frontend development
+cd curator-dashboard
+npm install
+npm run tauri dev
 
 # Build specific workspace crates
 cargo build --manifest-path curator-service/Cargo.toml
 cargo build --manifest-path curator-core/Cargo.toml
 ```
 
-### Frontend / Tauri Desktop Commands
-
-```powershell
-cd curator-dashboard
-npm install
-npm run tauri dev
-```
-
 ---
 
-## 4. Key Rules, Solutions & Recurring Pitfalls
+## 3. Critical Technical & Runtime Constraints
 
 ### 1. Service Executable Locking (Windows)
 
-* **Problem**: `cargo build` on `curator-service` fails with access denied because `curator-service.exe` is currently running in the background.
-* **Solution**: Kill running processes before rebuilding:
+`cargo build` on `curator-service` will fail with an access denied error if `curator-service.exe` is running in the background. Kill the process before recompiling:
 
-  ```powershell
-  Get-Process curator-service -ErrorAction SilentlyContinue | Stop-Process -Force
-  ```
+```powershell
+Get-Process curator-service -ErrorAction SilentlyContinue | Stop-Process -Force
+```
 
-### 2. ONNX Runtime Dynamic Library Dependency
+### 2. ONNX Runtime Dependency Management
 
-* **Problem**: Inference errors or missing DLL crashes when running CLIP embedding models.
-* **Solution**: Ensure `onnxruntime.dll` exists in project root and target directories (`target/debug` or `target/release`). Use `.\download_ort.ps1` if missing.
+`onnxruntime.dll` must exist in the root folder and active build target directories (`target/debug` or `target/release`). If missing, run `.\download_ort.ps1`.
 
-### 3. CLIP Text Tokenization & Padding Rules
+### 3. CLIP Text Tokenization Rules
 
-* **Problem**: Semantic search similarity ranking yielding incorrect or uniform scores.
-* **Gotcha**: CLIP text sequence input IDs **must be padded with zeros (`0`)** up to max sequence length 77.
-* **Do NOT**: Repeat `EOS` tokens across padded slots, as it corrupts positional embeddings and pooling computations inside the CLIP text transformer model.
+* Sequence input IDs **must be padded with zeros (`0`)** up to the maximum sequence length of **77**.
+* **Do NOT** repeat `EOS` tokens across padded slots; doing so corrupts positional embeddings and transformer pooling outputs.
 
-### 4. Frontend Event Handler Modularity (`curator-dashboard`)
+### 4. IPC Latency & Serialization
 
-* **Guideline**: When rendering image cards across Gallery, Search Results, and Favorites views, use shared card event handlers (`attachCardEventHandlers`) and unified card rendering functions (`renderCards`) in `main.ts` rather than duplicating element event bindings.
+* **Indexed Pattern Search:** Autocomplete components must perform dynamic `LIKE` queries on keypress rather than pre-fetching large data arrays over IPC. Keep response payloads small to guarantee sub-10ms response times.
+* **Payload Serialization:** Structure IPC parameters explicitly using key-object shapes (e.g., `{ RequestCommand: { arg: val } }`) to prevent serialization normalization failures.
 
 ---
 
-## 5. Code Style & Interaction Mandates
+## 4. Data Integrity & Database Mandates
 
-### Workflow & Interaction Speed Mandates
+1. **Database Schema & Migrations:**
+   * **Never** perform ad-hoc SQL modifications or direct index additions on development databases.
+   * All schema updates, new tables, and performance indexes **must** be committed as structured SQL files inside `curator-core/migrations/` (e.g., `0011_feature_name.sql`).
 
-* **No Absolute Paths**: NEVER include or commit absolute file paths (e.g., `file:///K:/...`, `K:\...`, `C:\...`) in code, scripts, configuration files, or documentation (including markdown files) checked into the repository. Always use repository-relative or workspace-relative paths, and rely on portable environment-variable/executable-relative resolution at runtime.
-* **No Unnecessary Build Commands**: The user keeps their local dev build (`dev.ps1` / `npm run dev`) active. DO NOT execute `npm run build` or `cargo build` on minor edits unless explicitly requested or validating backend Rust signature changes.
-* **No Unprompted Feature Over-Engineering**: Implement strictly what the user requests. Never introduce automated background jobs, full-library auto-rescans, or unexpected database mutations.
-* **NO FALLBACKS Policy**: NEVER implement automatic "silent fallbacks" (e.g. copying an original file, silencing errors, or falling back to a dummy placeholder) to satisfy execution or make a command run green. If a task, process, or script encounters a failure, fail fast, raise a clear error, and expose the underlying problem directly so it can be resolved properly.
-* **Database Safety & Concept Integrity**:
-  * **Dynamic Vector Searches**: Concept vector searches must remain 100% dynamic in memory/index search and NEVER write auto-tags into `image_tags` table.
-  * **Explicit Sample Tagging**: Teaching a concept or adding samples ONLY tags the explicitly selected ground-truth sample images.
-  * **User Blacklist Respect**: Deleting a custom concept tag must cleanly delete the row, and NEVER convert custom concept tags into AI exclusions/blacklists.
-* **Concise & Direct Responses**: Keep answers short, direct, and actionable. Avoid unnecessary re-summaries, verbose technical disclaimers, or excessive build output.
-* **Database Schema & Migrations Mandate**:
-  * **ALWAYS use Migrations**: NEVER execute ad-hoc schema modifications, column creations, or performance indexes directly against local development databases using sqlite CLI or code commands.
-  * **Location**: All database updates, new tables, and indexes must be written as structured SQL files inside `curator-core/migrations/` (e.g. `0011_xxxx.sql`). This guarantees that schema changes are automatically migrated and synchronized across all environments on service startup.
-* **Database Explain Plan Mandate**:
-  * Run `EXPLAIN QUERY PLAN` on SQLite queries before finalizing query refactors to verify index utilization and avoid table scans or temp B-trees for ordering.
-* **IPC Volume & Performance Mandate**:
-  * **Indexed Pattern Queries**: Avoid pre-fetching large data arrays (e.g., >1,000 items) over IPC named-pipe channels at startup. Autocomplete components must perform dynamic, index-supported pattern searches (`LIKE` queries) on keypress, keeping response payloads small and IPC latency under **10ms**.
-  * **Structured IPC Serialization**: Explicitly map IPC payloads using key-object shapes (e.g. `{ RequestCommand: { arg: val } }`) instead of raw parameters to bypass formatting normalization failures in `callService`.
-* **Lazy DOM Loader Mandate**:
-  * Display structural layout skeletons and empty placeholder outlines instantly when rendering tabs or complex view components.
-  * Defer secondary details queries, crop generation tasks, and thumbnail updates to a microtask/timer delay (`setTimeout(..., 50)`) to allow the UI to paint without freezing.
-* **Git Staging & Commiting Mandate**:
-  * **Never Auto-Commit**: NEVER run `git commit` or `git push` commands automatically. Only perform Git commits or pushes when the user explicitly instructs you to do so.
-  * **NO Wildcard Staging**: NEVER run wildcard staging commands (`git add .`, `git add -A`, or `git add *`). Explicitly stage target files by their path to avoid committing untracked temp files, log files, or build artifacts.
-  * **NO Unprompted Git Checkout**: NEVER run `git checkout` on any file to revert or recover changes unless explicitly instructed by the user. If you need to recover or inspect modifications, use `git diff` or compare histories rather than destructive resets.
-  * **Semantic Commit Bodies**: Follow the repo's commit body style. Commit messages must consist of a semantic summary line (`type: description`) followed by detailed bullet points documenting the structural file modifications.
+2. **Query Performance Verification:**
+   * Always execute `EXPLAIN QUERY PLAN` on SQLite queries before finalizing refactors to verify index usage and eliminate full table scans or temporary B-trees.
 
-### UI & Aesthetic Rules (Modern WinForms Desktop Control Aesthetic)
+3. **Vector vs. Tag Integrity:**
+   * Dynamic vector similarity searches must operate purely in-memory/vector-index and **never** write auto-tags into the `image_tags` table.
+   * Teaching a concept or providing training samples **only** tags explicitly selected ground-truth assets.
+   * Deleting a custom concept tag must execute a clean row deletion and **never** convert user tags into AI exclusions/blacklists.
 
-* **STRICT DESIGN SYSTEM MANDATE - ALWAYS FOLLOW**:
-  * **Zero Web/Glow Abstractions**: NEVER introduce flashy web gradients (`linear-gradient(...)`), neon cyan/magenta text (`#00ffff`, `#ff007f`), glowing box-shadows (`box-shadow: 0 0 6px...`), rounded floating cards, or radial background blobs.
-  * **Icon System Mandate**:
-    * **NO Unicode Emojis**: NEVER use raw unicode emojis or text symbols (`✨`, `●`, `○`, `▶`, `◀`, etc.) in HTML templates, tag pills, select options, or notifications.
-    * **Bootstrap Icons Only**: ALWAYS use official Bootstrap Icon classes (`<i class="bi bi-stars"></i>`, `<i class="bi bi-caret-left-fill"></i>`, `<i class="bi bi-check-lg"></i>`) across the entire application.
-  * **Native WinForms Control Styling**:
-    * **Containers**: Always wrap sections and cards in native WinForms `.group-box` fieldset containers (`<div class="group-box"><div class="group-box-title">Title</div>...</div>`).
-    * **Buttons & Inputs**: Always use standard `.win-button` (primary, danger), input fields, select dropdowns, and range sliders styled via design system CSS tokens.
-    * **Tag Pills**: Custom Concept pills must strictly use `#cce5ff` background, `#b8daff` border, and `#004085` text (`.tag-pill.custom-concept`). Standard tags use `#fff3cd` (`user`), `#d1ecf1` (`character`), `#ebdcf9` (`copyright`), `#e2e3e5` (`meta`).
-    * **Card & Grid Dimensions**: Image grids must always inherit standard `.image-grid` dimensions (`minmax(200px, 1fr)`). Concept grids use `minmax(460px, 1fr)`. Never force arbitrary tiny thumbnail widths (e.g., 120px).
-    * **Inline Panels Over Modals**: Prefer inline collapsible `.group-box` sub-panels within parent cards over floating popups/modals for secondary details or thumbnail lists.
-  * **Component Sheet Alignment**: Before creating or modifying ANY UI element, inspect the **Component Showcase Sheet view** (`index.html` -> `#view-components`) and `src/components.ts` to ensure exact design token match.
+---
+
+## 5. UI & Design System Guidelines (WinForms Desktop Control Aesthetic)
+
+The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** aesthetic.
+
+### Strict Design System Rules
+
+* **Zero Web Abstractions:** **NEVER** use flashy gradients (`linear-gradient`), neon glow effects (`box-shadow: 0 0 10px...`), floating rounded web cards, or radial background blobs.
+* **Icon System:** **NO Unicode Emojis** (`✨`, `●`, `▶`). **ALWAYS** use official Bootstrap Icon classes (`<i class="bi bi-stars"></i>`, `<i class="bi bi-check-lg"></i>`).
+* **WinForms Layout Containers:** Section groupings must use native `.group-box` fieldset containers:
+
+  ```html
+  <div class="group-box">
+    <div class="group-box-title">Section Title</div>
+    <!-- Content -->
+  </div>
+  ```
+
+* **Tag Taxonomy Color Mapping:**
+  * Custom Concepts: `#cce5ff` background, `#b8daff` border, `#004085` text (`.tag-pill.custom-concept`).
+  * Standard Tags: `#fff3cd` (`user`), `#d1ecf1` (`character`), `#ebdcf9` (`copyright`), `#e2e3e5` (`meta`).
+* **Lazy DOM Rendering:** Display structural skeleton layout outlines immediately upon rendering tabs or complex view components. Defer secondary details queries and crop generation tasks using microtask delays (`setTimeout(..., 50)`) to avoid freezing the UI thread.
+* **Component Sheet Reference:** Inspect the **Component Showcase Sheet view** (`index.html` -> `#view-components`) and `src/components.ts` before creating or modifying UI components.
+
+---
+
+## 6. Code Style & Safety Mandates
+
+1. **No Absolute Paths:** **NEVER** write or commit absolute file paths (`C:\...`, `file:///...`). Always use repository-relative paths and portable environment resolution.
+2. **NO Fallbacks Policy:** **NEVER** implement silent fallbacks (e.g., creating dummy placeholder files, silencing error responses, or copying fallback images). If a process fails, fail fast, raise a clear error, and expose the underlying issue.
+3. **First-Principles Model Verification:** Before modifying inference logic in `curator-core`, create or run standalone programmatic test binaries in `curator-core/src/bin/` (e.g., `test_ort_standalone.rs`) to verify ONNX model initialization and tensor shapes step-by-step.
+4. **Filesystem Safety & Binary Preservation:**
+   * **NEVER** run destructive cleanup commands (`Remove-Item -Force`, `git clean -fd`) on binary runtime files (`.dll`, `.lib`, `.onnx`).
+   * Preserve dependencies in isolated backup directories (e.g., `.curator_ort_dlls_backup/`) before performing directory cleanup operations.
+5. **Git Workflows & Commit Guidelines:**
+   * **No Automated Commits:** Do not run `git commit` or `git push` unless explicitly requested by the user.
+   * **No Wildcard Staging:** Do not run `git add .` or `git add -A`. Explicitly stage target files by path.
+   * **Commit Message Format:** Summarize changes with a semantic title (`type: description`), followed by detailed bullet points documenting specific file modifications.
 
 ### Frontend Design Skill (`/frontend-design`) Integration
 
@@ -172,20 +170,3 @@ npm run tauri dev
   * Keep components modular and single-purpose.
   * Use CSS variables and dark-mode high-contrast UI design system tokens.
   * Ensure user feedback indicators (copy status, star toggle, search loaders) are explicitly updated and reactive.
-
----
-
-## 6. Critical Safety & Development Mandates (ONNX & Filesystem Safety)
-
-* **First-Principles & Standalone Verification**:
-  * Do not trust legacy code or pre-existing tests when refactoring external libraries (e.g. `ort` / `pykeio`).
-  * Always build standalone subprogram binaries in `curator-core/src/bin/` (e.g. `test_ort_standalone.rs`) to verify library initialization, model loading, and inference step-by-step before modifying `curator-core`.
-  * **DO NOT run existing tests in `curator-core/tests`** unless explicitly requested by the user.
-
-* **Filesystem Safety & Binary Dependency Preservation**:
-  * **NEVER execute destructive deletions** (`Remove-Item -Force`, `rm -rf`, `git clean -fd`) on downloaded binary dependencies (`.dll`, `.lib`, `.onnx`, `.tar.lzma2`, CUDA/DirectML runtime files).
-  * **Always move/preserve files** in dedicated backup folders (e.g. `.curator_ort_dlls_backup/`) before cleaning up workspace root folders.
-  * **PowerShell File Copy Verification**: Always verify that PowerShell file search/copy filters (`Get-ChildItem -Path ".\*"`) match non-zero files and inspect destination folder contents BEFORE removing root copies.
-
-* **Hardware Acceleration Scope**:
-  * WebGPU is currently ignored/disabled. Focus on DirectML and CUDA EPs for local Windows inference.
