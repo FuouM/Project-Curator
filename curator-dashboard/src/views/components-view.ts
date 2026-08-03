@@ -80,6 +80,21 @@ export function refreshComponentStylesheet() {
     }
   });
 
+  const allCollapsed = entries.every(([, comp]) => collapsedStates[comp.name] ?? false);
+  const toggleAllBtn = document.getElementById("toggle-all-groups-btn");
+  if (toggleAllBtn) {
+    toggleAllBtn.innerHTML = allCollapsed
+      ? '<i class="bi bi-chevron-double-up"></i> Uncollapse All'
+      : '<i class="bi bi-chevron-double-down"></i> Collapse All';
+    toggleAllBtn.onclick = () => {
+      const states = getCollapsedStates();
+      const newState = !allCollapsed;
+      entries.forEach(([, comp]) => { states[comp.name] = newState; });
+      saveCollapsedStates(states);
+      refreshComponentStylesheet();
+    };
+  }
+
   setupInputClearButtons();
 }
 
@@ -89,6 +104,11 @@ export function refreshComponentStylesheet() {
 
 export function renderComponentsHtml(): string {
   return `
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+      <button id="toggle-all-groups-btn" class="btn btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
+        <i class="bi bi-chevron-double-down"></i> Collapse All
+      </button>
+    </div>
     <div id="components-showcase-container" style="display: flex; flex-direction: column; gap: 16px;"></div>
   `;
 }
