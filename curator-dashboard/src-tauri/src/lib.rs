@@ -203,11 +203,39 @@ async fn select_path(is_directory: bool) -> Result<Option<String>, String> {
     }
 }
 
+fn read_last_n_bytes(path: &std::path::Path, max_bytes: usize) -> std::io::Result<String> {
+    use std::fs::File;
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = File::open(path)?;
+    let metadata = file.metadata()?;
+    let file_len = metadata.len() as usize;
+
+    if file_len <= max_bytes {
+        let mut content = String::new();
+        file.read_to_string(&mut content)?;
+        return Ok(content);
+    }
+
+    let seek_pos = file_len - max_bytes;
+    file.seek(SeekFrom::Start(seek_pos as u64))?;
+
+    let mut buffer = vec![0; max_bytes];
+    file.read_exact(&mut buffer)?;
+
+    let lossy = String::from_utf8_lossy(&buffer).into_owned();
+    if let Some(pos) = lossy.find('\n') {
+        Ok(lossy[pos + 1..].to_string())
+    } else {
+        Ok(lossy)
+    }
+}
+
 #[tauri::command]
 async fn read_logs() -> Result<String, String> {
     let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
     let log_file = data_dir.join("dashboard.log");
-    match fs::read_to_string(&log_file) {
+    match read_last_n_bytes(&log_file, 128 * 1024) {
         Ok(content) => Ok(content),
         Err(e) => Err(format!("Failed to read log file: {:?}", e)),
     }
@@ -217,7 +245,7 @@ async fn read_logs() -> Result<String, String> {
 async fn read_service_logs() -> Result<String, String> {
     let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
     let log_file = data_dir.join("service_stdout.log");
-    match fs::read_to_string(&log_file) {
+    match read_last_n_bytes(&log_file, 128 * 1024) {
         Ok(content) => Ok(content),
         Err(e) => Err(format!("Failed to read service log file: {:?}", e)),
     }

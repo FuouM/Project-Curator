@@ -6,6 +6,7 @@ let fullLogLines: string[] = [];
 let linesShownCount = 200;
 let lastLogContent = "";
 let isUserScrolling = false;
+const logLineCache = new Map<string, string>();
 
 function colorizeJsonHtml(jsonStr: string): string {
   return jsonStr.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
@@ -27,6 +28,20 @@ function colorizeJsonHtml(jsonStr: string): string {
 
 function processLogLine(line: string): string {
   if (!line.trim()) return "";
+
+  if (logLineCache.has(line)) {
+    return logLineCache.get(line)!;
+  }
+
+  // Enforce boundary size on cache to limit memory usage
+  if (logLineCache.size > 5000) {
+    const keys = logLineCache.keys();
+    for (let i = 0; i < 1000; i++) {
+      const next = keys.next();
+      if (next.done) break;
+      logLineCache.delete(next.value);
+    }
+  }
 
   // 1. Strip all ANSI escape codes first to prevent timestamp/level parsing interference
   const cleanLine = line.replace(/[\u001b\x1b]\[[0-9;]*m/g, "");
@@ -88,7 +103,9 @@ function processLogLine(line: string): string {
     }
   }
 
-  return `<div style="margin-bottom: 5px; line-height: 1.4; font-family: var(--sys-font-mono, monospace); font-size: 11px;">${timestampHtml}${content}</div>`;
+  const result = `<div style="margin-bottom: 5px; line-height: 1.4; font-family: var(--sys-font-mono, monospace); font-size: 11px;">${timestampHtml}${content}</div>`;
+  logLineCache.set(line, result);
+  return result;
 }
 
 function renderVisibleLogs(logDiv: HTMLElement) {
@@ -220,6 +237,7 @@ export function clearLogsFrontendDom() {
     logDiv.innerHTML = "";
   }
   lastLogContent = "";
+  logLineCache.clear();
 }
 
 export async function clearLogsData() {
@@ -231,6 +249,7 @@ export async function clearLogsData() {
     linesShownCount = 200;
     lastLogContent = "";
     isUserScrolling = false;
+    logLineCache.clear();
     if (logDiv) logDiv.innerHTML = "";
   } catch (e) {
     alert("Failed to clear logs: " + e);
