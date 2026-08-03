@@ -100,6 +100,7 @@ npm run tauri dev
 ## 5. Code Style & Interaction Mandates
 
 ### Workflow & Interaction Speed Mandates
+* **No Absolute Paths**: NEVER include or commit absolute file paths (e.g., `file:///K:/...`, `K:\...`, `C:\...`) in code, scripts, configuration files, or documentation (including markdown files) checked into the repository. Always use repository-relative or workspace-relative paths, and rely on portable environment-variable/executable-relative resolution at runtime.
 * **No Unnecessary Build Commands**: The user keeps their local dev build (`dev.ps1` / `npm run dev`) active. DO NOT execute `npm run build` or `cargo build` on minor edits unless explicitly requested or validating backend Rust signature changes.
 * **No Unprompted Feature Over-Engineering**: Implement strictly what the user requests. Never introduce automated background jobs, full-library auto-rescans, or unexpected database mutations.
 * **NO FALLBACKS Policy**: NEVER implement automatic "silent fallbacks" (e.g. copying an original file, silencing errors, or falling back to a dummy placeholder) to satisfy execution or make a command run green. If a task, process, or script encounters a failure, fail fast, raise a clear error, and expose the underlying problem directly so it can be resolved properly.
