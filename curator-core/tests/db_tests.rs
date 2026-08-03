@@ -70,8 +70,9 @@ fn test_ocr_detector_sanity() {
 
 #[test]
 fn test_ocr_image_transcription_extraction() {
-    let models_dir = std::path::Path::new("../.curator/models");
-    let ref_dir = std::path::Path::new("../reference");
+    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let models_dir = workspace_root.join(".curator").join("models");
+    let ref_dir = workspace_root.join("reference");
     
     // Dynamically copy models if not present in the .curator/models directory (mimics backend download_detection_models)
     let ocr_files = [
@@ -95,13 +96,13 @@ fn test_ocr_image_transcription_extraction() {
         }
     }
 
-    let img_path = std::path::Path::new("../reference/orc_test_images/1754376929920837.png");
+    let img_path = workspace_root.join("assets").join("test_images").join("1533999207878.png");
     if !img_path.exists() {
         return;
     }
 
     let detector = curator_core::OcrDetector::new(models_dir, curator_core::DevicePreference::Cpu, false, false);
-    let (rgb_buf, width, height) = curator_core::image_decode::decode_rgb(img_path).unwrap();
+    let (rgb_buf, width, height) = curator_core::image_decode::decode_rgb(&img_path).unwrap();
     let img = curator_core::image::ImageBuffer::<curator_core::image::Rgb<u8>, Vec<u8>>::from_raw(width, height, rgb_buf).unwrap();
 
     let (results, bubbles) = detector.run_ocr(&img).expect("Failed to run OCR");
