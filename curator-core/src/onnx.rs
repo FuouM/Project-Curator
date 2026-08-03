@@ -159,22 +159,11 @@ impl ManagedSession {
         f(session)
     }
 
-    /// Execute a closure against the session with automatic GPU→CPU fallback.
-    /// If the closure returns an error and the current device is GPU,
-    /// the session is reloaded on CPU and the closure retried exactly once.
+    /// Execute a closure against the session. GPU-to-CPU fallback has been removed.
     pub fn with_session_fallback<F, R>(&self, f: F) -> Result<R>
     where
         F: Fn(&mut Session) -> Result<R>,
     {
-        let result = self.with_session(&f);
-        if result.is_err() && self.device() != DevicePreference::Cpu {
-            tracing::warn!(
-                "{}: inference failed on GPU — falling back to CPU",
-                self.name
-            );
-            self.set_device(DevicePreference::Cpu);
-            return self.with_session(&f);
-        }
-        result
+        self.with_session(f)
     }
 }

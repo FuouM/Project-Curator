@@ -1,11 +1,10 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use curator_core::concept::{
     bytes_to_vector, sanitize_concept_name, vector_to_bytes, CustomConcept,
 };
 use curator_core::ipc::EmbeddingModel;
 use curator_core::vector::ModelManager;
 use sqlx::SqlitePool;
-use std::path::Path;
 
 use super::common::resolve_source_id;
 
@@ -111,32 +110,20 @@ pub async fn recompute_concept_prototype_logic(
             }
         }
 
-        // Fallback for any sample image missing from image_vectors
+        // Strict check: if any sample image vectors are missing, fail loudly instead of falling back to disk/re-inference
         if sample_vectors.len() < ids.len() {
-            let query_str = format!("SELECT current_filepath FROM images WHERE id IN ({})", placeholders);
-            let mut q = sqlx::query_as::<_, (String,)>(query_str.as_str());
-            for id in &ids {
-                q = q.bind(id);
-            }
-            if let Ok(image_paths) = q.fetch_all(db).await {
-                for (path_str,) in image_paths {
-                    let path = Path::new(&path_str);
-                    if path.exists() {
-                        // Full decode + ONNX inference — off the reactor.
-                        if let Ok(vec) = tokio::task::block_in_place(|| {
-                            model_manager.generate_image_embedding(path)
-                        }) {
-                            sample_vectors.push(vec);
-                        }
-                    }
-                }
-            }
+            return Err(anyhow::anyhow!(
+                "Cannot recompute concept prototype: {} of {} sample images are missing ready vectors in the database. Please index the images first.",
+                ids.len() - sample_vectors.len(),
+                ids.len()
+            ));
         }
     }
 
     let prompt_text = format!("anime artwork of {}", concept.name.replace('_', " "));
-    // Text embedding via ONNX — off the reactor.
-    let text_vec = tokio::task::block_in_place(|| model_manager.generate_text_embedding(&prompt_text)).ok();
+    // Text embedding via ONNX — off the reactor. Must succeed or fail loudly.
+    let text_vec = tokio::task::block_in_place(|| model_manager.generate_text_embedding(&prompt_text))
+        .context("Failed to generate text embedding for concept training prompt")?;
 
     // Fast SQLite vector BLOB pre-fetch for background negative contrast subspace
     let neg_rows: Vec<(Vec<u8>,)> = sqlx::query_as(
@@ -162,7 +149,7 @@ pub async fn recompute_concept_prototype_logic(
     let (proto_vec, _bias) = curator_core::concept::train_linear_svm_decision_boundary(
         &sample_vectors,
         &negative_vectors,
-        text_vec.as_deref(),
+        Some(&text_vec),
     );
 
     let blob = vector_to_bytes(&proto_vec);

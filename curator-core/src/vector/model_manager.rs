@@ -365,7 +365,7 @@ impl ModelManager {
 
         let num_threads = std::thread::available_parallelism()
             .map(|n| n.get())
-            .unwrap_or(4)
+            .expect("Failed to query hardware parallelism")
             .min(image_paths.len());
 
         let chunk_size = (image_paths.len() + num_threads - 1) / num_threads;

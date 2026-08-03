@@ -92,14 +92,18 @@ fn spawn_service() {
                     log_dashboard_event("Failed to open service_stdout.log for redirection");
                 }
             } else {
-                log_dashboard_event(&format!(
-                    "curator-service.exe not found at candidate paths under parent of {:?}",
+                let err_msg = format!(
+                    "CRITICAL ERROR: curator-service.exe not found at candidate paths under parent of {:?}",
                     dir
-                ));
+                );
+                log_dashboard_event(&err_msg);
+                panic!("{}", err_msg);
             }
         }
     } else {
-        log_dashboard_event("Failed to fetch current_exe path");
+        let err_msg = "CRITICAL ERROR: Failed to fetch current_exe path";
+        log_dashboard_event(err_msg);
+        panic!("{}", err_msg);
     }
 }
 
