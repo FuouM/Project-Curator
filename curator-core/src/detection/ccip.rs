@@ -247,6 +247,38 @@ impl CCIPModel {
     }
 }
 
+impl crate::pipeline::SystemNode for CCIPModel {
+    fn info(&self) -> crate::pipeline::NodeInfo {
+        crate::pipeline::NodeInfo {
+            id: "ccip-matcher",
+            label: "CCIP Character Matcher",
+            inputs: vec![
+                crate::pipeline::Port { name: "image", type_name: "Image" },
+            ],
+            outputs: vec![
+                crate::pipeline::Port { name: "embedding", type_name: "EmbeddingVector" },
+            ],
+        }
+    }
+
+    fn device(&self) -> DevicePreference {
+        self.feat_session.device()
+    }
+
+    fn set_device(&self, device: DevicePreference) {
+        CCIPModel::set_feat_device(self, device.clone());
+        CCIPModel::set_metrics_device(self, device);
+    }
+
+    fn unload_all(&self) {
+        CCIPModel::unload(self);
+    }
+
+    fn is_loaded(&self) -> bool {
+        CCIPModel::is_loaded(self)
+    }
+}
+
 pub(crate) fn preprocess_ccip(crop: &image::RgbImage, target_size: u32) -> Result<Array4<f32>> {
     let (w, h) = crop.dimensions();
     let s = target_size as usize;

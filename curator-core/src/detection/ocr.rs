@@ -292,6 +292,37 @@ impl OcrDetector {
     }
 }
 
+impl crate::pipeline::SystemNode for OcrDetector {
+    fn info(&self) -> crate::pipeline::NodeInfo {
+        crate::pipeline::NodeInfo {
+            id: "pp-ocr",
+            label: "PP-OCR Text Detector",
+            inputs: vec![
+                crate::pipeline::Port { name: "image", type_name: "Image" },
+            ],
+            outputs: vec![
+                crate::pipeline::Port { name: "text", type_name: "TextMetadata" },
+            ],
+        }
+    }
+
+    fn device(&self) -> DevicePreference {
+        self.det_session.device()
+    }
+
+    fn set_device(&self, device: DevicePreference) {
+        OcrDetector::set_device(self, device);
+    }
+
+    fn unload_all(&self) {
+        OcrDetector::unload(self);
+    }
+
+    fn is_loaded(&self) -> bool {
+        OcrDetector::is_loaded(self)
+    }
+}
+
 /// Preprocess image for the DB text detection model.
 /// 
 /// Reference: DetResizeForTest with limit_side_len=960, limit_type="max"

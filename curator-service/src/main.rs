@@ -283,6 +283,14 @@ async fn main() -> Result<(), Error> {
     let ocr = Arc::new(curator_core::OcrDetector::new(&model_dir, settings.ocr_device.clone()));
     info!("OCR detector configured (PP-OCRv6 small, models load on first use)");
 
+    // Build the node registry with all system nodes
+    let mut node_registry = curator_core::NodeRegistry::new();
+    node_registry.register(model_manager.clone());
+    node_registry.register(tagger.clone());
+    node_registry.register(ocr.clone());
+    info!("Node registry initialized with {} system nodes", node_registry.len());
+    let node_registry = Arc::new(node_registry);
+
     let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone());
     worker.start();
 

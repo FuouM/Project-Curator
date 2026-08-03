@@ -215,3 +215,34 @@ impl TaggerEngine {
         res
     }
 }
+
+impl crate::pipeline::SystemNode for TaggerEngine {
+    fn info(&self) -> crate::pipeline::NodeInfo {
+        crate::pipeline::NodeInfo {
+            id: "camie-tagger",
+            label: "Camie Tagger",
+            inputs: vec![
+                crate::pipeline::Port { name: "image", type_name: "Image" },
+            ],
+            outputs: vec![
+                crate::pipeline::Port { name: "tags", type_name: "Tags" },
+            ],
+        }
+    }
+
+    fn device(&self) -> DevicePreference {
+        self.session.device()
+    }
+
+    fn set_device(&self, device: DevicePreference) {
+        TaggerEngine::set_device(self, device);
+    }
+
+    fn unload_all(&self) {
+        TaggerEngine::unload(self);
+    }
+
+    fn is_loaded(&self) -> bool {
+        TaggerEngine::is_loaded(self)
+    }
+}

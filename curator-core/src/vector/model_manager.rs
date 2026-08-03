@@ -691,3 +691,35 @@ impl ModelManager {
         res
     }
 }
+
+impl crate::pipeline::SystemNode for ModelManager {
+    fn info(&self) -> crate::pipeline::NodeInfo {
+        crate::pipeline::NodeInfo {
+            id: "clip-embedder",
+            label: "CLIP Visual/Text Embedder",
+            inputs: vec![
+                crate::pipeline::Port { name: "image", type_name: "Image" },
+                crate::pipeline::Port { name: "text", type_name: "TextMetadata" },
+            ],
+            outputs: vec![
+                crate::pipeline::Port { name: "embedding", type_name: "EmbeddingVector" },
+            ],
+        }
+    }
+
+    fn device(&self) -> DevicePreference {
+        self.device.lock().unwrap().clone()
+    }
+
+    fn set_device(&self, device: DevicePreference) {
+        ModelManager::set_device(self, device);
+    }
+
+    fn unload_all(&self) {
+        ModelManager::unload(self);
+    }
+
+    fn is_loaded(&self) -> bool {
+        ModelManager::is_loaded(self)
+    }
+}

@@ -289,3 +289,34 @@ fn compute_iou(a: &Detection, b: &Detection) -> f32 {
         inter_area / union_area
     }
 }
+
+impl crate::pipeline::SystemNode for YoloDetector {
+    fn info(&self) -> crate::pipeline::NodeInfo {
+        crate::pipeline::NodeInfo {
+            id: "yolo-detector",
+            label: "YOLO Person Detector",
+            inputs: vec![
+                crate::pipeline::Port { name: "image", type_name: "Image" },
+            ],
+            outputs: vec![
+                crate::pipeline::Port { name: "detections", type_name: "List[Detection]" },
+            ],
+        }
+    }
+
+    fn device(&self) -> DevicePreference {
+        self.session.device()
+    }
+
+    fn set_device(&self, device: DevicePreference) {
+        YoloDetector::set_device(self, device);
+    }
+
+    fn unload_all(&self) {
+        YoloDetector::unload(self);
+    }
+
+    fn is_loaded(&self) -> bool {
+        YoloDetector::is_loaded(self)
+    }
+}
