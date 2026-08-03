@@ -264,8 +264,7 @@ export function renderImageCard(srcUrl: string, filepath: string, options?: Imag
   return html`
     <div class="image-card">
       <div class="image-preview">
-        <img src="${srcUrl}" alt="Image Preview" data-action="img-fallback" style="width: 100%; height: 100%; object-fit: cover;" />
-        <span style="display: none;"><i class="bi bi-image"></i></span>
+        <img src="${srcUrl}" alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" />
         <div class="vector-badge ${badgeClass}">${badgeText}</div>
       </div>
       <div class="image-info">

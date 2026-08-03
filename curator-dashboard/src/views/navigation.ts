@@ -2,7 +2,7 @@ import { galleryPage, favoritesPage, setGalleryPage, setFavoritesPage, getImages
 import { refreshGallery, refreshFavorites, setupPaginationButtons, setupPageJump } from "./gallery";
 import { refreshBenchmarkMaxImages } from "./benchmark";
 import { refreshDashboard } from "./dashboard";
-import { refreshLogs, clearLogsData } from "./logs";
+import { refreshLogs, clearLogsData, clearLogsFrontendDom } from "./logs";
 import { refreshTagStats } from "./tagstats";
 import { refreshFolders } from "./folders";
 import { refreshComponentStylesheet } from "./components-view";
@@ -59,6 +59,10 @@ export function setupNavigation() {
       if (viewTitle && viewSubtitle && subtitles[view]) {
         viewTitle.textContent = subtitles[view].title;
         viewSubtitle.textContent = subtitles[view].sub;
+      }
+
+      if (view !== "logs") {
+        clearLogsFrontendDom();
       }
 
       if (view === "dashboard") {

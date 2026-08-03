@@ -475,7 +475,7 @@ function renderSandboxResult(match: ParsedMetadata | null, filename: string) {
           <span class="tag-pill tag-meta" style="font-weight: 600;"><i class="bi bi-x-circle"></i> No Match</span>
           <span style="font-family: monospace; font-size: 11px; font-weight: 600; color: #333;">${escapeHtml(filename)}</span>
         </div>
-        <span style="font-size: 11px; color: #666;">Default fallback: Unparsed / Random</span>
+        <span style="font-size: 11px; color: #666;">Default: Unparsed / Random</span>
       </div>
     `;
     return;

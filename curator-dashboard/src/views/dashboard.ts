@@ -153,8 +153,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
           <i class="bi ${featured.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
         </div>
         <div class="image-preview featured-preview">
-          <img src="${srcUrl}" alt="Featured Image" data-action="img-fallback" style="width: 100%; height: 100%; object-fit: cover;" />
-          <span style="display: none;"><i class="bi bi-image"></i></span>
+          <img src="${srcUrl}" alt="Featured Image" style="width: 100%; height: 100%; object-fit: cover;" />
           <div class="vector-badge ${badgeClass}">${featured.vector_state}</div>
           <div class="featured-badge-overlay"><i class="bi bi-stars"></i> Feature of the Day</div>
           <div class="copy-btn" title="Copy image to clipboard"><i class="bi bi-clipboard"></i></div>

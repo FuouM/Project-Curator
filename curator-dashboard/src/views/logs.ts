@@ -194,6 +194,12 @@ export function setupLogTabs() {
 export async function refreshLogs() {
   const logDiv = document.getElementById("log-content");
   if (!logDiv) return;
+  if (!logDiv.innerHTML || lastLogContent === "") {
+    logDiv.innerHTML = `<div style="padding: 12px; color: #a1a1aa; font-family: var(--sys-font-mono, monospace); font-size: 11px; display: flex; align-items: center; gap: 8px;">
+      <div class="spinner-ring" style="width: 14px; height: 14px; border-width: 2px;"></div>
+      <span>Loading diagnostic logs...</span>
+    </div>`;
+  }
   try {
     const cmd = currentLogTab === "service" ? "read_service_logs" : "read_logs";
     const logs = await invoke(cmd) as string;
@@ -206,6 +212,14 @@ export async function refreshLogs() {
   } catch (e) {
     logDiv.textContent = "Failed to load logs: " + e;
   }
+}
+
+export function clearLogsFrontendDom() {
+  const logDiv = document.getElementById("log-content");
+  if (logDiv) {
+    logDiv.innerHTML = "";
+  }
+  lastLogContent = "";
 }
 
 export async function clearLogsData() {
