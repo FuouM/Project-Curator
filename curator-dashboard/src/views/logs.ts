@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { SafeHtml, html } from "../components";
 import { currentLogTab, setCurrentLogTab } from "../state";
 
 let fullLogLines: string[] = [];
@@ -226,8 +227,8 @@ export async function clearLogsData() {
 // HTML Template
 // ---------------------------------------------------------------------------
 
-export function renderLogsHtml(): string {
-  return `
+export function renderLogsHtml(): SafeHtml {
+  return html`
     <div class="group-box" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
       <div class="group-box-title">System Diagnostic Logs</div>
       <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">

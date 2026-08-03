@@ -1,7 +1,8 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { callService } from "../ipc";
-import { maskPath } from "../components";
+import { maskPath, SafeHtml, html } from "../components";
 import { renderImages, attachCardEventHandlers, getTagPillHtml, renderParsedMetadataHtml } from "../cards";
+import { findSimilar } from "./concepts";
 import { ImageDetails } from "../types";
 
 let featuredCardCleanup: (() => void) | null = null;
@@ -142,17 +143,17 @@ export function renderFeaturedDay(featured: ImageDetails) {
   const badgeClass = featured.vector_state === "ready" ? "badge-ready" : "badge-pending";
   const parsedHtml = featured.parsed_metadata ? renderParsedMetadataHtml(featured.parsed_metadata) : "";
   const ocrHtml = featured.ocr_text
-    ? `<div class="ocr-block" onclick="this.classList.toggle('expanded')"><i class="bi bi-file-earmark-text ocr-icon"></i><span class="ocr-block-text">${featured.ocr_text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`
+    ? `<div class="ocr-block" data-action="toggle-ocr"><i class="bi bi-file-earmark-text ocr-icon"></i><span class="ocr-block-text">${featured.ocr_text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`
     : "";
 
-  container.innerHTML = `
+  container.innerHTML = html`
     <div class="featured-layout">
       <div class="image-card featured-card" data-image-id="${featured.id}">
         <div class="star-btn ${featured.favorite ? 'favorite' : ''}" data-id="${featured.id}">
           <i class="bi ${featured.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
         </div>
         <div class="image-preview featured-preview">
-          <img src="${srcUrl}" alt="Featured Image" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+          <img src="${srcUrl}" alt="Featured Image" data-action="img-fallback" style="width: 100%; height: 100%; object-fit: cover;" />
           <span style="display: none;"><i class="bi bi-image"></i></span>
           <div class="vector-badge ${badgeClass}">${featured.vector_state}</div>
           <div class="featured-badge-overlay"><i class="bi bi-stars"></i> Feature of the Day</div>
@@ -160,7 +161,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
           <div class="info-btn" title="View image details" data-id="${featured.id}"><i class="bi bi-info-circle"></i></div>
         </div>
         <div style="display: flex; gap: 4px; margin-top: 4px;">
-          <button class="win-button" style="font-size: 11px; flex: 1;" onclick="window.openTags(${featured.id}, '${featured.current_filepath.replace(/\\/g, '\\\\')}')">
+          <button class="win-button" style="font-size: 11px; flex: 1;" data-action="open-tags" data-image-id="${featured.id}" data-filepath="${featured.current_filepath.replace(/\\/g, '\\\\')}">
             <i class="bi bi-tag"></i> Tags
           </button>
           <button class="win-button" style="font-size: 11px; flex: 1;" id="featured-search-btn">
@@ -176,10 +177,11 @@ export function renderFeaturedDay(featured: ImageDetails) {
             <i class="bi bi-folder2-open"></i>
           </button>
         </div>
-        ${parsedHtml ? `<div class="parsed-metadata-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
+        ${parsedHtml ? html`<div class="parsed-metadata-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
         ${ocrHtml}
+        ${(featured.character_identities && featured.character_identities.length > 0) ? html`<div class="identity-list" style="margin-top: 6px;">${featured.character_identities.map(ci => html`<span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> ${ci.name}</span>`).join("")}</div>` : ""}
         <div class="tag-list" style="margin-top: 6px;">
-          ${featured.tags.length > 0 ? featured.tags.map(t => getTagPillHtml(t)).join("") : '<span style="color: #999; font-style: italic; font-size: 11px;">No tags</span>'}
+          ${featured.tags.length > 0 ? featured.tags.map(t => getTagPillHtml(t)).join("") : html`<span style="color: #999; font-style: italic; font-size: 11px;">No tags</span>`}
         </div>
       </div>
     </div>
@@ -208,7 +210,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
   }
 
   document.getElementById("featured-search-btn")?.addEventListener("click", async () => {
-    (window as any).findSimilar(featured.current_filepath);
+    findSimilar(featured.current_filepath);
   });
 }
 
@@ -238,8 +240,8 @@ export function applySettingsToUI(resp: any) {
 // HTML Template
 // ---------------------------------------------------------------------------
 
-export function renderDashboardHtml(): string {
-  return `
+export function renderDashboardHtml(): SafeHtml {
+  return html`
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-label">Total Images</div>

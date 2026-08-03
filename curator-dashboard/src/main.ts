@@ -102,6 +102,16 @@ function setupWindowStateListener() {
 }
 
 function init() {
+  // Global image fallback delegation
+  document.addEventListener("error", (e) => {
+    const target = e.target as HTMLElement;
+    if (target.dataset.action === "img-fallback" && target.tagName === "IMG") {
+      (target as HTMLImageElement).style.display = "none";
+      const fallback = target.nextElementSibling as HTMLElement | null;
+      if (fallback) fallback.style.display = "block";
+    }
+  }, true);
+
   restoreWindowState();
 
   // Render all view templates dynamically into their shell elements

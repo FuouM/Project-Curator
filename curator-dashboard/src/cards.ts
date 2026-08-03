@@ -1,11 +1,13 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { renderTagPill, maskPath } from "./components";
+import { renderTagPill, maskPath, SafeHtml, html } from "./components";
 import { CardImageData, ImageDetails, SearchMatch, TagSummary, ParsedMetadata } from "./types";
 import { imageBytesToPngBlob } from "./utils";
 import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId } from "./state";
 import { openImageViewer } from "./image-viewer";
 import { callService } from "./ipc";
 import { refreshCharacters } from "./views/characters";
+import { openTagModal } from "./views/tags";
+import { findSimilar } from "./views/concepts";
 import { attachAutocomplete } from "./autocomplete";
 import { LruCache } from "./lru-cache";
 
@@ -150,18 +152,18 @@ function clearObservedThumbs() {
 
 // --- Tag Pill Helpers ---
 
-export function getTagPillHtml(t: TagSummary, isDeletable = false, imageId = 0): string {
+export function getTagPillHtml(t: TagSummary, isDeletable = false, imageId = 0): SafeHtml {
   return renderTagPill(t, { isDeletable, imageId });
 }
 
-export function renderTagListHtml(tags: TagSummary[], maxVisible = 10): string {
+export function renderTagListHtml(tags: TagSummary[], maxVisible = 10): SafeHtml {
   const display = tags.slice(0, maxVisible);
   const extraCount = tags.length - maxVisible;
-  return display.map(t => getTagPillHtml(t)).join("") +
-    (extraCount > 0 ? `<span class="tag-pill" style="background-color: #f0f0f0; color: #555555; font-style: italic;">+${extraCount} more</span>` : "");
+  return (display.map(t => getTagPillHtml(t)).join("") +
+    (extraCount > 0 ? `<span class="tag-pill tag-pill-overflow">+${extraCount} more</span>` : "")) as SafeHtml;
 }
 
-export function renderParsedMetadataHtml(meta: ParsedMetadata): string {
+export function renderParsedMetadataHtml(meta: ParsedMetadata): SafeHtml {
   const parts: string[] = [];
 
   if (meta.match_type === "anime_screenshot") {
@@ -221,7 +223,7 @@ export function renderParsedMetadataHtml(meta: ParsedMetadata): string {
     parts.push(`<span class="tag-pill ${tagClass}" style="font-size: 10px; font-family: monospace;">${tag}</span>`);
   }
 
-  return parts.join(" ");
+  return html`${parts.join(" ")}`;
 }
 
 // --- Event Delegation (one listener per grid, not per card) ---
@@ -258,9 +260,11 @@ export function setupGridDelegation(grid: HTMLElement) {
       const action = actionBtn.dataset.action;
       const fp = card.dataset.filepath || "";
       if (action === "open-tags") {
-        (window as any).openTags(imageId, fp);
+        openTagModal(imageId, fp);
       } else if (action === "find-similar") {
-        (window as any).findSimilar(fp);
+        findSimilar(fp);
+      } else if (action === "toggle-ocr") {
+        actionBtn.classList.toggle("expanded");
       }
       return;
     }
@@ -347,6 +351,10 @@ export function attachCardEventHandlers(
     if (target.closest(".image-path")) {
       const btn = container.querySelector(".image-open-folder-btn") as HTMLElement;
       if (btn) btn.style.display = btn.style.display === "none" ? "inline-flex" : "none";
+      return;
+    }
+    if (target.closest("[data-action='toggle-ocr']")) {
+      (e.target as HTMLElement).classList.toggle("expanded");
       return;
     }
     if (target.closest(".image-preview")) {
@@ -812,7 +820,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
       : "";
 
     const ocrHtml = img.ocrText
-      ? `<div class="ocr-block" onclick="this.classList.toggle('expanded')"><i class="bi bi-file-earmark-text ocr-icon"></i><span class="ocr-block-text">${img.ocrText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`
+      ? `<div class="ocr-block" data-action="toggle-ocr"><i class="bi bi-file-earmark-text ocr-icon"></i><span class="ocr-block-text">${img.ocrText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`
       : "";
 
     const missingBadge = img.isMissing
@@ -935,6 +943,7 @@ export function renderSearchResults(matches: SearchMatch[]) {
       emptyMessage: "No matching results found.",
       parsedMetadata: m.parsed_metadata,
       ocrText: m.ocr_text,
+      characterIdentities: m.character_identities,
     };
   });
 
@@ -965,7 +974,7 @@ export function refreshCardOcr(imageId: number, ocrText: string) {
 
     const existing = info.querySelector(".ocr-block");
     if (ocrText) {
-      const html = `<div class="ocr-block" onclick="this.classList.toggle('expanded')"><i class="bi bi-file-earmark-text ocr-icon"></i><span class="ocr-block-text">${ocrText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`;
+      const html = `<div class="ocr-block" data-action="toggle-ocr"><i class="bi bi-file-earmark-text ocr-icon"></i><span class="ocr-block-text">${ocrText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`;
       if (existing) {
         existing.outerHTML = html;
       } else {

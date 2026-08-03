@@ -100,6 +100,16 @@
   border: 1px solid #ffd9c2;
   color: #7c2d12;
 }
+.concept-badge.user {
+  background-color: #fff3cd;
+  border: 1px solid #ffeeba;
+  color: #856404;
+}
+.concept-badge.meta {
+  background-color: #e2e3e5;
+  border: 1px solid #d6d8db;
+  color: #383d41;
+}
 
 .concept-card-body {
   display: flex;

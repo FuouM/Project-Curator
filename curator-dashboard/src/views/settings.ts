@@ -1,4 +1,5 @@
 import { callService } from "../ipc";
+import { SafeHtml, html } from "../components";
 import { setStatusMessage } from "../utils";
 import { getImageClickAction, setImageClickAction } from "../state";
 import { applySettingsToUI, refreshTaggerStatus } from "./dashboard";
@@ -205,8 +206,8 @@ export function setupSettings() {
 // HTML Template
 // ---------------------------------------------------------------------------
 
-export function renderSettingsHtml(): string {
-  return `
+export function renderSettingsHtml(): SafeHtml {
+  return html`
     <!-- Display settings -->
     <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
       <div class="group-box-title">Display</div>

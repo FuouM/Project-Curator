@@ -1,0 +1,52 @@
+/* ── Design Tokens ────────────────────────────────────────────────────── */
+
+:root {
+  /* Spacing scale */
+  --space-xs: 2px;
+  --space-sm: 4px;
+  --space-md: 8px;
+  --space-lg: 12px;
+  --space-xl: 16px;
+  --space-2xl: 24px;
+
+  /* Border radius */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+
+  /* Font sizes */
+  --text-xs: 9px;
+  --text-sm: 11px;
+  --text-md: 13px;
+  --text-lg: 15px;
+}
+
+/* ── Layout Utilities ─────────────────────────────────────────────────── */
+
+.flex-row { display: flex; flex-direction: row; }
+.flex-col { display: flex; flex-direction: column; }
+.flex-wrap { flex-wrap: wrap; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+
+.gap-xs { gap: var(--space-xs); }
+.gap-sm { gap: var(--space-sm); }
+.gap-md { gap: var(--space-md); }
+.gap-lg { gap: var(--space-lg); }
+
+.pad-sm { padding: var(--space-sm); }
+.pad-md { padding: var(--space-md); }
+.pad-lg { padding: var(--space-lg); }
+
+.text-xs { font-size: var(--text-xs); }
+.text-sm { font-size: var(--text-sm); }
+.text-subtle { color: var(--sys-text-subtle); }
+
+.w-full { width: 100%; }
+.min-w-0 { min-width: 0; }
+
+.tag-pill-overflow {
+  background-color: #f0f0f0;
+  color: #555555;
+  font-style: italic;
+}

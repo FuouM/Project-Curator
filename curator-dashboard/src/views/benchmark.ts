@@ -1,4 +1,5 @@
 import { callService } from "../ipc";
+import { SafeHtml, html } from "../components";
 
 interface BenchmarkConfig {
   key: string;
@@ -479,8 +480,8 @@ const BENCHMARK_CARDS: BenchmarkCardDef[] = [
   { key: "manga-bubble", label: "Manga Bubble YOLO",           size: "1280x1280" },
 ];
 
-function benchmarkCardHtml(card: BenchmarkCardDef): string {
-  return `
+function benchmarkCardHtml(card: BenchmarkCardDef): SafeHtml {
+  return html`
     <div class="group-box" style="padding: 10px; margin: 0;">
       <button class="win-button" data-benchmark-key="${card.key}" title="Run ${card.label} benchmark"
         style="position: absolute; top: -9px; right: 4px; height: 18px; padding: 0 7px; font-size: 11px; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
@@ -505,8 +506,8 @@ function benchmarkCardHtml(card: BenchmarkCardDef): string {
   `;
 }
 
-export function renderBenchmarkHtml(): string {
-  return `
+export function renderBenchmarkHtml(): SafeHtml {
+  return html`
     <div class="group-box" style="display: flex; flex-direction: column; gap: 16px;">
       <div class="group-box-title">Hardware Throughput Benchmark</div>
       <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">

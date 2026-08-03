@@ -1,4 +1,5 @@
 import { callService } from "../ipc";
+import { SafeHtml, html } from "../components";
 import { galleryPage, favoritesPage, isSelectMode, selectedImageIds } from "../state";
 import { getImagesPerPage, setGalleryTotalCount, setFavoritesTotalCount, galleryTotalCount, favoritesTotalCount } from "../state";
 import { renderImages } from "../cards";
@@ -53,8 +54,8 @@ export async function refreshPaginatedImages(
 // HTML Templates
 // ---------------------------------------------------------------------------
 
-export function renderGalleryHtml(): string {
-  return `
+export function renderGalleryHtml(): SafeHtml {
+  return html`
     <div class="group-box">
       <div class="group-box-title">All Images</div>
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px;">
@@ -96,8 +97,8 @@ export function renderGalleryHtml(): string {
   `;
 }
 
-export function renderFavoritesHtml(): string {
-  return `
+export function renderFavoritesHtml(): SafeHtml {
+  return html`
     <div class="group-box">
       <div class="group-box-title">Favorite Images</div>
       <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 1rem; gap: 10px;">

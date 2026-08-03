@@ -1,7 +1,7 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { callService } from "../ipc";
-import { maskPath, renderTagPill, type TagSummary } from "../components";
+import { maskPath, renderTagPill, SafeHtml, html, type TagSummary } from "../components";
 import { navigateToView } from "./navigation";
 import { buildOcrLabelSvg } from "../ocr-text";
 import { logJS, setStatusMessage, escapeHtml } from "../utils";
@@ -391,9 +391,15 @@ function openFullscreen() {
   overlay.style.display = "flex";
 }
 
+let escapeKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+
 function closeFullscreen() {
   const overlay = el("toolbox-fullscreen-overlay");
   if (overlay) overlay.style.display = "none";
+  if (escapeKeyHandler) {
+    window.removeEventListener("keydown", escapeKeyHandler);
+    escapeKeyHandler = null;
+  }
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────
@@ -496,9 +502,10 @@ export function setupToolbox() {
       if (e.target === fullscreenOverlay) closeFullscreen();
     });
   }
-  window.addEventListener("keydown", (e) => {
+  escapeKeyHandler = (e: KeyboardEvent) => {
     if (e.key === "Escape") closeFullscreen();
-  });
+  };
+  window.addEventListener("keydown", escapeKeyHandler);
 
   el("toolbox-ocr-list")?.addEventListener("click", async (e) => {
     const target = e.target as HTMLElement;
@@ -542,8 +549,8 @@ export function setupToolbox() {
 
 // ── HTML Template ─────────────────────────────────────────────────────
 
-export function renderToolboxHtml(): string {
-  return `
+export function renderToolboxHtml(): SafeHtml {
+  return html`
     <div class="toolbox-layout">
 
       <!-- LEFT: Source Image / Preview -->

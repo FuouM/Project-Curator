@@ -677,6 +677,8 @@ pub struct SearchMatch {
     pub parsed_metadata: Option<ParsedMetadata>,
     #[serde(default)]
     pub ocr_text: Option<String>,
+    #[serde(default)]
+    pub character_identities: Vec<CharacterIdentitySummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
