@@ -179,6 +179,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
         </div>
         ${parsedHtml ? html`<div class="parsed-metadata-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
         ${ocrHtml}
+        ${(featured.character_identities && featured.character_identities.length > 0) ? html`<div class="identity-list" style="margin-top: 6px;">${featured.character_identities.map(ci => html`<span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> ${ci.name}</span>`).join("")}</div>` : ""}
         <div class="tag-list" style="margin-top: 6px;">
           ${featured.tags.length > 0 ? featured.tags.map(t => getTagPillHtml(t)).join("") : html`<span style="color: #999; font-style: italic; font-size: 11px;">No tags</span>`}
         </div>

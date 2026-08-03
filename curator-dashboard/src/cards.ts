@@ -943,6 +943,7 @@ export function renderSearchResults(matches: SearchMatch[]) {
       emptyMessage: "No matching results found.",
       parsedMetadata: m.parsed_metadata,
       ocrText: m.ocr_text,
+      characterIdentities: m.character_identities,
     };
   });
 
