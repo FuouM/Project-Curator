@@ -479,6 +479,7 @@ pub async fn search_logic(
             hamming_distance,
             parsed_metadata: details.parsed_metadata.clone(),
             ocr_text: details.ocr_text.clone(),
+            character_identities: details.character_identities.clone(),
         });
     }
 
