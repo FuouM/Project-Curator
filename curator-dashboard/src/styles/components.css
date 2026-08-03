@@ -354,3 +354,40 @@
 .win-select:focus {
   border-color: var(--sys-border-focus);
 }
+
+.tool-strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background-color: var(--sys-control-bg);
+}
+.tool-strip-btn {
+  background-color: transparent;
+  color: var(--sys-control-text);
+  border: 1px solid transparent;
+  padding: 2px 8px;
+  height: 22px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  user-select: none;
+}
+.tool-strip-btn:hover {
+  background-color: #70adeb;
+  border-color: var(--sys-border-focus);
+  color: #ffffff;
+}
+.tool-strip-btn:active {
+  background-color: #5a9ad9;
+  border-color: #005499;
+}
+.tool-strip-separator {
+  width: 1px;
+  height: 16px;
+  background-color: var(--sys-border-dark);
+  margin: 0 2px;
+}

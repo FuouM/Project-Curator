@@ -73,6 +73,8 @@ body {
   border-radius: 3px;
 }
 .skeleton-card {
+  background-color: var(--sys-control-bg);
+  border: 1px solid var(--sys-border-dark);
 }
 .skeleton-text {
   border-radius: 2px;
