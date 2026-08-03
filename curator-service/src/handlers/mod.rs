@@ -3,6 +3,7 @@ pub mod concepts;
 pub mod image;
 pub mod import;
 pub mod misc;
+pub mod models;
 pub mod search;
 pub mod settings;
 pub mod tags;
@@ -45,23 +46,62 @@ pub async fn handle_request(
     data_dir: &Path,
     settings: &Arc<tokio::sync::Mutex<AppSettings>>,
     thumbnail_cache: &ThumbnailCache,
+    download_progress: &models::DownloadProgressMap,
+    cancel_tokens: &models::CancelTokens,
 ) -> Response {
     match request {
         Request::Ping => Response::Pong,
 
         Request::RunBenchmark { embedding_model, run_tagger } => {
-            let vision_path = match embedding_model {
-                EmbeddingModel::ClipVitB32 => model_manager.model_dir().join("vision_model.onnx"),
+            let prefer_quantized_clip = settings
+                .lock()
+                .await
+                .model_precisions
+                .get(match embedding_model {
+                    EmbeddingModel::ClipVitB32 => "clip-vit-b32",
+                    EmbeddingModel::MobileClipS2 => "mobileclip-s2",
+                })
+                .copied()
+                .unwrap_or(curator_core::ipc::ModelPrecision::Original)
+                == curator_core::ipc::ModelPrecision::Int8;
+
+            let mut vision_path = match embedding_model {
+                EmbeddingModel::ClipVitB32 => model_manager.model_dir().join("clip-vit-b32").join("vision_model.onnx"),
                 EmbeddingModel::MobileClipS2 => model_manager
                     .model_dir()
-                    .join("mobileclip_s2/onnx/vision_model.onnx"),
+                    .join("mobileclip-s2/onnx/vision_model.onnx"),
             };
+
+            if prefer_quantized_clip {
+                let int8_path = vision_path.with_file_name("vision_model_int8.onnx");
+                if int8_path.exists() {
+                    vision_path = int8_path;
+                }
+            }
+
             let target_size = match embedding_model {
                 EmbeddingModel::ClipVitB32 => 224,
                 EmbeddingModel::MobileClipS2 => 256,
             };
             let run_tagger_val = run_tagger.unwrap_or(true);
-            let tagger_path = tagger.model_path();
+
+            let prefer_quantized_tagger = settings
+                .lock()
+                .await
+                .model_precisions
+                .get("camie-tagger-v2")
+                .copied()
+                .unwrap_or(curator_core::ipc::ModelPrecision::Original)
+                == curator_core::ipc::ModelPrecision::Int8;
+
+            let mut tagger_path = tagger.model_path().to_path_buf();
+            if prefer_quantized_tagger {
+                let int8_path = tagger_path.with_file_name("camie-tagger-v2_int8.onnx");
+                if int8_path.exists() {
+                    tagger_path = int8_path;
+                }
+            }
+
             info!(
                 "RunBenchmark request: embedding_model={:?}, vision_path={:?}, run_tagger={}, tagger_path={:?}, tagger_path_exists={}",
                 embedding_model,
@@ -73,7 +113,7 @@ pub async fn handle_request(
 
             let clip_res = curator_core::run_onnx_benchmark(&vision_path, target_size);
             let tagger_res = if run_tagger_val && tagger_path.exists() {
-                match curator_core::run_onnx_benchmark(tagger_path, 512) {
+                match curator_core::run_onnx_benchmark(&tagger_path, 512) {
                     Ok((cpu, gpu, err, _)) => (Some(cpu), gpu, err),
                     Err(e) => (
                         None,
@@ -102,9 +142,25 @@ pub async fn handle_request(
         }
 
         Request::RunTaggerBenchmark => {
-            let tagger_path = tagger.model_path();
+            let prefer_quantized_tagger = settings
+                .lock()
+                .await
+                .model_precisions
+                .get("camie-tagger-v2")
+                .copied()
+                .unwrap_or(curator_core::ipc::ModelPrecision::Original)
+                == curator_core::ipc::ModelPrecision::Int8;
+
+            let mut tagger_path = tagger.model_path().to_path_buf();
+            if prefer_quantized_tagger {
+                let int8_path = tagger_path.with_file_name("camie-tagger-v2_int8.onnx");
+                if int8_path.exists() {
+                    tagger_path = int8_path;
+                }
+            }
+
             let tagger_res = if tagger_path.exists() {
-                match curator_core::run_onnx_benchmark(tagger_path, 512) {
+                match curator_core::run_onnx_benchmark(&tagger_path, 512) {
                     Ok((cpu, gpu, err, has_gpu)) => (Some(cpu), gpu, err, has_gpu),
                     Err(e) => (
                         None,
@@ -403,6 +459,7 @@ pub async fn handle_request(
                 detection_device: s.detection_device.clone(),
                 detection_metrics_device: s.detection_metrics_device.clone(),
                 ocr_device: s.ocr_device.clone(),
+                model_precisions: s.model_precisions.clone(),
             }
         }
 
@@ -423,6 +480,7 @@ pub async fn handle_request(
             detection_device,
             detection_metrics_device,
             ocr_device,
+            model_precisions,
         } => {
             match settings::update_settings_logic(
                 settings::UpdateSettingsParams {
@@ -439,6 +497,7 @@ pub async fn handle_request(
                     detection_device,
                     detection_metrics_device,
                     ocr_device,
+                    model_precisions,
                 },
             )
             .await
@@ -451,6 +510,7 @@ pub async fn handle_request(
                     detection_device: s.detection_device,
                     detection_metrics_device: s.detection_metrics_device,
                     ocr_device: s.ocr_device,
+                    model_precisions: s.model_precisions,
                 },
                 Err(e) => Response::Error {
                     message: e.to_string(),
@@ -520,6 +580,7 @@ pub async fn handle_request(
                 detection_device: settings_val.detection_device,
                 detection_metrics_device: settings_val.detection_metrics_device,
                 ocr_device: settings_val.ocr_device,
+                model_precisions: settings_val.model_precisions,
                 featured_images,
                 latest_images,
             }
@@ -911,7 +972,22 @@ pub async fn handle_request(
 
         Request::RunYoloBenchmark => {
             let det_dir = data_dir.join("models");
-            let yolo_path = det_dir.join("person_detect_v1.1_s/model.onnx");
+            let prefer_quantized = settings
+                .lock()
+                .await
+                .model_precisions
+                .get("yolo-person")
+                .copied()
+                .unwrap_or(curator_core::ipc::ModelPrecision::Original)
+                == curator_core::ipc::ModelPrecision::Int8;
+
+            let mut yolo_path = det_dir.join("yolo-person/model.onnx");
+            if prefer_quantized {
+                let int8_path = det_dir.join("yolo-person/model_int8.onnx");
+                if int8_path.exists() {
+                    yolo_path = int8_path;
+                }
+            }
             info!("RunYoloBenchmark request: exists={}", yolo_path.exists());
 
             if !yolo_path.exists() {
@@ -951,7 +1027,7 @@ pub async fn handle_request(
 
         Request::RunCcipFeatBenchmark => {
             let det_dir = data_dir.join("models");
-            let ccip_feat_path = det_dir.join("ccip-caformer-24-randaug-pruned/model_feat.onnx");
+            let ccip_feat_path = det_dir.join("ccip/model_feat.onnx");
             info!("RunCcipFeatBenchmark request: exists={}", ccip_feat_path.exists());
 
             if !ccip_feat_path.exists() {
@@ -991,7 +1067,7 @@ pub async fn handle_request(
 
         Request::RunCcipMetricsBenchmark => {
             let det_dir = data_dir.join("models");
-            let ccip_metrics_path = det_dir.join("ccip-caformer-24-randaug-pruned/model_metrics.onnx");
+            let ccip_metrics_path = det_dir.join("ccip/model_metrics.onnx");
             info!("RunCcipMetricsBenchmark request: exists={}", ccip_metrics_path.exists());
 
             if !ccip_metrics_path.exists() {
@@ -1031,7 +1107,22 @@ pub async fn handle_request(
 
         Request::RunOcrDetBenchmark => {
             let det_dir = data_dir.join("models");
-            let path = det_dir.join("PP-OCRv6_medium_det_onnx/inference.onnx");
+            let prefer_quantized = settings
+                .lock()
+                .await
+                .model_precisions
+                .get("pp-ocrv6-medium")
+                .copied()
+                .unwrap_or(curator_core::ipc::ModelPrecision::Original)
+                == curator_core::ipc::ModelPrecision::Int8;
+
+            let mut path = det_dir.join("pp-ocrv6-medium/det/inference.onnx");
+            if prefer_quantized {
+                let int8_path = det_dir.join("pp-ocrv6-medium/det/inference_int8.onnx");
+                if int8_path.exists() {
+                    path = int8_path;
+                }
+            }
             if !path.exists() {
                 return Response::Error { message: "OCR Detection model file not found.".to_string() };
             }
@@ -1066,7 +1157,22 @@ pub async fn handle_request(
 
         Request::RunOcrRecBenchmark => {
             let det_dir = data_dir.join("models");
-            let path = det_dir.join("PP-OCRv6_medium_rec_onnx/inference.onnx");
+            let prefer_quantized = settings
+                .lock()
+                .await
+                .model_precisions
+                .get("pp-ocrv6-medium")
+                .copied()
+                .unwrap_or(curator_core::ipc::ModelPrecision::Original)
+                == curator_core::ipc::ModelPrecision::Int8;
+
+            let mut path = det_dir.join("pp-ocrv6-medium/rec/inference.onnx");
+            if prefer_quantized {
+                let int8_path = det_dir.join("pp-ocrv6-medium/rec/inference_int8.onnx");
+                if int8_path.exists() {
+                    path = int8_path;
+                }
+            }
             if !path.exists() {
                 return Response::Error { message: "OCR Recognition model file not found.".to_string() };
             }
@@ -1101,7 +1207,7 @@ pub async fn handle_request(
 
         Request::RunOcrClsBenchmark => {
             let det_dir = data_dir.join("models");
-            let path = det_dir.join("PP-LCNet_x1_0_textline_ori_onnx/inference.onnx");
+            let path = det_dir.join("pp-lcnet-cls/inference.onnx");
             if !path.exists() {
                 return Response::Error { message: "OCR Classification model file not found.".to_string() };
             }
@@ -1136,7 +1242,22 @@ pub async fn handle_request(
 
         Request::RunMangaBubbleBenchmark => {
             let det_dir = data_dir.join("models");
-            let path = det_dir.join("MangaBubbleYOLO/yolo26n.onnx");
+            let prefer_quantized = settings
+                .lock()
+                .await
+                .model_precisions
+                .get("manga-bubble-yolo")
+                .copied()
+                .unwrap_or(curator_core::ipc::ModelPrecision::Original)
+                == curator_core::ipc::ModelPrecision::Int8;
+
+            let mut path = det_dir.join("manga-bubble-yolo/yolo26n.onnx");
+            if prefer_quantized {
+                let int8_path = det_dir.join("manga-bubble-yolo/yolo26n_int8.onnx");
+                if int8_path.exists() {
+                    path = int8_path;
+                }
+            }
             if !path.exists() {
                 return Response::Error { message: "Manga Bubble YOLO model file not found.".to_string() };
             }
@@ -1488,6 +1609,26 @@ pub async fn handle_request(
                     message: format!("Ephemeral detection failed: {:?}", e),
                 },
             }
+        }
+
+        // ── Model Management ─────────────────────────────────────────
+        Request::GetModelStatus => {
+            models::get_model_status(&data_dir.join("models"), download_progress).await
+        }
+        Request::DownloadModel { model_id } => {
+            models::download_model(&data_dir.join("models"), &model_id, download_progress, cancel_tokens).await
+        }
+        Request::CancelDownload { model_id } => {
+            models::cancel_download(&model_id, download_progress, cancel_tokens).await
+        }
+        Request::RemoveModel { model_id } => {
+            models::remove_model(&data_dir.join("models"), &model_id).await
+        }
+        Request::GetDownloadProgress => {
+            models::get_download_progress(download_progress).await
+        }
+        Request::QuantizeModel { model_id, format } => {
+            models::quantize_model(&data_dir.join("models"), &model_id, &format).await
         }
     }
 }

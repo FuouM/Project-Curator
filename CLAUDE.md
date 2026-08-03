@@ -102,6 +102,7 @@ npm run tauri dev
 ### Workflow & Interaction Speed Mandates
 * **No Unnecessary Build Commands**: The user keeps their local dev build (`dev.ps1` / `npm run dev`) active. DO NOT execute `npm run build` or `cargo build` on minor edits unless explicitly requested or validating backend Rust signature changes.
 * **No Unprompted Feature Over-Engineering**: Implement strictly what the user requests. Never introduce automated background jobs, full-library auto-rescans, or unexpected database mutations.
+* **NO FALLBACKS Policy**: NEVER implement automatic "silent fallbacks" (e.g. copying an original file, silencing errors, or falling back to a dummy placeholder) to satisfy execution or make a command run green. If a task, process, or script encounters a failure, fail fast, raise a clear error, and expose the underlying problem directly so it can be resolved properly.
 * **Database Safety & Concept Integrity**:
   * **Dynamic Vector Searches**: Concept vector searches must remain 100% dynamic in memory/index search and NEVER write auto-tags into `image_tags` table.
   * **Explicit Sample Tagging**: Teaching a concept or adding samples ONLY tags the explicitly selected ground-truth sample images.
@@ -121,6 +122,7 @@ npm run tauri dev
 * **Git Staging & Commiting Mandate**:
   * **Never Auto-Commit**: NEVER run `git commit` or `git push` commands automatically. Only perform Git commits or pushes when the user explicitly instructs you to do so.
   * **NO Wildcard Staging**: NEVER run wildcard staging commands (`git add .`, `git add -A`, or `git add *`). Explicitly stage target files by their path to avoid committing untracked temp files, log files, or build artifacts.
+  * **NO Unprompted Git Checkout**: NEVER run `git checkout` on any file to revert or recover changes unless explicitly instructed by the user. If you need to recover or inspect modifications, use `git diff` or compare histories rather than destructive resets.
   * **Semantic Commit Bodies**: Follow the repo's commit body style. Commit messages must consist of a semantic summary line (`type: description`) followed by detailed bullet points documenting the structural file modifications.
 
 ### UI & Aesthetic Rules (Modern WinForms Desktop Control Aesthetic)

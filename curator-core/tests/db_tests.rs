@@ -64,7 +64,7 @@ async fn test_ocr_db_schema() {
 #[test]
 fn test_ocr_detector_sanity() {
     // Basic structural checks of OcrDetector instantiation
-    let detector = curator_core::OcrDetector::new("../.curator/models", curator_core::DevicePreference::Cpu);
+    let detector = curator_core::OcrDetector::new("../.curator/models", curator_core::DevicePreference::Cpu, false, false);
     assert!(!detector.is_loaded());
 }
 
@@ -100,7 +100,7 @@ fn test_ocr_image_transcription_extraction() {
         return;
     }
 
-    let detector = curator_core::OcrDetector::new(models_dir, curator_core::DevicePreference::Cpu);
+    let detector = curator_core::OcrDetector::new(models_dir, curator_core::DevicePreference::Cpu, false, false);
     let (rgb_buf, width, height) = curator_core::image_decode::decode_rgb(img_path).unwrap();
     let img = curator_core::image::ImageBuffer::<curator_core::image::Rgb<u8>, Vec<u8>>::from_raw(width, height, rgb_buf).unwrap();
 

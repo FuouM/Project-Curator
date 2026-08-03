@@ -24,8 +24,8 @@ pub struct TaggerEngine {
 impl TaggerEngine {
     pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
-        let model_path = dir.join("camie-tagger-v2.onnx");
-        let metadata_path = dir.join("camie-tagger-v2-metadata.json");
+        let model_path = dir.join("camie-tagger-v2").join("camie-tagger-v2.onnx");
+        let metadata_path = dir.join("camie-tagger-v2").join("camie-tagger-v2-metadata.json");
         Self {
             session: ManagedSession::new("Camie Tagger", model_path, device, 1),
             metadata_path,

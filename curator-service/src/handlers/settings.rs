@@ -21,6 +21,7 @@ pub struct UpdateSettingsParams<'a> {
     pub detection_device: Option<curator_core::ipc::DevicePreference>,
     pub detection_metrics_device: Option<curator_core::ipc::DevicePreference>,
     pub ocr_device: Option<curator_core::ipc::DevicePreference>,
+    pub model_precisions: Option<std::collections::HashMap<String, curator_core::ipc::ModelPrecision>>,
 }
 
 pub async fn query_status(
@@ -66,6 +67,7 @@ pub async fn update_settings_logic(
         detection_device,
         detection_metrics_device,
         ocr_device,
+        model_precisions,
     } = params;
     let mut model_changed = false;
     let mut s = settings.lock().await;
@@ -93,6 +95,9 @@ pub async fn update_settings_logic(
     if let Some(ref od) = ocr_device {
         s.ocr_device = od.clone();
     }
+    if let Some(ref mp) = model_precisions {
+        s.model_precisions = mp.clone();
+    }
     let clip = s.clip_device.clone();
     let tagger_dev = s.tagger_device.clone();
     let idle = s.idle_timeout_secs;
@@ -100,6 +105,7 @@ pub async fn update_settings_logic(
     let det_dev = s.detection_device.clone();
     let det_met_dev = s.detection_metrics_device.clone();
     let ocr_dev = s.ocr_device.clone();
+    let model_precs = s.model_precisions.clone();
 
     let settings_to_save = s.clone();
     let data_dir_buf = data_dir.to_path_buf();
@@ -141,8 +147,8 @@ pub async fn update_settings_logic(
     }
 
     info!(
-        "Settings updated: clip_device={:?}, tagger_device={:?}, detection_device={:?}, detection_metrics_device={:?}, ocr_device={:?}, idle_timeout={}s, embedding_model={:?}",
-        clip, tagger_dev, det_dev, det_met_dev, ocr_dev, idle, active_model
+        "Settings updated: clip_device={:?}, tagger_device={:?}, detection_device={:?}, detection_metrics_device={:?}, ocr_device={:?}, model_precisions={:?}, idle_timeout={}s, embedding_model={:?}",
+        clip, tagger_dev, det_dev, det_met_dev, ocr_dev, model_precs, idle, active_model
     );
 
     Ok(AppSettings {
@@ -153,5 +159,6 @@ pub async fn update_settings_logic(
         detection_device: det_dev,
         detection_metrics_device: det_met_dev,
         ocr_device: ocr_dev,
+        model_precisions: model_precs,
     })
 }

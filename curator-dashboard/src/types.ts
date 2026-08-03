@@ -20,7 +20,7 @@ export type RequestPayload =
   | { RunTaggerBenchmark: null }
   | { GetSettings: null }
   | { ClearCropCache: null }
-  | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null; detection_device: string | null; detection_metrics_device: string | null; ocr_device: string | null } }
+  | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null; detection_device: string | null; detection_metrics_device: string | null; ocr_device: string | null; model_precisions: Record<string, "original" | "int8"> | null } }
   | { ReindexVectors: null }
   | { ReindexFailedVectors: null }
   | { RunOcr: { image_id: number } }
@@ -71,7 +71,13 @@ export type RequestPayload =
   | { RunMangaBubbleBenchmark: null }
   | { GetBenchmarkImages: { limit: number } }
   | { BenchmarkSingleImage: { filepath: string } }
-  | { GetRandomImage: null };
+  | { GetRandomImage: null }
+  | { GetModelStatus: null }
+  | { DownloadModel: { model_id: string } }
+  | { CancelDownload: { model_id: string } }
+  | { RemoveModel: { model_id: string } }
+  | { GetDownloadProgress: null }
+  | { QuantizeModel: { model_id: string; format: string } };
 
 export interface TokenBlock {
   token_type: string;
@@ -197,13 +203,14 @@ export type ResponsePayload =
   | { BatchTagResult: { processed: number; failed: number; skipped: number } }
   | { TaggerStatusResult: { loaded: boolean; model_path: string; total_tags: number } }
   | { BenchmarkResult: { clip_cpu_time_ms: number; clip_gpu_time_ms: number | null; clip_gpu_error: string | null; tagger_cpu_time_ms: number | null; tagger_gpu_time_ms: number | null; tagger_gpu_error: string | null; has_gpu: boolean } }
-  | { SettingsResult: { clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string; detection_device: string; detection_metrics_device: string; ocr_device: string } }
+  | { SettingsResult: { clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string; detection_device: string; detection_metrics_device: string; ocr_device: string; model_precisions: Record<string, "original" | "int8"> } }
   | { TagStatisticsResult: { tags: TagStat[] } }
   | { DashboardInitResult: {
       image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number;
       tagger_loaded: boolean; tagger_model_path: string; tagger_total_tags: number;
       clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string;
       detection_device: string; detection_metrics_device: string; ocr_device: string;
+      model_precisions: Record<string, "original" | "int8">;
       featured_images: ImageDetails[]; latest_images: ImageDetails[];
     } }
   | { ImportedFoldersResult: { folders: FolderDetails[] } }
@@ -269,7 +276,10 @@ export type ResponsePayload =
       ocr_rec_preprocess_time_ms: number;
     } }
   | { OcrDetectionsResult: { image_id: number; detections: OcrResult[]; bubble_boxes: BubbleBoxResult[] } }
-  | { RandomImageResult: { image: ImageDetails; index: number } };
+  | { RandomImageResult: { image: ImageDetails; index: number } }
+  | { ModelStatusResult: { models: ModelStatusInfo[] } }
+  | { DownloadProgressResult: { downloads: DownloadProgress[] } }
+  | { ModelActionResult: { success: boolean; message: string } };
 
 export interface CharacterDetection {
   id: number;
@@ -332,4 +342,38 @@ export interface BubbleBoxResult {
   x2: number;
   y2: number;
   confidence: number;
+}
+
+export interface ManifestFileInfo {
+  url: string;
+  dest: string;
+  sha256: string;
+}
+
+export interface ModelStatusInfo {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  optional: boolean;
+  files: ManifestFileInfo[];
+  downloaded_files: string[];
+  total_size: number;
+  downloaded_size: number;
+  status: "downloaded" | "partial" | "not_downloaded";
+  quantized_variants: string[];
+  quantizable: string[];
+  required_by: string[];
+}
+
+export interface DownloadProgress {
+  model_id: string;
+  status: "downloading" | "quantizing" | "completed" | "failed" | "cancelled";
+  files_total: number;
+  files_completed: number;
+  bytes_total: number;
+  bytes_downloaded: number;
+  bytes_per_second: number;
+  elapsed_secs: number;
+  error: string | null;
 }

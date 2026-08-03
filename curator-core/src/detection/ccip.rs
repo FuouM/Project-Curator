@@ -22,7 +22,7 @@ pub struct CCIPModel {
 impl CCIPModel {
     pub fn new(model_dir: impl AsRef<Path>, feat_device: DevicePreference, metrics_device: DevicePreference) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
-        let ccip_dir = dir.join("ccip-caformer-24-randaug-pruned");
+        let ccip_dir = dir.join("ccip");
         Self {
             feat_session: ManagedSession::new(
                 "CCIP Feature",
