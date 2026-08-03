@@ -273,7 +273,12 @@ async fn test_vector_indexing_and_clip_inference() {
     assert!(model_dir.join("clip-vit-b32").join("text_model.onnx").exists());
     assert!(model_dir.join("clip-vit-b32").join("tokenizer.json").exists());
 
-    let test_image_path = ".\\test_images\\augh.png";
+    let test_image_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent().unwrap()
+        .join("test_images")
+        .join("augh.png");
+    let test_image_path = test_image_path.to_str().expect("path is valid UTF-8");
+
     let image_embedding = model_manager
         .generate_image_embedding(test_image_path)
         .expect("Failed to generate image embedding");
