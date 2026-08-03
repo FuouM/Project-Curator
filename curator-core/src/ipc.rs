@@ -20,6 +20,15 @@ pub enum DevicePreference {
     Gpu,
 }
 
+/// Model precision/format variant preference.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelPrecision {
+    #[default]
+    Original,
+    Int8,
+}
+
 /// Supported embedding models.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum EmbeddingModel {
@@ -135,6 +144,7 @@ pub enum Request {
         detection_device: Option<DevicePreference>,
         detection_metrics_device: Option<DevicePreference>,
         ocr_device: Option<DevicePreference>,
+        model_precisions: Option<std::collections::HashMap<String, ModelPrecision>>,
     },
     /// Reindex all vectors with the active model.
     ReindexVectors,
@@ -356,6 +366,29 @@ pub enum Request {
     EphemeralDetectCharacters {
         path: String,
     },
+
+    // ── Model Management ─────────────────────────────────────────────
+    /// Get download status for all models in the manifest.
+    GetModelStatus,
+    /// Start downloading a model by ID.
+    DownloadModel {
+        model_id: String,
+    },
+    /// Cancel an in-progress download.
+    CancelDownload {
+        model_id: String,
+    },
+    /// Delete model files from disk.
+    RemoveModel {
+        model_id: String,
+    },
+    /// Get progress for all active downloads.
+    GetDownloadProgress,
+    /// Quantize a downloaded model (fp16 or int8).
+    QuantizeModel {
+        model_id: String,
+        format: String,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -441,6 +474,7 @@ pub enum Response {
         detection_device: DevicePreference,
         detection_metrics_device: DevicePreference,
         ocr_device: DevicePreference,
+        model_precisions: std::collections::HashMap<String, ModelPrecision>,
     },
     /// Results of preprocessing benchmark.
     PreprocessBenchmarkResult {
@@ -466,6 +500,7 @@ pub enum Response {
         detection_device: DevicePreference,
         detection_metrics_device: DevicePreference,
         ocr_device: DevicePreference,
+        model_precisions: std::collections::HashMap<String, ModelPrecision>,
         featured_images: Vec<ImageDetails>,
         latest_images: Vec<ImageDetails>,
     },
@@ -655,6 +690,21 @@ pub enum Response {
         path: String,
         detections: Vec<crate::detection::StoredDetection>,
     },
+
+    // ── Model Management Results ─────────────────────────────────────
+    /// Status of all models in the manifest.
+    ModelStatusResult {
+        models: Vec<ModelStatusInfo>,
+    },
+    /// Progress for all active downloads.
+    DownloadProgressResult {
+        downloads: Vec<DownloadProgress>,
+    },
+    /// Result of a model action (download, remove, quantize).
+    ModelActionResult {
+        success: bool,
+        message: String,
+    },
 }
 
 
@@ -803,5 +853,55 @@ pub struct EphemeralOcrDetection {
     pub x3: i32,
     pub y3: i32,
     pub is_from_bubble: bool,
+}
+
+// ── Model Management Types ─────────────────────────────────────────
+
+/// A single file in a model manifest entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestFileInfo {
+    pub url: String,
+    pub dest: String,
+    pub sha256: String,
+}
+
+/// Status of a single model from the manifest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelStatusInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub optional: bool,
+    pub files: Vec<ManifestFileInfo>,
+    /// Relative paths of files that exist on disk.
+    pub downloaded_files: Vec<String>,
+    /// Total bytes of all files.
+    pub total_size: u64,
+    /// Bytes already on disk.
+    pub downloaded_size: u64,
+    /// "downloaded" | "partial" | "not_downloaded"
+    pub status: String,
+    /// Quantized variants present on disk (e.g. ["fp16", "int8"]).
+    pub quantized_variants: Vec<String>,
+    pub quantizable: Vec<String>,
+    pub required_by: Vec<String>,
+}
+
+/// Progress of an active download.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadProgress {
+    pub model_id: String,
+    /// "downloading" | "quantizing" | "completed" | "failed" | "cancelled"
+    pub status: String,
+    pub files_total: usize,
+    pub files_completed: usize,
+    pub bytes_total: u64,
+    pub bytes_downloaded: u64,
+    /// Rolling average download speed (bytes/sec).
+    pub bytes_per_second: u64,
+    /// Total elapsed time in seconds.
+    pub elapsed_secs: f64,
+    pub error: Option<String>,
 }
 

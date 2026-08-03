@@ -22,7 +22,7 @@ pub struct CCIPModel {
 impl CCIPModel {
     pub fn new(model_dir: impl AsRef<Path>, feat_device: DevicePreference, metrics_device: DevicePreference) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
-        let ccip_dir = dir.join("ccip-caformer-24-randaug-pruned");
+        let ccip_dir = dir.join("ccip");
         Self {
             feat_session: ManagedSession::new(
                 "CCIP Feature",
@@ -244,6 +244,38 @@ impl CCIPModel {
         })?;
 
         Ok(t0.elapsed().as_secs_f64() * 1000.0)
+    }
+}
+
+impl crate::pipeline::SystemNode for CCIPModel {
+    fn info(&self) -> crate::pipeline::NodeInfo {
+        crate::pipeline::NodeInfo {
+            id: "ccip-matcher",
+            label: "CCIP Character Matcher",
+            inputs: vec![
+                crate::pipeline::Port { name: "image", type_name: "Image" },
+            ],
+            outputs: vec![
+                crate::pipeline::Port { name: "embedding", type_name: "EmbeddingVector" },
+            ],
+        }
+    }
+
+    fn device(&self) -> DevicePreference {
+        self.feat_session.device()
+    }
+
+    fn set_device(&self, device: DevicePreference) {
+        CCIPModel::set_feat_device(self, device.clone());
+        CCIPModel::set_metrics_device(self, device);
+    }
+
+    fn unload_all(&self) {
+        CCIPModel::unload(self);
+    }
+
+    fn is_loaded(&self) -> bool {
+        CCIPModel::is_loaded(self)
     }
 }
 

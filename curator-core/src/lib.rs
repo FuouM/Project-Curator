@@ -8,12 +8,15 @@ pub mod filename_parser;
 pub mod image_decode;
 pub mod ipc;
 pub mod onnx;
+pub mod pipeline;
 pub mod preprocess;
 pub mod tagger;
 pub mod thumbnail;
 pub mod vector;
 
 pub use onnx::ManagedSession;
+
+pub use pipeline::{NodeInfo, NodeRegistry, Port, SystemNode};
 
 pub use benchmark::{
     benchmark_preprocess, run_detection_benchmark, run_onnx_benchmark,
@@ -27,7 +30,7 @@ pub use detection::{CCIPModel, DetectionPipeline, YoloDetector, OcrDetector, Ocr
 pub use filename_parser::FilenameParser;
 pub use ipc::{DevicePreference, ImageDetails, Request, Response, SearchMatch, TagSummary, OcrResult};
 pub use tagger::{TagPrediction, TaggerEngine};
-pub use vector::{ModelManager, VectorIndex, apply_device_preference};
+pub use vector::{ModelManager, VectorIndex, apply_device_preference, OnnxConfig};
 pub use image;
 
 pub mod grpc {

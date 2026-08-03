@@ -19,9 +19,16 @@ pub struct YoloDetector {
 }
 
 impl YoloDetector {
-    pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference) -> Self {
+    pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference, prefer_quantized: bool) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
-        let model_path = dir.join("person_detect_v1.1_s").join("model.onnx");
+        let mut model_path = dir.join("yolo-person").join("model.onnx");
+        if prefer_quantized {
+            let int8_path = dir.join("yolo-person").join("model_int8.onnx");
+            if int8_path.exists() {
+                model_path = int8_path;
+            }
+        }
+        tracing::info!("YOLO Person: using model path {:?}", model_path);
         Self {
             session: ManagedSession::new("YOLO Person", model_path, device, 1),
         }
@@ -287,5 +294,36 @@ fn compute_iou(a: &Detection, b: &Detection) -> f32 {
         0.0
     } else {
         inter_area / union_area
+    }
+}
+
+impl crate::pipeline::SystemNode for YoloDetector {
+    fn info(&self) -> crate::pipeline::NodeInfo {
+        crate::pipeline::NodeInfo {
+            id: "yolo-detector",
+            label: "YOLO Person Detector",
+            inputs: vec![
+                crate::pipeline::Port { name: "image", type_name: "Image" },
+            ],
+            outputs: vec![
+                crate::pipeline::Port { name: "detections", type_name: "List[Detection]" },
+            ],
+        }
+    }
+
+    fn device(&self) -> DevicePreference {
+        self.session.device()
+    }
+
+    fn set_device(&self, device: DevicePreference) {
+        YoloDetector::set_device(self, device);
+    }
+
+    fn unload_all(&self) {
+        YoloDetector::unload(self);
+    }
+
+    fn is_loaded(&self) -> bool {
+        YoloDetector::is_loaded(self)
     }
 }

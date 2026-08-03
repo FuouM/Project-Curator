@@ -8,6 +8,7 @@ import { refreshFolders } from "./folders";
 import { refreshComponentStylesheet } from "./components-view";
 import { refreshBatchPreview } from "./filename-parser";
 import { refreshCharacters, setupCharactersView } from "./characters";
+import { refreshModelStatus } from "./models";
 
 const subtitles: Record<string, { title: string; sub: string }> = {
   dashboard: { title: "Dashboard", sub: "Overview of your local vector store and image library." },
@@ -19,6 +20,7 @@ const subtitles: Record<string, { title: string; sub: string }> = {
   logs: { title: "System Diagnostic Logs", sub: "View active traces and stderr/stdout logs from the local engine." },
   benchmark: { title: "Hardware Performance Benchmark", sub: "Run latency and throughput comparisons on CPU vs GPU." },
   settings: { title: "Settings", sub: "Configure model device preferences (GPU / CPU)." },
+  models: { title: "Model Management", sub: "Download and manage local AI model weights on disk." },
   tagstats: { title: "Tag Statistics", sub: "View tag distribution and filter images by tag." },
   folders: { title: "Imported Folders", sub: "Browse folders and view import statistics." },
   components: { title: "Component Stylesheet", sub: "A showcase and reference of the application's UI components and styles." },
@@ -82,6 +84,8 @@ export function setupNavigation() {
         }
       } else if (view === "benchmark") {
         refreshBenchmarkMaxImages();
+      } else if (view === "models") {
+        refreshModelStatus();
       }
     });
   });

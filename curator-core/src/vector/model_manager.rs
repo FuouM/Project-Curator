@@ -141,18 +141,18 @@ impl ModelManager {
         let active = self.active_model();
         let (tokenizer_path, vision_path, text_path) = match active {
             EmbeddingModel::ClipVitB32 => (
-                self.model_dir.join("tokenizer.json"),
-                self.model_dir.join("vision_model.onnx"),
-                self.model_dir.join("text_model.onnx"),
+                self.model_dir.join("clip-vit-b32").join("tokenizer.json"),
+                self.model_dir.join("clip-vit-b32").join("vision_model.onnx"),
+                self.model_dir.join("clip-vit-b32").join("text_model.onnx"),
             ),
             EmbeddingModel::MobileClipS2 => (
-                self.model_dir.join("mobileclip_s2").join("tokenizer.json"),
+                self.model_dir.join("mobileclip-s2").join("tokenizer.json"),
                 self.model_dir
-                    .join("mobileclip_s2")
+                    .join("mobileclip-s2")
                     .join("onnx")
                     .join("vision_model.onnx"),
                 self.model_dir
-                    .join("mobileclip_s2")
+                    .join("mobileclip-s2")
                     .join("onnx")
                     .join("text_model.onnx"),
             ),
@@ -223,80 +223,7 @@ impl ModelManager {
         fs::create_dir_all(&self.model_dir)?;
 
         let active = self.active_model();
-        match active {
-            EmbeddingModel::ClipVitB32 => {
-                let vision_path = self.model_dir.join("vision_model.onnx");
-                let text_path = self.model_dir.join("text_model.onnx");
-                let tokenizer_path = self.model_dir.join("tokenizer.json");
-
-                self.download_if_missing(
-                    &vision_path,
-                    "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model.onnx",
-                    "Vision model"
-                )?;
-
-                self.download_if_missing(
-                    &text_path,
-                    "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/text_model.onnx",
-                    "Text model"
-                )?;
-
-                self.download_if_missing(
-                    &tokenizer_path,
-                    "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/tokenizer.json",
-                    "Tokenizer configuration"
-                )?;
-            }
-            EmbeddingModel::MobileClipS2 => {
-                let s2_dir = self.model_dir.join("mobileclip_s2");
-                let onnx_dir = s2_dir.join("onnx");
-                fs::create_dir_all(&onnx_dir)?;
-
-                let vision_path = onnx_dir.join("vision_model.onnx");
-                let text_path = onnx_dir.join("text_model.onnx");
-                let tokenizer_path = s2_dir.join("tokenizer.json");
-
-                self.download_if_missing(
-                    &vision_path,
-                    "https://huggingface.co/Xenova/mobileclip_s2/resolve/main/onnx/vision_model.onnx",
-                    "Vision model"
-                )?;
-
-                self.download_if_missing(
-                    &text_path,
-                    "https://huggingface.co/Xenova/mobileclip_s2/resolve/main/onnx/text_model.onnx",
-                    "Text model",
-                )?;
-
-                self.download_if_missing(
-                    &tokenizer_path,
-                    "https://huggingface.co/Xenova/mobileclip_s2/resolve/main/tokenizer.json",
-                    "Tokenizer configuration",
-                )?;
-            }
-        }
-
         info!("{:?} models initialized", active);
-        Ok(())
-    }
-
-    fn download_if_missing(&self, path: &Path, url: &str, name: &str) -> Result<(), Error> {
-        if path.exists() {
-            return Ok(());
-        }
-
-        info!("Downloading {} from {} to {:?}", name, url, path);
-        let agent = ureq::Agent::new_with_defaults();
-        let mut response = agent
-            .get(url)
-            .call()
-            .context("Failed to contact download server")?;
-
-        let mut reader = response.body_mut().as_reader();
-        let mut file = fs::File::create(path)?;
-        std::io::copy(&mut reader, &mut file)?;
-        info!("Successfully downloaded {}.", name);
-
         Ok(())
     }
 
@@ -689,5 +616,37 @@ impl ModelManager {
             }
         }
         res
+    }
+}
+
+impl crate::pipeline::SystemNode for ModelManager {
+    fn info(&self) -> crate::pipeline::NodeInfo {
+        crate::pipeline::NodeInfo {
+            id: "clip-embedder",
+            label: "CLIP Visual/Text Embedder",
+            inputs: vec![
+                crate::pipeline::Port { name: "image", type_name: "Image" },
+                crate::pipeline::Port { name: "text", type_name: "TextMetadata" },
+            ],
+            outputs: vec![
+                crate::pipeline::Port { name: "embedding", type_name: "EmbeddingVector" },
+            ],
+        }
+    }
+
+    fn device(&self) -> DevicePreference {
+        self.device.lock().unwrap().clone()
+    }
+
+    fn set_device(&self, device: DevicePreference) {
+        ModelManager::set_device(self, device);
+    }
+
+    fn unload_all(&self) {
+        ModelManager::unload(self);
+    }
+
+    fn is_loaded(&self) -> bool {
+        ModelManager::is_loaded(self)
     }
 }

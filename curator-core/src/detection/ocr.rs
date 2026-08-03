@@ -25,15 +25,29 @@ pub struct OcrDetector {
 }
 
 impl OcrDetector {
-    pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference) -> Self {
+    pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference, prefer_quantized_ocr: bool, prefer_quantized_bubble: bool) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
-        let det_model = dir.join("PP-OCRv6_medium_det_onnx").join("inference.onnx");
+        let mut det_model = dir.join("pp-ocrv6-medium").join("det").join("inference.onnx");
+        if prefer_quantized_ocr {
+            let int8_path = dir.join("pp-ocrv6-medium").join("det").join("inference_int8.onnx");
+            if int8_path.exists() {
+                det_model = int8_path;
+            }
+        }
         let (rec_model, rec_dict) = {
-            let model = dir.join("PP-OCRv6_medium_rec_onnx").join("inference.onnx");
-            let dict  = dir.join("PP-OCRv6_medium_rec_onnx").join("inference.yml");
+            let mut model = dir.join("pp-ocrv6-medium").join("rec").join("inference.onnx");
+            if prefer_quantized_ocr {
+                let int8_path = dir.join("pp-ocrv6-medium").join("rec").join("inference_int8.onnx");
+                if int8_path.exists() {
+                    model = int8_path;
+                }
+            }
+            let dict  = dir.join("pp-ocrv6-medium").join("rec").join("inference.yml");
             (model, dict)
         };
-        let cls_model = dir.join("PP-LCNet_x1_0_textline_ori_onnx").join("inference.onnx");
+        tracing::info!("OCR Det: using model path {:?}", det_model);
+        tracing::info!("OCR Rec: using model path {:?}", rec_model);
+        let cls_model = dir.join("pp-lcnet-cls").join("inference.onnx");
         let cls_session = if cls_model.exists() {
             Some(ManagedSession::new("OCR Cls", cls_model, device.clone(), 1))
         } else {
@@ -116,7 +130,7 @@ impl OcrDetector {
             rec_session: ManagedSession::new("OCR Rec", rec_model, device.clone(), 1),
             cls_session,
             rec_chars,
-            bubble_detector: MangaBubbleDetector::new(model_dir.as_ref(), device),
+            bubble_detector: MangaBubbleDetector::new(model_dir.as_ref(), device, prefer_quantized_bubble),
         }
     }
 
@@ -289,6 +303,37 @@ impl OcrDetector {
         }
 
         Ok((results, detected_bubbles))
+    }
+}
+
+impl crate::pipeline::SystemNode for OcrDetector {
+    fn info(&self) -> crate::pipeline::NodeInfo {
+        crate::pipeline::NodeInfo {
+            id: "pp-ocr",
+            label: "PP-OCR Text Detector",
+            inputs: vec![
+                crate::pipeline::Port { name: "image", type_name: "Image" },
+            ],
+            outputs: vec![
+                crate::pipeline::Port { name: "text", type_name: "TextMetadata" },
+            ],
+        }
+    }
+
+    fn device(&self) -> DevicePreference {
+        self.det_session.device()
+    }
+
+    fn set_device(&self, device: DevicePreference) {
+        OcrDetector::set_device(self, device);
+    }
+
+    fn unload_all(&self) {
+        OcrDetector::unload(self);
+    }
+
+    fn is_loaded(&self) -> bool {
+        OcrDetector::is_loaded(self)
     }
 }
 
@@ -894,9 +939,16 @@ pub struct MangaBubbleDetector {
 }
 
 impl MangaBubbleDetector {
-    pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference) -> Self {
+    pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference, prefer_quantized: bool) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
-        let model_path = dir.join("MangaBubbleYOLO").join("yolo26n.onnx");
+        let mut model_path = dir.join("manga-bubble-yolo").join("yolo26n.onnx");
+        if prefer_quantized {
+            let int8_path = dir.join("manga-bubble-yolo").join("yolo26n_int8.onnx");
+            if int8_path.exists() {
+                model_path = int8_path;
+            }
+        }
+        tracing::info!("Manga Bubble YOLO: using model path {:?}", model_path);
         Self {
             session: ManagedSession::new("Manga Bubble YOLO", model_path, device, 1),
         }

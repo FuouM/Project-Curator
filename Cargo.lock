@@ -1175,6 +1175,7 @@ dependencies = [
  "sha2",
  "sqlx",
  "tokio",
+ "tokio-util",
  "tonic",
  "tracing",
  "tracing-subscriber",

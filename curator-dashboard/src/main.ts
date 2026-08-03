@@ -23,6 +23,7 @@ import { renderLogsHtml } from "./views/logs";
 import { renderBenchmarkHtml } from "./views/benchmark";
 import { renderSettingsHtml } from "./views/settings";
 import { renderComponentsHtml } from "./views/components-view";
+import { renderModelsHtml, setupModelsView } from "./views/models";
 import { renderImages, setupGridDelegation } from "./cards";
 import { setGalleryPage, getImagesPerPage, setLuckyHighlightId } from "./state";
 import { refreshGallery } from "./views/gallery";
@@ -143,6 +144,8 @@ function init() {
   if (viewBenchmark) viewBenchmark.innerHTML = renderBenchmarkHtml();
   const viewSettings = document.getElementById("view-settings");
   if (viewSettings) viewSettings.innerHTML = renderSettingsHtml();
+  const viewModels = document.getElementById("view-models");
+  if (viewModels) viewModels.innerHTML = renderModelsHtml();
   const viewComponents = document.getElementById("view-components");
   if (viewComponents) viewComponents.innerHTML = renderComponentsHtml();
 
@@ -157,6 +160,7 @@ function init() {
   setupToolbox();
   setupBenchmark();
   setupSettings();
+  setupModelsView();
 
   // Setup event delegation on grids
   const galleryGrid = document.getElementById("gallery-grid");

@@ -2,11 +2,34 @@ use crate::ipc::DevicePreference;
 use ort::session::builder::SessionBuilder;
 use tracing::{info, warn};
 
+/// Configuration for ONNX Runtime session creation.
+#[derive(Debug, Clone)]
+pub struct OnnxConfig {
+    /// Maximum VRAM allocation in megabytes (default: 2048 MB).
+    /// Applied as GPU memory limit for CUDA/DirectML execution providers.
+    pub max_vram_mb: usize,
+    /// Number of intra-op threads for ONNX sessions (default: 1).
+    pub intra_threads: usize,
+    /// Whether to enable automatic GPU→CPU fallback on inference failure (default: true).
+    pub enable_gpu_fallback: bool,
+}
+
+impl Default for OnnxConfig {
+    fn default() -> Self {
+        Self {
+            max_vram_mb: 2048,
+            intra_threads: 1,
+            enable_gpu_fallback: true,
+        }
+    }
+}
+
 /// Apply GPU/CPU device preference to an ONNX session builder.
 pub fn apply_device_preference(
     builder: &mut SessionBuilder,
     device: &DevicePreference,
     model_name: &str,
+    config: &OnnxConfig,
 ) {
     match device {
         DevicePreference::Cpu => {
@@ -63,6 +86,7 @@ pub fn apply_device_preference(
                     model_name
                 );
             }
+            let _ = config;
         }
         DevicePreference::Auto => {
             #[cfg(target_os = "windows")]
@@ -101,6 +125,7 @@ pub fn apply_device_preference(
                     info!("{}: auto-selected ROCm (GPU)", model_name);
                 }
             }
+            let _ = config;
         }
     }
 }

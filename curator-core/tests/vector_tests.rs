@@ -263,9 +263,9 @@ async fn test_vector_indexing_and_clip_inference() {
         .init()
         .expect("Failed to initialize CLIP models");
 
-    assert!(model_dir.join("vision_model.onnx").exists());
-    assert!(model_dir.join("text_model.onnx").exists());
-    assert!(model_dir.join("tokenizer.json").exists());
+    assert!(model_dir.join("clip-vit-b32").join("vision_model.onnx").exists());
+    assert!(model_dir.join("clip-vit-b32").join("text_model.onnx").exists());
+    assert!(model_dir.join("clip-vit-b32").join("tokenizer.json").exists());
 
     let test_image_path = ".\\test_images\\augh.png";
     let image_embedding = model_manager

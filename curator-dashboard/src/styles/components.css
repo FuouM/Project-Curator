@@ -391,3 +391,50 @@
   background-color: var(--sys-border-dark);
   margin: 0 2px;
 }
+
+/* Model download progress */
+.model-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md, 8px);
+  margin-top: var(--space-xs, 4px);
+}
+
+.progress-bar {
+  flex: 1;
+  height: 16px;
+  background: #e5e7eb;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--sys-primary, #0078d4);
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+
+.progress-text {
+  min-width: 4ch;
+  text-align: right;
+  font-size: 11px;
+  color: var(--sys-control-text, #000);
+}
+
+.progress-speed {
+  min-width: 9ch;
+  text-align: right;
+  font-size: 11px;
+  color: var(--sys-control-text, #000);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-eta {
+  min-width: 7ch;
+  text-align: right;
+  font-size: 11px;
+  color: var(--sys-text-subtle, #555);
+}
+

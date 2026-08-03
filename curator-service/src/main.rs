@@ -37,6 +37,8 @@ struct ClientContext {
     data_dir: Arc<PathBuf>,
     settings: Arc<tokio::sync::Mutex<AppSettings>>,
     thumbnail_cache: Arc<ThumbnailCache>,
+    download_progress: handlers::models::DownloadProgressMap,
+    cancel_tokens: handlers::models::CancelTokens,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +55,8 @@ pub(crate) struct AppSettings {
     detection_metrics_device: curator_core::ipc::DevicePreference,
     #[serde(default)]
     ocr_device: curator_core::ipc::DevicePreference,
+    #[serde(default)]
+    model_precisions: std::collections::HashMap<String, curator_core::ipc::ModelPrecision>,
 }
 
 fn default_idle_timeout() -> u64 {
@@ -73,6 +77,7 @@ impl Default for AppSettings {
             detection_device: curator_core::ipc::DevicePreference::Auto,
             detection_metrics_device: curator_core::ipc::DevicePreference::Cpu,
             ocr_device: curator_core::ipc::DevicePreference::Auto,
+            model_precisions: std::collections::HashMap::new(),
         }
     }
 }
@@ -105,69 +110,7 @@ struct Args {
     tagger_model_dir: Option<String>,
 }
 
-fn download_detection_models(model_dir: &Path) -> Result<(), Error> {
-    use std::fs;
 
-    let models = [
-        (
-            "person_detect_v1.1_s/model.onnx",
-            "https://huggingface.co/deepghs/anime_person_detection/resolve/main/person_detect_v1.1_s/model.onnx",
-        ),
-        (
-            "ccip-caformer-24-randaug-pruned/model_feat.onnx",
-            "https://huggingface.co/deepghs/ccip_onnx/resolve/main/ccip-caformer-24-randaug-pruned/model_feat.onnx",
-        ),
-        (
-            "ccip-caformer-24-randaug-pruned/model_metrics.onnx",
-            "https://huggingface.co/deepghs/ccip_onnx/resolve/main/ccip-caformer-24-randaug-pruned/model_metrics.onnx",
-        ),
-    ];
-
-    for (rel_path, url) in &models {
-        let dest = model_dir.join(rel_path);
-        if dest.exists() {
-            continue;
-        }
-        info!("Downloading detection model: {} -> {:?}", url, dest);
-        if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let agent = ureq::Agent::new_with_defaults();
-        let mut response = agent
-            .get(*url)
-            .call()
-            .with_context(|| format!("Failed to download {}", rel_path))?;
-        let mut reader = response.body_mut().as_reader();
-        let mut file = fs::File::create(&dest)?;
-        std::io::copy(&mut reader, &mut file)?;
-        info!("Downloaded {}", rel_path);
-    }
-
-    // Copy OCR models from reference/ into .curator/models if missing
-    let ocr_files = [
-        ("PP-OCRv6_small_det_onnx/inference.onnx", "reference/PP-OCRv6_small_det_onnx/inference.onnx"),
-        ("PP-OCRv6_small_det_onnx/inference.yml", "reference/PP-OCRv6_small_det_onnx/inference.yml"),
-        ("PP-OCRv6_small_rec_onnx/inference.onnx", "reference/PP-OCRv6_small_rec_onnx/inference.onnx"),
-        ("PP-OCRv6_small_rec_onnx/inference.yml", "reference/PP-OCRv6_small_rec_onnx/inference.yml"),
-    ];
-    for (dest_rel, ref_rel) in &ocr_files {
-        let dest = model_dir.join(dest_rel);
-        if !dest.exists() {
-            let ref_path = Path::new(ref_rel);
-            if ref_path.exists() {
-                info!("Copying OCR file from reference: {:?} -> {:?}", ref_path, dest);
-                if let Some(parent) = dest.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                fs::copy(&ref_path, &dest)?;
-            } else {
-                warn!("OCR reference file not found at {:?}", ref_path);
-            }
-        }
-    }
-
-    Ok(())
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -244,8 +187,21 @@ async fn main() -> Result<(), Error> {
     model_manager.set_active_model(settings.embedding_model);
     model_manager.init()?;
 
-    // Download detection models if missing
-    download_detection_models(&model_dir)?;
+    // Validate required models exist (models are in subdirectories under model_dir)
+    let required_model_files = [
+        "clip-vit-b32/vision_model.onnx",
+        "clip-vit-b32/text_model.onnx",
+        "clip-vit-b32/tokenizer.json",
+    ];
+    for model_file in &required_model_files {
+        let path = model_dir.join(model_file);
+        if !path.exists() {
+            warn!(
+                "Required model file missing: {:?}. Download models via Settings > Models.",
+                path
+            );
+        }
+    }
 
     let model_manager = Arc::new(model_manager);
 
@@ -266,7 +222,18 @@ async fn main() -> Result<(), Error> {
         tagger_dir, settings.tagger_device
     );
 
-    let detection_yolo = YoloDetector::new(&model_dir, settings.detection_device.clone());
+    let prefer_quantized_yolo = settings
+        .model_precisions
+        .get("yolo-person")
+        .copied()
+        .unwrap_or(curator_core::ipc::ModelPrecision::Original)
+        == curator_core::ipc::ModelPrecision::Int8;
+
+    let detection_yolo = YoloDetector::new(
+        &model_dir,
+        settings.detection_device.clone(),
+        prefer_quantized_yolo,
+    );
     let detection_ccip = CCIPModel::new(&model_dir, settings.detection_device.clone(), settings.detection_metrics_device.clone());
 
     let thumb_db_path = data_dir.join("thumbnail-cache.db");
@@ -280,8 +247,35 @@ async fn main() -> Result<(), Error> {
     let detection = Arc::new(DetectionPipeline::new(detection_yolo, detection_ccip, db.clone(), crop_cache));
     info!("Detection pipeline configured (YOLO + CCIP, models load on first use)");
 
-    let ocr = Arc::new(curator_core::OcrDetector::new(&model_dir, settings.ocr_device.clone()));
+    let prefer_quantized_ocr = settings
+        .model_precisions
+        .get("pp-ocrv6-medium")
+        .copied()
+        .unwrap_or(curator_core::ipc::ModelPrecision::Original)
+        == curator_core::ipc::ModelPrecision::Int8;
+
+    let prefer_quantized_bubble = settings
+        .model_precisions
+        .get("manga-bubble-yolo")
+        .copied()
+        .unwrap_or(curator_core::ipc::ModelPrecision::Original)
+        == curator_core::ipc::ModelPrecision::Int8;
+
+    let ocr = Arc::new(curator_core::OcrDetector::new(
+        &model_dir,
+        settings.ocr_device.clone(),
+        prefer_quantized_ocr,
+        prefer_quantized_bubble,
+    ));
     info!("OCR detector configured (PP-OCRv6 small, models load on first use)");
+
+    // Build the node registry with all system nodes
+    let mut node_registry = curator_core::NodeRegistry::new();
+    node_registry.register(model_manager.clone());
+    node_registry.register(tagger.clone());
+    node_registry.register(ocr.clone());
+    info!("Node registry initialized with {} system nodes", node_registry.len());
+    let _node_registry = Arc::new(node_registry);
 
     let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone());
     worker.start();
@@ -319,6 +313,9 @@ async fn main() -> Result<(), Error> {
     let incoming = curator_core::ipc::grpc_helper::server_incoming()?;
     info!("gRPC Transport Server configured (Named Pipe on Windows, UDS on Unix).");
 
+    let download_progress: handlers::models::DownloadProgressMap = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+    let cancel_tokens: handlers::models::CancelTokens = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+
     let service_impl = CuratorServiceImpl {
         ctx: Arc::new(ClientContext {
             db,
@@ -331,6 +328,8 @@ async fn main() -> Result<(), Error> {
             data_dir: Arc::new(data_dir),
             settings: settings_arc,
             thumbnail_cache,
+            download_progress,
+            cancel_tokens,
         }),
     };
 
@@ -380,6 +379,8 @@ impl Curator for CuratorServiceImpl {
             &self.ctx.data_dir,
             &self.ctx.settings,
             &self.ctx.thumbnail_cache,
+            &self.ctx.download_progress,
+            &self.ctx.cancel_tokens,
         )
         .await;
 

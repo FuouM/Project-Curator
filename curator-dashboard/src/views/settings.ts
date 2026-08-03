@@ -8,6 +8,7 @@ import { updateReindexProgress, startReindexPolling } from "./settings-reindex";
 import { setupMaintenanceButtons } from "./settings-maintenance";
 import { buildOcrLabelSvg, getOcrTextSettings } from "../ocr-text";
 
+
 export function setupSettings() {
   const clipSelect = document.getElementById("settings-clip-device") as HTMLSelectElement;
   const taggerSelect = document.getElementById("settings-tagger-device") as HTMLSelectElement;
@@ -132,6 +133,7 @@ export function setupSettings() {
           detection_device: detDeviceSelect ? detDeviceSelect.value : null,
           detection_metrics_device: detMetricsSelect ? detMetricsSelect.value : null,
           ocr_device: ocrDeviceSelect ? ocrDeviceSelect.value : null,
+          model_precisions: null,
         }
       });
 
@@ -284,6 +286,7 @@ export function renderSettingsHtml(): SafeHtml {
       <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">Choose whether each model runs on CPU or GPU, and how long to keep models in memory after last use.</p>
 
       <div style="display: flex; flex-direction: column; gap: 16px;">
+
         <!-- Embedding Model -->
         <div class="group-box" style="padding: 12px;">
           <div class="group-box-title">Active Embedding Model</div>
@@ -312,17 +315,17 @@ export function renderSettingsHtml(): SafeHtml {
                 <span id="reindex-preprocess-text">Preprocessing progress: 0/0 (0%)</span>
                 <span style="font-weight: 600; color: #3b82f6;">CPU Preprocessing</span>
               </div>
-              <div style="width: 100%; height: 8px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden;">
-                <div id="reindex-preprocess-bar" style="width: 0%; height: 100%; background-color: #3b82f6; transition: width 0.3s ease;"></div>
+              <div class="progress-bar">
+                <div id="reindex-preprocess-bar" class="progress-fill" style="width: 0%;"></div>
               </div>
             </div>
             <div>
               <div style="display: flex; justify-content: space-between; font-size: 11px; color: #333; margin-bottom: 4px;">
                 <span id="reindex-index-text">Indexing progress: 0/0 (0%)</span>
-                <span id="reindex-progress-status" style="font-weight: 600; color: #fbbf24;">Inference &amp; Indexing</span>
+                <span id="reindex-progress-status" style="font-weight: 600; color: #b78103;">Inference &amp; Indexing</span>
               </div>
-              <div style="width: 100%; height: 8px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden;">
-                <div id="reindex-index-bar" style="width: 0%; height: 100%; background-color: #10b981; transition: width 0.3s ease;"></div>
+              <div class="progress-bar">
+                <div id="reindex-index-bar" class="progress-fill" style="width: 0%;"></div>
               </div>
             </div>
           </div>
@@ -458,5 +461,7 @@ export function renderSettingsHtml(): SafeHtml {
         <span id="clear-crop-cache-status-msg" style="font-size: 11px; min-height: 16px;"></span>
       </div>
     </div>
+
+
   `;
 }

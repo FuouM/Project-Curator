@@ -24,8 +24,8 @@ pub struct TaggerEngine {
 impl TaggerEngine {
     pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
-        let model_path = dir.join("camie-tagger-v2.onnx");
-        let metadata_path = dir.join("camie-tagger-v2-metadata.json");
+        let model_path = dir.join("camie-tagger-v2").join("camie-tagger-v2.onnx");
+        let metadata_path = dir.join("camie-tagger-v2").join("camie-tagger-v2-metadata.json");
         Self {
             session: ManagedSession::new("Camie Tagger", model_path, device, 1),
             metadata_path,
@@ -213,5 +213,36 @@ impl TaggerEngine {
             }
         }
         res
+    }
+}
+
+impl crate::pipeline::SystemNode for TaggerEngine {
+    fn info(&self) -> crate::pipeline::NodeInfo {
+        crate::pipeline::NodeInfo {
+            id: "camie-tagger",
+            label: "Camie Tagger",
+            inputs: vec![
+                crate::pipeline::Port { name: "image", type_name: "Image" },
+            ],
+            outputs: vec![
+                crate::pipeline::Port { name: "tags", type_name: "Tags" },
+            ],
+        }
+    }
+
+    fn device(&self) -> DevicePreference {
+        self.session.device()
+    }
+
+    fn set_device(&self, device: DevicePreference) {
+        TaggerEngine::set_device(self, device);
+    }
+
+    fn unload_all(&self) {
+        TaggerEngine::unload(self);
+    }
+
+    fn is_loaded(&self) -> bool {
+        TaggerEngine::is_loaded(self)
     }
 }

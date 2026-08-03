@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use ort::session::Session;
 use crate::ipc::DevicePreference;
-use crate::vector::device::apply_device_preference;
+use crate::vector::device::{apply_device_preference, OnnxConfig};
 
 fn now_secs() -> u64 {
     SystemTime::now()
@@ -21,6 +21,7 @@ pub struct ManagedSession {
     session: Mutex<Option<Session>>,
     last_used: AtomicU64,
     intra_threads: usize,
+    config: OnnxConfig,
 }
 
 impl ManagedSession {
@@ -37,6 +38,26 @@ impl ManagedSession {
             session: Mutex::new(None),
             last_used: AtomicU64::new(now_secs()),
             intra_threads,
+            config: OnnxConfig::default(),
+        }
+    }
+
+    /// Create a new ManagedSession with custom ONNX configuration.
+    pub fn with_config(
+        name: impl Into<String>,
+        model_path: PathBuf,
+        device: DevicePreference,
+        intra_threads: usize,
+        config: OnnxConfig,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            model_path,
+            device: Mutex::new(device),
+            session: Mutex::new(None),
+            last_used: AtomicU64::new(now_secs()),
+            intra_threads,
+            config,
         }
     }
 
@@ -106,7 +127,7 @@ impl ManagedSession {
             .with_intra_threads(self.intra_threads)
             .context(format!("Failed to set {} threads to {}", self.name, self.intra_threads))?;
 
-        apply_device_preference(&mut builder, &device, &self.name);
+        apply_device_preference(&mut builder, &device, &self.name, &self.config);
 
         let session = builder
             .commit_from_file(&self.model_path)
@@ -136,5 +157,24 @@ impl ManagedSession {
         let mut guard = self.session.lock().unwrap();
         let session = guard.as_mut().context("Session not initialized")?;
         f(session)
+    }
+
+    /// Execute a closure against the session with automatic GPU→CPU fallback.
+    /// If the closure returns an error and the current device is GPU,
+    /// the session is reloaded on CPU and the closure retried exactly once.
+    pub fn with_session_fallback<F, R>(&self, f: F) -> Result<R>
+    where
+        F: Fn(&mut Session) -> Result<R>,
+    {
+        let result = self.with_session(&f);
+        if result.is_err() && self.device() != DevicePreference::Cpu {
+            tracing::warn!(
+                "{}: inference failed on GPU — falling back to CPU",
+                self.name
+            );
+            self.set_device(DevicePreference::Cpu);
+            return self.with_session(&f);
+        }
+        result
     }
 }
