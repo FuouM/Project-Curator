@@ -378,6 +378,8 @@ const componentRegistry: ComponentMetadata[] = [
             <span class="concept-badge copyright">COPYRIGHT</span>
             <span class="concept-badge general">GENERAL</span>
             <span class="concept-badge artist">ARTIST</span>
+            <span class="concept-badge user">USER</span>
+            <span class="concept-badge meta">META</span>
           </div>
         `
       }
@@ -994,6 +996,399 @@ const componentRegistry: ComponentMetadata[] = [
               <p style="font-size: 12px; color: #555;">This is grouped content inside a titled box.</p>
             </div>
           `)}
+        `
+      }
+    ]
+  },
+  {
+    name: "OCR Text Block",
+    description: "Expandable monospace text block for displaying OCR-extracted text from images. Click to toggle between collapsed (5 lines) and expanded state.",
+    variants: [
+      {
+        name: "Collapsed & Expanded States",
+        render: () => `
+          <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+            <div style="font-size: 11px; font-weight: 600; color: #555;">Collapsed (default)</div>
+            <div class="ocr-block" style="position: static;">
+              <i class="bi bi-file-earmark-text ocr-icon"></i>
+              <span class="ocr-block-text">This is sample OCR extracted text from an image. It can contain multiple lines of text that were recognized by the optical character recognition engine. The text is displayed in a monospace font and is truncated when collapsed.</span>
+            </div>
+            <div style="font-size: 11px; font-weight: 600; color: #555;">Expanded state</div>
+            <div class="ocr-block expanded" style="position: static;">
+              <i class="bi bi-file-earmark-text ocr-icon"></i>
+              <span class="ocr-block-text">This is sample OCR extracted text from an image. It can contain multiple lines of text that were recognized by the optical character recognition engine. The text is displayed in a monospace font and shows all content when expanded. Click the block to toggle between states.</span>
+            </div>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Autocomplete Dropdown",
+    description: "Typeahead suggestion dropdown for input fields. Shows matching items with count badges and supports keyboard navigation.",
+    variants: [
+      {
+        name: "Dropdown with Suggestions",
+        render: () => `
+          <div style="display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 300px;">
+            <div style="position: relative;">
+              <input class="input-field" style="width: 100%;" value="cha" readonly />
+              <div class="autocomplete-dropdown" style="position: relative; top: 0; width: 100%; box-shadow: none; border: 1px solid var(--sys-border-dark);">
+                <div class="autocomplete-item active">
+                  <span class="autocomplete-item-tag">character_name</span>
+                  <span class="autocomplete-item-count">312</span>
+                </div>
+                <div class="autocomplete-item">
+                  <span class="autocomplete-item-tag">character_outfit</span>
+                  <span class="autocomplete-item-count">89</span>
+                </div>
+                <div class="autocomplete-item">
+                  <span class="autocomplete-item-tag">character_pose</span>
+                  <span class="autocomplete-item-count">45</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Range Slider",
+    description: "Labeled range slider for numeric settings like similarity thresholds. Displays current value with accent-colored track.",
+    variants: [
+      {
+        name: "Threshold Slider Control",
+        render: () => `
+          <div style="width: 100%; max-width: 320px;">
+            <div class="concept-threshold-box">
+              <div class="concept-threshold-header">
+                <span>Similarity Threshold</span>
+                <span class="concept-threshold-val">0.75 (75%)</span>
+              </div>
+              <input type="range" class="concept-threshold-slider" min="0" max="100" value="75" />
+            </div>
+          </div>
+        `
+      },
+      {
+        name: "Slider Variants",
+        render: () => `
+          <div style="display: flex; flex-direction: column; gap: 16px; width: 100%; max-width: 320px;">
+            <div class="concept-threshold-box">
+              <div class="concept-threshold-header">
+                <span>Low Threshold</span>
+                <span class="concept-threshold-val">0.30 (30%)</span>
+              </div>
+              <input type="range" class="concept-threshold-slider" min="0" max="100" value="30" />
+            </div>
+            <div class="concept-threshold-box">
+              <div class="concept-threshold-header">
+                <span>High Threshold</span>
+                <span class="concept-threshold-val">0.92 (92%)</span>
+              </div>
+              <input type="range" class="concept-threshold-slider" min="0" max="100" value="92" />
+            </div>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Identity Tags",
+    description: "Character identity tag pills with reddish-pink styling and person icon, used on image cards to show detected characters.",
+    variants: [
+      {
+        name: "Identity Tag Variants",
+        render: () => `
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="font-size: 11px; font-weight: 600; color: #555;">Identity List (with border separator)</div>
+            <div class="identity-list">
+              <span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> Character A</span>
+              <span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> Character B</span>
+              <span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> Character C</span>
+            </div>
+            <div style="font-size: 11px; font-weight: 600; color: #555;">Single Identity Tag</div>
+            <div style="display: flex; gap: 6px;">
+              <span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> Solo Character</span>
+            </div>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Image Card Overlay Buttons",
+    description: "Action buttons that appear on hover over image cards: star/favorite, copy to clipboard, and info details.",
+    variants: [
+      {
+        name: "Star / Favorite Button",
+        render: () => `
+          <div style="display: flex; gap: 16px; align-items: center;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+              <div class="star-btn" style="position: static; opacity: 1; background: var(--sys-window-bg); border: 1px solid #dcdcdc;"><i class="bi bi-star"></i></div>
+              <span style="font-size: 10px; color: #888;">Default</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+              <div class="star-btn favorite" style="position: static; opacity: 1;"><i class="bi bi-star-fill"></i></div>
+              <span style="font-size: 10px; color: #888;">Favorited</span>
+            </div>
+          </div>
+        `
+      },
+      {
+        name: "Copy & Info Buttons",
+        render: () => `
+          <div style="display: flex; gap: 16px; align-items: center;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+              <div class="copy-btn" style="position: static; opacity: 1; background: var(--sys-window-bg); border: 1px solid #dcdcdc;"><i class="bi bi-clipboard"></i></div>
+              <span style="font-size: 10px; color: #888;">Copy</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+              <div class="copy-btn copied" style="position: static; opacity: 1;"><i class="bi bi-check-lg"></i></div>
+              <span style="font-size: 10px; color: #888;">Copied</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+              <div class="info-btn" style="position: static; opacity: 1; background: var(--sys-window-bg); border: 1px solid #dcdcdc;"><i class="bi bi-info-circle"></i></div>
+              <span style="font-size: 10px; color: #888;">Info</span>
+            </div>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Data Tables",
+    description: "Styled data tables for displaying structured information with alternating rows, hover states, and status indicators.",
+    variants: [
+      {
+        name: "Folders Table",
+        render: () => `
+          <table class="folders-table" style="width: 100%;">
+            <thead>
+              <tr>
+                <th style="text-align: center;">Status</th>
+                <th style="text-align: left;">Folder Name</th>
+                <th style="text-align: right;">Images</th>
+                <th style="text-align: right;">Vectors</th>
+                <th style="text-align: center;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="folders-row">
+                <td style="text-align: center;"><i class="bi bi-check-circle" style="color: #2e7d32;"></i></td>
+                <td style="font-weight: 600;">My Photos</td>
+                <td style="text-align: right;">1,234</td>
+                <td style="text-align: right;"><span style="color: #2e7d32;">1,100</span> / 1,234</td>
+                <td style="text-align: center;"><button class="win-button folders-open-btn" style="font-size: 11px; padding: 2px 8px;"><i class="bi bi-folder2-open"></i> Open</button></td>
+              </tr>
+              <tr class="folders-row">
+                <td style="text-align: center;"><i class="bi bi-exclamation-circle" style="color: #e8912d;"></i></td>
+                <td style="font-weight: 600;">Old Backup</td>
+                <td style="text-align: right;">567</td>
+                <td style="text-align: right;"><span style="color: #2e7d32;">400</span> / 567</td>
+                <td style="text-align: center;"><button class="win-button folders-open-btn" style="font-size: 11px; padding: 2px 8px;"><i class="bi bi-folder2-open"></i> Open</button></td>
+              </tr>
+              <tr class="folders-row missing">
+                <td style="text-align: center;"><i class="bi bi-exclamation-triangle" style="color: #e8912d;"></i></td>
+                <td style="font-weight: 600;">Deleted Folder</td>
+                <td style="text-align: right;">89</td>
+                <td style="text-align: right;">—</td>
+                <td style="text-align: center;">
+                  <button class="win-button" style="font-size: 11px; padding: 2px 8px; margin-right: 4px;"><i class="bi bi-pencil"></i> Update Path</button>
+                  <button class="win-button danger" style="font-size: 11px; padding: 2px 8px;"><i class="bi bi-trash"></i> Remove</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        `
+      },
+      {
+        name: "Curator Generic Table",
+        render: () => `
+          <table class="curator-table" style="width: 100%;">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Filename</th>
+                <th>Tags</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1001</td>
+                <td style="font-family: monospace; font-size: 11px;">sample_image.png</td>
+                <td>5 tags</td>
+                <td><span class="vector-badge badge-ready" style="position: static;">ready</span></td>
+              </tr>
+              <tr>
+                <td>1002</td>
+                <td style="font-family: monospace; font-size: 11px;">another_photo.jpg</td>
+                <td>3 tags</td>
+                <td><span class="vector-badge badge-pending" style="position: static;">pending</span></td>
+              </tr>
+              <tr>
+                <td>1003</td>
+                <td style="font-family: monospace; font-size: 11px;">vacation_shot.bmp</td>
+                <td>0 tags</td>
+                <td><span class="vector-badge badge-pending" style="position: static;">pending</span></td>
+              </tr>
+            </tbody>
+          </table>
+        `
+      }
+    ]
+  },
+  {
+    name: "Log Viewer",
+    description: "Dark monospace log display with color-coded log levels, timestamps, and collapsible JSON blocks.",
+    variants: [
+      {
+        name: "Log Line Variants",
+        render: () => `
+          <div style="background-color: #1e1e1e; padding: 10px; font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; line-height: 1.6; width: 100%; border: 1px solid #333;">
+            <div><span style="color: #666;">[2026-08-03 10:15:32]</span> <span style="color: #6a9955;">INFO</span> <span style="color: #cccccc;">Service started successfully</span></div>
+            <div><span style="color: #666;">[2026-08-03 10:15:33]</span> <span style="color: #6a9955;">INFO</span> <span style="color: #cccccc;">Loaded CLIP model: ViT-B/32</span></div>
+            <div><span style="color: #666;">[2026-08-03 10:15:34]</span> <span style="color: #dcdcaa;">WARN</span> <span style="color: #cccccc;">Thumbnail cache misses: 23</span></div>
+            <div><span style="color: #666;">[2026-08-03 10:15:35]</span> <span style="color: #f44747;">ERROR</span> <span style="color: #cccccc;">Failed to index image: disk not accessible</span></div>
+            <div><span style="color: #666;">[2026-08-03 10:15:36]</span> <span style="color: #569cd6;">DEBUG</span> <span style="color: #cccccc;">Vector search completed in 12ms</span></div>
+          </div>
+        `
+      },
+      {
+        name: "Log Tabs",
+        render: () => `
+          <div style="display: flex; gap: 0; width: 100%; max-width: 300px;">
+            <button class="win-button log-tab active" style="border-radius: 2px 0 0 2px;">Dashboard</button>
+            <button class="win-button log-tab" style="border-radius: 0 2px 2px 0;">Service</button>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Selection Toolbar",
+    description: "Bulk action toolbar shown when image card selection mode is active. Provides Select All, Clear, and action buttons.",
+    variants: [
+      {
+        name: "Selection Bar",
+        render: () => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; background-color: var(--sys-highlight-bg); color: var(--sys-highlight-text); width: 100%; border-radius: 2px;">
+            <span style="font-size: 12px; font-weight: 600;">12 selected</span>
+            <div style="flex: 1;"></div>
+            <button class="win-button" style="font-size: 11px; background: rgba(255,255,255,0.15); color: #fff; border-color: rgba(255,255,255,0.3);">Select All</button>
+            <button class="win-button" style="font-size: 11px; background: rgba(255,255,255,0.15); color: #fff; border-color: rgba(255,255,255,0.3);">Clear</button>
+            <button class="win-button" style="font-size: 11px; background: rgba(255,255,255,0.25); color: #fff; border-color: rgba(255,255,255,0.4);"><i class="bi bi-magic"></i> Teach Concept</button>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Missing Image Badge",
+    description: "Warning badge overlay shown on image cards when the source file is no longer found on disk.",
+    variants: [
+      {
+        name: "Missing Badge",
+        render: () => `
+          <div style="position: relative; width: 200px; height: 140px; background: #f7f7f7; border: 1px solid var(--sys-border-dark); display: flex; align-items: center; justify-content: center;">
+            <i class="bi bi-image" style="font-size: 32px; color: #ccc;"></i>
+            <div class="badge-missing"><i class="bi bi-exclamation-triangle"></i> Missing</div>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Concept Info Row",
+    description: "Labeled key-value row used inside concept cards for displaying metadata like sample counts and dates.",
+    variants: [
+      {
+        name: "Info Row Examples",
+        render: () => `
+          <div style="display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 320px;">
+            <div class="concept-info-row">
+              <span class="concept-info-label">Sample Count</span>
+              <span class="concept-info-val"><strong>12</strong> images</span>
+            </div>
+            <div class="concept-info-row">
+              <span class="concept-info-label">Threshold</span>
+              <span class="concept-info-val"><strong>0.75</strong></span>
+            </div>
+            <div class="concept-info-row">
+              <span class="concept-info-label">Last Updated</span>
+              <span class="concept-info-val"><strong>2026-07-20</strong></span>
+            </div>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Tag Overflow Pill",
+    description: "Overflow indicator pill showing remaining tag count when a tag list is truncated.",
+    variants: [
+      {
+        name: "Overflow Pill",
+        render: () => `
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+            ${renderTagPill({ tag: "character_name", category: "character" })}
+            ${renderTagPill({ tag: "series_title", category: "copyright" })}
+            ${renderTagPill({ tag: "user_tag", category: "user" })}
+            <span class="tag-pill tag-pill-overflow">+5 more</span>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Crop Placeholder",
+    description: "Skeleton placeholder for face crop thumbnails while images are loading.",
+    variants: [
+      {
+        name: "Crop Placeholder Slots",
+        render: () => `
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="crop-placeholder-slot" style="width: 64px; height: 64px; border: 1px dashed var(--sys-border-dark); background: var(--sys-window-bg);"></div>
+            <div class="crop-placeholder-slot" style="width: 64px; height: 64px; border: 1px dashed var(--sys-border-dark); background: var(--sys-window-bg);"></div>
+            <div class="crop-placeholder-slot" style="width: 64px; height: 64px; border: 1px dashed var(--sys-border-dark); background: var(--sys-window-bg);"></div>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Tag Confirm Button",
+    description: "Small green checkmark button for confirming tag additions, scales up on hover.",
+    variants: [
+      {
+        name: "Confirm Button States",
+        render: () => `
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <button class="tag-confirm-btn" style="position: static; width: 24px; height: 24px; font-size: 12px;"><i class="bi bi-check-lg"></i></button>
+            <span style="font-size: 10px; color: #888;">Hover to scale up</span>
+          </div>
+        `
+      }
+    ]
+  },
+  {
+    name: "Tool Strip",
+    description: "Horizontal toolbar container with compact buttons and vertical separators for action groups.",
+    variants: [
+      {
+        name: "Tool Strip with Separator",
+        render: () => `
+          <div class="tool-strip" style="border: 1px solid var(--sys-border-dark); width: 100%;">
+            ${renderButton("Open", { className: "tool-strip-btn", icon: "bi bi-folder2-open" })}
+            ${renderButton("Save", { className: "tool-strip-btn", icon: "bi bi-save" })}
+            <div class="tool-strip-separator"></div>
+            ${renderButton("Cut", { className: "tool-strip-btn", icon: "bi bi-scissors" })}
+            ${renderButton("Copy", { className: "tool-strip-btn", icon: "bi bi-clipboard" })}
+            <div class="tool-strip-separator"></div>
+            ${renderButton("Refresh", { className: "tool-strip-btn", icon: "bi bi-arrow-clockwise" })}
+          </div>
         `
       }
     ]
