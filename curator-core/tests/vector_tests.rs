@@ -8,8 +8,11 @@ const PAD_COLOR: [u8; 3] = [124, 116, 104];
 
 #[test]
 fn test_decode_benchmark() {
-    let path =
-        std::path::Path::new(r".\test_images\Yoshitani-Ayako_Urabe-Mikoto_Nazo-no-Kanojo-X.jpg");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent().unwrap()
+        .join("test_images")
+        .join("Yoshitani-Ayako_Urabe-Mikoto_Nazo-no-Kanojo-X.jpg");
+    let path = path.as_path();
     if !path.exists() {
         println!("Test image not found, skipping");
         return;
@@ -46,8 +49,11 @@ fn test_decode_benchmark() {
 
 #[test]
 fn test_full_preprocess_benchmark() {
-    let path =
-        std::path::Path::new(r".\test_images\Yoshitani-Ayako_Urabe-Mikoto_Nazo-no-Kanojo-X.jpg");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent().unwrap()
+        .join("test_images")
+        .join("Yoshitani-Ayako_Urabe-Mikoto_Nazo-no-Kanojo-X.jpg");
+    let path = path.as_path();
     if !path.exists() {
         println!("Test image not found, skipping");
         return;
@@ -293,7 +299,17 @@ async fn test_vector_indexing_and_clip_inference() {
 #[tokio::test]
 async fn test_text_similarity_and_padding_behavior() {
     use curator_core::ipc::EmbeddingModel;
-    let model_dir = std::path::Path::new(r".curator\models");
+    // Resolve models dir from CURATOR_DATA_DIR env var or workspace-relative .curator/models.
+    // Run with: CURATOR_DATA_DIR=.curator cargo test -p curator-core test_text_similarity
+    let data_dir_env = std::env::var("CURATOR_DATA_DIR").ok();
+    let default_data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent().unwrap()
+        .join(".curator");
+    let model_dir = match &data_dir_env {
+        Some(p) => std::path::PathBuf::from(p).join("models"),
+        None => default_data_dir.join("models"),
+    };
+    let model_dir = model_dir.as_path();
 
     let model_manager = ModelManager::new(&model_dir, DevicePreference::Cpu);
     model_manager

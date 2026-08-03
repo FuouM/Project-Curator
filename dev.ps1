@@ -1,5 +1,5 @@
 # Launch Project Curator in dev mode
-. ".\env.ps1"
+. "$PSScriptRoot\env.ps1"
 
 # Stop any running service process so the exe isn't locked
 $procs = Get-Process curator-service -ErrorAction SilentlyContinue
@@ -11,7 +11,7 @@ if ($procs) {
 
 # Build the service first so it's always fresh
 Write-Host "Building curator-service..." -ForegroundColor Cyan
-cargo build --manifest-path ".\curator-service\Cargo.toml"
+cargo build --manifest-path "$PSScriptRoot\curator-service\Cargo.toml"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Service build failed!" -ForegroundColor Red
     exit 1
@@ -19,7 +19,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Service build OK." -ForegroundColor Green
 
 $prevDir = $PWD.Path
-Set-Location ".\curator-dashboard"
+Set-Location "$PSScriptRoot\curator-dashboard"
 try {
     npm run tauri dev
 } finally {

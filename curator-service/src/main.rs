@@ -1,5 +1,6 @@
 use anyhow::{Context, Error};
 use clap::Parser;
+use curator_core::constants::resolve_data_dir;
 use curator_core::db::init_db;
 use curator_core::detection::{CCIPModel, DetectionPipeline, YoloDetector};
 use curator_core::ipc::{Request, Response};
@@ -103,8 +104,9 @@ pub(crate) fn save_settings(data_dir: &Path, settings: &AppSettings) -> Result<(
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(short, long, default_value = ".curator")]
-    data_dir: String,
+    /// Path to the curator data directory. Defaults to `.curator` in the workspace root.
+    #[arg(short, long)]
+    data_dir: Option<String>,
 
     #[arg(long)]
     tagger_model_dir: Option<String>,
@@ -115,7 +117,10 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let args = Args::parse();
-    let data_dir = PathBuf::from(&args.data_dir);
+    let data_dir = match &args.data_dir {
+        Some(p) => PathBuf::from(p),
+        None => resolve_data_dir(),
+    };
     fs::create_dir_all(&data_dir)?;
 
     let log_file = std::fs::OpenOptions::new()

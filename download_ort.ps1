@@ -1,6 +1,6 @@
 $OrtVersion = "1.24.4"
 $DirectMLVersion = "1.15.4"
-$ProjectRoot = "."
+$ProjectRoot = $PSScriptRoot
 
 # --- ONNX Runtime (DirectML) ---
 $OrtUrl = "https://www.nuget.org/api/v2/package/Microsoft.ML.OnnxRuntime.DirectML/$OrtVersion"

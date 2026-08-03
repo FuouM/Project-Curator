@@ -59,7 +59,7 @@ async fn setup_large_db() -> (NamedTempFile, SqlitePool) {
     for i in 1..=5000 {
         let sha256 = format!("{:064x}", i);
         let phash = format!("{:016x}", lcg.next_u64());
-        let filepath = format!("C:/images/image_{}.jpg", i);
+        let filepath = format!("images/image_{}.jpg", i);
         let mtime = 1700000000 + i;
         let favorite = if i % 10 == 0 { 1 } else { 0 };
         sqlx::query("INSERT INTO images (sha256, phash, current_filepath, mtime, favorite, is_missing) VALUES (?, ?, ?, ?, ?, 0)")

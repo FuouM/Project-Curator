@@ -1,5 +1,6 @@
 use anyhow::{Context, Error};
 use clap::{Parser, Subcommand};
+use curator_core::constants::resolve_data_dir;
 use curator_core::ipc::{EmbeddingModel, ImageDetails, Request, Response};
 use std::fs;
 use std::path::PathBuf;
@@ -8,8 +9,9 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Command line client for Project Curator", long_about = None)]
 struct Cli {
-    #[arg(short, long, default_value = ".curator")]
-    data_dir: String,
+    /// Path to the curator data directory. Defaults to `.curator` in the workspace root.
+    #[arg(short, long)]
+    data_dir: Option<String>,
 
     #[command(subcommand)]
     command: Commands,
@@ -113,7 +115,10 @@ enum TagCommands {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let cli = Cli::parse();
-    let data_dir = PathBuf::from(&cli.data_dir);
+    let data_dir = match &cli.data_dir {
+        Some(p) => PathBuf::from(p),
+        None => resolve_data_dir(),
+    };
 
     // 1. Read Service Key from local data directory
     let key_file = data_dir.join("service.key");

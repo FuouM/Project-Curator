@@ -9,13 +9,18 @@ use curator_core::grpc::curator_client::CuratorClient;
 use tonic::transport::Channel;
 
 use curator_core::thumbnail::{ThumbnailCache, generate_thumbnail};
+use curator_core::constants::resolve_data_dir;
 
-// We will default to the standard curator data path
-const DEFAULT_DATA_DIR: &str = r".curator";
+/// Resolved once at first use; all functions reference this.
+static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+fn data_dir() -> &'static PathBuf {
+    DATA_DIR.get_or_init(resolve_data_dir)
+}
 
 fn log_dashboard_event(msg: &str) {
-    let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
-    let _ = fs::create_dir_all(&data_dir);
+    let data_dir = data_dir();
+    let _ = fs::create_dir_all(data_dir);
     let log_file = data_dir.join("dashboard.log");
 
     if let Ok(mut file) = fs::OpenOptions::new()
@@ -30,8 +35,8 @@ fn log_dashboard_event(msg: &str) {
 }
 
 fn spawn_service() {
-    let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
-    let _ = fs::create_dir_all(&data_dir);
+    let data_dir = data_dir();
+    let _ = fs::create_dir_all(data_dir);
     let stdout_log_path = data_dir.join("service_stdout.log");
 
     log_dashboard_event("Attempting to spawn curator-service...");
@@ -70,7 +75,7 @@ fn spawn_service() {
 
                     match Command::new(&candidate)
                         .arg("--data-dir")
-                        .arg(DEFAULT_DATA_DIR)
+                        .arg(data_dir)
                         .stdout(Stdio::from(log_file))
                         .stderr(Stdio::from(log_file_err))
                         .spawn()
@@ -233,8 +238,7 @@ fn read_last_n_bytes(path: &std::path::Path, max_bytes: usize) -> std::io::Resul
 
 #[tauri::command]
 async fn read_logs() -> Result<String, String> {
-    let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
-    let log_file = data_dir.join("dashboard.log");
+    let log_file = data_dir().join("dashboard.log");
     match read_last_n_bytes(&log_file, 128 * 1024) {
         Ok(content) => Ok(content),
         Err(e) => Err(format!("Failed to read log file: {:?}", e)),
@@ -243,8 +247,7 @@ async fn read_logs() -> Result<String, String> {
 
 #[tauri::command]
 async fn read_service_logs() -> Result<String, String> {
-    let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
-    let log_file = data_dir.join("service_stdout.log");
+    let log_file = data_dir().join("service_stdout.log");
     match read_last_n_bytes(&log_file, 128 * 1024) {
         Ok(content) => Ok(content),
         Err(e) => Err(format!("Failed to read service log file: {:?}", e)),
@@ -253,15 +256,13 @@ async fn read_service_logs() -> Result<String, String> {
 
 #[tauri::command]
 async fn clear_logs() -> Result<(), String> {
-    let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
-    let log_file = data_dir.join("dashboard.log");
+    let log_file = data_dir().join("dashboard.log");
     fs::write(&log_file, "").map_err(|e| format!("Failed to clear logs: {:?}", e))
 }
 
 #[tauri::command]
 async fn clear_service_logs() -> Result<(), String> {
-    let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
-    let log_file = data_dir.join("service_stdout.log");
+    let log_file = data_dir().join("service_stdout.log");
     fs::write(&log_file, "").map_err(|e| format!("Failed to clear service logs: {:?}", e))
 }
 
@@ -351,8 +352,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|_app| {
-            let data_dir = PathBuf::from(DEFAULT_DATA_DIR);
-            let _ = fs::create_dir_all(&data_dir);
+            let data_dir = data_dir();
+            let _ = fs::create_dir_all(data_dir);
             let log_file = data_dir.join("dashboard.log");
             let stdout_log = data_dir.join("service_stdout.log");
             let _ = fs::write(&log_file, "");

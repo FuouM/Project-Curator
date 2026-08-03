@@ -1,5 +1,5 @@
 # Local Rust Environment Setup for Project Curator
-$RootPath = "."
+$RootPath = $PSScriptRoot
 
 $env:RUSTUP_HOME = "$RootPath\.rust\.rustup"
 $env:CARGO_HOME = "$RootPath\.rust\.cargo"
