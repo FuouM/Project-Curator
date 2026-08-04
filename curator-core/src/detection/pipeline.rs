@@ -343,6 +343,45 @@ impl DetectionPipeline {
             .collect())
     }
 
+    /// Get stored detections for multiple images in one query, grouped by image.
+    pub async fn get_detections_batch(&self, image_ids: &[i64]) -> Result<Vec<DetectionResult>> {
+        if image_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let placeholders: Vec<String> = image_ids.iter().map(|_| "?".to_string()).collect();
+        let query = format!(
+            "SELECT id, image_id, x0, y0, x1, y1, confidence, ccip_embedding, identity_id FROM character_detections WHERE image_id IN ({})",
+            placeholders.join(", ")
+        );
+
+        let mut q = sqlx::query_as::<_, (i64, i64, i32, i32, i32, i32, f32, Option<Vec<u8>>, Option<i64>)>(&query);
+        for id in image_ids {
+            q = q.bind(*id);
+        }
+        let rows = q.fetch_all(&self.db).await?;
+
+        let mut dets_by_image: std::collections::BTreeMap<i64, Vec<StoredDetection>> = Default::default();
+        for (id, img_id, x0, y0, x1, y1, conf, emb, ident) in rows {
+            dets_by_image.entry(img_id).or_default().push(StoredDetection {
+                id,
+                image_id: img_id,
+                x0,
+                y0,
+                x1,
+                y1,
+                confidence: conf,
+                has_embedding: emb.is_some(),
+                identity_id: ident,
+            });
+        }
+
+        Ok(dets_by_image
+            .into_iter()
+            .map(|(image_id, detections)| DetectionResult { image_id, detections })
+            .collect())
+    }
+
     pub async fn assign_identity(
         &self,
         detection_id: i64,

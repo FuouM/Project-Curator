@@ -263,6 +263,10 @@ pub enum Request {
     GetCharacterDetections {
         image_id: i64,
     },
+    /// Get stored detections for multiple images in one round-trip.
+    GetCharacterDetectionsBatch {
+        image_ids: Vec<i64>,
+    },
     /// Get an on-the-fly crop thumbnail for a detection (webp bytes).
     GetDetectionCrop {
         detection_id: i64,

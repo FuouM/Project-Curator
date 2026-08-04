@@ -421,25 +421,13 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number) {
 
     // Execute fetches in parallel to keep database operations real-time
     const candidateImageIds = imageIds.slice(0, 100);
-    const results = await Promise.all(
-      candidateImageIds.map((imgId: number) => 
-        callService({ GetCharacterDetections: { image_id: imgId } })
-          .then(detResp => {
-            if ("CharacterDetectionsResult" in detResp) {
-              return detResp.CharacterDetectionsResult.detections.filter(
-                (d: CharacterDetection) => d.identity_id === identityId
-              );
-            }
-            return [];
-          })
-          .catch(() => [])
-      )
-    );
-
+    const batchResp = await callService({ GetCharacterDetectionsBatch: { image_ids: candidateImageIds } });
     const matchingDets: CharacterDetection[] = [];
-    for (const dets of results) {
-      for (const d of dets) {
-        matchingDets.push(d);
+    if ("DetectionBatchResult" in batchResp) {
+      for (const item of batchResp.DetectionBatchResult.results) {
+        for (const d of item.detections) {
+          if (d.identity_id === identityId) matchingDets.push(d);
+        }
       }
     }
 

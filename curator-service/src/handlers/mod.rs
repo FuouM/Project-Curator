@@ -844,6 +844,14 @@ pub async fn handle_request(
                 },
             }
         }
+        Request::GetCharacterDetectionsBatch { image_ids } => {
+            match detection.get_detections_batch(&image_ids).await {
+                Ok(results) => Response::DetectionBatchResult { results },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
         Request::GetDetectionCrop {
             detection_id,
             max_size,

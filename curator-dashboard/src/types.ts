@@ -49,6 +49,7 @@ export type RequestPayload =
   | { DetectCharacters: { image_id: number } }
   | { DetectCharactersBatch: { image_ids: number[] } }
   | { GetCharacterDetections: { image_id: number } }
+  | { GetCharacterDetectionsBatch: { image_ids: number[] } }
   | { GetDetectionCrop: { detection_id: number; max_size?: number } }
   | { GetDetectionCrops: { detection_ids: number[]; max_size?: number } }
   | { AssignCharacterIdentity: { detection_id: number; identity_id: number | null } }
