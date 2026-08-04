@@ -282,20 +282,38 @@ impl crate::pipeline::SystemNode for CCIPModel {
 pub(crate) fn preprocess_ccip(crop: &image::RgbImage, target_size: u32) -> Result<Array4<f32>> {
     let (w, h) = crop.dimensions();
     let s = target_size as usize;
+
+    // Bilinear resize to the square CLIP input (standard, not nearest-neighbour).
+    let mut resizer = fast_image_resize::Resizer::new();
+    let src = fast_image_resize::images::ImageRef::new(
+        w,
+        h,
+        crop.as_raw(),
+        fast_image_resize::PixelType::U8x3,
+    )?;
+    let mut dst = fast_image_resize::images::Image::from_vec_u8(
+        s as u32,
+        s as u32,
+        vec![0u8; s * s * 3],
+        fast_image_resize::PixelType::U8x3,
+    )?;
+    let opts = fast_image_resize::ResizeOptions::new().resize_alg(
+        fast_image_resize::ResizeAlg::Convolution(fast_image_resize::FilterType::Bilinear),
+    );
+    resizer.resize(&src, &mut dst, Some(&opts))?;
+    let data = dst.buffer();
+
     let mut tensor = Array4::<f32>::zeros((1, 3, s, s));
     let slice = tensor.as_slice_mut().unwrap();
 
-    let raw = crop.as_raw();
     for y in 0..s {
-        let src_y = (y as f32 * h as f32 / target_size as f32).min(h as f32 - 1.0);
         for x in 0..s {
-            let src_x = (x as f32 * w as f32 / target_size as f32).min(w as f32 - 1.0);
-            let src_idx = ((src_y as u32 * w + src_x as u32) * 3) as usize;
-
+            let si = (y * s + x) * 3;
+            let pix_idx = y * s + x;
             for c in 0..3usize {
-                let val = raw[src_idx + c] as f32 / 255.0;
+                let val = data[si + c] as f32 / 255.0;
                 let normalized = (val - CLIP_MEAN[c]) / CLIP_STD[c];
-                slice[c * s * s + y * s + x] = normalized;
+                slice[c * s * s + pix_idx] = normalized;
             }
         }
     }

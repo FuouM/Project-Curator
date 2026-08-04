@@ -1,108 +1,22 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
-/// Fast RGB decode: turbojpeg for JPEG, png crate for PNG, webp crate for WebP, image crate for others.
+/// Decode an image to flat RGB (U8x3) via the `image` crate.
 /// Returns `(rgb_pixels, width, height)`.
+///
+/// The `image` crate was benchmarked as the fastest *and* accurate decoder across
+/// every import format (JPEG/PNG/WebP/BMP/GIF/TIFF) in release builds, so it is the
+/// single canonical decode path rather than a per-format dispatch of
+/// turbojpeg/png/webp. Specialized decoders (e.g. turbojpeg, libwebp) are actually
+/// slower in release than the image crate's internal engines.
 pub fn decode_rgb(path: &Path) -> Result<(Vec<u8>, u32, u32)> {
-    let data = std::fs::read(path).with_context(|| format!("Cannot read image {:?}", path))?;
-    let is_jpeg = data.len() >= 2 && data[0] == 0xFF && data[1] == 0xD8;
-    let is_png = data.len() >= 8 && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10];
-    let is_webp = data.len() >= 12 && &data[0..4] == b"RIFF" && &data[8..12] == b"WEBP";
-
-    let (rgb_buf, width, height) = if is_jpeg {
-        let image = turbojpeg::decompress(&data, turbojpeg::PixelFormat::RGB)
-            .with_context(|| format!("turbojpeg decode failed for {:?}", path))?;
-        (image.pixels, image.width as u32, image.height as u32)
-    } else if is_png {
-        match decode_png_fast(&data, path) {
-            Ok(res) => res,
-            Err(_) => {
-                let img = image::open(path).with_context(|| format!("Cannot open PNG image {:?}", path))?;
-                let rgb = img.to_rgb8();
-                let (w, h) = rgb.dimensions();
-                (rgb.into_raw(), w, h)
-            }
-        }
-    } else if is_webp {
-        let decoder = webp::Decoder::new(&data);
-        let webp_img = decoder.decode()
-            .ok_or_else(|| anyhow::anyhow!("WebP decode failed for {:?}", path))?;
-        let (w, h) = (webp_img.width(), webp_img.height());
-        // The webp crate decodes to RGBA; the contract here is RGB (U8x3).
-        // Converting also drops the 33% extra alpha channel.
-        let rgba = webp_img.to_vec();
-        let rgb: Vec<u8> = rgba.chunks_exact(4).flat_map(|c| [c[0], c[1], c[2]]).collect();
-        (rgb, w, h)
-    } else {
-        let img = image::open(path).with_context(|| format!("Cannot open image {:?}", path))?;
-        let rgb = img.to_rgb8();
-        let (w, h) = rgb.dimensions();
-        (rgb.into_raw(), w, h)
-    };
-
-    Ok((rgb_buf, width, height))
-}
-
-fn decode_png_fast(data: &[u8], path: &Path) -> Result<(Vec<u8>, u32, u32)> {
-    let mut decoder = png::Decoder::new(std::io::Cursor::new(data));
-    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
-    let mut reader = decoder.read_info()
-        .with_context(|| format!("png decode header failed for {:?}", path))?;
-    let w = reader.info().width;
-    let h = reader.info().height;
-    let buf_size = w as usize * h as usize * 4;
-    let mut raw = vec![0u8; buf_size];
-    let out_info = reader.next_frame(&mut raw)
-        .with_context(|| format!("png decode failed for {:?}", path))?;
-    let pixels = out_info.buffer_size();
-
-    match out_info.color_type {
-        png::ColorType::Rgb => {
-            let expected_len = w as usize * h as usize * 3;
-            if pixels < expected_len {
-                anyhow::bail!("PNG RGB buffer too small: expected {}, got {}", expected_len, pixels);
-            }
-            let mut rgb = vec![0u8; expected_len];
-            rgb.copy_from_slice(&raw[..expected_len]);
-            Ok((rgb, w, h))
-        }
-        png::ColorType::Rgba => {
-            let expected_pixels = w as usize * h as usize * 4;
-            if pixels < expected_pixels {
-                anyhow::bail!("PNG RGBA buffer too small: expected {}, got {}", expected_pixels, pixels);
-            }
-            let rgb: Vec<u8> = raw[..expected_pixels]
-                .chunks_exact(4)
-                .flat_map(|c| [c[0], c[1], c[2]])
-                .collect();
-            Ok((rgb, w, h))
-        }
-        png::ColorType::Grayscale => {
-            let expected_pixels = w as usize * h as usize;
-            if pixels < expected_pixels {
-                anyhow::bail!("PNG Grayscale buffer too small: expected {}, got {}", expected_pixels, pixels);
-            }
-            let rgb: Vec<u8> = raw[..expected_pixels]
-                .iter()
-                .flat_map(|&g| [g, g, g])
-                .collect();
-            Ok((rgb, w, h))
-        }
-        png::ColorType::GrayscaleAlpha => {
-            let expected_pixels = w as usize * h as usize * 2;
-            if pixels < expected_pixels {
-                anyhow::bail!("PNG GrayscaleAlpha buffer too small: expected {}, got {}", expected_pixels, pixels);
-            }
-            let rgb: Vec<u8> = raw[..expected_pixels]
-                .chunks_exact(2)
-                .flat_map(|c| [c[0], c[0], c[0]])
-                .collect();
-            Ok((rgb, w, h))
-        }
-        _ => {
-            anyhow::bail!("Unsupported PNG color type {:?}", out_info.color_type);
-        }
-    }
+    let start = std::time::Instant::now();
+    let img = image::open(path).with_context(|| format!("Cannot open image {:?}", path))?;
+    let rgb = img.to_rgb8();
+    let (width, height) = rgb.dimensions();
+    let pixels = rgb.into_raw();
+    tracing::trace!("decode_rgb({:?}) {:?}", path, start.elapsed());
+    Ok((pixels, width, height))
 }
 
 /// Decode + center-crop to square + SIMD resize to target_size.

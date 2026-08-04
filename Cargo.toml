@@ -44,6 +44,49 @@ opt-level = 3
 [profile.dev.package."turbojpeg-sys"]
 opt-level = 3
 
+# The `image` crate dispatches to these decoder crates internally. They are the hot
+# paths (zune-jpeg, image-webp, gif, png inflate, tiff) and must be opt-level 3 so
+# dev-mode decoding reaches release-class speeds. Without this, dev thumbnails/
+# previews are 10-47x slower and the benchmark winners flip to the native backends.
+[profile.dev.package."zune-jpeg"]
+opt-level = 3
+
+[profile.dev.package."zune-core"]
+opt-level = 3
+
+[profile.dev.package."image-webp"]
+opt-level = 3
+
+[profile.dev.package."gif"]
+opt-level = 3
+
+[profile.dev.package."weezl"]
+opt-level = 3
+
+[profile.dev.package."tiff"]
+opt-level = 3
+
+[profile.dev.package."fax"]
+opt-level = 3
+
+[profile.dev.package."exr"]
+opt-level = 3
+
+[profile.dev.package."flate2"]
+opt-level = 3
+
+[profile.dev.package."miniz_oxide"]
+opt-level = 3
+
+[profile.dev.package."zlib-rs"]
+opt-level = 3
+
+[profile.dev.package."fdeflate"]
+opt-level = 3
+
+[profile.dev.package."crc32fast"]
+opt-level = 3
+
 [profile.dev.package."ndarray"]
 opt-level = 3
 

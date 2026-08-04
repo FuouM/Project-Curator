@@ -169,18 +169,37 @@ pub(crate) fn preprocess_yolo(
         }
     }
 
-    let raw = image.as_raw();
-    for y in 0..new_h {
-        let src_y = ((y as f32 / scale).round() as u32).min(h - 1);
-        for x in 0..new_w {
-            let src_x = ((x as f32 / scale).round() as u32).min(w - 1);
-            let src_idx = ((src_y * w + src_x) * 3) as usize;
-            let dst_y = (pad_y + y) as usize;
-            let dst_x = (pad_x + x) as usize;
+    // Fit-to-640 bilinear resize (standard YOLO letterbox, not nearest-neighbour),
+    // then copy into the padded tensor. fast_image_resize is ~24x faster than the
+    // legacy image-crate Triangle filter and far more accurate than hand-rolled
+    // source picking.
+    let mut resizer = fast_image_resize::Resizer::new();
+    let src = fast_image_resize::images::ImageRef::new(
+        w,
+        h,
+        image.as_raw(),
+        fast_image_resize::PixelType::U8x3,
+    )?;
+    let mut dst = fast_image_resize::images::Image::from_vec_u8(
+        new_w,
+        new_h,
+        vec![0u8; (new_w * new_h * 3) as usize],
+        fast_image_resize::PixelType::U8x3,
+    )?;
+    let opts = fast_image_resize::ResizeOptions::new().resize_alg(
+        fast_image_resize::ResizeAlg::Convolution(fast_image_resize::FilterType::Bilinear),
+    );
+    resizer.resize(&src, &mut dst, Some(&opts))?;
+    let data = dst.buffer();
 
-            slice[dst_y * s + dst_x] = raw[src_idx] as f32 / 255.0;
-            slice[1 * s * s + dst_y * s + dst_x] = raw[src_idx + 1] as f32 / 255.0;
-            slice[2 * s * s + dst_y * s + dst_x] = raw[src_idx + 2] as f32 / 255.0;
+    for y in 0..new_h {
+        let dst_y = (pad_y + y) as usize;
+        for x in 0..new_w {
+            let src_idx = ((y * new_w + x) * 3) as usize;
+            let dst_x = (pad_x + x) as usize;
+            slice[dst_y * s + dst_x] = data[src_idx] as f32 / 255.0;
+            slice[1 * s * s + dst_y * s + dst_x] = data[src_idx + 1] as f32 / 255.0;
+            slice[2 * s * s + dst_y * s + dst_x] = data[src_idx + 2] as f32 / 255.0;
         }
     }
 
