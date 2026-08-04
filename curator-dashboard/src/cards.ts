@@ -230,6 +230,7 @@ export function renderParsedMetadataHtml(meta: ParsedMetadata): SafeHtml {
 // --- Event Delegation (one listener per grid, not per card) ---
 
 export function setupGridDelegation(grid: HTMLElement) {
+  grid.addEventListener("mousedown", trackOcrMouseDown);
   grid.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
     const card = target.closest(".image-card") as HTMLElement;
@@ -265,7 +266,7 @@ export function setupGridDelegation(grid: HTMLElement) {
       } else if (action === "find-similar") {
         findSimilar(fp);
       } else if (action === "toggle-ocr") {
-        actionBtn.classList.toggle("expanded");
+        toggleOcrIfClick(actionBtn, e);
       }
       return;
     }
@@ -355,7 +356,8 @@ export function attachCardEventHandlers(
       return;
     }
     if (target.closest("[data-action='toggle-ocr']")) {
-      (e.target as HTMLElement).classList.toggle("expanded");
+      const block = target.closest("[data-action='toggle-ocr']") as HTMLElement;
+      toggleOcrIfClick(block, e as MouseEvent);
       return;
     }
     if (target.closest(".image-preview")) {
@@ -367,8 +369,32 @@ export function attachCardEventHandlers(
       return;
     }
   };
+  container.addEventListener("mousedown", trackOcrMouseDown);
   container.addEventListener("click", handler);
-  return () => container.removeEventListener("click", handler);
+  return () => {
+    container.removeEventListener("click", handler);
+    container.removeEventListener("mousedown", trackOcrMouseDown);
+  };
+}
+
+// OCR-block expand/collapse guard: a drag (text selection) must not collapse an
+// expanded block; only a stationary single click toggles it.
+const OCR_DRAG_PX = 5;
+const ocrDownPos = new WeakMap<HTMLElement, { x: number; y: number }>();
+
+function trackOcrMouseDown(e: globalThis.MouseEvent) {
+  const block = (e.target as HTMLElement).closest("[data-action='toggle-ocr']") as HTMLElement | null;
+  if (block) ocrDownPos.set(block, { x: e.clientX, y: e.clientY });
+}
+
+function toggleOcrIfClick(block: HTMLElement, e: globalThis.MouseEvent) {
+  const start = ocrDownPos.get(block);
+  if (start) {
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (dx * dx + dy * dy >= OCR_DRAG_PX * OCR_DRAG_PX) return; // dragged -> selection, keep expanded
+  }
+  block.classList.toggle("expanded");
 }
 
 function handleStarClick(card: HTMLElement, imageId: number) {
