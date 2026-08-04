@@ -959,6 +959,14 @@ pub async fn handle_request(
                 },
             }
         }
+        Request::SearchByCharacterBatch { identity_ids } => {
+            match detection.search_by_character_batch(&identity_ids).await {
+                Ok(results) => Response::CharacterSearchBatchResult { results },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
         Request::ListUnassignedDetections => {
             match detection.list_unassigned_detections().await {
                 Ok(detections) => Response::UnassignedDetectionsList { detections },

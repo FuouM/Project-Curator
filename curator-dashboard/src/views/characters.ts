@@ -280,6 +280,21 @@ export async function refreshCharacters(focusedIdentityId?: number) {
     // Sort identities alphabetically, keeping placeholders at the bottom
     identities.sort(compareIdentities);
 
+    // Batch-resolve image sets for all real identities up front (one round-trip)
+    // so per-card sample loading never re-queries SearchByCharacter.
+    const identityImageIds = new Map<number, number[]>();
+    const realIdentityIds = identities
+      .filter((i: CharacterIdentity) => !isPlaceholderName(i.name) && i.detection_count > 0)
+      .map((i: CharacterIdentity) => i.id);
+    if (realIdentityIds.length > 0) {
+      const searchResp = await callService({ SearchByCharacterBatch: { identity_ids: realIdentityIds } });
+      if ("CharacterSearchBatchResult" in searchResp) {
+        for (const entry of searchResp.CharacterSearchBatchResult.results) {
+          identityImageIds.set(entry.identity_id, entry.image_ids);
+        }
+      }
+    }
+
     container.innerHTML = "";
 
     // Unassigned detections section
@@ -363,8 +378,9 @@ export async function refreshCharacters(focusedIdentityId?: number) {
 
       // Load sample crop thumbnails dynamically after cards are rendered
       const idVal = identity.id;
+      const preFetchedIds = identityImageIds.get(idVal);
       setTimeout(() => {
-        loadIdentitySampleCrops(card, idVal);
+        loadIdentitySampleCrops(card, idVal, preFetchedIds);
       }, 50);
 
       // Find All
@@ -409,14 +425,19 @@ export async function refreshCharacters(focusedIdentityId?: number) {
   }
 }
 
-async function loadIdentitySampleCrops(card: HTMLElement, identityId: number) {
+async function loadIdentitySampleCrops(card: HTMLElement, identityId: number, preFetchedImageIds?: number[]) {
   const cropsContainer = card.querySelector(".identity-sample-crops") as HTMLElement;
   if (!cropsContainer) return;
 
   try {
-    const resp = await callService({ SearchByCharacter: { identity_id: identityId } });
-    if (!("CharacterSearchResult" in resp)) return;
-    const imageIds = resp.CharacterSearchResult.image_ids;
+    let imageIds: number[];
+    if (preFetchedImageIds) {
+      imageIds = preFetchedImageIds;
+    } else {
+      const resp = await callService({ SearchByCharacter: { identity_id: identityId } });
+      if (!("CharacterSearchResult" in resp)) return;
+      imageIds = resp.CharacterSearchResult.image_ids;
+    }
     if (imageIds.length === 0) return;
 
     // Execute fetches in parallel to keep database operations real-time

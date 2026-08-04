@@ -59,6 +59,7 @@ export type RequestPayload =
   | { ListCharacterIdentities: null }
   | { ReidentifyAllDetections: null }
   | { SearchByCharacter: { identity_id: number } }
+  | { SearchByCharacterBatch: { identity_ids: number[] } }
   | { ListUnassignedDetections: null }
   | { DeleteDetection: { detection_id: number } }
   | { UpdateDetectionBoundingBox: { detection_id: number; x0: number; y0: number; x1: number; y1: number } }
@@ -240,6 +241,7 @@ export type ResponsePayload =
   | { CharacterIdentitiesList: { identities: CharacterIdentity[] } }
   | { ReidentifyResult: { total_detections: number; matched: number; unmatched: number } }
   | { CharacterSearchResult: { image_ids: number[] } }
+  | { CharacterSearchBatchResult: { results: CharacterSearchEntry[] } }
   | { UnassignedDetectionsList: { detections: CharacterDetection[] } }
   | { DetectionBenchmarkResult: {
       yolo_cpu_time_ms: number | null;
@@ -299,6 +301,11 @@ export interface CharacterDetection {
 export interface DetectionCropEntry {
   detection_id: number;
   crop_webp_bytes: number[];
+}
+
+export interface CharacterSearchEntry {
+  identity_id: number;
+  image_ids: number[];
 }
 
 export interface CharacterIdentity {

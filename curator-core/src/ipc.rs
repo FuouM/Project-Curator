@@ -303,6 +303,10 @@ pub enum Request {
     SearchByCharacter {
         identity_id: i64,
     },
+    /// Search for all images containing multiple character identities in one round-trip.
+    SearchByCharacterBatch {
+        identity_ids: Vec<i64>,
+    },
     /// List all unassigned detections (identity_id IS NULL).
     ListUnassignedDetections,
     /// Delete a single detection by ID.
@@ -627,6 +631,10 @@ pub enum Response {
     /// Result of searching by character.
     CharacterSearchResult {
         image_ids: Vec<i64>,
+    },
+    /// Result of searching by character across multiple identities.
+    CharacterSearchBatchResult {
+        results: Vec<crate::detection::CharacterSearchEntry>,
     },
     /// List of unassigned detections.
     UnassignedDetectionsList {

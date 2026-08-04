@@ -29,6 +29,12 @@ pub struct DetectionCropEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharacterSearchEntry {
+    pub identity_id: i64,
+    pub image_ids: Vec<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterIdentity {
     pub id: i64,
     pub name: String,

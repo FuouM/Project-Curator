@@ -844,6 +844,35 @@ impl DetectionPipeline {
         Ok(rows.into_iter().map(|(id,)| id).collect())
     }
 
+    /// Search for all images containing multiple character identities in one query.
+    pub async fn search_by_character_batch(&self, identity_ids: &[i64]) -> Result<Vec<CharacterSearchEntry>> {
+        if identity_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let placeholders: Vec<String> = identity_ids.iter().map(|_| "?".to_string()).collect();
+        let query = format!(
+            "SELECT DISTINCT image_id, identity_id FROM character_detections WHERE identity_id IN ({})",
+            placeholders.join(", ")
+        );
+
+        let mut q = sqlx::query_as::<_, (i64, i64)>(&query);
+        for id in identity_ids {
+            q = q.bind(*id);
+        }
+        let rows = q.fetch_all(&self.db).await?;
+
+        let mut images_by_identity: std::collections::BTreeMap<i64, Vec<i64>> = Default::default();
+        for (image_id, identity_id) in rows {
+            images_by_identity.entry(identity_id).or_default().push(image_id);
+        }
+
+        Ok(images_by_identity
+            .into_iter()
+            .map(|(identity_id, image_ids)| CharacterSearchEntry { identity_id, image_ids })
+            .collect())
+    }
+
     /// Get all unassigned detections (identity_id IS NULL) with full details.
     pub async fn list_unassigned_detections(&self) -> Result<Vec<StoredDetection>> {
         let rows: Vec<(i64, i64, i32, i32, i32, i32, f32, Option<Vec<u8>>, Option<i64>)> =
