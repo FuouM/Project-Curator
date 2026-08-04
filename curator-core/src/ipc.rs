@@ -100,6 +100,8 @@ pub enum Request {
     },
     /// Purge cached thumbnails for images that no longer exist on disk.
     PurgeMissingThumbnails,
+    /// Clear the entire thumbnail cache, forcing regeneration on demand.
+    ClearThumbnailCache,
     ValidatePlugin {
         manifest_path: String,
     },
@@ -439,6 +441,9 @@ pub enum Response {
         is_missing: bool,
     },
     PurgeResult {
+        deleted_count: i64,
+    },
+    ClearThumbnailCacheResult {
         deleted_count: i64,
     },
     SearchResult {

@@ -717,6 +717,11 @@ pub async fn purge_missing_thumbnails_logic(
     Ok(deleted as i64)
 }
 
+pub async fn clear_thumbnails_logic(cache: &ThumbnailCache) -> Result<i64> {
+    let deleted = cache.clear().await?;
+    Ok(deleted as i64)
+}
+
 pub async fn get_featured_image(db: &SqlitePool, data_dir: &Path) -> Option<ImageDetails> {
     let today_str = {
         let secs = std::time::SystemTime::now()

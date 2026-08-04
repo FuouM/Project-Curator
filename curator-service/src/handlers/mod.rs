@@ -360,6 +360,15 @@ pub async fn handle_request(
             }
         }
 
+        Request::ClearThumbnailCache => {
+            match image::clear_thumbnails_logic(thumbnail_cache).await {
+                Ok(deleted_count) => Response::ClearThumbnailCacheResult { deleted_count },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
         Request::GetImage { image_id } => match image::get_image_logic(image_id, db).await {
             Ok(image) => Response::ImageResult { image },
             Err(e) => Response::Error {

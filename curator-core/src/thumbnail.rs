@@ -125,6 +125,14 @@ impl ThumbnailCache {
         Ok(deleted)
     }
 
+    /// Delete every cached thumbnail row, returning the number of rows removed.
+    pub async fn clear(&self) -> Result<usize> {
+        let result = sqlx::query("DELETE FROM thumbnails").execute(&self.db).await?;
+        let deleted = result.rows_affected() as usize;
+        info!("Cleared all {} cached thumbnails", deleted);
+        Ok(deleted)
+    }
+
     pub async fn evict_lru(&self, count: usize) -> Result<usize> {
         let result = sqlx::query(
             "DELETE FROM thumbnails WHERE image_id IN (SELECT image_id FROM thumbnails ORDER BY created_at ASC LIMIT ?)",

@@ -2,6 +2,27 @@ import { callService } from "../ipc";
 import { setStatusMessage } from "../utils";
 
 export function setupMaintenanceButtons() {
+  // Clear entire thumbnail cache
+  const clearThumbBtn = document.getElementById("clear-thumbnail-cache-btn");
+  const clearThumbStatus = document.getElementById("clear-thumbnail-status-msg");
+  clearThumbBtn?.addEventListener("click", async () => {
+    if (!clearThumbStatus) return;
+    if (!confirm("Are you sure you want to clear the entire thumbnail cache? Thumbnails will be regenerated on demand.")) return;
+    setStatusMessage(clearThumbStatus, "Clearing thumbnail cache...", "loading");
+    clearThumbBtn.setAttribute("disabled", "true");
+    try {
+      const resp = await callService({ ClearThumbnailCache: null });
+      if ("ClearThumbnailCacheResult" in resp) {
+        setStatusMessage(clearThumbStatus, `Done! ${resp.ClearThumbnailCacheResult.deleted_count} cached thumbnail(s) removed.`, "success");
+      } else if ("Error" in resp) {
+        setStatusMessage(clearThumbStatus, "Failed: " + resp.Error.message, "error");
+      }
+    } catch (e: any) {
+      setStatusMessage(clearThumbStatus, "Error: " + (e.message || e), "error");
+    }
+    clearThumbBtn.removeAttribute("disabled");
+  });
+
   // Purge missing thumbnails
   const purgeBtn = document.getElementById("purge-missing-thumbs-btn");
   const purgeStatus = document.getElementById("purge-status-msg");

@@ -13,6 +13,7 @@ export type RequestPayload =
   | { GetImage: { image_id: number } }
   | { GetThumbnail: { image_id: number; width?: number } }
   | { PurgeMissingThumbnails: null }
+  | { ClearThumbnailCache: null }
   | { TagImage: { image_id: number; threshold: number | null; force: boolean | null } }
   | { TagImageBatch: { image_ids: number[]; threshold: number | null; force: boolean | null } }
   | { GetTaggerStatus: null }
@@ -199,6 +200,7 @@ export type ResponsePayload =
   | { ImportResult: { image_id: number; sha256: string; imported_count?: number; folder_id?: number | null } }
   | { ThumbnailResult: { data?: number[]; is_missing: boolean } }
   | { PurgeResult: { deleted_count: number } }
+  | { ClearThumbnailCacheResult: { deleted_count: number } }
   | { SearchResult: { matches: SearchMatch[] } }
   | { StatusResult: { image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number } }
   | { ImageResult: { image: ImageDetails } }

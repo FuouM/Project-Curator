@@ -431,8 +431,10 @@ export function renderSettingsHtml(): SafeHtml {
     <!-- Thumbnail Cache -->
     <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
       <div class="group-box-title">Thumbnail Cache</div>
-      <p style="font-size: 11px; color: #333333;">Purge cached thumbnails for images that are no longer present on disk.</p>
-      <div style="display: flex; align-items: center; gap: 8px;">
+      <p style="font-size: 11px; color: #333333;">Purge cached thumbnails for images that are no longer present on disk, or clear the entire thumbnail cache to force regeneration on demand.</p>
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <button class="win-button" id="clear-thumbnail-cache-btn"><i class="bi bi-trash"></i> Clear Thumbnail Cache</button>
+        <span id="clear-thumbnail-status-msg" style="font-size: 11px;"></span>
         <button class="win-button danger" id="purge-missing-thumbs-btn"><i class="bi bi-trash"></i> Purge Missing Thumbnails</button>
         <span id="purge-status-msg" style="font-size: 11px;"></span>
       </div>
