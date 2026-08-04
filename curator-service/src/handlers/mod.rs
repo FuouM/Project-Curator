@@ -861,6 +861,28 @@ pub async fn handle_request(
                 },
             }
         }
+        Request::GetDetectionCrops {
+            detection_ids,
+            max_size,
+        } => {
+            let _size = max_size.unwrap_or(128);
+            let mut crops = Vec::with_capacity(detection_ids.len());
+            for detection_id in detection_ids {
+                match detection.load_crop_jpeg(detection_id).await {
+                    Ok(Some(bytes)) => crops.push(curator_core::detection::DetectionCropEntry {
+                        detection_id,
+                        crop_webp_bytes: bytes,
+                    }),
+                    Ok(None) => {}
+                    Err(e) => {
+                        return Response::Error {
+                            message: e.to_string(),
+                        };
+                    }
+                }
+            }
+            Response::DetectionCropsResult { crops }
+        }
         Request::AssignCharacterIdentity {
             detection_id,
             identity_id,

@@ -23,6 +23,12 @@ pub struct StoredDetection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetectionCropEntry {
+    pub detection_id: i64,
+    pub crop_webp_bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterIdentity {
     pub id: i64,
     pub name: String,

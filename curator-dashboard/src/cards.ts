@@ -653,6 +653,8 @@ async function loadDetectionsForImage(imageId: number) {
       const identities: any[] = "CharacterIdentitiesList" in idResp ? idResp.CharacterIdentitiesList.identities : [];
       identities.sort(compareIdentitiesPlaceholderLast);
 
+      await preloadDetectionCrops(detections);
+
       for (const det of detections) {
         const detEl = renderDetectionRow(det, identities, imageId);
         list.appendChild(detEl);
@@ -665,6 +667,23 @@ async function loadDetectionsForImage(imageId: number) {
       empty.style.display = "block";
       empty.textContent = "Failed to load detections.";
     }
+  }
+}
+
+async function preloadDetectionCrops(detections: any[]) {
+  const uncached = detections.filter((d) => !cropCache.has(d.id));
+  if (uncached.length === 0) return;
+  const ids = uncached.map((d) => d.id);
+  try {
+    const resp = await callService({ GetDetectionCrops: { detection_ids: ids, max_size: 96 } });
+    if ("DetectionCropsResult" in resp) {
+      for (const entry of resp.DetectionCropsResult.crops) {
+        const blob = new Blob([new Uint8Array(entry.crop_webp_bytes)], { type: "image/webp" });
+        cacheCrop(entry.detection_id, URL.createObjectURL(blob));
+      }
+    }
+  } catch {
+    // individual rows fall back to their own lazy load
   }
 }
 

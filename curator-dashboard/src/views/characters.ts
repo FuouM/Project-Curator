@@ -133,42 +133,78 @@ export function attachIdentityAutocomplete(
   });
 }
 
+// Coalesces per-thumbnail GetDetectionCrop calls into a single batch IPC
+// round-trip. Elements needing the same detection id share one fetch result.
+const pendingCropElements = new Map<number, HTMLElement[]>();
+let cropFlushTimer: number | null = null;
+
+function setCropImage(el: HTMLElement, url: string) {
+  el.classList.remove("skeleton-pulse");
+  const existingImg = el.querySelector("img");
+  if (existingImg) {
+    existingImg.src = url;
+  } else {
+    const icon = el.querySelector(".bi-image");
+    if (icon) icon.remove();
+
+    const img = document.createElement("img");
+    img.src = url;
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:2px;";
+    el.prepend(img);
+  }
+}
+
+function enqueueCropLoad(el: HTMLElement, detectionId: number) {
+  let els = pendingCropElements.get(detectionId);
+  if (!els) {
+    els = [];
+    pendingCropElements.set(detectionId, els);
+  }
+  els.push(el);
+  if (cropFlushTimer === null) {
+    cropFlushTimer = window.setTimeout(() => { flushCropQueue(); }, 0);
+  }
+}
+
+async function flushCropQueue() {
+  cropFlushTimer = null;
+  if (pendingCropElements.size === 0) return;
+
+  const batch = Array.from(pendingCropElements.entries());
+  pendingCropElements.clear();
+  const ids = batch.map(([id]) => id);
+
+  try {
+    const resp = await callService({ GetDetectionCrops: { detection_ids: ids, max_size: 96 } });
+    if ("DetectionCropsResult" in resp) {
+      const byId = new Map<number, number[]>(resp.DetectionCropsResult.crops.map((c: any) => [c.detection_id, c.crop_webp_bytes]));
+      for (const [id, els] of batch) {
+        const bytes = byId.get(id);
+        if (!bytes) {
+          for (const el of els) el.classList.remove("skeleton-pulse");
+          continue;
+        }
+        const blob = new Blob([new Uint8Array(bytes)], { type: "image/webp" });
+        const url = URL.createObjectURL(blob);
+        setCachedCrop(id, url);
+        for (const el of els) setCropImage(el, url);
+      }
+    } else {
+      for (const [, els] of batch) for (const el of els) el.classList.remove("skeleton-pulse");
+    }
+  } catch {
+    for (const [, els] of batch) for (const el of els) el.classList.remove("skeleton-pulse");
+  }
+}
+
 function loadCropForElement(el: HTMLElement, detectionId: number) {
   el.classList.add("skeleton-pulse");
   const cachedUrl = getCachedCrop(detectionId);
-  
-  const setImage = (url: string) => {
-    el.classList.remove("skeleton-pulse");
-    const existingImg = el.querySelector("img");
-    if (existingImg) {
-      existingImg.src = url;
-    } else {
-      const icon = el.querySelector(".bi-image");
-      if (icon) icon.remove();
-
-      const img = document.createElement("img");
-      img.src = url;
-      img.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:2px;";
-      el.prepend(img);
-    }
-  };
-
   if (cachedUrl) {
-    setImage(cachedUrl);
+    setCropImage(el, cachedUrl);
     return;
   }
-
-  callService({ GetDetectionCrop: { detection_id: detectionId, max_size: 96 } }).then((cropResp: any) => {
-    if ("DetectionCropResult" in cropResp) {
-      const bytes = new Uint8Array(cropResp.DetectionCropResult.crop_webp_bytes);
-      const blob = new Blob([bytes], { type: "image/webp" });
-      const url = URL.createObjectURL(blob);
-      setCachedCrop(detectionId, url);
-      setImage(url);
-    }
-  }).catch(() => {
-    el.classList.remove("skeleton-pulse");
-  });
+  enqueueCropLoad(el, detectionId);
 }
 
 export function setupCharactersView() {

@@ -50,6 +50,7 @@ export type RequestPayload =
   | { DetectCharactersBatch: { image_ids: number[] } }
   | { GetCharacterDetections: { image_id: number } }
   | { GetDetectionCrop: { detection_id: number; max_size?: number } }
+  | { GetDetectionCrops: { detection_ids: number[]; max_size?: number } }
   | { AssignCharacterIdentity: { detection_id: number; identity_id: number | null } }
   | { CreateCharacterIdentity: { name: string | null } }
   | { RenameCharacterIdentity: { identity_id: number; name: string } }
@@ -234,6 +235,7 @@ export type ResponsePayload =
   | { AddDetectionResult: { detection: CharacterDetection } }
   | { IdentifyDetectionResult: { identity_id: number | null } }
   | { DetectionCropResult: { crop_webp_bytes: number[] } }
+  | { DetectionCropsResult: { crops: DetectionCropEntry[] } }
   | { CharacterIdentitiesList: { identities: CharacterIdentity[] } }
   | { ReidentifyResult: { total_detections: number; matched: number; unmatched: number } }
   | { CharacterSearchResult: { image_ids: number[] } }
@@ -291,6 +293,11 @@ export interface CharacterDetection {
   confidence: number;
   has_embedding: boolean;
   identity_id: number | null;
+}
+
+export interface DetectionCropEntry {
+  detection_id: number;
+  crop_webp_bytes: number[];
 }
 
 export interface CharacterIdentity {

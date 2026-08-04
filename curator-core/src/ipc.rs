@@ -268,6 +268,11 @@ pub enum Request {
         detection_id: i64,
         max_size: Option<u32>,
     },
+    /// Get on-the-fly crop thumbnails for multiple detections in one round-trip.
+    GetDetectionCrops {
+        detection_ids: Vec<i64>,
+        max_size: Option<u32>,
+    },
     /// Assign a detection to a character identity (or unassign if identity_id is null).
     AssignCharacterIdentity {
         detection_id: i64,
@@ -600,6 +605,10 @@ pub enum Response {
     /// On-the-fly crop thumbnail.
     DetectionCropResult {
         crop_webp_bytes: Vec<u8>,
+    },
+    /// Batch of on-the-fly crop thumbnails, keyed by detection id.
+    DetectionCropsResult {
+        crops: Vec<crate::detection::DetectionCropEntry>,
     },
     /// List of character identities.
     CharacterIdentitiesList {
