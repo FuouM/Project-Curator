@@ -10,6 +10,7 @@ import { openTagModal } from "./views/tags";
 import { findSimilar } from "./views/concepts";
 import { attachAutocomplete } from "./autocomplete";
 import { LruCache } from "./lru-cache";
+import { showErrorAlert } from "./alert";
 
 // --- Thumbnail Queue ---
 const MAX_CONCURRENT = 2;
@@ -747,10 +748,10 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
         import("./views/gallery").then(m => m.refreshGallery());
         import("./views/dashboard").then(m => m.refreshDashboard());
       } else if ("Error" in resp) {
-        alert("Failed to match: " + resp.Error.message);
+        showErrorAlert("Failed to match:\n" + resp.Error.message);
       }
     } catch (e: any) {
-      alert("Error trying to match identity: " + e.message);
+      showErrorAlert("Error trying to match identity:\n" + (e.message || e));
     } finally {
       matchBtn.disabled = false;
       matchBtn.innerHTML = '<i class="bi bi-person-check"></i>';

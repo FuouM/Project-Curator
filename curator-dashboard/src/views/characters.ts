@@ -4,6 +4,7 @@ import { CharacterIdentity, CharacterDetection } from "../types";
 import { getCachedCrop, setCachedCrop } from "../cards";
 import { openImageViewer } from "../image-viewer";
 import { attachAutocomplete } from "../autocomplete";
+import { showErrorAlert, showInfoAlert } from "../alert";
 
 interface SuggestionItem {
   name: string;
@@ -195,7 +196,7 @@ export function setupCharactersView() {
       const resp = await callService({ ReidentifyAllDetections: null });
       if ("ReidentifyResult" in resp) {
         const r = resp.ReidentifyResult;
-        alert(`Re-identification complete: ${r.matched} matched, ${r.unmatched} unmatched out of ${r.total_detections} total.`);
+        showInfoAlert(`Re-identification complete: ${r.matched} matched, ${r.unmatched} unmatched out of ${r.total_detections} total.`);
       }
       await refreshCharacters();
     } catch (e: any) {
@@ -336,7 +337,7 @@ export async function refreshCharacters(focusedIdentityId?: number) {
           const searchResp = await callService({ SearchByCharacter: { identity_id: identity.id } });
           if ("CharacterSearchResult" in searchResp) {
             const imageIds = searchResp.CharacterSearchResult.image_ids;
-            alert(`Found ${imageIds.length} images containing "${identity.name}".`);
+            showInfoAlert(`Found ${imageIds.length} images containing "${identity.name}".`);
           }
         } catch (e: any) {
           console.error("Search by character failed:", e);
@@ -430,7 +431,7 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number) {
             await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: null } });
             await refreshCharacters();
           } catch (err: any) {
-            alert("Failed to unassign sample: " + err.message);
+            showErrorAlert("Failed to unassign sample:\n" + err.message);
           }
         });
         thumb.appendChild(unassignBtn);
@@ -450,7 +451,7 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number) {
               openImageViewer(fp, det.image_id);
             }
           } catch (err: any) {
-            alert("Failed to open image: " + err.message);
+            showErrorAlert("Failed to open image:\n" + err.message);
           }
         });
         thumb.appendChild(openImgBtn);
@@ -475,7 +476,7 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number) {
               });
             }
           } catch (err: any) {
-            alert("Failed to open bounding box editor: " + err.message);
+            showErrorAlert("Failed to open bounding box editor:\n" + err.message);
           }
         });
         thumb.appendChild(editBtn);

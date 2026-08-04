@@ -2,6 +2,7 @@ import { callService } from "../ipc";
 import { logJS } from "../utils";
 import { maskPath } from "../components";
 import { renderTagListHtml, getTagPillHtml } from "../cards";
+import { showErrorAlert } from "../alert";
 
 export async function openTagModal(imgId: number, path: string) {
   const modal = document.getElementById("add-tag-modal");
@@ -150,10 +151,10 @@ async function removeTag(imgId: number, tagName: string) {
       await refreshModalTags(imgId);
       await refreshCardTags(imgId);
     } else if ("Error" in resp) {
-      alert("Failed to remove tag: " + resp.Error.message);
+      showErrorAlert("Failed to remove tag:\n" + resp.Error.message);
     }
   } catch (e: any) {
-    alert("Error calling tag removal: " + e.message);
+    showErrorAlert("Error calling tag removal:\n" + (e.message || e));
   }
 }
 
@@ -183,10 +184,10 @@ export function setupTags() {
         await refreshModalTags(imgId);
         await refreshCardTags(imgId);
       } else if ("Error" in resp) {
-        alert("Failed to add tag: " + resp.Error.message);
+        showErrorAlert("Failed to add tag:\n" + resp.Error.message);
       }
     } catch (e) {
-      alert("IPC Tag failed: " + e);
+      showErrorAlert("IPC Tag failed:\n" + e);
     }
   });
 
@@ -223,10 +224,10 @@ export function setupTags() {
             await refreshModalTags(imgId);
             await refreshCardTags(imgId);
           } else if ("Error" in resp) {
-            alert("Failed to un-blacklist tag: " + resp.Error.message);
+            showErrorAlert("Failed to un-blacklist tag:\n" + resp.Error.message);
           }
         } catch (e: any) {
-          alert("Error un-blacklisting tag: " + e.message);
+          showErrorAlert("Error un-blacklisting tag:\n" + (e.message || e));
         }
       }
     }

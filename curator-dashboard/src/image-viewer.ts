@@ -4,6 +4,7 @@ import { logJS } from "./utils";
 import { getImageClickAction } from "./state";
 import { callService } from "./ipc";
 import { estimateLabelWidth, getOcrTextSettings, placeLabelAvoidingOverlap, type PlacedLabel } from "./ocr-text";
+import { showErrorAlert } from "./alert";
 
 let currentViewerPath: string | null = null;
 let currentViewerImageId: number | null = null;
@@ -320,7 +321,7 @@ export function setupImageViewer() {
         await invoke("open_file_externally", { path: currentViewerPath });
       } catch (err: any) {
         logJS("open_file_externally error: " + (err?.message || String(err)));
-        alert("Failed to open file: " + (err?.message || err));
+        showErrorAlert("Failed to open file:\n" + (err?.message || err));
       }
     }
   });

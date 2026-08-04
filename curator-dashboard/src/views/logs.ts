@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { SafeHtml, html } from "../components";
 import { currentLogTab, setCurrentLogTab } from "../state";
+import { showErrorAlert } from "../alert";
 
 let fullLogLines: string[] = [];
 let linesShownCount = 200;
@@ -252,7 +253,7 @@ export async function clearLogsData() {
     logLineCache.clear();
     if (logDiv) logDiv.innerHTML = "";
   } catch (e) {
-    alert("Failed to clear logs: " + e);
+    showErrorAlert("Failed to clear logs:\n" + e);
   }
 }
 

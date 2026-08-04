@@ -1,5 +1,6 @@
 import { callService } from "./ipc";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { showErrorAlert } from "./alert";
 
 let currentDetId: number | null = null;
 let currentImageId: number | null = null;
@@ -311,7 +312,7 @@ function setupBBoxEvents() {
             closeBBoxEditor();
             if (onSaveCallback) onSaveCallback();
           } else if ("Error" in resp) {
-            alert("Failed to add bounding box: " + resp.Error.message);
+            showErrorAlert("Failed to add bounding box:\n" + resp.Error.message);
           }
         } else {
           const resp = await callService({
@@ -328,11 +329,11 @@ function setupBBoxEvents() {
             closeBBoxEditor();
             if (onSaveCallback) onSaveCallback();
           } else if ("Error" in resp) {
-            alert("Failed to save bounding box: " + resp.Error.message);
+            showErrorAlert("Failed to save bounding box:\n" + resp.Error.message);
           }
         }
       } catch (e: any) {
-        alert("Error saving bounding box: " + e.message);
+        showErrorAlert("Error saving bounding box:\n" + (e.message || e));
       }
     };
   }

@@ -2,6 +2,7 @@ import { callService } from "../ipc";
 import { SafeHtml, html } from "../components";
 import { TokenBlock, ParsedMetadata, BatchPreviewItem } from "../types";
 import { escapeHtml } from "../utils";
+import { showWarningAlert } from "../alert";
 
 let currentTokenBlocks: TokenBlock[] = [
   { token_type: "artist" },
@@ -129,12 +130,12 @@ export function setupFilenameParserView() {
       const parsed = JSON.parse(text);
       const blocks: TokenBlock[] = Array.isArray(parsed) ? parsed : (parsed.blocks || parsed);
       if (!Array.isArray(blocks) || blocks.length === 0) {
-        alert("Invalid block sequence: expected a non-empty JSON array.");
+        showWarningAlert("Invalid block sequence: expected a non-empty JSON array.");
         return;
       }
       for (const b of blocks) {
         if (!b.token_type) {
-          alert("Invalid block: missing 'token_type' field.");
+          showWarningAlert("Invalid block: missing 'token_type' field.");
           return;
         }
       }
@@ -143,7 +144,7 @@ export function setupFilenameParserView() {
       runSandboxTest();
       refreshBatchPreview();
     } catch {
-      alert("Invalid JSON. Expected a JSON array of token blocks.");
+      showWarningAlert("Invalid JSON. Expected a JSON array of token blocks.");
     }
   });
 

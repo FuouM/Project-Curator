@@ -1091,6 +1091,26 @@ export const SHOWCASE_COMPONENTS: Record<string, { name: string; description: st
     ]
   },
 
+  // ── Alert Dialog ──────────────────────────────────────────────────
+
+  alertDialog: {
+    name: "Alert Dialog",
+    description: "Centered modal alert with a copy button for the full message, used to surface errors and notices.",
+    variants: [
+      {
+        name: "Trigger Buttons",
+        render: () => html`
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <button type="button" class="win-button danger" data-action="show-alert-demo" data-alert-kind="error"><i class="bi bi-exclamation-octagon-fill"></i> Trigger Error Alert</button>
+            <button type="button" class="win-button" data-action="show-alert-demo" data-alert-kind="warning"><i class="bi bi-exclamation-triangle-fill"></i> Trigger Warning Alert</button>
+            <button type="button" class="win-button" data-action="show-alert-demo" data-alert-kind="info"><i class="bi bi-info-circle-fill"></i> Trigger Info Alert</button>
+            <button type="button" class="win-button" data-action="show-alert-demo" data-alert-kind="success"><i class="bi bi-check-circle-fill"></i> Trigger Success Alert</button>
+          </div>
+        `
+      }
+    ]
+  },
+
   // ── Image Viewer ──────────────────────────────────────────────────
 
   imageViewer: {

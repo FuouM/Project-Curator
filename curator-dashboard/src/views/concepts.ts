@@ -5,6 +5,7 @@ import { renderImages } from "../cards";
 import { refreshDashboard } from "./dashboard";
 import { loadSearchConceptsDropdown } from "./search";
 import { setupSelectionToolbar } from "../selection-toolbar";
+import { showErrorAlert, showSuccessAlert, showWarningAlert } from "../alert";
 
 export function setupInputClearButtons() {
   const inputs = document.querySelectorAll<HTMLInputElement>('.input-field.has-clear');
@@ -205,21 +206,21 @@ async function rescanConcept(conceptId: number) {
           btn.innerHTML = originalHtml;
         }
       }, 1200);
-      alert(`Rescan complete! Tagged ${resp.ConceptRescannedResult.tagged_count} matching image(s).`);
+      showSuccessAlert(`Rescan complete! Tagged ${resp.ConceptRescannedResult.tagged_count} matching image(s).`);
       refreshDashboard();
       if (document.getElementById("view-gallery")?.classList.contains("active")) {
         const { refreshGallery } = await import("./gallery");
         refreshGallery();
       }
     } else if ("Error" in resp) {
-      alert("Rescan failed: " + resp.Error.message);
+      showErrorAlert("Rescan failed:\n" + resp.Error.message);
       if (btn) {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
       }
     }
   } catch (e: any) {
-    alert("Error rescanning concept: " + e.message);
+    showErrorAlert("Error rescanning concept:\n" + (e.message || e));
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = originalHtml;
@@ -234,10 +235,10 @@ async function deleteConcept(conceptId: number) {
     if ("Success" in resp) {
       loadConceptsView();
     } else if ("Error" in resp) {
-      alert("Delete failed: " + resp.Error.message);
+      showErrorAlert("Delete failed:\n" + resp.Error.message);
     }
   } catch (e: any) {
-    alert("Error deleting concept: " + e.message);
+    showErrorAlert("Error deleting concept:\n" + (e.message || e));
   }
 }
 
@@ -306,11 +307,11 @@ async function removeConceptSample(conceptId: number, imageId: number) {
       refreshDashboard();
       loadSearchConceptsDropdown();
     } else if ("Error" in resp) {
-      alert("Failed to remove sample: " + resp.Error.message);
+      showErrorAlert("Failed to remove sample:\n" + resp.Error.message);
       await viewConceptSamples(conceptId, "", true);
     }
   } catch (e: any) {
-    alert("Error removing sample: " + (e.message || e));
+    showErrorAlert("Error removing sample:\n" + (e.message || e));
     await viewConceptSamples(conceptId, "", true);
   }
 }
@@ -464,14 +465,14 @@ export function setupConcepts() {
       : (idInput && idInput.value ? [parseInt(idInput.value)] : []);
 
     if (sampleIds.length === 0) {
-      alert("Please select at least 1 image to teach a concept.");
+      showWarningAlert("Please select at least 1 image to teach a concept.");
       return;
     }
 
     const isExisting = existingRadio?.checked ?? true;
     const name = (isExisting ? existingSelect.value : nameInput.value).trim();
     if (!name) {
-      alert("Please select an existing concept or enter a new concept name.");
+      showWarningAlert("Please select an existing concept or enter a new concept name.");
       return;
     }
 
@@ -526,11 +527,11 @@ export function setupConcepts() {
           loadSearchConceptsDropdown();
         }, 300);
       } else if ("Error" in resp) {
-        alert("Failed to teach concept: " + resp.Error.message);
+        showErrorAlert("Failed to teach concept:\n" + resp.Error.message);
         if (statusPanel) statusPanel.style.display = "none";
       }
     } catch (err: any) {
-      alert("Error teaching concept: " + (err.message || err));
+      showErrorAlert("Error teaching concept:\n" + (err.message || err));
       if (statusPanel) statusPanel.style.display = "none";
     } finally {
       if (submitBtn) submitBtn.disabled = false;
@@ -561,14 +562,14 @@ export function setupConcepts() {
     try {
       const resp = await callService({ CleanAutoConceptTags: { concept_id: null } });
       if ("AutoConceptTagsCleanedResult" in resp) {
-        alert(`Cleaned ${resp.AutoConceptTagsCleanedResult.cleaned_count} auto-generated concept tag(s) from non-sample images!`);
+        showSuccessAlert(`Cleaned ${resp.AutoConceptTagsCleanedResult.cleaned_count} auto-generated concept tag(s) from non-sample images!`);
         refreshDashboard();
         loadConceptsView();
       } else if ("Error" in resp) {
-        alert("Clean failed: " + resp.Error.message);
+        showErrorAlert("Clean failed:\n" + resp.Error.message);
       }
     } catch (e: any) {
-      alert("Error cleaning concept tags: " + (e.message || e));
+      showErrorAlert("Error cleaning concept tags:\n" + (e.message || e));
     } finally {
       if (btn) {
         btn.disabled = false;

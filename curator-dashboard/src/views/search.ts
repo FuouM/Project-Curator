@@ -5,6 +5,7 @@ import { renderSearchResults } from "../cards";
 import { setupInputClearButtons } from "./concepts";
 import { setupSelectionToolbar } from "../selection-toolbar";
 import { attachAutocomplete } from "../autocomplete";
+import { showErrorAlert } from "../alert";
 
 export async function loadSearchConceptsDropdown() {
   const select = document.getElementById("search-concept-select") as HTMLSelectElement;
@@ -139,11 +140,11 @@ export function setupSearch() {
         renderSearchResults(resp.SearchResult.matches);
       } else if ("Error" in resp) {
         if (grid) grid.innerHTML = `<p style="color: #ef4444; padding: 10px;">Search failed: ${resp.Error.message}</p>`;
-        alert("Search failed: " + resp.Error.message);
+        showErrorAlert("Search failed:\n" + resp.Error.message);
       }
     } catch (e: any) {
       if (grid) grid.innerHTML = `<p style="color: #ef4444; padding: 10px;">IPC Search failed: ${e.message || e}</p>`;
-      alert("IPC Search failed: " + e);
+      showErrorAlert("IPC Search failed:\n" + e);
     }
   });
 

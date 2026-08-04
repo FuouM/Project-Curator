@@ -1,4 +1,5 @@
 import { renderGroupBox, SHOWCASE_COMPONENTS } from "../components";
+import { showAlert } from "../alert";
 import { setupInputClearButtons } from "./concepts";
 
 const COLLAPSE_STATE_KEY = "curator-component-collapse-states";
@@ -96,6 +97,27 @@ export function refreshComponentStylesheet() {
   }
 
   setupInputClearButtons();
+  setupAlertDemoTriggers();
+}
+
+function setupAlertDemoTriggers() {
+  const container = document.getElementById("components-showcase-container");
+  if (!container) return;
+
+  container.querySelectorAll<HTMLButtonElement>('[data-action="show-alert-demo"]').forEach((btn) => {
+    if (btn.getAttribute("data-alert-bound")) return;
+    btn.setAttribute("data-alert-bound", "true");
+    btn.addEventListener("click", () => {
+      const kind = (btn.dataset.alertKind ?? "info") as "error" | "warning" | "info" | "success";
+      const previews: Record<string, string> = {
+        error: "Failed to index image 'vacation_photo.jpg'\n  Caused by: disk not accessible (error code 0x80070005)\n  ONNX Runtime: DirectML 1.24.4\n  File: D:\\Gallery\\2026\\vacation_photo.jpg",
+        warning: "Thumbnail cache misses are higher than expected (23 misses in the last scan).\n\nThis may slow down the gallery while images are re-cached.",
+        info: "A background service task has completed. 2 images were newly indexed.",
+        success: "Vector index rebuilt successfully. 1,234 images are now searchable.",
+      };
+      showAlert({ kind, title: kind.charAt(0).toUpperCase() + kind.slice(1), message: previews[kind] ?? previews.info });
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------

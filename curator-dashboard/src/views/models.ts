@@ -1,6 +1,7 @@
 import { callService } from "../ipc";
 import { ModelStatusInfo, DownloadProgress } from "../types";
 import { SafeHtml, html } from "../components";
+import { showErrorAlert, showInfoAlert } from "../alert";
 
 let pollInterval: number | null = null;
 
@@ -260,11 +261,11 @@ async function downloadModel(modelId: string) {
           el.innerHTML = `<div style="font-size: 11px; font-weight: bold;"><i class="bi bi-arrow-repeat spin"></i> Starting download...</div>`;
         }
       } else {
-        alert("Failed to start download: " + resp.ModelActionResult.message);
+        showErrorAlert("Failed to start download:\n" + resp.ModelActionResult.message);
       }
     }
   } catch (e: any) {
-    alert("Error: " + (e.message || e));
+    showErrorAlert("Error:\n" + (e.message || e));
   }
 }
 
@@ -275,11 +276,11 @@ async function cancelDownload(modelId: string) {
       if (resp.ModelActionResult.success) {
         refreshModelStatus();
       } else {
-        alert("Failed to cancel download: " + resp.ModelActionResult.message);
+        showErrorAlert("Failed to cancel download:\n" + resp.ModelActionResult.message);
       }
     }
   } catch (e: any) {
-    alert("Error: " + (e.message || e));
+    showErrorAlert("Error:\n" + (e.message || e));
   }
 }
 
@@ -291,11 +292,11 @@ async function removeModel(modelId: string) {
   try {
     const resp = await callService({ RemoveModel: { model_id: modelId } });
     if ("ModelActionResult" in resp) {
-      alert(resp.ModelActionResult.message);
+      showInfoAlert(resp.ModelActionResult.message);
       refreshModelStatus();
     }
   } catch (e: any) {
-    alert("Error: " + (e.message || e));
+    showErrorAlert("Error:\n" + (e.message || e));
   }
 }
 
@@ -309,11 +310,11 @@ async function quantizeModel(modelId: string, format: string) {
   try {
     const resp = await callService({ QuantizeModel: { model_id: modelId, format } });
     if ("ModelActionResult" in resp) {
-      alert(resp.ModelActionResult.message);
+      showInfoAlert(resp.ModelActionResult.message);
       refreshModelStatus();
     }
   } catch (e: any) {
-    alert("Quantization failed: " + (e.message || e));
+    showErrorAlert("Quantization failed:\n" + (e.message || e));
     refreshModelStatus();
   }
 };
@@ -343,10 +344,10 @@ async function quantizeModel(modelId: string, format: string) {
     if ("SettingsResult" in saveResp) {
       refreshModelStatus();
     } else if ("Error" in saveResp) {
-      alert("Failed to update precision: " + saveResp.Error.message);
+      showErrorAlert("Failed to update precision:\n" + saveResp.Error.message);
     }
   } catch (e: any) {
-    alert("Error: " + (e.message || e));
+    showErrorAlert("Error:\n" + (e.message || e));
   }
 };
 

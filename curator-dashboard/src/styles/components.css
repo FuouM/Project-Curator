@@ -295,6 +295,88 @@
   border: 1px solid var(--sys-border-dark);
 }
 
+.alert-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.4);
+  z-index: var(--z-modal);
+  align-items: center;
+  justify-content: center;
+}
+.alert-modal.active {
+  display: flex;
+}
+.alert-modal-content {
+  background-color: var(--sys-control-bg);
+  border: 1px solid #7a7a7a;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  width: 480px;
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+.alert-modal-header {
+  background-color: #0078d7;
+  color: #ffffff;
+  padding: 6px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+.alert-modal.error .alert-modal-header { background-color: #a80000; }
+.alert-modal.warning .alert-modal-header { background-color: #794c00; }
+.alert-modal.success .alert-modal-header { background-color: #107c41; }
+.alert-modal-title {
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.alert-modal-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+.alert-modal-message {
+  background-color: var(--sys-window-bg);
+  color: var(--sys-window-text);
+  border: 1px solid var(--sys-border-dark);
+  padding: 8px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.alert-modal-footer {
+  padding: 12px 16px;
+  background-color: var(--sys-control-bg);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+.alert-modal-footer .win-button {
+  padding: 6px 14px;
+  min-height: 28px;
+  font-size: 11px;
+}
+.alert-modal-footer .win-button[data-alert-copy].copied {
+  color: #10b981;
+}
+
 .status-strip {
   background-color: var(--sys-status-bg);
   border-top: 1px solid var(--sys-border-dark);
