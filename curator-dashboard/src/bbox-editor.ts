@@ -309,8 +309,9 @@ function setupBBoxEvents() {
           });
 
           if ("AddDetectionResult" in resp || "Success" in resp) {
+            const cb = onSaveCallback;
             closeBBoxEditor();
-            if (onSaveCallback) onSaveCallback();
+            if (cb) cb();
           } else if ("Error" in resp) {
             showErrorAlert("Failed to add bounding box:\n" + resp.Error.message);
           }
@@ -326,8 +327,9 @@ function setupBBoxEvents() {
           });
 
           if ("Success" in resp) {
+            const cb = onSaveCallback;
             closeBBoxEditor();
-            if (onSaveCallback) onSaveCallback();
+            if (cb) cb();
           } else if ("Error" in resp) {
             showErrorAlert("Failed to save bounding box:\n" + resp.Error.message);
           }

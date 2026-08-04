@@ -33,6 +33,9 @@ export function invalidateThumbnailCache() {
 
 // --- Crop Cache (LRU, limited to 100 entries) ---
 const cropCache = new LruCache<string>(100);
+// Generation guard so stale async crop responses (started before an edit)
+// can never overwrite a freshly invalidated/refetched cache entry.
+const cropRevision = new Map<number, number>();
 
 function cacheCrop(detectionId: number, url: string) {
   cropCache.set(detectionId, url);
@@ -48,10 +51,12 @@ export function setCachedCrop(detectionId: number, url: string) {
 
 export function invalidateCropCache(detectionId: number) {
   cropCache.delete(detectionId);
+  cropRevision.set(detectionId, (cropRevision.get(detectionId) || 0) + 1);
 }
 
 export function clearAllCropCaches() {
   cropCache.clear();
+  cropRevision.clear();
 }
 
 interface ThumbJob {
@@ -674,10 +679,12 @@ async function preloadDetectionCrops(detections: any[]) {
   const uncached = detections.filter((d) => !cropCache.has(d.id));
   if (uncached.length === 0) return;
   const ids = uncached.map((d) => d.id);
+  const revs = new Map<number, number>(uncached.map((d) => [d.id, cropRevision.get(d.id) || 0]));
   try {
     const resp = await callService({ GetDetectionCrops: { detection_ids: ids, max_size: 96 } });
     if ("DetectionCropsResult" in resp) {
       for (const entry of resp.DetectionCropsResult.crops) {
+        if ((cropRevision.get(entry.detection_id) || 0) !== revs.get(entry.detection_id)) continue;
         const blob = new Blob([new Uint8Array(entry.crop_webp_bytes)], { type: "image/webp" });
         cacheCrop(entry.detection_id, URL.createObjectURL(blob));
       }
@@ -701,8 +708,10 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
     cropThumb.classList.remove("skeleton-pulse");
     cropThumb.innerHTML = `<img src="${cachedCropUrl}" style="width:100%;height:100%;object-fit:cover;" />`;
   } else {
+    const revAtStart = cropRevision.get(det.id) || 0;
     callService({ GetDetectionCrop: { detection_id: det.id, max_size: 96 } }).then((cropResp: any) => {
       if ("DetectionCropResult" in cropResp) {
+        if ((cropRevision.get(det.id) || 0) !== revAtStart) return;
         const bytes = new Uint8Array(cropResp.DetectionCropResult.crop_webp_bytes);
         const blob = new Blob([bytes], { type: "image/webp" });
         const url = URL.createObjectURL(blob);
@@ -850,9 +859,9 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
       if ("ImageResult" in imgResp) {
         const fp = imgResp.ImageResult.image.current_filepath;
         import("./bbox-editor").then(m => {
-          m.openBBoxEditor(det.id, imageId, fp, det.x0, det.y0, det.x1, det.y1, () => {
+          m.openBBoxEditor(det.id, imageId, fp, det.x0, det.y0, det.x1, det.y1, async () => {
             invalidateCropCache(det.id);
-            loadDetectionsForImage(imageId);
+            await loadDetectionsForImage(imageId);
             refreshCharacters();
             import("./views/gallery").then(m => m.refreshGallery());
             import("./views/dashboard").then(m => m.refreshDashboard());
