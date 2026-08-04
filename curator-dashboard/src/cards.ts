@@ -399,6 +399,19 @@ function ocrTextAttr(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function compareIdentitiesPlaceholderLast(a: { name: string }, b: { name: string }): number {
+  const aIsPlaceholder = /^Character \d+$/i.test(a.name.trim());
+  const bIsPlaceholder = /^Character \d+$/i.test(b.name.trim());
+  if (aIsPlaceholder && !bIsPlaceholder) return 1;
+  if (!aIsPlaceholder && bIsPlaceholder) return -1;
+  if (aIsPlaceholder && bIsPlaceholder) {
+    const an = parseInt(a.name.replace(/\D/g, ""), 10) || 0;
+    const bn = parseInt(b.name.replace(/\D/g, ""), 10) || 0;
+    return an - bn;
+  }
+  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+}
+
 function toggleOcrIfClick(block: HTMLElement, e: globalThis.MouseEvent) {
   const start = ocrDownPos.get(block);
   if (start) {
@@ -638,6 +651,7 @@ async function loadDetectionsForImage(imageId: number) {
 
       const idResp = await callService({ ListCharacterIdentities: null });
       const identities: any[] = "CharacterIdentitiesList" in idResp ? idResp.CharacterIdentitiesList.identities : [];
+      identities.sort(compareIdentitiesPlaceholderLast);
 
       for (const det of detections) {
         const detEl = renderDetectionRow(det, identities, imageId);
