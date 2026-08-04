@@ -351,6 +351,11 @@ pub enum Request {
     GetBenchmarkImages { limit: usize },
     /// Run CPU image processing and preprocessing on a single image.
     BenchmarkSingleImage { filepath: String },
+    /// Start a background batch benchmark across many filepaths, streaming
+    /// progress via GetImageProcessingBenchmarkProgress.
+    RunImageProcessingBenchmark { filepaths: Vec<String> },
+    /// Poll the current state of the background image processing benchmark.
+    GetImageProcessingBenchmarkProgress,
     /// Get a random image with its position index for "I'm Feeling Lucky".
     GetRandomImage,
 
@@ -671,6 +676,20 @@ pub enum Response {
     },
     /// Timing results for a single image.
     SingleImageBenchmarkResult {
+        decode_time_ms: f64,
+        thumbnail_time_ms: f64,
+        clip_preprocess_time_ms: f64,
+        tagger_preprocess_time_ms: f64,
+        yolo_preprocess_time_ms: f64,
+        ccip_extract_preprocess_time_ms: f64,
+        ocr_det_preprocess_time_ms: f64,
+        ocr_rec_preprocess_time_ms: f64,
+    },
+    /// Live progress of the running background image processing benchmark.
+    ImageProcessingBenchmarkProgress {
+        running: bool,
+        processed: usize,
+        total: usize,
         decode_time_ms: f64,
         thumbnail_time_ms: f64,
         clip_preprocess_time_ms: f64,

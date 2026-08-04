@@ -759,7 +759,13 @@ pub async fn run_single_image_benchmark(
     if !path.exists() {
         anyhow::bail!("Image file does not exist: {}", filepath);
     }
+    benchmark_image(model_manager, path).await
+}
 
+async fn benchmark_image(
+    model_manager: &ModelManager,
+    path: &std::path::Path,
+) -> Result<SingleImageBenchmarkResult> {
     let mut resizer = fast_image_resize::Resizer::new();
 
     // 1. Decode

@@ -40,6 +40,7 @@ struct ClientContext {
     thumbnail_cache: Arc<ThumbnailCache>,
     download_progress: handlers::models::DownloadProgressMap,
     cancel_tokens: handlers::models::CancelTokens,
+    benchmark_progress: handlers::BenchmarkProgressMap,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -320,6 +321,7 @@ async fn main() -> Result<(), Error> {
 
     let download_progress: handlers::models::DownloadProgressMap = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
     let cancel_tokens: handlers::models::CancelTokens = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+    let benchmark_progress: handlers::BenchmarkProgressMap = Arc::new(tokio::sync::Mutex::new(None));
 
     let service_impl = CuratorServiceImpl {
         ctx: Arc::new(ClientContext {
@@ -335,6 +337,7 @@ async fn main() -> Result<(), Error> {
             thumbnail_cache,
             download_progress,
             cancel_tokens,
+            benchmark_progress,
         }),
     };
 
@@ -386,6 +389,7 @@ impl Curator for CuratorServiceImpl {
             &self.ctx.thumbnail_cache,
             &self.ctx.download_progress,
             &self.ctx.cancel_tokens,
+            &self.ctx.benchmark_progress,
         )
         .await;
 

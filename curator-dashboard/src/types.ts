@@ -74,6 +74,8 @@ export type RequestPayload =
   | { RunMangaBubbleBenchmark: null }
   | { GetBenchmarkImages: { limit: number } }
   | { BenchmarkSingleImage: { filepath: string } }
+  | { RunImageProcessingBenchmark: { filepaths: string[] } }
+  | { GetImageProcessingBenchmarkProgress: null }
   | { GetRandomImage: null }
   | { GetModelStatus: null }
   | { DownloadModel: { model_id: string } }
@@ -271,6 +273,19 @@ export type ResponsePayload =
       filepaths: string[];
     } }
   | { SingleImageBenchmarkResult: {
+      decode_time_ms: number;
+      thumbnail_time_ms: number;
+      clip_preprocess_time_ms: number;
+      tagger_preprocess_time_ms: number;
+      yolo_preprocess_time_ms: number;
+      ccip_extract_preprocess_time_ms: number;
+      ocr_det_preprocess_time_ms: number;
+      ocr_rec_preprocess_time_ms: number;
+    } }
+  | { ImageProcessingBenchmarkProgress: {
+      running: boolean;
+      processed: number;
+      total: number;
       decode_time_ms: number;
       thumbnail_time_ms: number;
       clip_preprocess_time_ms: number;

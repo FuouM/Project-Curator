@@ -359,53 +359,70 @@ export function setupBenchmark() {
           throw new Error("No benchmark images found in the database.");
         }
 
-        let sumDecode = 0;
-        let sumThumb = 0;
-        let sumClip = 0;
-        let sumTagger = 0;
-        let sumYolo = 0;
-        let sumCcip = 0;
-        const startOverall = performance.now();
+        // Kick off the background benchmark across all fetched images at once,
+        // then poll per-image progress until it finishes.
+        const startResp = await callService({ RunImageProcessingBenchmark: { filepaths } });
+        if ("Error" in startResp) {
+          throw new Error(startResp.Error.message);
+        }
 
-        for (let i = 0; i < totalCount; i++) {
-          const path = filepaths[i];
-          runPipelineBtn.textContent = `Benchmarking (${i + 1}/${totalCount})...`;
+        let running = true;
+        let currentProcessed = 0;
 
-          const singleResp = await callService({ BenchmarkSingleImage: { filepath: path } });
-          if ("Error" in singleResp) {
-            console.error(`Error on image ${path}:`, singleResp.Error.message);
-            continue;
-          }
-          if (!("SingleImageBenchmarkResult" in singleResp)) {
-            continue;
-          }
-
-          const res = singleResp.SingleImageBenchmarkResult;
-          sumDecode += res.decode_time_ms;
-          sumThumb += res.thumbnail_time_ms;
-          sumClip += res.clip_preprocess_time_ms;
-          sumTagger += res.tagger_preprocess_time_ms;
-          sumYolo += res.yolo_preprocess_time_ms;
-          sumCcip += res.ccip_extract_preprocess_time_ms;
-
-          const currentProcessed = i + 1;
+        const applyProgress = (res: {
+          processed: number;
+          decode_time_ms: number;
+          thumbnail_time_ms: number;
+          clip_preprocess_time_ms: number;
+          tagger_preprocess_time_ms: number;
+          yolo_preprocess_time_ms: number;
+          ccip_extract_preprocess_time_ms: number;
+        }) => {
+          currentProcessed = res.processed || 0;
           if (pipelineCountEl) pipelineCountEl.textContent = `${currentProcessed} / ${totalCount}`;
 
           const formatMs = (sumMs: number) => {
-            const avg = sumMs / currentProcessed;
+            const avg = currentProcessed > 0 ? sumMs / currentProcessed : 0;
             return `${sumMs.toFixed(1)} ms (avg ${avg.toFixed(1)} ms/img)`;
           };
 
-          if (pipelineDecodeEl) pipelineDecodeEl.textContent = formatMs(sumDecode);
-          if (pipelineThumbEl) pipelineThumbEl.textContent = formatMs(sumThumb);
-          if (pipelineClipPrepEl) pipelineClipPrepEl.textContent = formatMs(sumClip);
-          if (pipelineTaggerPrepEl) pipelineTaggerPrepEl.textContent = formatMs(sumTagger);
-          if (pipelineYoloPrepEl) pipelineYoloPrepEl.textContent = formatMs(sumYolo);
-          if (pipelineCcipPrepEl) pipelineCcipPrepEl.textContent = formatMs(sumCcip);
+          if (pipelineDecodeEl) pipelineDecodeEl.textContent = formatMs(res.decode_time_ms);
+          if (pipelineThumbEl) pipelineThumbEl.textContent = formatMs(res.thumbnail_time_ms);
+          if (pipelineClipPrepEl) pipelineClipPrepEl.textContent = formatMs(res.clip_preprocess_time_ms);
+          if (pipelineTaggerPrepEl) pipelineTaggerPrepEl.textContent = formatMs(res.tagger_preprocess_time_ms);
+          if (pipelineYoloPrepEl) pipelineYoloPrepEl.textContent = formatMs(res.yolo_preprocess_time_ms);
+          if (pipelineCcipPrepEl) pipelineCcipPrepEl.textContent = formatMs(res.ccip_extract_preprocess_time_ms);
 
-          const overallElapsed = performance.now() - startOverall;
-          if (pipelineTotalEl) pipelineTotalEl.textContent = `${overallElapsed.toFixed(1)} ms (avg ${(overallElapsed / currentProcessed).toFixed(1)} ms/img)`;
+          // Total = sum of the actual per-step measurements (same source and
+          // denominator as the rows above), so it stays consistent rather than
+          // reflecting wall-clock/polling overhead.
+          const sumTotal =
+            res.decode_time_ms +
+            res.thumbnail_time_ms +
+            res.clip_preprocess_time_ms +
+            res.tagger_preprocess_time_ms +
+            res.yolo_preprocess_time_ms +
+            res.ccip_extract_preprocess_time_ms;
+          if (pipelineTotalEl) pipelineTotalEl.textContent = formatMs(sumTotal);
+        };
+
+        while (running) {
+          const progResp = await callService({ GetImageProcessingBenchmarkProgress: null });
+          if ("Error" in progResp) {
+            throw new Error(progResp.Error.message);
+          }
+          if (!("ImageProcessingBenchmarkProgress" in progResp)) {
+            throw new Error("Invalid progress response format.");
+          }
+          const prog = progResp.ImageProcessingBenchmarkProgress;
+          running = prog.running;
+          applyProgress(prog);
+          if (running) {
+            runPipelineBtn.textContent = `Benchmarking (${prog.processed}/${totalCount})...`;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
         }
+        runPipelineBtn.textContent = `Benchmarking (${totalCount}/${totalCount})...`;
       } catch (e: unknown) {
         const errMsg = e instanceof Error ? e.message : String(e);
         if (pipelineErrText) pipelineErrText.textContent = `Execution error: ${errMsg}`;

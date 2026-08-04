@@ -35,10 +35,30 @@ pub(crate) type ImageRow = (
     Option<String>,
 );
 
+/// Shared live state for a background image-processing benchmark running
+/// cross many images. `None` means no benchmark is currently running.
+#[derive(Clone, Default)]
+pub(crate) struct ImageProcessingBenchmarkProgress {
+    pub running: bool,
+    pub processed: usize,
+    pub total: usize,
+    pub decode_time_ms: f64,
+    pub thumbnail_time_ms: f64,
+    pub clip_preprocess_time_ms: f64,
+    pub tagger_preprocess_time_ms: f64,
+    pub yolo_preprocess_time_ms: f64,
+    pub ccip_extract_preprocess_time_ms: f64,
+    pub ocr_det_preprocess_time_ms: f64,
+    pub ocr_rec_preprocess_time_ms: f64,
+}
+
+pub(crate) type BenchmarkProgressMap =
+    Arc<tokio::sync::Mutex<Option<ImageProcessingBenchmarkProgress>>>;
+
 pub async fn handle_request(
     request: Request,
     db: &SqlitePool,
-    model_manager: &ModelManager,
+    model_manager: &Arc<ModelManager>,
     vector_index: &VectorIndex,
     tagger: &Arc<TaggerEngine>,
     detection: &Arc<DetectionPipeline>,
@@ -48,6 +68,7 @@ pub async fn handle_request(
     thumbnail_cache: &ThumbnailCache,
     download_progress: &models::DownloadProgressMap,
     cancel_tokens: &models::CancelTokens,
+    benchmark_progress: &BenchmarkProgressMap,
 ) -> Response {
     match request {
         Request::Ping => Response::Pong,
@@ -1352,6 +1373,92 @@ pub async fn handle_request(
                 Err(e) => Response::Error {
                     message: format!("Failed to benchmark image {:?}: {:?}", filepath, e),
                 },
+            }
+        }
+
+        Request::RunImageProcessingBenchmark { filepaths } => {
+            {
+                let mut slot = benchmark_progress.lock().await;
+                if let Some(p) = slot.as_ref() {
+                    if p.running {
+                        return Response::Error {
+                            message: "An image processing benchmark is already running.".to_string(),
+                        };
+                    }
+                }
+                *slot = Some(ImageProcessingBenchmarkProgress {
+                    running: true,
+                    total: filepaths.len(),
+                    ..Default::default()
+                });
+            }
+
+            let progress = benchmark_progress.clone();
+            let mm = model_manager.clone();
+            tokio::spawn(async move {
+                for (idx, filepath) in filepaths.iter().enumerate() {
+                    match curator_core::run_single_image_benchmark(&mm, filepath).await {
+                        Ok(res) => {
+                            let mut slot = progress.lock().await;
+                            if let Some(p) = slot.as_mut() {
+                                p.processed = idx + 1;
+                                p.decode_time_ms += res.decode_time_ms;
+                                p.thumbnail_time_ms += res.thumbnail_time_ms;
+                                p.clip_preprocess_time_ms += res.clip_preprocess_time_ms;
+                                p.tagger_preprocess_time_ms += res.tagger_preprocess_time_ms;
+                                p.yolo_preprocess_time_ms += res.yolo_preprocess_time_ms;
+                                p.ccip_extract_preprocess_time_ms += res.ccip_extract_preprocess_time_ms;
+                                p.ocr_det_preprocess_time_ms += res.ocr_det_preprocess_time_ms;
+                                p.ocr_rec_preprocess_time_ms += res.ocr_rec_preprocess_time_ms;
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Benchmark skipped {}: {:?}", filepath, e);
+                            let mut slot = progress.lock().await;
+                            if let Some(p) = slot.as_mut() {
+                                p.processed = idx + 1;
+                            }
+                        }
+                    }
+                }
+                let mut slot = progress.lock().await;
+                if let Some(p) = slot.as_mut() {
+                    p.running = false;
+                }
+            });
+
+            let snapshot = benchmark_progress.lock().await;
+            let p = snapshot.as_ref().cloned().unwrap_or_default();
+            Response::ImageProcessingBenchmarkProgress {
+                running: p.running,
+                processed: p.processed,
+                total: p.total,
+                decode_time_ms: p.decode_time_ms,
+                thumbnail_time_ms: p.thumbnail_time_ms,
+                clip_preprocess_time_ms: p.clip_preprocess_time_ms,
+                tagger_preprocess_time_ms: p.tagger_preprocess_time_ms,
+                yolo_preprocess_time_ms: p.yolo_preprocess_time_ms,
+                ccip_extract_preprocess_time_ms: p.ccip_extract_preprocess_time_ms,
+                ocr_det_preprocess_time_ms: p.ocr_det_preprocess_time_ms,
+                ocr_rec_preprocess_time_ms: p.ocr_rec_preprocess_time_ms,
+            }
+        }
+
+        Request::GetImageProcessingBenchmarkProgress => {
+            let snapshot = benchmark_progress.lock().await;
+            let p = snapshot.as_ref().cloned().unwrap_or_default();
+            Response::ImageProcessingBenchmarkProgress {
+                running: p.running,
+                processed: p.processed,
+                total: p.total,
+                decode_time_ms: p.decode_time_ms,
+                thumbnail_time_ms: p.thumbnail_time_ms,
+                clip_preprocess_time_ms: p.clip_preprocess_time_ms,
+                tagger_preprocess_time_ms: p.tagger_preprocess_time_ms,
+                yolo_preprocess_time_ms: p.yolo_preprocess_time_ms,
+                ccip_extract_preprocess_time_ms: p.ccip_extract_preprocess_time_ms,
+                ocr_det_preprocess_time_ms: p.ocr_det_preprocess_time_ms,
+                ocr_rec_preprocess_time_ms: p.ocr_rec_preprocess_time_ms,
             }
         }
 
