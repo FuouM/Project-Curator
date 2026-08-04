@@ -6,7 +6,8 @@ use tracing::info;
 
 use crate::image_decode::decode_rgb;
 
-const WEBP_QUALITY: f32 = 80.0;
+const WEBP_QUALITY: f32 = 75.0;
+const WEBP_METHOD: i32 = 2;
 const DEFAULT_MAX_ENTRIES: usize = 200_000;
 const EVICTION_CHECK_INTERVAL: u64 = 1000;
 
@@ -162,6 +163,57 @@ pub fn generate_thumbnail(source_path: &Path, target_width: u32) -> Result<Vec<u
     let target_height = (target_width as f64 * aspect).round() as u32;
     let target_height = target_height.max(1);
 
+    let mut rgb_buf = rgb_buf;
+    let mut width = width;
+    let mut height = height;
+
+    // Downscale is dominated by reading O(source) pixels (the default
+    // Convolution/Bilinear pass); for very large sources that dwarfs everything
+    // else. Cheaply pre-reduce with a Nearest subsample to <= 2x the target
+    // (O(2x target) pixels), then finish with a Bilinear pass (O(intermediate)).
+    // For small sources the intermediate degenerates to the source and this is a
+    // single Bilinear resize.
+    let inter_w = width.min(target_width * 2).max(1);
+    let inter_h = height.min(target_height * 2).max(1);
+
+    let mut resizer = fast_image_resize::Resizer::new();
+    let bilinear = fast_image_resize::ResizeOptions::new().resize_alg(
+        fast_image_resize::ResizeAlg::Convolution(fast_image_resize::FilterType::Bilinear),
+    );
+
+    if inter_w != width || inter_h != height {
+        let src_image = fast_image_resize::images::ImageRef::new(
+            width,
+            height,
+            &rgb_buf,
+            fast_image_resize::PixelType::U8x3,
+        )
+        .context("Failed to create source image ref for thumbnail pre-resize")?;
+
+        let mut mid_image = fast_image_resize::images::Image::from_vec_u8(
+            inter_w,
+            inter_h,
+            vec![0u8; (inter_w * inter_h * 3) as usize],
+            fast_image_resize::PixelType::U8x3,
+        )
+        .context("Failed to create intermediate image for thumbnail render")?;
+
+        resizer
+            .resize(
+                &src_image,
+                &mut mid_image,
+                Some(
+                    &fast_image_resize::ResizeOptions::new()
+                        .resize_alg(fast_image_resize::ResizeAlg::Nearest),
+                ),
+            )
+            .context("Failed to pre-resize image for thumbnail")?;
+
+        rgb_buf = mid_image.buffer_mut().to_vec();
+        width = inter_w;
+        height = inter_h;
+    }
+
     let src_image = fast_image_resize::images::ImageRef::new(
         width,
         height,
@@ -178,14 +230,18 @@ pub fn generate_thumbnail(source_path: &Path, target_width: u32) -> Result<Vec<u
     )
     .context("Failed to create destination image for thumbnail resize")?;
 
-    let mut resizer = fast_image_resize::Resizer::new();
-
     resizer
-        .resize(&src_image, &mut dst_image, None)
+        .resize(&src_image, &mut dst_image, Some(&bilinear))
         .context("Failed to resize image for thumbnail")?;
 
     let encoder = webp::Encoder::from_rgb(dst_image.buffer(), target_width, target_height);
-    let webp_memory = encoder.encode(WEBP_QUALITY);
+    let mut webp_config =
+        webp::WebPConfig::new().map_err(|_| anyhow::anyhow!("Failed to init WebP config"))?;
+    webp_config.quality = WEBP_QUALITY;
+    webp_config.method = WEBP_METHOD;
+    let webp_memory = encoder
+        .encode_advanced(&webp_config)
+        .map_err(|e| anyhow::anyhow!("Failed to encode WebP thumbnail: {e:?}"))?;
 
     Ok(webp_memory.to_vec())
 }
