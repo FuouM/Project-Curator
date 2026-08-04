@@ -1354,7 +1354,7 @@ export const SHOWCASE_COMPONENTS: Record<string, { name: string; description: st
 
   ocrTextBlock: {
     name: "OCR Text Block",
-    description: "Expandable monospace text block for displaying OCR-extracted text from images. Click to toggle between collapsed (5 lines) and expanded state.",
+    description: "Expandable monospace text block for displaying OCR-extracted text from images. Click to toggle between collapsed (5 lines) and expanded state; hover the file-earmark icon to reveal the copy button that copies the OCR text.",
     variants: [
       {
         name: "Collapsed & Expanded States",
@@ -1362,12 +1362,12 @@ export const SHOWCASE_COMPONENTS: Record<string, { name: string; description: st
           <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
             <div style="font-size: 11px; font-weight: 600; color: #555;">Collapsed (default)</div>
             <div class="ocr-block" style="position: static;">
-              <i class="bi bi-file-earmark-text ocr-icon"></i>
+              <i class="bi bi-file-earmark-text ocr-icon" title="Copy OCR text"></i>
               <span class="ocr-block-text">This is sample OCR extracted text from an image. It can contain multiple lines of text that were recognized by the optical character recognition engine. The text is displayed in a monospace font and is truncated when collapsed.</span>
             </div>
             <div style="font-size: 11px; font-weight: 600; color: #555;">Expanded state</div>
             <div class="ocr-block expanded" style="position: static;">
-              <i class="bi bi-file-earmark-text ocr-icon"></i>
+              <i class="bi bi-file-earmark-text ocr-icon" title="Copy OCR text"></i>
               <span class="ocr-block-text">This is sample OCR extracted text from an image. It can contain multiple lines of text that were recognized by the optical character recognition engine. The text is displayed in a monospace font and shows all content when expanded. Click the block to toggle between states.</span>
             </div>
           </div>

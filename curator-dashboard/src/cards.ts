@@ -261,6 +261,10 @@ export function setupGridDelegation(grid: HTMLElement) {
     if (actionBtn) {
       const action = actionBtn.dataset.action;
       const fp = card.dataset.filepath || "";
+      if (action === "copy-ocr") {
+        handleOcrCopy(actionBtn);
+        return;
+      }
       if (action === "open-tags") {
         openTagModal(imageId, fp);
       } else if (action === "find-similar") {
@@ -355,6 +359,10 @@ export function attachCardEventHandlers(
       if (btn) btn.style.display = btn.style.display === "none" ? "inline-flex" : "none";
       return;
     }
+    if (target.closest("[data-action='copy-ocr']")) {
+      handleOcrCopy(target.closest("[data-action='copy-ocr']") as HTMLElement);
+      return;
+    }
     if (target.closest("[data-action='toggle-ocr']")) {
       const block = target.closest("[data-action='toggle-ocr']") as HTMLElement;
       toggleOcrIfClick(block, e as MouseEvent);
@@ -387,6 +395,10 @@ function trackOcrMouseDown(e: globalThis.MouseEvent) {
   if (block) ocrDownPos.set(block, { x: e.clientX, y: e.clientY });
 }
 
+function ocrTextAttr(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function toggleOcrIfClick(block: HTMLElement, e: globalThis.MouseEvent) {
   const start = ocrDownPos.get(block);
   if (start) {
@@ -395,6 +407,22 @@ function toggleOcrIfClick(block: HTMLElement, e: globalThis.MouseEvent) {
     if (dx * dx + dy * dy >= OCR_DRAG_PX * OCR_DRAG_PX) return; // dragged -> selection, keep expanded
   }
   block.classList.toggle("expanded");
+}
+
+function handleOcrCopy(icon: HTMLElement) {
+  const text = icon.dataset.ocrCopy || "";
+  if (!text) return;
+  const originalHtml = icon.innerHTML;
+  navigator.clipboard.writeText(text)
+    .then(() => {
+      icon.innerHTML = '<i class="bi bi-check-lg"></i>';
+      icon.classList.add("copied");
+      setTimeout(() => {
+        icon.innerHTML = originalHtml;
+        icon.classList.remove("copied");
+      }, 1500);
+    })
+    .catch(() => {});
 }
 
 function handleStarClick(card: HTMLElement, imageId: number) {
@@ -847,7 +875,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
       : "";
 
     const ocrHtml = img.ocrText
-      ? `<div class="ocr-block" data-action="toggle-ocr"><i class="bi bi-file-earmark-text ocr-icon"></i><span class="ocr-block-text">${img.ocrText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`
+      ? `<div class="ocr-block" data-action="toggle-ocr"><i class="bi bi-file-earmark-text ocr-icon" data-action="copy-ocr" data-ocr-copy="${ocrTextAttr(img.ocrText)}" title="Copy OCR text"></i><span class="ocr-block-text">${img.ocrText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`
       : "";
 
     const missingBadge = img.isMissing
@@ -1001,7 +1029,7 @@ export function refreshCardOcr(imageId: number, ocrText: string) {
 
     const existing = info.querySelector(".ocr-block");
     if (ocrText) {
-      const html = `<div class="ocr-block" data-action="toggle-ocr"><i class="bi bi-file-earmark-text ocr-icon"></i><span class="ocr-block-text">${ocrText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`;
+      const html = `<div class="ocr-block" data-action="toggle-ocr"><i class="bi bi-file-earmark-text ocr-icon" data-action="copy-ocr" data-ocr-copy="${ocrTextAttr(ocrText)}" title="Copy OCR text"></i><span class="ocr-block-text">${ocrText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`;
       if (existing) {
         existing.outerHTML = html;
       } else {
