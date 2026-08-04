@@ -39,6 +39,31 @@ pub enum EmbeddingModel {
     MobileClipS2,
 }
 
+/// A tagger model selectable at runtime. `camie` is the default.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum TaggerModel {
+    #[default]
+    Camie,
+    WdEva02,
+}
+
+impl TaggerModel {
+    pub fn key(&self) -> &'static str {
+        match self {
+            TaggerModel::Camie => "camie-tagger-v2",
+            TaggerModel::WdEva02 => "wd-eva02-tagger-2026-canary",
+        }
+    }
+
+    pub fn source_name(&self) -> &'static str {
+        match self {
+            TaggerModel::Camie => crate::constants::SOURCE_CAMIE,
+            TaggerModel::WdEva02 => crate::constants::SOURCE_WD_EVA02,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Request {
     Ping,
@@ -105,30 +130,40 @@ pub enum Request {
     ValidatePlugin {
         manifest_path: String,
     },
-    /// Run Camie Tagger v2 on a single image (on-demand, lazy-loads model).
+    /// Run a tagger on a single image (on-demand, lazy-loads model).
     TagImage {
         image_id: i64,
-        /// Confidence threshold. None uses the balanced default (0.50).
+        /// Confidence threshold. None uses the selected tagger's default.
         threshold: Option<f32>,
-        /// If true, wipes existing Camie tags before tagging again.
+        /// If true, wipes existing tags of the selected source before tagging again.
         force: Option<bool>,
+        /// Tagger to use. None uses the settings preferred tagger.
+        #[serde(default)]
+        tagger: Option<TaggerModel>,
     },
-    /// Run Camie Tagger v2 on a batch of image IDs.
+    /// Run a tagger on a batch of image IDs.
     TagImageBatch {
         image_ids: Vec<i64>,
         threshold: Option<f32>,
-        /// If true, wipes existing Camie tags before tagging again.
+        /// If true, wipes existing tags of the selected source before tagging again.
         force: Option<bool>,
+        /// Tagger to use. None uses the settings preferred tagger.
+        #[serde(default)]
+        tagger: Option<TaggerModel>,
     },
-    /// Query whether the Camie Tagger model is currently loaded.
+    /// Query whether tagger models are currently loaded.
     GetTaggerStatus,
     /// Run CPU vs GPU ONNX model benchmark.
     RunBenchmark {
         embedding_model: EmbeddingModel,
         run_tagger: Option<bool>,
     },
-    /// Run CPU vs GPU Tagger model benchmark.
-    RunTaggerBenchmark,
+    /// Run CPU vs GPU Tagger model benchmark. If `tagger` is omitted, every
+    /// configured tagger model is benchmarked.
+    RunTaggerBenchmark {
+        #[serde(default)]
+        tagger: Option<TaggerModel>,
+    },
     /// Benchmark image preprocessing (decode + resize + normalize) across methods.
     BenchmarkPreprocess {
         image_path: String,
@@ -141,12 +176,16 @@ pub enum Request {
     UpdateSettings {
         clip_device: Option<DevicePreference>,
         tagger_device: Option<DevicePreference>,
+        tagger_wd_device: Option<DevicePreference>,
         idle_timeout_secs: Option<u64>,
         embedding_model: Option<EmbeddingModel>,
         detection_device: Option<DevicePreference>,
         detection_metrics_device: Option<DevicePreference>,
         ocr_device: Option<DevicePreference>,
         model_precisions: Option<std::collections::HashMap<String, ModelPrecision>>,
+        /// Preferred tagger whose tags are surfaced in the UI.
+        #[serde(default)]
+        preferred_tagger: Option<TaggerModel>,
     },
     /// Reindex all vectors with the active model.
     ReindexVectors,
@@ -372,10 +411,12 @@ pub enum Request {
     },
 
     // ── Ephemeral Image Processing (Toolbox) ─────────────────────────
-    /// Run the Camie Tagger on an arbitrary image path without persisting any tags.
+    /// Run a tagger on an arbitrary image path without persisting any tags.
     EphemeralTagImage {
         path: String,
         threshold: Option<f32>,
+        #[serde(default)]
+        tagger: Option<TaggerModel>,
     },
     /// Run OCR on an arbitrary image path without persisting any detections.
     EphemeralRunOcr {
@@ -409,6 +450,32 @@ pub enum Request {
         model_id: String,
         format: String,
     },
+    /// Convert a downloaded Safetensors model to ONNX (in-app, via scripts/venv).
+    ConvertModel {
+        model_id: String,
+    },
+    /// Get console logs for an ONNX model conversion in progress.
+    GetConversionLogs {
+        model_id: String,
+    },
+    /// Tag every image already tagged by `from_tagger` using `to_tagger`
+    /// (used by the "backfill camie-tagged images with Ashen" button).
+    BackfillTagSource {
+        from_tagger: TaggerModel,
+        to_tagger: TaggerModel,
+    },
+}
+
+/// Per-tagger CPU/GPU inference benchmark result. The benchmark runs every
+/// configured tagger so the user can compare both models in one pass.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaggerBenchmarkInfo {
+    pub key: String,
+    pub name: String,
+    pub input_size: u32,
+    pub cpu_time_ms: Option<f64>,
+    pub gpu_time_ms: Option<f64>,
+    pub gpu_error: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -426,6 +493,9 @@ pub enum Response {
         tagger_gpu_time_ms: Option<f64>,
         tagger_gpu_error: Option<String>,
         has_gpu: bool,
+        /// Results for every configured tagger (all models, not just preferred).
+        #[serde(default)]
+        taggers: Vec<TaggerBenchmarkInfo>,
     },
     ImportResult {
         image_id: i64,
@@ -482,22 +552,28 @@ pub enum Response {
         failed: usize,
         skipped: usize,
     },
-    /// Current state of the Camie Tagger engine.
+    /// Current state of all tagger engines plus the preferred model.
     TaggerStatusResult {
-        loaded: bool,
-        model_path: String,
-        total_tags: usize,
+        preferred_tagger: TaggerModel,
+        taggers: Vec<crate::tagger::TaggerStatusInfo>,
     },
     /// Current application settings.
     SettingsResult {
         clip_device: DevicePreference,
         tagger_device: DevicePreference,
+        tagger_wd_device: DevicePreference,
         idle_timeout_secs: u64,
         embedding_model: EmbeddingModel,
         detection_device: DevicePreference,
         detection_metrics_device: DevicePreference,
         ocr_device: DevicePreference,
         model_precisions: std::collections::HashMap<String, ModelPrecision>,
+        /// Preferred tagger whose tags are surfaced.
+        #[serde(default)]
+        preferred_tagger: TaggerModel,
+        /// Load state of each configured tagger.
+        #[serde(default)]
+        taggers: Vec<crate::tagger::TaggerStatusInfo>,
     },
     /// Results of preprocessing benchmark.
     PreprocessBenchmarkResult {
@@ -518,12 +594,19 @@ pub enum Response {
         tagger_total_tags: usize,
         clip_device: DevicePreference,
         tagger_device: DevicePreference,
+        tagger_wd_device: DevicePreference,
         idle_timeout_secs: u64,
         embedding_model: EmbeddingModel,
         detection_device: DevicePreference,
         detection_metrics_device: DevicePreference,
         ocr_device: DevicePreference,
         model_precisions: std::collections::HashMap<String, ModelPrecision>,
+        /// Preferred tagger whose tags are surfaced.
+        #[serde(default)]
+        preferred_tagger: TaggerModel,
+        /// Load state of each configured tagger.
+        #[serde(default)]
+        taggers: Vec<crate::tagger::TaggerStatusInfo>,
         featured_images: Vec<ImageDetails>,
         latest_images: Vec<ImageDetails>,
     },
@@ -749,6 +832,11 @@ pub enum Response {
     ModelActionResult {
         success: bool,
         message: String,
+    },
+    /// Logs and status of the current model conversion process.
+    ConversionLogsResult {
+        logs: String,
+        is_running: bool,
     },
 }
 

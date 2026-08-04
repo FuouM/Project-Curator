@@ -754,17 +754,19 @@ pub async fn get_benchmark_images(
 pub async fn run_single_image_benchmark(
     model_manager: &ModelManager,
     filepath: &str,
+    tagger_spec: &'static crate::tagger::TaggerModelSpec,
 ) -> Result<SingleImageBenchmarkResult> {
     let path = std::path::Path::new(filepath);
     if !path.exists() {
         anyhow::bail!("Image file does not exist: {}", filepath);
     }
-    benchmark_image(model_manager, path).await
+    benchmark_image(model_manager, path, tagger_spec).await
 }
 
 async fn benchmark_image(
     model_manager: &ModelManager,
     path: &std::path::Path,
+    tagger_spec: &'static crate::tagger::TaggerModelSpec,
 ) -> Result<SingleImageBenchmarkResult> {
     let mut resizer = fast_image_resize::Resizer::new();
 
@@ -773,8 +775,7 @@ async fn benchmark_image(
     let (rgb_buf, width, height) = image_decode::decode_rgb(path)?;
     let decode_time_ms = start_decode.elapsed().as_secs_f64() * 1000.0;
 
-    let img = image::RgbImage::from_raw(width, height, rgb_buf)
-        .ok_or_else(|| anyhow::anyhow!("Failed to parse raw RgbImage"))?;
+    let img = image::RgbImage::from_raw(width, height, rgb_buf).ok_or_else(|| anyhow::anyhow!("Failed to parse raw RgbImage"))?;
 
     // 2. Thumbnail
     let start_thumb = Instant::now();
@@ -786,9 +787,16 @@ async fn benchmark_image(
     let _ = model_manager.preprocess_image_batch(&[path]);
     let clip_preprocess_time_ms = start_clip_pre.elapsed().as_secs_f64() * 1000.0;
 
-    // 4. Tagger Preprocess
+    // 4. Tagger Preprocess (uses the preferred tagger's size + normalization)
     let start_tagger_pre = Instant::now();
-    let _ = crate::tagger::preprocess::preprocess_image(path, 512, &mut resizer);
+    let _ = crate::tagger::preprocess::preprocess_image(
+        path,
+        tagger_spec.input_size,
+        &tagger_spec.mean,
+        &tagger_spec.std,
+        &tagger_spec.pad_color,
+        &mut resizer,
+    );
     let tagger_preprocess_time_ms = start_tagger_pre.elapsed().as_secs_f64() * 1000.0;
 
     // 5. YOLO Preprocess

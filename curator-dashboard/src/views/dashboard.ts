@@ -1,7 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { callService } from "../ipc";
 import { maskPath, SafeHtml, html } from "../components";
-import { renderImages, attachCardEventHandlers, getTagPillHtml, renderParsedMetadataHtml } from "../cards";
+import { renderImages, attachCardEventHandlers, getTagPillHtml, renderParsedMetadataHtml, renderCardTagsContainerHtml } from "../cards";
 import { findSimilar } from "./concepts";
 import { ImageDetails } from "../types";
 
@@ -179,8 +179,8 @@ export function renderFeaturedDay(featured: ImageDetails) {
         ${parsedHtml ? html`<div class="parsed-metadata-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
         ${ocrHtml}
         ${(featured.character_identities && featured.character_identities.length > 0) ? html`<div class="identity-list" style="margin-top: 6px;">${featured.character_identities.map(ci => html`<span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> ${ci.name}</span>`).join("")}</div>` : ""}
-        <div class="tag-list" style="margin-top: 6px;">
-          ${featured.tags.length > 0 ? featured.tags.map(t => getTagPillHtml(t)).join("") : html`<span style="color: #999; font-style: italic; font-size: 11px;">No tags</span>`}
+         <div class="card-tags-container" style="width: 100%; margin-top: 6px;">
+          ${renderCardTagsContainerHtml(featured, true)}
         </div>
       </div>
     </div>
@@ -218,6 +218,8 @@ export function applySettingsToUI(resp: any) {
   const s = resp.SettingsResult;
   const clipSelect = document.getElementById("settings-clip-device") as HTMLSelectElement;
   const taggerSelect = document.getElementById("settings-tagger-device") as HTMLSelectElement;
+  const taggerWdSelect = document.getElementById("settings-tagger-wd-device") as HTMLSelectElement;
+  const preferredTaggerSelect = document.getElementById("settings-preferred-tagger") as HTMLSelectElement;
   const idleSelect = document.getElementById("settings-idle-timeout") as HTMLSelectElement;
   const embeddingSelect = document.getElementById("settings-embedding-model") as HTMLSelectElement;
   const detDeviceSelect = document.getElementById("settings-detection-device") as HTMLSelectElement;
@@ -225,6 +227,8 @@ export function applySettingsToUI(resp: any) {
   const ocrDeviceSelect = document.getElementById("settings-ocr-device") as HTMLSelectElement;
   if (clipSelect) clipSelect.value = s.clip_device;
   if (taggerSelect) taggerSelect.value = s.tagger_device;
+  if (taggerWdSelect) taggerWdSelect.value = s.tagger_wd_device;
+  if (preferredTaggerSelect) preferredTaggerSelect.value = s.preferred_tagger;
   if (idleSelect) idleSelect.value = s.idle_timeout_secs.toString();
   if (embeddingSelect) {
     embeddingSelect.value = s.embedding_model;

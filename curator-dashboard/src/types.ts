@@ -18,10 +18,10 @@ export type RequestPayload =
   | { TagImageBatch: { image_ids: number[]; threshold: number | null; force: boolean | null } }
   | { GetTaggerStatus: null }
   | { RunBenchmark: { embedding_model: "clip-vit-b-32" | "mobileclip-s2", run_tagger?: boolean | null } }
-  | { RunTaggerBenchmark: null }
+  | { RunTaggerBenchmark: { tagger?: "camie" | "wd-eva02" | null } }
   | { GetSettings: null }
   | { ClearCropCache: null }
-  | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null; detection_device: string | null; detection_metrics_device: string | null; ocr_device: string | null; model_precisions: Record<string, "original" | "int8"> | null } }
+  | { UpdateSettings: { clip_device: string | null; tagger_device: string | null; tagger_wd_device: string | null; idle_timeout_secs: number | null; embedding_model: string | null; detection_device: string | null; detection_metrics_device: string | null; ocr_device: string | null; model_precisions: Record<string, "original" | "int8"> | null; preferred_tagger: "camie" | "wd-eva02" | null } }
   | { ReindexVectors: null }
   | { ReindexFailedVectors: null }
   | { RunOcr: { image_id: number } }
@@ -83,7 +83,9 @@ export type RequestPayload =
   | { CancelDownload: { model_id: string } }
   | { RemoveModel: { model_id: string } }
   | { GetDownloadProgress: null }
-  | { QuantizeModel: { model_id: string; format: string } };
+  | { QuantizeModel: { model_id: string; format: string } }
+  | { ConvertModel: { model_id: string } }
+  | { GetConversionLogs: { model_id: string } };
 
 export interface TokenBlock {
   token_type: string;
@@ -210,14 +212,15 @@ export type ResponsePayload =
   | { BatchTagResult: { processed: number; failed: number; skipped: number } }
   | { TaggerStatusResult: { loaded: boolean; model_path: string; total_tags: number } }
   | { BenchmarkResult: { clip_cpu_time_ms: number; clip_gpu_time_ms: number | null; clip_gpu_error: string | null; tagger_cpu_time_ms: number | null; tagger_gpu_time_ms: number | null; tagger_gpu_error: string | null; has_gpu: boolean } }
-  | { SettingsResult: { clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string; detection_device: string; detection_metrics_device: string; ocr_device: string; model_precisions: Record<string, "original" | "int8"> } }
+  | { SettingsResult: { clip_device: string; tagger_device: string; tagger_wd_device: string; idle_timeout_secs: number; embedding_model: string; detection_device: string; detection_metrics_device: string; ocr_device: string; model_precisions: Record<string, "original" | "int8">; preferred_tagger: "camie" | "wd-eva02" } }
   | { TagStatisticsResult: { tags: TagStat[] } }
   | { DashboardInitResult: {
       image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number;
       tagger_loaded: boolean; tagger_model_path: string; tagger_total_tags: number;
-      clip_device: string; tagger_device: string; idle_timeout_secs: number; embedding_model: string;
+      clip_device: string; tagger_device: string; tagger_wd_device: string; idle_timeout_secs: number; embedding_model: string;
       detection_device: string; detection_metrics_device: string; ocr_device: string;
       model_precisions: Record<string, "original" | "int8">;
+      preferred_tagger: "camie" | "wd-eva02";
       featured_images: ImageDetails[]; latest_images: ImageDetails[];
     } }
   | { ImportedFoldersResult: { folders: FolderDetails[] } }
@@ -301,7 +304,8 @@ export type ResponsePayload =
   | { RandomImageResult: { image: ImageDetails; index: number } }
   | { ModelStatusResult: { models: ModelStatusInfo[] } }
   | { DownloadProgressResult: { downloads: DownloadProgress[] } }
-  | { ModelActionResult: { success: boolean; message: string } };
+  | { ModelActionResult: { success: boolean; message: string } }
+  | { ConversionLogsResult: { logs: string; is_running: boolean } };
 
 export interface CharacterDetection {
   id: number;

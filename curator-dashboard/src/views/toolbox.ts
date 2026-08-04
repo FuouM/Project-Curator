@@ -609,7 +609,7 @@ export function renderToolboxHtml(): SafeHtml {
         </div>
 
         <div class="group-box toolbox-panel">
-          <div class="group-box-title"><i class="bi bi-stars"></i> Auto-Tag (Camie Tagger v2)</div>
+          <div class="group-box-title"><i class="bi bi-stars"></i> AUTO TAG</div>
           <div class="form-group" style="margin-top: 6px;">
             <select class="input-field" id="toolbox-tagger-threshold-select" style="width: 155px; font-size: 11px;">
               <option value="0.5" selected>Balanced (0.50)</option>

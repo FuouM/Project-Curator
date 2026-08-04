@@ -1,5 +1,6 @@
 use anyhow::Result;
-use curator_core::ipc::EmbeddingModel;
+use curator_core::ipc::{EmbeddingModel, TaggerModel};
+use curator_core::tagger::TaggerManager;
 use curator_core::vector::{ModelManager, VectorIndex};
 use sqlx::SqlitePool;
 use tracing::{info, warn};
@@ -11,17 +12,19 @@ pub struct UpdateSettingsParams<'a> {
     pub db: &'a SqlitePool,
     pub model_manager: &'a ModelManager,
     pub vector_index: &'a VectorIndex,
-    pub tagger: &'a std::sync::Arc<curator_core::tagger::TaggerEngine>,
+    pub taggers: &'a std::sync::Arc<TaggerManager>,
     pub data_dir: &'a std::path::Path,
     pub settings: &'a tokio::sync::Mutex<AppSettings>,
     pub clip_device: Option<curator_core::ipc::DevicePreference>,
     pub tagger_device: Option<curator_core::ipc::DevicePreference>,
+    pub tagger_wd_device: Option<curator_core::ipc::DevicePreference>,
     pub idle_timeout_secs: Option<u64>,
     pub embedding_model: Option<EmbeddingModel>,
     pub detection_device: Option<curator_core::ipc::DevicePreference>,
     pub detection_metrics_device: Option<curator_core::ipc::DevicePreference>,
     pub ocr_device: Option<curator_core::ipc::DevicePreference>,
     pub model_precisions: Option<std::collections::HashMap<String, curator_core::ipc::ModelPrecision>>,
+    pub preferred_tagger: Option<TaggerModel>,
 }
 
 pub async fn query_status(
@@ -57,17 +60,19 @@ pub async fn update_settings_logic(
         db,
         model_manager,
         vector_index,
-        tagger,
+        taggers,
         data_dir,
         settings,
         clip_device,
         tagger_device,
+        tagger_wd_device,
         idle_timeout_secs,
         embedding_model,
         detection_device,
         detection_metrics_device,
         ocr_device,
         model_precisions,
+        preferred_tagger,
     } = params;
     let mut model_changed = false;
     let mut s = settings.lock().await;
@@ -76,6 +81,9 @@ pub async fn update_settings_logic(
     }
     if let Some(ref td) = tagger_device {
         s.tagger_device = td.clone();
+    }
+    if let Some(ref twd) = tagger_wd_device {
+        s.tagger_wd_device = twd.clone();
     }
     if let Some(to) = idle_timeout_secs {
         s.idle_timeout_secs = to;
@@ -98,14 +106,21 @@ pub async fn update_settings_logic(
     if let Some(ref mp) = model_precisions {
         s.model_precisions = mp.clone();
     }
+    if let Some(pt) = preferred_tagger {
+        if s.preferred_tagger != pt {
+            s.preferred_tagger = pt;
+        }
+    }
     let clip = s.clip_device.clone();
     let tagger_dev = s.tagger_device.clone();
+    let tagger_wd_dev = s.tagger_wd_device.clone();
     let idle = s.idle_timeout_secs;
     let active_model = s.embedding_model;
     let det_dev = s.detection_device.clone();
     let det_met_dev = s.detection_metrics_device.clone();
     let ocr_dev = s.ocr_device.clone();
     let model_precs = s.model_precisions.clone();
+    let preferred = s.preferred_tagger;
 
     let settings_to_save = s.clone();
     let data_dir_buf = data_dir.to_path_buf();
@@ -122,7 +137,11 @@ pub async fn update_settings_logic(
     }
 
     if tagger_device.is_some() {
-        tagger.set_device(tagger_dev.clone());
+        taggers.camie.set_device(tagger_dev.clone());
+    }
+
+    if tagger_wd_device.is_some() {
+        taggers.wd.set_device(tagger_wd_dev.clone());
     }
 
     if model_changed {
@@ -147,18 +166,20 @@ pub async fn update_settings_logic(
     }
 
     info!(
-        "Settings updated: clip_device={:?}, tagger_device={:?}, detection_device={:?}, detection_metrics_device={:?}, ocr_device={:?}, model_precisions={:?}, idle_timeout={}s, embedding_model={:?}",
-        clip, tagger_dev, det_dev, det_met_dev, ocr_dev, model_precs, idle, active_model
+        "Settings updated: clip_device={:?}, tagger_device={:?}, tagger_wd_device={:?}, detection_device={:?}, detection_metrics_device={:?}, ocr_device={:?}, model_precisions={:?}, idle_timeout={}s, embedding_model={:?}, preferred_tagger={:?}",
+        clip, tagger_dev, tagger_wd_dev, det_dev, det_met_dev, ocr_dev, model_precs, idle, active_model, preferred
     );
 
     Ok(AppSettings {
         clip_device: clip,
         tagger_device: tagger_dev,
+        tagger_wd_device: tagger_wd_dev,
         idle_timeout_secs: idle,
         embedding_model: active_model,
         detection_device: det_dev,
         detection_metrics_device: det_met_dev,
         ocr_device: ocr_dev,
         model_precisions: model_precs,
+        preferred_tagger: preferred,
     })
 }

@@ -5,32 +5,44 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use crate::ipc::DevicePreference;
+use crate::ipc::{DevicePreference, TaggerModel};
 use crate::onnx::ManagedSession;
 use anyhow::{Context, Result};
 
 use ort::{inputs, value::TensorRef};
 use tracing::{debug, info, warn};
 
-pub use types::{TagPrediction, TaggerStatus};
+pub use types::{
+    CAMIE_SPEC, TagPrediction, TaggerModelSpec, TaggerStatus, TaggerStatusInfo, WD_EVA02_SPEC,
+};
 use types::{MetadataRoot, TaggerMetadata};
 
 pub struct TaggerEngine {
     session: ManagedSession,
+    spec: &'static TaggerModelSpec,
     metadata_path: PathBuf,
     metadata: Mutex<Option<Arc<TaggerMetadata>>>,
 }
 
 impl TaggerEngine {
-    pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference) -> Self {
+    pub fn new(
+        model_dir: impl AsRef<Path>,
+        spec: &'static TaggerModelSpec,
+        device: DevicePreference,
+    ) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
-        let model_path = dir.join("camie-tagger-v2").join("camie-tagger-v2.onnx");
-        let metadata_path = dir.join("camie-tagger-v2").join("camie-tagger-v2-metadata.json");
+        let model_path = dir.join(spec.dir).join(spec.onnx_filename);
+        let metadata_path = dir.join(spec.dir).join(spec.metadata_file);
         Self {
-            session: ManagedSession::new("Camie Tagger", model_path, device, 1),
+            session: ManagedSession::new(spec.display_name, model_path, device, 1),
+            spec,
             metadata_path,
             metadata: Mutex::new(None),
         }
+    }
+
+    pub fn spec(&self) -> &'static TaggerModelSpec {
+        self.spec
     }
 
     pub fn model_path(&self) -> &Path {
@@ -60,6 +72,20 @@ impl TaggerEngine {
         }
     }
 
+    pub fn status_info(&self) -> TaggerStatusInfo {
+        let status = self.status();
+        TaggerStatusInfo {
+            key: self.spec.key.to_string(),
+            name: self.spec.display_name.to_string(),
+            source_name: self.spec.source_name.to_string(),
+            loaded: status.loaded,
+            model_path: status.model_path,
+            total_tags: status.total_tags,
+            default_threshold: self.spec.default_threshold,
+            input_size: self.spec.input_size,
+        }
+    }
+
     pub fn set_device(&self, device: DevicePreference) {
         self.session.set_device(device);
     }
@@ -78,7 +104,8 @@ impl TaggerEngine {
 
         if !self.metadata_path.exists() {
             anyhow::bail!(
-                "Camie Tagger metadata not found at {:?}",
+                "{} metadata not found at {:?}",
+                self.spec.display_name,
                 self.metadata_path
             );
         }
@@ -109,23 +136,37 @@ impl TaggerEngine {
         // Pre-process image
         let t1 = Instant::now();
         let mut resizer = fast_image_resize::Resizer::new();
-        let tensor = preprocess::preprocess_image(image_path, metadata.img_size, &mut resizer)
-            .with_context(|| format!("Preprocessing {:?}", image_path))?;
+        let tensor = preprocess::preprocess_image(
+            image_path,
+            metadata.img_size,
+            &self.spec.mean,
+            &self.spec.std,
+            &self.spec.pad_color,
+            &mut resizer,
+        )
+        .with_context(|| format!("Preprocessing {:?}", image_path))?;
         let preprocess_ms = t1.elapsed().as_secs_f64() * 1000.0;
 
         // Run inference
         let t2 = Instant::now();
-        debug!("Running Camie Tagger inference on {:?}", image_path);
+        debug!(
+            "Running {} inference on {:?}",
+            self.spec.display_name, image_path
+        );
 
         let logits = self.session.with_session(|session| {
             let outputs = session
                 .run(inputs![TensorRef::from_array_view(&tensor)?])
                 .context("ONNX inference failed")?;
-            let output_tensor = outputs
-                .get("refined_predictions")
-                .or_else(|| outputs.get("output_1"))
-                .or_else(|| outputs.get("output_0"))
-                .context("Failed to get refined predictions output from model")?;
+            let mut output_tensor = None;
+            for name in self.spec.output_names {
+                if let Some(t) = outputs.get(*name) {
+                    output_tensor = Some(t);
+                    break;
+                }
+            }
+            let output_tensor = output_tensor
+                .with_context(|| format!("Failed to get prediction output (tried {:?})", self.spec.output_names))?;
 
             let output_ref = output_tensor.try_extract_tensor::<f32>()?;
             Ok(output_ref.1.to_vec())
@@ -181,7 +222,8 @@ impl TaggerEngine {
 
         let total_ms = t_total.elapsed().as_secs_f64() * 1000.0;
         info!(
-            "Camie Tagger timing: load={:.1}ms preprocess={:.1}ms inference={:.1}ms postprocess={:.1}ms total={:.1}ms | {} predictions for {:?}",
+            "{} timing: load={:.1}ms preprocess={:.1}ms inference={:.1}ms postprocess={:.1}ms total={:.1}ms | {} predictions for {:?}",
+            self.spec.display_name,
             load_ms,
             preprocess_ms,
             inference_ms,
@@ -205,8 +247,8 @@ impl TaggerEngine {
             let is_gpu = self.session.device() != DevicePreference::Cpu;
             if is_gpu {
                 warn!(
-                    "Camie Tagger inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...",
-                    err
+                    "{} inference failed (probably GPU/DirectML driver issue): {:?}. Falling back to CPU...",
+                    self.spec.display_name, err
                 );
                 self.set_device(DevicePreference::Cpu);
                 return self.tag_image_inner(path, threshold);
@@ -219,8 +261,8 @@ impl TaggerEngine {
 impl crate::pipeline::SystemNode for TaggerEngine {
     fn info(&self) -> crate::pipeline::NodeInfo {
         crate::pipeline::NodeInfo {
-            id: "camie-tagger",
-            label: "Camie Tagger",
+            id: self.spec.key,
+            label: self.spec.display_name,
             inputs: vec![
                 crate::pipeline::Port { name: "image", type_name: "Image" },
             ],
@@ -244,5 +286,48 @@ impl crate::pipeline::SystemNode for TaggerEngine {
 
     fn is_loaded(&self) -> bool {
         TaggerEngine::is_loaded(self)
+    }
+}
+
+/// Holds both tagger engines and resolves the active one from the configured
+/// preferred `TaggerModel`. Two engines coexist so their outputs remain fully
+/// separate in `image_tags` (distinguished by `source_id`).
+pub struct TaggerManager {
+    pub camie: Arc<TaggerEngine>,
+    pub wd: Arc<TaggerEngine>,
+}
+
+impl TaggerManager {
+    pub fn new(
+        model_dir: impl AsRef<Path>,
+        camie_device: DevicePreference,
+        wd_device: DevicePreference,
+    ) -> Self {
+        Self {
+            camie: Arc::new(TaggerEngine::new(&model_dir, &CAMIE_SPEC, camie_device)),
+            wd: Arc::new(TaggerEngine::new(&model_dir, &WD_EVA02_SPEC, wd_device)),
+        }
+    }
+
+    /// The engine for the given model.
+    pub fn engine(&self, model: &TaggerModel) -> &Arc<TaggerEngine> {
+        match model {
+            TaggerModel::Camie => &self.camie,
+            TaggerModel::WdEva02 => &self.wd,
+        }
+    }
+
+    /// All engines, in a stable order, for idle-unload / node registration.
+    pub fn all(&self) -> Vec<Arc<TaggerEngine>> {
+        vec![self.camie.clone(), self.wd.clone()]
+    }
+
+    pub fn statuses(&self) -> Vec<TaggerStatusInfo> {
+        vec![self.camie.status_info(), self.wd.status_info()]
+    }
+
+    pub fn set_device_all(&self, device: DevicePreference) {
+        self.camie.set_device(device.clone());
+        self.wd.set_device(device);
     }
 }

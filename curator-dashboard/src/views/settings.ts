@@ -12,6 +12,8 @@ import { buildOcrLabelSvg, getOcrTextSettings } from "../ocr-text";
 export function setupSettings() {
   const clipSelect = document.getElementById("settings-clip-device") as HTMLSelectElement;
   const taggerSelect = document.getElementById("settings-tagger-device") as HTMLSelectElement;
+  const taggerWdSelect = document.getElementById("settings-tagger-wd-device") as HTMLSelectElement;
+  const preferredTaggerSelect = document.getElementById("settings-preferred-tagger") as HTMLSelectElement;
   const idleSelect = document.getElementById("settings-idle-timeout") as HTMLSelectElement;
   const embeddingSelect = document.getElementById("settings-embedding-model") as HTMLSelectElement;
   const detDeviceSelect = document.getElementById("settings-detection-device") as HTMLSelectElement;
@@ -22,6 +24,17 @@ export function setupSettings() {
   const statusMsg = document.getElementById("settings-status-msg");
 
   setupMaintenanceButtons();
+
+  // Save settings inline buttons
+  const savePreferredBtn = document.getElementById("save-preferred-tagger-btn");
+  const saveCamieDevBtn = document.getElementById("save-tagger-device-btn");
+  const saveWdDevBtn = document.getElementById("save-tagger-wd-device-btn");
+  const triggerSave = () => {
+    saveBtn?.click();
+  };
+  savePreferredBtn?.addEventListener("click", triggerSave);
+  saveCamieDevBtn?.addEventListener("click", triggerSave);
+  saveWdDevBtn?.addEventListener("click", triggerSave);
 
   // Image click action setting (localStorage)
   const imageClickSelect = document.getElementById("settings-image-click-action") as HTMLSelectElement;
@@ -128,12 +141,14 @@ export function setupSettings() {
         UpdateSettings: {
           clip_device: clipSelect.value,
           tagger_device: taggerSelect.value,
+          tagger_wd_device: taggerWdSelect ? taggerWdSelect.value : null,
           idle_timeout_secs: parseInt(idleSelect.value, 10),
           embedding_model: embeddingSelect ? embeddingSelect.value : null,
           detection_device: detDeviceSelect ? detDeviceSelect.value : null,
           detection_metrics_device: detMetricsSelect ? detMetricsSelect.value : null,
           ocr_device: ocrDeviceSelect ? ocrDeviceSelect.value : null,
           model_precisions: null,
+          preferred_tagger: preferredTaggerSelect ? (preferredTaggerSelect.value as any) : null,
         }
       });
 
@@ -345,17 +360,47 @@ export function renderSettingsHtml(): SafeHtml {
           </div>
         </div>
 
+        <!-- Preferred Tagger -->
+        <div class="group-box" style="padding: 12px;">
+          <div class="group-box-title">Preferred Tagger Model</div>
+          <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">Choose which auto-tagger model is active and displayed across the app.</p>
+          <div class="form-group" style="display: flex; gap: 8px; align-items: center;">
+            <label style="font-weight: 600; min-width: 120px;">Preferred Tagger:</label>
+            <select class="input-field" id="settings-preferred-tagger" style="width: 180px;">
+              <option value="camie">Camie Tagger v2 (Default)</option>
+              <option value="wd-eva02">WD EVA02 Tagger (Canary)</option>
+            </select>
+            <button class="win-button" id="save-preferred-tagger-btn" style="padding: 2px 8px; font-size: 11px;"><i class="bi bi-save"></i> Save</button>
+          </div>
+        </div>
+
         <!-- Tagger Device -->
         <div class="group-box" style="padding: 12px;">
-          <div class="group-box-title">Camie Tagger v2 (Auto-Tagging)</div>
-          <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">Powers AI-based image tagging. Lazy-loaded on first use.</p>
-          <div class="form-group">
+          <div class="group-box-title">Camie Tagger v2 Device</div>
+          <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">Powers Camie Tagger model inference device preference.</p>
+          <div class="form-group" style="display: flex; gap: 8px; align-items: center;">
             <label style="font-weight: 600; min-width: 120px;">Device:</label>
             <select class="input-field" id="settings-tagger-device" style="width: 180px;">
               <option value="auto">Auto (GPU if available)</option>
               <option value="cpu">CPU Only</option>
               <option value="gpu">GPU Only</option>
             </select>
+            <button class="win-button" id="save-tagger-device-btn" style="padding: 2px 8px; font-size: 11px;"><i class="bi bi-save"></i> Save</button>
+          </div>
+        </div>
+
+        <!-- WD Tagger Device -->
+        <div class="group-box" style="padding: 12px;">
+          <div class="group-box-title">WD EVA02 Tagger Device</div>
+          <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">Powers WD EVA02 Tagger model inference device preference.</p>
+          <div class="form-group" style="display: flex; gap: 8px; align-items: center;">
+            <label style="font-weight: 600; min-width: 120px;">Device:</label>
+            <select class="input-field" id="settings-tagger-wd-device" style="width: 180px;">
+              <option value="auto">Auto (GPU if available)</option>
+              <option value="cpu">CPU Only</option>
+              <option value="gpu">GPU Only</option>
+            </select>
+            <button class="win-button" id="save-tagger-wd-device-btn" style="padding: 2px 8px; font-size: 11px;"><i class="bi bi-save"></i> Save</button>
           </div>
         </div>
 

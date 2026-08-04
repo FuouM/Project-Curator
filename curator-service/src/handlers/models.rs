@@ -7,7 +7,7 @@ use curator_core::ipc::{
 };
 use sha2::{Sha256, Digest};
 use tokio::sync::Mutex;
-use tracing::{info, warn};
+use tracing::{info, warn, error};
 
 /// Shared state for tracking active downloads.
 pub type DownloadProgressMap = Arc<Mutex<HashMap<String, DownloadProgress>>>;
@@ -111,6 +111,13 @@ pub async fn get_model_status(
             }
             if has_any && all_exist {
                 quantized_variants.push(format.clone());
+            }
+        }
+
+        if entry.id == "wd-eva02-tagger-2026-canary" {
+            let onnx_path = model_dir.join("wd-eva02-tagger-2026-canary").join("wd-eva02-tagger-2026-canary.onnx");
+            if onnx_path.exists() {
+                quantized_variants.push("onnx".to_string());
             }
         }
 
@@ -675,5 +682,180 @@ pub async fn quantize_model(model_dir: &Path, model_id: &str, format: &str) -> R
             "Quantized {} files to {} for model '{}'",
             quantized_count, format, model_id
         ),
+    }
+}
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
+
+pub static CONVERSION_RUNNING: AtomicBool = AtomicBool::new(false);
+pub static CONVERSION_LOGS: OnceLock<std::sync::Mutex<String>> = OnceLock::new();
+
+/// In-app conversion of a downloaded Safetensors tagger to ONNX.
+///
+/// Mirrors `quantize_model`: discovers scripts/venv and runs
+/// `convert_to_onnx.py --skip-download` (the manifest already downloaded the
+/// source files into the model dir). Fails fast with captured output on error.
+pub async fn convert_model(model_dir: &Path, model_id: &str) -> Response {
+    // Only the WD tagger is Safetensors-distributed and needs conversion.
+    if model_id != "wd-eva02-tagger-2026-canary" {
+        return Response::ModelActionResult {
+            success: false,
+            message: format!(
+                "Model '{}' does not require conversion (only wd-eva02-tagger-2026-canary does)",
+                model_id
+            ),
+        };
+    }
+
+    let model_out = model_dir.join("wd-eva02-tagger-2026-canary");
+    let source_files_ok = ["model.safetensors", "selected_tags.csv", "config.json"]
+        .iter()
+        .all(|f| model_out.join(f).exists());
+    if !source_files_ok {
+        return Response::ModelActionResult {
+            success: false,
+            message: format!(
+                "Source files for '{}' not fully downloaded into {:?}. Download the model first.",
+                model_id, model_out
+            ),
+        };
+    }
+
+    let mut project_root = std::env::current_dir().unwrap_or_else(|_| {
+        model_dir.parent().unwrap_or(model_dir).to_path_buf()
+    });
+    let found = project_root.join("scripts/venv/Scripts/python.exe").exists()
+        && project_root.join("scripts/convert_to_onnx.py").exists();
+    if !found {
+        if let Ok(exe_path) = std::env::current_exe() {
+            let mut p = exe_path.as_path();
+            for _ in 0..5 {
+                if let Some(parent) = p.parent() {
+                    if parent.join("scripts/venv/Scripts/python.exe").exists()
+                        && parent.join("scripts/convert_to_onnx.py").exists()
+                    {
+                        project_root = parent.to_path_buf();
+                        break;
+                    }
+                    p = parent;
+                }
+            }
+        }
+    }
+
+    let venv_python = project_root.join("scripts/venv/Scripts/python.exe");
+    let script = project_root.join("scripts/convert_to_onnx.py");
+
+    if !venv_python.exists() || !script.exists() {
+        return Response::ModelActionResult {
+            success: false,
+            message: format!(
+                "Conversion environment not set up. Run scripts/setup-python-env.ps1 first. (Checked: {:?} and {:?})",
+                venv_python, script
+            ),
+        };
+    }
+
+    if CONVERSION_RUNNING.load(Ordering::SeqCst) {
+        return Response::ModelActionResult {
+            success: false,
+            message: "Another conversion process is already running.".to_string(),
+        };
+    }
+
+    let out_dir_abs = model_out.to_path_buf();
+    CONVERSION_RUNNING.store(true, Ordering::SeqCst);
+    let logs_mutex = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
+    *logs_mutex.lock().unwrap() = "Starting conversion process...\n".to_string();
+
+    let mut cmd = tokio::process::Command::new(&venv_python);
+    cmd.arg(script.to_str().unwrap())
+        .args(["--repo", "ashen-sensored/wd-eva02-tagger-2026-canary"])
+        .args(["--out-dir", out_dir_abs.to_str().unwrap()])
+        .args(["--skip-download"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    match cmd.spawn() {
+        Ok(mut child) => {
+            let stdout = child.stdout.take().unwrap();
+            let stderr = child.stderr.take().unwrap();
+
+            tokio::spawn(async move {
+                use tokio::io::{AsyncBufReadExt, BufReader};
+                
+                let mut stdout_reader = BufReader::new(stdout).lines();
+                let mut stderr_reader = BufReader::new(stderr).lines();
+
+                loop {
+                    tokio::select! {
+                        line_opt = stdout_reader.next_line() => {
+                            match line_opt {
+                                Ok(Some(line)) => {
+                                    let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
+                                    let mut logs = logs_m.lock().unwrap();
+                                    logs.push_str(&line);
+                                    logs.push('\n');
+                                }
+                                _ => {}
+                            }
+                        }
+                        line_opt = stderr_reader.next_line() => {
+                            match line_opt {
+                                Ok(Some(line)) => {
+                                    let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
+                                    let mut logs = logs_m.lock().unwrap();
+                                    logs.push_str(&line);
+                                    logs.push('\n');
+                                }
+                                _ => {}
+                            }
+                        }
+                        status = child.wait() => {
+                            let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
+                            let mut logs = logs_m.lock().unwrap();
+                            match status {
+                                Ok(s) if s.success() => {
+                                    logs.push_str("\nConversion finished successfully.\n");
+                                    info!("Background conversion of wd-eva02-tagger-2026-canary succeeded.");
+                                }
+                                Ok(s) => {
+                                    logs.push_str(&format!("\nConversion failed with exit status: {:?}\n", s.code()));
+                                    error!("Background conversion of wd-eva02-tagger-2026-canary failed with code: {:?}", s.code());
+                                }
+                                Err(e) => {
+                                    logs.push_str(&format!("\nError waiting for conversion child: {}\n", e));
+                                    error!("Error waiting for background conversion child: {}", e);
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+                CONVERSION_RUNNING.store(false, Ordering::SeqCst);
+            });
+        }
+        Err(e) => {
+            let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
+            let mut logs = logs_m.lock().unwrap();
+            logs.push_str(&format!("Failed to spawn conversion command: {}\n", e));
+            error!("Failed to spawn background conversion command: {}", e);
+            CONVERSION_RUNNING.store(false, Ordering::SeqCst);
+        }
+    }
+
+    Response::ModelActionResult {
+        success: true,
+        message: "Conversion started in background.".to_string(),
+    }
+}
+
+pub async fn get_conversion_logs(_model_dir: &Path, _model_id: &str) -> Response {
+    let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
+    let logs = logs_m.lock().unwrap().clone();
+    Response::ConversionLogsResult {
+        logs,
+        is_running: CONVERSION_RUNNING.load(Ordering::SeqCst),
     }
 }

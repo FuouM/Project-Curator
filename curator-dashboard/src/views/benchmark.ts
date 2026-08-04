@@ -11,6 +11,52 @@ interface BenchmarkConfig {
   extractResult: (resp: any) => { cpuMs: number; gpuMs: number | null; gpuErr: string | null } | null;
 }
 
+// Extract the benchmark numbers for one specific tagger (identified by its
+// model key). Prefers the per-tagger `taggers` array returned by newer
+// services, falling back to the legacy single-tagger fields.
+function extractTaggerResult(
+  resp: any,
+  key: string,
+  cpuId: string,
+  gpuId: string,
+  speedupId: string
+): { cpuMs: number; gpuMs: number | null; gpuErr: string | null } | null {
+  if (!("BenchmarkResult" in resp)) return null;
+  const br = resp.BenchmarkResult;
+  let cpuMs: number | null = null;
+  let gpuMs: number | null = null;
+  let gpuErr: string | null = null;
+  let found = false;
+
+  const taggers = br.taggers;
+  if (Array.isArray(taggers) && taggers.length > 0) {
+    const t = taggers.find((x: any) => x.key === key);
+    if (t) {
+      cpuMs = t.cpu_time_ms ?? null;
+      gpuMs = t.gpu_time_ms ?? null;
+      gpuErr = t.gpu_error ?? null;
+      found = true;
+    }
+  }
+  if (!found && key === "camie-tagger-v2") {
+    cpuMs = br.tagger_cpu_time_ms ?? null;
+    gpuMs = br.tagger_gpu_time_ms ?? null;
+    gpuErr = br.tagger_gpu_error ?? null;
+    found = true;
+  }
+
+  if (!found || cpuMs === null) {
+    const cpuEl = document.getElementById(cpuId);
+    const gpuEl = document.getElementById(gpuId);
+    const speedupEl = document.getElementById(speedupId);
+    if (cpuEl) cpuEl.textContent = gpuErr ? `Error: ${gpuErr}` : key === "camie-tagger-v2" ? "N/A (Model file not found)" : "N/A";
+    if (gpuEl) gpuEl.textContent = "N/A";
+    if (speedupEl) speedupEl.textContent = "—";
+    return null;
+  }
+  return { cpuMs, gpuMs, gpuErr };
+}
+
 export function setupBenchmark() {
   const runBtn = document.getElementById("run-benchmark-btn");
   const gpuLoaded = document.getElementById("benchmark-gpu-loaded");
@@ -87,21 +133,17 @@ export function setupBenchmark() {
       cpuEl: getEl("benchmark-tagger-cpu"),
       gpuEl: getEl("benchmark-tagger-gpu"),
       speedupEl: getEl("benchmark-tagger-speedup"),
-      run: () => callService({ RunTaggerBenchmark: null }).catch((e: any) => ({ Error: { message: e.message } })),
-      extractResult: (resp) => {
-        if (!("BenchmarkResult" in resp)) return null;
-        const { tagger_cpu_time_ms, tagger_gpu_time_ms, tagger_gpu_error } = resp.BenchmarkResult;
-        if (tagger_cpu_time_ms === null) {
-          const cpuEl = getEl("benchmark-tagger-cpu");
-          const gpuEl = getEl("benchmark-tagger-gpu");
-          const speedupEl = getEl("benchmark-tagger-speedup");
-          if (cpuEl) cpuEl.textContent = tagger_gpu_error ? `Error: ${tagger_gpu_error}` : "N/A (Model file not found)";
-          if (gpuEl) gpuEl.textContent = "N/A";
-          if (speedupEl) speedupEl.textContent = "—";
-          return null;
-        }
-        return { cpuMs: tagger_cpu_time_ms, gpuMs: tagger_gpu_time_ms, gpuErr: tagger_gpu_error };
-      },
+      run: () => callService({ RunTaggerBenchmark: { tagger: "camie" } }).catch((e: any) => ({ Error: { message: e.message } })),
+      extractResult: (resp) => extractTaggerResult(resp, "camie-tagger-v2", "benchmark-tagger-cpu", "benchmark-tagger-gpu", "benchmark-tagger-speedup"),
+    },
+    {
+      key: "tagger-wd",
+      label: "WD EVA02 Tagger",
+      cpuEl: getEl("benchmark-tagger-wd-cpu"),
+      gpuEl: getEl("benchmark-tagger-wd-gpu"),
+      speedupEl: getEl("benchmark-tagger-wd-speedup"),
+      run: () => callService({ RunTaggerBenchmark: { tagger: "wd-eva02" } }).catch((e: any) => ({ Error: { message: e.message } })),
+      extractResult: (resp) => extractTaggerResult(resp, "wd-eva02-tagger-2026-canary", "benchmark-tagger-wd-cpu", "benchmark-tagger-wd-gpu", "benchmark-tagger-wd-speedup"),
     },
     {
       key: "yolo",
@@ -488,6 +530,7 @@ const BENCHMARK_CARDS: BenchmarkCardDef[] = [
   { key: "clip",         label: "CLIP ViT-B/32",               size: "224x224"   },
   { key: "mclip",        label: "MobileCLIP-S2",               size: "256x256"   },
   { key: "tagger",       label: "Camie Tagger v2",             size: "512x512"   },
+  { key: "tagger-wd",    label: "WD EVA02 Tagger",             size: "448x448"   },
   { key: "yolo",         label: "YOLO Person Detection",       size: "640x640"   },
   { key: "ccip-feat",    label: "CCIP Feature Extraction",     size: "384x384"   },
   { key: "ccip-metrics", label: "CCIP Metrics",                size: "16x768"    },

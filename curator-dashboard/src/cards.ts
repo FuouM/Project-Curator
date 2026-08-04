@@ -169,6 +169,44 @@ export function renderTagListHtml(tags: TagSummary[], maxVisible = 10): SafeHtml
     (extraCount > 0 ? `<span class="tag-pill tag-pill-overflow">+${extraCount} more</span>` : "")) as SafeHtml;
 }
 
+export function renderCardTagsContainerHtml(img: { tags: TagSummary[] }, isFeatured = false): SafeHtml {
+  const tags = img.tags || [];
+  let taggerLabel = "";
+  const firstAITag = tags.find(t => t.source_name && t.source_name.startsWith("ai:"));
+  if (firstAITag) {
+    if (firstAITag.source_name === "ai:camie-tagger-v2") {
+      taggerLabel = "Camie Tagger v2";
+    } else if (firstAITag.source_name === "ai:wd-eva02-tagger-2026-canary") {
+      taggerLabel = "WD EVA02";
+    } else {
+      taggerLabel = firstAITag.source_name.replace("ai:", "").toUpperCase();
+    }
+  } else {
+    const hasUser = tags.some(t => t.category === "user");
+    taggerLabel = hasUser ? "USER" : "";
+  }
+
+  if (!taggerLabel && tags.length === 0) {
+    return "";
+  }
+  
+  if (!taggerLabel) {
+    taggerLabel = "GENERAL";
+  }
+
+  const tagHtml = isFeatured ? renderTagListHtml(tags, tags.length) : renderTagListHtml(tags);
+
+  return `
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; width: 100%;">
+      <div style="font-family: monospace; font-size: 10px; font-weight: bold; background-color: var(--sys-control-bg, #fff); border: 1px solid var(--sys-border-dark, #b0b0b0); border-radius: 2px; padding: 2px 6px; color: var(--sys-text-secondary, #666); text-transform: uppercase; letter-spacing: 0.5px; line-height: 1; white-space: nowrap;">${taggerLabel}</div>
+      <div style="flex: 1; height: 1px; background-color: var(--sys-border-dark, #b0b0b0);"></div>
+    </div>
+    <div class="tag-list" style="margin-top: 0;">
+      ${tagHtml}
+    </div>
+  ` as SafeHtml;
+}
+
 export function renderParsedMetadataHtml(meta: ParsedMetadata): SafeHtml {
   const parts: string[] = [];
 
@@ -960,8 +998,8 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
         ${parsedHtml ? `<div class="parsed-metadata-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
         ${ocrHtml}
         ${identityHtml}
-        <div class="tag-list">
-          ${tagHtml}
+        <div class="card-tags-container" style="width: 100%;">
+          ${renderCardTagsContainerHtml(img)}
         </div>
         <div style="display: flex; gap: 4px; margin-top: auto; width: 100%;">
           <button class="win-button" style="font-size: 11px; flex: 1;" data-action="open-tags" data-id="${img.id}" data-filepath="${img.filepath.replace(/\\/g, '\\\\')}">

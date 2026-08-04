@@ -9,8 +9,8 @@ pub mod settings;
 pub mod tags;
 
 use curator_core::detection::DetectionPipeline;
-use curator_core::ipc::{EmbeddingModel, Request, Response};
-use curator_core::tagger::TaggerEngine;
+use curator_core::ipc::{EmbeddingModel, ModelPrecision, Request, Response, TaggerBenchmarkInfo};
+use curator_core::tagger::TaggerManager;
 use curator_core::thumbnail::ThumbnailCache;
 use curator_core::vector::{ModelManager, VectorIndex};
 use sqlx::SqlitePool;
@@ -20,6 +20,51 @@ use tracing::{error, info, warn};
 use curator_core::image as core_image;
 
 use crate::AppSettings;
+
+/// Run the CPU/GPU ONNX benchmark for one tagger engine and produce a
+/// `TaggerBenchmarkInfo` (prefers the quantized int8 variant when enabled).
+fn benchmark_tagger_engine(
+    engine: &Arc<curator_core::tagger::TaggerEngine>,
+    model_precisions: &std::collections::HashMap<String, ModelPrecision>,
+) -> TaggerBenchmarkInfo {
+    let spec = engine.spec();
+    let prefer_quantized = model_precisions
+        .get(spec.key)
+        .copied()
+        .unwrap_or(ModelPrecision::Original)
+        == ModelPrecision::Int8;
+
+    let mut tagger_path = engine.model_path().to_path_buf();
+    if prefer_quantized {
+        let int8_name = format!("{}_int8.onnx", spec.key);
+        let int8_path = tagger_path.with_file_name(&int8_name);
+        if int8_path.exists() {
+            tagger_path = int8_path;
+        }
+    }
+
+    let (cpu_time_ms, gpu_time_ms, gpu_error) = if tagger_path.exists() {
+        match curator_core::run_onnx_benchmark(&tagger_path, spec.input_size as usize) {
+            Ok((cpu, gpu, err, _)) => (Some(cpu), gpu, err),
+            Err(e) => (
+                None,
+                None,
+                Some(format!("Tagger benchmark failed: {:?}", e)),
+            ),
+        }
+    } else {
+        (None, None, Some("Tagger model file not found.".to_string()))
+    };
+
+    TaggerBenchmarkInfo {
+        key: spec.key.to_string(),
+        name: spec.display_name.to_string(),
+        input_size: spec.input_size,
+        cpu_time_ms,
+        gpu_time_ms,
+        gpu_error,
+    }
+}
 
 pub(crate) type ImageRow = (
     i64,
@@ -60,7 +105,7 @@ pub async fn handle_request(
     db: &SqlitePool,
     model_manager: &Arc<ModelManager>,
     vector_index: &VectorIndex,
-    tagger: &Arc<TaggerEngine>,
+    taggers: &Arc<TaggerManager>,
     detection: &Arc<DetectionPipeline>,
     ocr: &Arc<curator_core::OcrDetector>,
     data_dir: &Path,
@@ -70,6 +115,10 @@ pub async fn handle_request(
     cancel_tokens: &models::CancelTokens,
     benchmark_progress: &BenchmarkProgressMap,
 ) -> Response {
+    let preferred_source = {
+        let s = settings.lock().await;
+        s.preferred_tagger.source_name().to_string()
+    };
     match request {
         Request::Ping => Response::Pong,
 
@@ -106,18 +155,22 @@ pub async fn handle_request(
             };
             let run_tagger_val = run_tagger.unwrap_or(true);
 
+            let preferred = { settings.lock().await.preferred_tagger };
+            let tagger_engine = taggers.engine(&preferred);
+            let tagger_spec = tagger_engine.spec();
             let prefer_quantized_tagger = settings
                 .lock()
                 .await
                 .model_precisions
-                .get("camie-tagger-v2")
+                .get(tagger_spec.key)
                 .copied()
                 .unwrap_or(curator_core::ipc::ModelPrecision::Original)
                 == curator_core::ipc::ModelPrecision::Int8;
 
-            let mut tagger_path = tagger.model_path().to_path_buf();
+            let mut tagger_path = tagger_engine.model_path().to_path_buf();
             if prefer_quantized_tagger {
-                let int8_path = tagger_path.with_file_name("camie-tagger-v2_int8.onnx");
+                let int8_name = format!("{}_int8.onnx", tagger_spec.key);
+                let int8_path = tagger_path.with_file_name(&int8_name);
                 if int8_path.exists() {
                     tagger_path = int8_path;
                 }
@@ -133,17 +186,20 @@ pub async fn handle_request(
             );
 
             let clip_res = curator_core::run_onnx_benchmark(&vision_path, target_size);
-            let tagger_res = if run_tagger_val && tagger_path.exists() {
-                match curator_core::run_onnx_benchmark(&tagger_path, 512) {
-                    Ok((cpu, gpu, err, _)) => (Some(cpu), gpu, err),
-                    Err(e) => (
-                        None,
-                        None,
-                        Some(format!("Tagger benchmark failed: {:?}", e)),
-                    ),
-                }
+
+            // Benchmark every configured tagger so both models are comparable.
+            let model_precisions = settings.lock().await.model_precisions.clone();
+            let tagger_infos: Vec<TaggerBenchmarkInfo> = if run_tagger_val {
+                taggers.all().iter().map(|engine| {
+                    benchmark_tagger_engine(engine, &model_precisions)
+                }).collect()
             } else {
-                (None, None, None)
+                Vec::new()
+            };
+            let preferred_info = tagger_infos.iter().find(|t| t.key == tagger_spec.key);
+            let (tagger_cpu_time_ms, tagger_gpu_time_ms, tagger_gpu_error) = match preferred_info {
+                Some(t) => (t.cpu_time_ms, t.gpu_time_ms, t.gpu_error.clone()),
+                None => (None, None, None),
             };
 
             match clip_res {
@@ -151,10 +207,11 @@ pub async fn handle_request(
                     clip_cpu_time_ms: clip_cpu,
                     clip_gpu_time_ms: clip_gpu,
                     clip_gpu_error: clip_err,
-                    tagger_cpu_time_ms: tagger_res.0,
-                    tagger_gpu_time_ms: tagger_res.1,
-                    tagger_gpu_error: tagger_res.2,
+                    tagger_cpu_time_ms,
+                    tagger_gpu_time_ms,
+                    tagger_gpu_error,
                     has_gpu,
+                    taggers: tagger_infos,
                 },
                 Err(e) => Response::Error {
                     message: format!("CLIP model benchmark failed: {:?}", e),
@@ -162,51 +219,51 @@ pub async fn handle_request(
             }
         }
 
-        Request::RunTaggerBenchmark => {
-            let prefer_quantized_tagger = settings
-                .lock()
-                .await
-                .model_precisions
-                .get("camie-tagger-v2")
-                .copied()
-                .unwrap_or(curator_core::ipc::ModelPrecision::Original)
-                == curator_core::ipc::ModelPrecision::Int8;
-
-            let mut tagger_path = tagger.model_path().to_path_buf();
-            if prefer_quantized_tagger {
-                let int8_path = tagger_path.with_file_name("camie-tagger-v2_int8.onnx");
-                if int8_path.exists() {
-                    tagger_path = int8_path;
+        Request::RunTaggerBenchmark { tagger } => {
+            let model_precisions = settings.lock().await.model_precisions.clone();
+            let preferred = { settings.lock().await.preferred_tagger };
+            let tagger_infos: Vec<TaggerBenchmarkInfo> = match tagger {
+                Some(model) => {
+                    let engine = taggers.engine(&model);
+                    vec![benchmark_tagger_engine(engine, &model_precisions)]
                 }
-            }
+                None => taggers
+                    .all()
+                    .iter()
+                    .map(|engine| benchmark_tagger_engine(engine, &model_precisions))
+                    .collect(),
+            };
 
-            let tagger_res = if tagger_path.exists() {
-                match curator_core::run_onnx_benchmark(&tagger_path, 512) {
-                    Ok((cpu, gpu, err, has_gpu)) => (Some(cpu), gpu, err, has_gpu),
-                    Err(e) => (
-                        None,
-                        None,
-                        Some(format!("Tagger benchmark failed: {:?}", e)),
-                        false,
-                    ),
-                }
-            } else {
-                (None, None, Some("Tagger model file not found.".to_string()), false)
+            let preferred_spec = taggers.engine(&preferred).spec();
+            let preferred_info = tagger_infos.iter().find(|t| t.key == preferred_spec.key);
+            let (tagger_cpu_time_ms, tagger_gpu_time_ms, tagger_gpu_error, has_gpu) = match preferred_info {
+                Some(t) => (
+                    t.cpu_time_ms,
+                    t.gpu_time_ms,
+                    t.gpu_error.clone(),
+                    t.gpu_time_ms.is_some(),
+                ),
+                None => (None, None, Some("Tagger model file not found.".to_string()), false),
             };
             Response::BenchmarkResult {
                 clip_cpu_time_ms: 0.0,
                 clip_gpu_time_ms: None,
                 clip_gpu_error: None,
-                tagger_cpu_time_ms: tagger_res.0,
-                tagger_gpu_time_ms: tagger_res.1,
-                tagger_gpu_error: tagger_res.2,
-                has_gpu: tagger_res.3,
+                tagger_cpu_time_ms,
+                tagger_gpu_time_ms,
+                tagger_gpu_error,
+                has_gpu,
+                taggers: tagger_infos,
             }
         }
 
         Request::BenchmarkPreprocess { image_path } => {
             let path = std::path::Path::new(&image_path);
-            match curator_core::benchmark_preprocess(path, 512, 3) {
+            let input_size = {
+                let preferred = settings.lock().await.preferred_tagger;
+                taggers.engine(&preferred).spec().input_size
+            };
+            match curator_core::benchmark_preprocess(path, input_size, 3) {
                 Ok((_decode, _resize, _norm, report)) => {
                     info!("Preprocess benchmark:\n{}", report);
                     Response::PreprocessBenchmarkResult { report }
@@ -309,6 +366,7 @@ pub async fn handle_request(
                     ocr_text_search,
                     limit,
                 },
+                &preferred_source,
                 db,
                 model_manager,
                 vector_index,
@@ -326,7 +384,7 @@ pub async fn handle_request(
             limit,
             offset,
             only_favorites,
-        } => match image::list_images_logic(limit, offset, only_favorites, db).await {
+        } => match image::list_images_logic(limit, offset, only_favorites, &preferred_source, db).await {
             Ok((images, total_count)) => Response::ListResult { images, total_count },
             Err(e) => Response::Error {
                 message: e.to_string(),
@@ -369,11 +427,13 @@ pub async fn handle_request(
             }
         }
 
-        Request::GetImage { image_id } => match image::get_image_logic(image_id, db).await {
-            Ok(image) => Response::ImageResult { image },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
+        Request::GetImage { image_id } => {
+            match image::get_image_logic(image_id, &preferred_source, db).await {
+                Ok(image) => Response::ImageResult { image },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
         },
 
         Request::ValidatePlugin { manifest_path } => {
@@ -394,11 +454,10 @@ pub async fn handle_request(
         }
 
         Request::GetTaggerStatus => {
-            let status = tagger.status();
+            let preferred = { settings.lock().await.preferred_tagger };
             Response::TaggerStatusResult {
-                loaded: status.loaded,
-                model_path: status.model_path,
-                total_tags: status.total_tags,
+                preferred_tagger: preferred,
+                taggers: taggers.statuses(),
             }
         }
 
@@ -406,10 +465,14 @@ pub async fn handle_request(
             image_id,
             threshold,
             force,
+            tagger,
         } => {
-            let threshold = threshold.unwrap_or(0.5);
+            let preferred = { settings.lock().await.preferred_tagger };
+            let model = tagger.unwrap_or(preferred);
+            let engine = taggers.engine(&model);
+            let threshold = threshold.unwrap_or(engine.spec().default_threshold);
             let force = force.unwrap_or(false);
-            match image::tag_image_logic(image_id, threshold, force, db, tagger).await {
+            match image::tag_image_logic(image_id, threshold, force, db, engine).await {
                 Ok(outcome) => Response::TagImageResult {
                     image_id,
                     tags_applied: outcome.tags_applied,
@@ -429,15 +492,19 @@ pub async fn handle_request(
             image_ids,
             threshold,
             force,
+            tagger,
         } => {
-            let threshold = threshold.unwrap_or(0.5);
+            let preferred = { settings.lock().await.preferred_tagger };
+            let model = tagger.unwrap_or(preferred);
+            let engine = taggers.engine(&model);
+            let threshold = threshold.unwrap_or(engine.spec().default_threshold);
             let force = force.unwrap_or(false);
             let mut processed = 0usize;
             let mut failed = 0usize;
             let mut skipped = 0usize;
 
             for image_id in image_ids {
-                match image::tag_image_logic(image_id, threshold, force, db, tagger).await {
+                match image::tag_image_logic(image_id, threshold, force, db, engine).await {
                     Ok(outcome) => {
                         if outcome.skipped {
                             skipped += 1;
@@ -456,6 +523,41 @@ pub async fn handle_request(
                 processed,
                 failed,
                 skipped,
+            }
+        }
+
+        Request::BackfillTagSource {
+            from_tagger,
+            to_tagger,
+        } => {
+            if from_tagger == to_tagger {
+                return Response::Error {
+                    message: "from_tagger and to_tagger must differ".to_string(),
+                };
+            }
+            let to_engine = taggers.engine(&to_tagger);
+            let to_source = to_tagger.source_name();
+            let threshold = to_engine.spec().default_threshold;
+            match image::backfill_tag_source_logic(
+                db,
+                from_tagger.source_name(),
+                to_source,
+                to_engine,
+                threshold,
+            )
+            .await
+            {
+                Ok(result) => Response::BatchTagResult {
+                    processed: result.processed,
+                    failed: result.failed,
+                    skipped: result.skipped,
+                },
+                Err(e) => {
+                    error!("BackfillTagSource failed: {:?}", e);
+                    Response::Error {
+                        message: e.to_string(),
+                    }
+                }
             }
         }
 
@@ -484,12 +586,15 @@ pub async fn handle_request(
             Response::SettingsResult {
                 clip_device: s.clip_device.clone(),
                 tagger_device: s.tagger_device.clone(),
+                tagger_wd_device: s.tagger_wd_device.clone(),
                 idle_timeout_secs: s.idle_timeout_secs,
                 embedding_model: s.embedding_model,
                 detection_device: s.detection_device.clone(),
                 detection_metrics_device: s.detection_metrics_device.clone(),
                 ocr_device: s.ocr_device.clone(),
                 model_precisions: s.model_precisions.clone(),
+                preferred_tagger: s.preferred_tagger,
+                taggers: taggers.statuses(),
             }
         }
 
@@ -505,29 +610,33 @@ pub async fn handle_request(
         Request::UpdateSettings {
             clip_device,
             tagger_device,
+            tagger_wd_device,
             idle_timeout_secs,
             embedding_model,
             detection_device,
             detection_metrics_device,
             ocr_device,
             model_precisions,
+            preferred_tagger,
         } => {
             match settings::update_settings_logic(
                 settings::UpdateSettingsParams {
                     db,
                     model_manager,
                     vector_index,
-                    tagger,
+                    taggers,
                     data_dir,
                     settings,
                     clip_device,
                     tagger_device,
+                    tagger_wd_device,
                     idle_timeout_secs,
                     embedding_model,
                     detection_device,
                     detection_metrics_device,
                     ocr_device,
                     model_precisions,
+                    preferred_tagger,
                 },
             )
             .await
@@ -535,12 +644,15 @@ pub async fn handle_request(
                 Ok(s) => Response::SettingsResult {
                     clip_device: s.clip_device,
                     tagger_device: s.tagger_device,
+                    tagger_wd_device: s.tagger_wd_device,
                     idle_timeout_secs: s.idle_timeout_secs,
                     embedding_model: s.embedding_model,
                     detection_device: s.detection_device,
                     detection_metrics_device: s.detection_metrics_device,
                     ocr_device: s.ocr_device,
                     model_precisions: s.model_precisions,
+                    preferred_tagger: s.preferred_tagger,
+                    taggers: taggers.statuses(),
                 },
                 Err(e) => Response::Error {
                     message: e.to_string(),
@@ -549,7 +661,7 @@ pub async fn handle_request(
         }
 
         Request::GetTagStatistics => {
-            match tags::get_tag_statistics_logic(db).await {
+            match tags::get_tag_statistics_logic(&preferred_source, db).await {
                 Ok(tags) => Response::TagStatisticsResult { tags },
                 Err(e) => Response::Error {
                     message: format!("Failed to fetch tag statistics: {:?}", e),
@@ -584,12 +696,25 @@ pub async fn handle_request(
                 }
             };
 
-            let tagger_status = tagger.status();
             let settings_val = settings_result;
+            let tagger_statuses = taggers.statuses();
+            let tagger_loaded = tagger_statuses
+                .iter()
+                .any(|t| t.loaded);
+            let tagger_model_path = tagger_statuses
+                .iter()
+                .find(|t| t.loaded)
+                .map(|t| t.model_path.clone())
+                .unwrap_or_default();
+            let tagger_total_tags = tagger_statuses
+                .iter()
+                .map(|t| t.total_tags)
+                .max()
+                .unwrap_or(0);
 
             let (featured_result, latest_resp) = tokio::join!(
-                image::get_featured_image(db, data_dir),
-                image::list_images_logic(8, 0, None, db),
+                image::get_featured_image(db, data_dir, &preferred_source),
+                image::list_images_logic(8, 0, None, &preferred_source, db),
             );
 
             let featured_images = featured_result.into_iter().collect();
@@ -600,17 +725,20 @@ pub async fn handle_request(
                 vector_count,
                 pending_jobs,
                 preprocessing_jobs,
-                tagger_loaded: tagger_status.loaded,
-                tagger_model_path: tagger_status.model_path,
-                tagger_total_tags: tagger_status.total_tags,
+                tagger_loaded,
+                tagger_model_path,
+                tagger_total_tags,
                 clip_device: settings_val.clip_device,
                 tagger_device: settings_val.tagger_device,
+                tagger_wd_device: settings_val.tagger_wd_device,
                 idle_timeout_secs: settings_val.idle_timeout_secs,
                 embedding_model: settings_val.embedding_model,
                 detection_device: settings_val.detection_device,
                 detection_metrics_device: settings_val.detection_metrics_device,
                 ocr_device: settings_val.ocr_device,
                 model_precisions: settings_val.model_precisions,
+                preferred_tagger: settings_val.preferred_tagger,
+                taggers: tagger_statuses,
                 featured_images,
                 latest_images,
             }
@@ -756,7 +884,7 @@ pub async fn handle_request(
         }
 
         Request::GetConceptSamples { concept_id } => {
-            match concepts::get_concept_samples_logic(db, concept_id).await {
+            match concepts::get_concept_samples_logic(db, concept_id, &preferred_source).await {
                 Ok(samples) => Response::ConceptSamplesResult { concept_id, samples },
                 Err(e) => Response::Error {
                     message: e.to_string(),
@@ -1368,7 +1496,11 @@ pub async fn handle_request(
         }
 
         Request::BenchmarkSingleImage { filepath } => {
-            match curator_core::run_single_image_benchmark(model_manager, &filepath).await {
+            let tagger_spec = {
+                let preferred = settings.lock().await.preferred_tagger;
+                taggers.engine(&preferred).spec()
+            };
+            match curator_core::run_single_image_benchmark(model_manager, &filepath, tagger_spec).await {
                 Ok(res) => Response::SingleImageBenchmarkResult {
                     decode_time_ms: res.decode_time_ms,
                     thumbnail_time_ms: res.thumbnail_time_ms,
@@ -1404,9 +1536,13 @@ pub async fn handle_request(
 
             let progress = benchmark_progress.clone();
             let mm = model_manager.clone();
+            let tagger_spec = {
+                let preferred = settings.lock().await.preferred_tagger;
+                taggers.engine(&preferred).spec()
+            };
             tokio::spawn(async move {
                 for (idx, filepath) in filepaths.iter().enumerate() {
-                    match curator_core::run_single_image_benchmark(&mm, filepath).await {
+                    match curator_core::run_single_image_benchmark(&mm, filepath, tagger_spec).await {
                         Ok(res) => {
                             let mut slot = progress.lock().await;
                             if let Some(p) = slot.as_mut() {
@@ -1471,7 +1607,7 @@ pub async fn handle_request(
             }
         }
 
-        Request::GetRandomImage => match image::get_random_image_logic(db).await {
+        Request::GetRandomImage => match image::get_random_image_logic(db, &preferred_source).await {
             Ok((img, index)) => Response::RandomImageResult { image: img, index },
             Err(e) => Response::Error {
                 message: format!("Failed to get random image: {:?}", e),
@@ -1630,10 +1766,16 @@ pub async fn handle_request(
         }
 
         // ── Ephemeral Image Processing (Toolbox) ──────────────────────
-        Request::EphemeralTagImage { path, threshold } => {
-            let threshold = threshold.unwrap_or(0.5);
+        Request::EphemeralTagImage {
+            path,
+            threshold,
+            tagger,
+        } => {
+            let preferred = { settings.lock().await.preferred_tagger };
+            let engine = taggers.engine(&tagger.unwrap_or(preferred));
+            let threshold = threshold.unwrap_or(engine.spec().default_threshold);
             let path_for_log = path.clone();
-            let res = tokio::task::block_in_place(|| tagger.tag_image(&path, threshold));
+            let res = tokio::task::block_in_place(|| engine.tag_image(&path, threshold));
             match res {
                 Ok(preds) => {
                     info!(
@@ -1648,7 +1790,7 @@ pub async fn handle_request(
                             tag: p.tag.clone(),
                             category: p.category.clone(),
                             confidence: p.confidence,
-                            source_name: Some("ai:camie".to_string()),
+                            source_name: Some(engine.spec().source_name.to_string()),
                             is_blacklisted: false,
                         })
                         .collect();
@@ -1783,6 +1925,12 @@ pub async fn handle_request(
         }
         Request::QuantizeModel { model_id, format } => {
             models::quantize_model(&data_dir.join("models"), &model_id, &format).await
+        }
+        Request::ConvertModel { model_id } => {
+            models::convert_model(&data_dir.join("models"), &model_id).await
+        }
+        Request::GetConversionLogs { model_id } => {
+            models::get_conversion_logs(&data_dir.join("models"), &model_id).await
         }
     }
 }

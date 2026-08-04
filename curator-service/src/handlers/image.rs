@@ -17,6 +17,12 @@ pub struct TagImageOutcome {
     pub tags: Vec<TagSummary>,
 }
 
+pub struct BackfillOutcome {
+    pub processed: usize,
+    pub failed: usize,
+    pub skipped: usize,
+}
+
 pub async fn tag_image_logic(
     image_id: i64,
     threshold: f32,
@@ -25,6 +31,7 @@ pub async fn tag_image_logic(
     tagger: &Arc<TaggerEngine>,
 ) -> Result<TagImageOutcome> {
     let t_start = std::time::Instant::now();
+    let source_name = tagger.spec().source_name;
 
     let t0 = std::time::Instant::now();
     let row: Option<(String,)> =
@@ -40,35 +47,36 @@ pub async fn tag_image_logic(
     let db_resolve_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
     let t1 = std::time::Instant::now();
-    let camie_source: Option<(i64,)> =
-        sqlx::query_as("SELECT id FROM sources WHERE name = 'ai:camie-tagger-v2' LIMIT 1")
+    let tagger_source: Option<(i64,)> =
+        sqlx::query_as("SELECT id FROM sources WHERE name = ? LIMIT 1")
+            .bind(source_name)
             .fetch_optional(db)
             .await?;
 
-    if let Some((camie_source_id,)) = camie_source {
+    if let Some((tagger_source_id,)) = tagger_source {
         if force {
             sqlx::query("DELETE FROM image_tags WHERE image_id = ? AND source_id = ? AND is_blacklisted = 0")
                 .bind(image_id)
-                .bind(camie_source_id)
+                .bind(tagger_source_id)
                 .execute(db)
                 .await?;
             info!(
-                "Forced overwrite: wiped existing Camie tags for image {}",
-                image_id
+                "Forced overwrite: wiped existing {} tags for image {}",
+                source_name, image_id
             );
         } else {
             let existing: (i64,) = sqlx::query_as(
                 "SELECT COUNT(*) FROM image_tags WHERE image_id = ? AND source_id = ? AND is_deleted = 0",
             )
             .bind(image_id)
-            .bind(camie_source_id)
+            .bind(tagger_source_id)
             .fetch_one(db)
             .await?;
 
             if existing.0 > 0 {
                 info!(
-                    "Image {} already has {} Camie tags — skipping",
-                    image_id, existing.0
+                    "Image {} already has {} {} tags — skipping",
+                    image_id, existing.0, source_name
                 );
                 return Ok(TagImageOutcome {
                     tags_applied: 0,
@@ -83,14 +91,18 @@ pub async fn tag_image_logic(
     let t2 = std::time::Instant::now();
     let tagger_clone = Arc::clone(tagger);
     let filepath_clone = filepath.clone();
+    let tagger_name = tagger.spec().display_name.to_string();
     let predictions =
         tokio::task::spawn_blocking(move || tagger_clone.tag_image(&filepath_clone, threshold))
             .await
-            .context("spawn_blocking panicked during Camie inference")??;
+            .context(format!(
+                "spawn_blocking panicked during {} inference",
+                tagger_name
+            ))??;
     let inference_ms = t2.elapsed().as_secs_f64() * 1000.0;
 
     let t3 = std::time::Instant::now();
-    let source_id = resolve_source_id(db, "ai:camie-tagger-v2").await?;
+    let source_id = resolve_source_id(db, source_name).await?;
 
     let transaction_id = uuid::Uuid::new_v4().to_string();
 
@@ -109,24 +121,35 @@ pub async fn tag_image_logic(
 
     let mut tag_summaries: Vec<TagSummary> = Vec::with_capacity(predictions.len());
 
-    // All per-tag writes in one transaction; tags upsert with RETURNING id
-    // removes the extra SELECT round-trip per prediction.
+    // All per-tag writes in one transaction. Categories are never upserted —
+    // the first-inserted category wins — so we use ON CONFLICT(name) DO NOTHING
+    // and fall back to selecting the existing id when the insert returns no row.
     let mut tx = db.begin().await?;
     for pred in &predictions {
         if blacklisted_names.contains(&pred.tag) {
             info!("Skipping blacklisted AI tag '{}' for image {}", pred.tag, image_id);
             continue;
         }
-        let tag_row: (i64,) = sqlx::query_as(
+        let tag_row: Option<(i64,)> = sqlx::query_as(
             "INSERT INTO tags (name, category) VALUES (?, ?)
-             ON CONFLICT(name) DO UPDATE SET category = excluded.category
+             ON CONFLICT(name) DO NOTHING
              RETURNING id",
         )
         .bind(&pred.tag)
         .bind(&pred.category)
-        .fetch_one(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await?;
-        let tag_id = tag_row.0;
+
+        let tag_id = match tag_row {
+            Some((id,)) => id,
+            None => {
+                let existing: (i64,) = sqlx::query_as("SELECT id FROM tags WHERE name = ?")
+                    .bind(&pred.tag)
+                    .fetch_one(&mut *tx)
+                    .await?;
+                existing.0
+            }
+        };
 
         sqlx::query(
             "INSERT OR REPLACE INTO image_tags
@@ -145,16 +168,17 @@ pub async fn tag_image_logic(
             tag: pred.tag.clone(),
             category: pred.category.clone(),
             confidence: pred.confidence,
-            source_name: Some(curator_core::constants::SOURCE_CAMIE.to_string()),
+            source_name: Some(source_name.to_string()),
             is_blacklisted: false,
         });
     }
     tx.commit().await?;
 
     info!(
-        "Auto-tagged image {} with {} tags (tx: {})",
+        "Auto-tagged image {} with {} {} tags (tx: {})",
         image_id,
         tag_summaries.len(),
+        source_name,
         &transaction_id[..8]
     );
 
@@ -172,11 +196,94 @@ pub async fn tag_image_logic(
     })
 }
 
+/// Backfill `to_tagger` onto every image already tagged by `from_tagger`.
+///
+/// The work set is the from-tagger's active rows (`DISTINCT image_id`), so the
+/// exact same image corpus receives `to_tagger` rows and no feature loses its
+/// images when the preference is switched. Uses `force=false` for idempotency:
+/// already-backfilled images are skipped. Fails fast if `to_tagger`'s model is
+/// missing (no silent fallbacks).
+pub async fn backfill_tag_source_logic(
+    db: &SqlitePool,
+    from_source: &str,
+    to_source: &str,
+    to_engine: &Arc<TaggerEngine>,
+    threshold: f32,
+) -> Result<BackfillOutcome> {
+    if from_source == to_source {
+        anyhow::bail!("from_tagger and to_tagger must differ");
+    }
+
+    // Fail fast (no fallbacks): the destination model must be usable.
+    let to_model = to_engine.model_path();
+    if !to_model.exists() {
+        anyhow::bail!(
+            "{} model file missing at {:?}. Convert/download it before backfilling.",
+            to_engine.spec().display_name,
+            to_model
+        );
+    }
+
+    let from_source_id = resolve_source_id(db, from_source).await?;
+    let image_ids: Vec<(i64,)> = sqlx::query_as(
+        "SELECT DISTINCT image_id FROM image_tags
+         WHERE source_id = ? AND is_deleted = 0 ORDER BY image_id",
+    )
+    .bind(from_source_id)
+    .fetch_all(db)
+    .await?;
+
+    let mut processed = 0usize;
+    let mut failed = 0usize;
+    let mut skipped = 0usize;
+
+    for (image_id,) in image_ids {
+        match tag_image_logic(image_id, threshold, false, db, to_engine).await {
+            Ok(outcome) => {
+                if outcome.skipped {
+                    skipped += 1;
+                } else {
+                    processed += 1;
+                }
+            }
+            Err(e) => {
+                warn_scoped(
+                    "BackfillTagSource",
+                    format!(
+                        "failed for image {} ({}) with {}: {:?}",
+                        image_id,
+                        to_source,
+                        to_engine.spec().display_name,
+                        e
+                    ),
+                );
+                failed += 1;
+            }
+        }
+    }
+
+    info!(
+        "Backfill {} -> {} complete: processed={} failed={} skipped={}",
+        from_source, to_source, processed, failed, skipped
+    );
+
+    Ok(BackfillOutcome {
+        processed,
+        failed,
+        skipped,
+    })
+}
+
+fn warn_scoped(scope: &str, msg: String) {
+    tracing::warn!("{} {}", scope, msg);
+}
+
 /// Returns (images, total_count). Uses SQL LIMIT/OFFSET — no full table scan.
 pub async fn list_images_logic(
     limit: usize,
     offset: usize,
     only_favorites: Option<bool>,
+    preferred_source: &str,
     db: &SqlitePool,
 ) -> Result<(Vec<ImageDetails>, i64)> {
     let only_favs = only_favorites.unwrap_or(false);
@@ -197,11 +304,10 @@ pub async fn list_images_logic(
     #[derive(Debug, sqlx::FromRow)]
     struct IdPath {
         id: i64,
-        current_filepath: String,
     }
 
     let page_ids: Vec<IdPath> = sqlx::query_as(
-        "SELECT id, current_filepath FROM images WHERE deleted_at IS NULL AND is_missing = 0 AND (?1 = 0 OR favorite = 1) ORDER BY created_at DESC, id DESC LIMIT ?2 OFFSET ?3",
+        "SELECT id FROM images WHERE deleted_at IS NULL AND is_missing = 0 AND (?1 = 0 OR favorite = 1) ORDER BY created_at DESC, id DESC LIMIT ?2 OFFSET ?3",
     )
     .bind(fav_bind)
     .bind(limit as i64)
@@ -214,26 +320,33 @@ pub async fn list_images_logic(
     }
 
     let id_list: Vec<i64> = page_ids.iter().map(|r| r.id).collect();
-    let images = fetch_image_details_batch(&id_list, db).await?;
+    let images = fetch_image_details_batch(&id_list, preferred_source, db).await?;
 
     Ok((images, total_count))
 }
 
-pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDetails> {
+pub async fn get_image_logic(
+    image_id: i64,
+    preferred_source: &str,
+    db: &SqlitePool,
+) -> Result<ImageDetails> {
     let img: curator_core::db::models::Image =
         sqlx::query_as("SELECT * FROM images WHERE id = ? AND deleted_at IS NULL")
             .bind(image_id)
             .fetch_one(db)
             .await?;
 
+    let source_id = resolve_source_id(db, preferred_source).await?;
+
     let all_tag_rows: Vec<(String, String, f32, Option<String>, bool)> = sqlx::query_as(
         "SELECT t.name, t.category, it.confidence, s.name, (it.is_blacklisted = 1)
          FROM image_tags it
          JOIN tags t ON it.tag_id = t.id
          LEFT JOIN sources s ON it.source_id = s.id
-         WHERE it.image_id = ? AND (it.is_deleted = 0 OR it.is_blacklisted = 1)",
+         WHERE it.image_id = ? AND it.source_id = ? AND (it.is_deleted = 0 OR it.is_blacklisted = 1)",
     )
     .bind(image_id)
+    .bind(source_id)
     .fetch_all(db)
     .await?;
 
@@ -331,11 +444,16 @@ pub async fn get_image_logic(image_id: i64, db: &SqlitePool) -> Result<ImageDeta
 }
 
 /// Batch-fetch full details for multiple image IDs in 4 queries instead of 4N.
-pub async fn batch_get_images_logic(ids: &[i64], db: &SqlitePool) -> Result<Vec<ImageDetails>> {
+pub async fn batch_get_images_logic(
+    ids: &[i64],
+    preferred_source: &str,
+    db: &SqlitePool,
+) -> Result<Vec<ImageDetails>> {
     if ids.is_empty() {
         return Ok(Vec::new());
     }
 
+    let source_id = resolve_source_id(db, preferred_source).await?;
     let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
 
     let base_sql = format!(
@@ -381,8 +499,9 @@ pub async fn batch_get_images_logic(ids: &[i64], db: &SqlitePool) -> Result<Vec<
          FROM image_tags it
          JOIN tags t ON it.tag_id = t.id
          LEFT JOIN sources s ON it.source_id = s.id
-         WHERE it.image_id IN ({}) AND it.is_deleted = 0",
-        placeholders
+         WHERE it.image_id IN ({}) AND it.is_deleted = 0 AND it.source_id = {source_id}",
+        placeholders,
+        source_id = source_id
     );
     let mut tag_q = sqlx::query_as::<_, (i64, String, String, f32, Option<String>, bool)>(&tag_sql);
     for id in ids {
@@ -496,20 +615,26 @@ pub async fn batch_get_images_logic(ids: &[i64], db: &SqlitePool) -> Result<Vec<
 }
 
 /// Fetch full details for a batch of image IDs (used by list_images_logic page results).
-async fn fetch_image_details_batch(ids: &[i64], db: &SqlitePool) -> Result<Vec<ImageDetails>> {
+async fn fetch_image_details_batch(
+    ids: &[i64],
+    preferred_source: &str,
+    db: &SqlitePool,
+) -> Result<Vec<ImageDetails>> {
+    let source_id = resolve_source_id(db, preferred_source).await?;
     let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql = format!(
         r#"
         SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite, i.is_missing,
                t.name, t.category, it.confidence, s.name as source_name
         FROM images i
-        LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0
+        LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0 AND it.source_id = {source_id}
         LEFT JOIN tags t ON it.tag_id = t.id
         LEFT JOIN sources s ON it.source_id = s.id
         WHERE i.id IN ({})
         ORDER BY i.created_at DESC, i.id DESC
         "#,
-        placeholders
+        placeholders,
+        source_id = source_id
     );
     let mut q = sqlx::query_as::<_, ImageRow>(&sql);
     for id in ids {
@@ -722,7 +847,11 @@ pub async fn clear_thumbnails_logic(cache: &ThumbnailCache) -> Result<i64> {
     Ok(deleted as i64)
 }
 
-pub async fn get_featured_image(db: &SqlitePool, data_dir: &Path) -> Option<ImageDetails> {
+pub async fn get_featured_image(
+    db: &SqlitePool,
+    data_dir: &Path,
+    preferred_source: &str,
+) -> Option<ImageDetails> {
     let today_str = {
         let secs = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -738,7 +867,7 @@ pub async fn get_featured_image(db: &SqlitePool, data_dir: &Path) -> Option<Imag
         let parts: Vec<&str> = content.trim().splitn(2, '|').collect();
         if parts.len() == 2 && parts[0] == today_str {
             if let Ok(id) = parts[1].parse::<i64>() {
-                if let Ok(img) = get_image_logic(id, db).await {
+                if let Ok(img) = get_image_logic(id, preferred_source, db).await {
                     if std::path::Path::new(&img.current_filepath).exists() {
                         return Some(img);
                     }
@@ -753,7 +882,7 @@ pub async fn get_featured_image(db: &SqlitePool, data_dir: &Path) -> Option<Imag
     .fetch_optional(db)
     .await
     {
-        if let Ok(img) = get_image_logic(rand_id, db).await {
+        if let Ok(img) = get_image_logic(rand_id, preferred_source, db).await {
             if std::path::Path::new(&img.current_filepath).exists() {
                 let _ = fs::write(&featured_file, format!("{}|{}", today_str, rand_id));
                 return Some(img);
@@ -765,7 +894,10 @@ pub async fn get_featured_image(db: &SqlitePool, data_dir: &Path) -> Option<Imag
 }
 
 /// Returns a random image and its position index (0-based) in the gallery order.
-pub async fn get_random_image_logic(db: &SqlitePool) -> Result<(ImageDetails, i64)> {
+pub async fn get_random_image_logic(
+    db: &SqlitePool,
+    preferred_source: &str,
+) -> Result<(ImageDetails, i64)> {
     // Pick a random image
     let rand_row: (i64, String) = sqlx::query_as(
         "SELECT id, created_at FROM images WHERE deleted_at IS NULL AND is_missing = 0 ORDER BY RANDOM() LIMIT 1",
@@ -785,6 +917,6 @@ pub async fn get_random_image_logic(db: &SqlitePool) -> Result<(ImageDetails, i6
     .fetch_one(db)
     .await?;
 
-    let img = get_image_logic(rand_id, db).await?;
+    let img = get_image_logic(rand_id, preferred_source, db).await?;
     Ok((img, pos.0))
 }

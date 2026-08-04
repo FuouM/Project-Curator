@@ -1,7 +1,7 @@
 import { callService } from "../ipc";
 import { logJS } from "../utils";
 import { maskPath } from "../components";
-import { renderTagListHtml, getTagPillHtml } from "../cards";
+import { renderTagListHtml, getTagPillHtml, renderCardTagsContainerHtml } from "../cards";
 import { showErrorAlert } from "../alert";
 
 export async function openTagModal(imgId: number, path: string) {
@@ -15,7 +15,7 @@ export async function openTagModal(imgId: number, path: string) {
   if (pathPreview) pathPreview.textContent = maskPath(path);
   if (statusArea) statusArea.textContent = "";
   if (autoTagBtn) {
-    autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
+    autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> AUTO TAG';
     autoTagBtn.style.backgroundColor = "";
   }
 
@@ -73,16 +73,16 @@ export async function refreshCardTags(imgId: number) {
   try {
     const resp = await callService({ GetImage: { image_id: imgId } });
     if (!("ImageResult" in resp)) return;
-    const tags = resp.ImageResult.image.tags;
-    const tagHtml = renderTagListHtml(tags);
-    document.querySelectorAll(`[data-image-id="${imgId}"] .tag-list`).forEach((el) => {
-      el.innerHTML = tagHtml;
+    const img = resp.ImageResult.image;
+    const containerHtml = renderCardTagsContainerHtml(img);
+    document.querySelectorAll(`[data-image-id="${imgId}"] .card-tags-container`).forEach((el) => {
+      el.innerHTML = containerHtml;
     });
     const featuredCard = document.querySelector(`#featured-day-content [data-image-id="${imgId}"]`);
     if (featuredCard) {
-      const featuredTagList = document.querySelector("#featured-day-content .featured-details .tag-list");
-      if (featuredTagList) {
-        featuredTagList.innerHTML = tags.map((t: any) => getTagPillHtml(t)).join("");
+      const featuredDetailsContainer = document.querySelector("#featured-day-content .featured-details .card-tags-container");
+      if (featuredDetailsContainer) {
+        featuredDetailsContainer.innerHTML = renderCardTagsContainerHtml(img, true);
       }
     }
   } catch (e) {
@@ -122,7 +122,7 @@ export async function handleModalAutoTag() {
       const { tags_applied } = resp.TagImageResult;
       statusArea.textContent = `Applied ${tags_applied} tags successfully!`;
       statusArea.style.color = "#10b981";
-      autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
+      autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> AUTO TAG';
       autoTagBtn.style.backgroundColor = "";
 
       await refreshModalTags(imageId);
@@ -130,13 +130,13 @@ export async function handleModalAutoTag() {
     } else if ("Error" in resp) {
       statusArea.textContent = `Failed: ${resp.Error.message}`;
       statusArea.style.color = "#ef4444";
-      autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
+      autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> AUTO TAG';
       autoTagBtn.style.backgroundColor = "";
     }
   } catch (e: any) {
     statusArea.textContent = `Error: ${e.message || e}`;
     statusArea.style.color = "#ef4444";
-    autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> Auto-Tag';
+    autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> AUTO TAG';
     autoTagBtn.style.backgroundColor = "";
   }
 }

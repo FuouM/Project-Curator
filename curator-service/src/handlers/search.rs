@@ -64,6 +64,7 @@ use super::concepts::get_custom_concept_by_id;
 
 pub async fn search_logic(
     params: SearchParams,
+    preferred_source: &str,
     db: &SqlitePool,
     model_manager: &ModelManager,
     vector_index: &VectorIndex,
@@ -189,7 +190,7 @@ pub async fn search_logic(
         });
     }
 
-    if let Some(img_path) = query_image_path {
+    if let Some(ref img_path) = query_image_path {
         let path = std::path::Path::new(&img_path);
         if path.exists() {
             if let Ok(data) = tokio::fs::read(path).await {
@@ -387,7 +388,7 @@ pub async fn search_logic(
     target_set.extend(parse_matches.iter().copied());
     target_set.extend(filename_matches.iter().copied());
 
-    if let Some(tag_filter_raw) = tag_filter {
+    if let Some(ref tag_filter_raw) = tag_filter {
         let tag_names: Vec<String> = tag_filter_raw
             .split(',')
             .map(|s| s.trim().to_string())
@@ -401,13 +402,15 @@ pub async fn search_logic(
 
         if !tag_names.is_empty() {
             let mut first = true;
+            let source_id = super::common::resolve_source_id(db, preferred_source).await.unwrap_or(0);
             for tag_name in &tag_names {
                 let tagged_images: Vec<(i64,)> = sqlx::query_as(
                     "SELECT DISTINCT it.image_id FROM image_tags it
                      JOIN tags t ON it.tag_id = t.id
-                     WHERE t.name = ? AND it.is_deleted = 0",
+                     WHERE REPLACE(LOWER(t.name), '_', ' ') = REPLACE(LOWER(?), '_', ' ') AND it.is_deleted = 0 AND it.source_id = ?",
                 )
                 .bind(tag_name)
+                .bind(source_id)
                 .fetch_all(db)
                 .await?;
 
@@ -424,12 +427,18 @@ pub async fn search_logic(
         }
     }
 
-    let target_ids = if target_set.is_empty()
-        && query_text.is_none()
-        && exact_matches.is_empty()
-        && perceptual_matches.is_empty()
-        && parse_matches.is_empty()
-    {
+    let has_query = query_text.is_some()
+        || query_image_path.is_some()
+        || tag_filter.is_some()
+        || filename_filter.is_some()
+        || parse_filter.is_some()
+        || parse_type.is_some()
+        || concept_id.is_some()
+        || character_identity_id.is_some()
+        || ocr_filter.is_some()
+        || ocr_text_search.is_some();
+
+    let target_ids = if !has_query {
         let latest: Vec<(i64,)> = sqlx::query_as(
             "SELECT id FROM images WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ?",
         )
@@ -443,10 +452,12 @@ pub async fn search_logic(
         ids
     };
 
-    let batch_details = batch_get_images_logic(&target_ids, db).await.unwrap_or_else(|e| {
-        tracing::warn!("Failed to batch get image details in search: {:?}", e);
-        Vec::new()
-    });
+    let batch_details = batch_get_images_logic(&target_ids, preferred_source, db)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to batch get image details in search: {:?}", e);
+            Vec::new()
+        });
     let details_map: std::collections::HashMap<i64, _> =
         batch_details.into_iter().map(|d| (d.id, d)).collect();
 

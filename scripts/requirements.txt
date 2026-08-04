@@ -1,0 +1,13 @@
+# Project Curator — model conversion/quantization Python environment.
+# Install: .\scripts\setup-python-env.ps1
+# CPU-only torch is used because conversion/quantization never needs CUDA.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch==2.7.1+cpu
+timm==1.0.14
+safetensors==0.5.3
+numpy==2.2.6
+onnx==1.22.0
+onnxruntime==1.23.2
+onnxsim==0.4.36
+huggingface_hub==0.30.2

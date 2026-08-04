@@ -6,6 +6,9 @@ use ndarray::Array4;
 pub(crate) fn preprocess_image(
     path: &Path,
     img_size: u32,
+    mean: &[f32; 3],
+    std: &[f32; 3],
+    pad_color: &[u8; 3],
     resizer: &mut fast_image_resize::Resizer,
 ) -> Result<Array4<f32>> {
     let (rgb_buf, orig_w, orig_h) = crate::image_decode::decode_rgb(path)?;
@@ -50,9 +53,9 @@ pub(crate) fn preprocess_image(
         img_size,
         new_w,
         new_h,
-        &crate::preprocess::IMAGENET_MEAN,
-        &crate::preprocess::IMAGENET_STD,
-        &crate::preprocess::PAD_COLOR,
+        mean,
+        std,
+        pad_color,
     ))
 }
 

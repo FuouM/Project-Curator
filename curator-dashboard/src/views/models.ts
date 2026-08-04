@@ -4,12 +4,15 @@ import { SafeHtml, html } from "../components";
 import { showErrorAlert, showInfoAlert } from "../alert";
 
 let pollInterval: number | null = null;
+let activeConversionModelId: string | null = null;
+let activeConversionPollInterval: any = null;
 
 // Expose actions to window so that inline buttons/event handlers can access them
 (window as any).downloadModel = downloadModel;
 (window as any).cancelDownload = cancelDownload;
 (window as any).removeModel = removeModel;
 (window as any).quantizeModel = quantizeModel;
+(window as any).convertModel = convertModel;
 
 export function renderModelsHtml(): SafeHtml {
   return html`
@@ -115,6 +118,15 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
         actionsHtml += `<button class="win-button danger" onclick="removeModel('${m.id}')"><i class="bi bi-trash"></i> Delete</button>`;
       }
 
+      if (m.status === "downloaded" && m.id === "wd-eva02-tagger-2026-canary") {
+        const isConverted = m.quantized_variants.includes("onnx");
+        if (isConverted) {
+          actionsHtml += `<span style="margin-left: 12px; color: #2e7d32; padding: 2px 4px; border: 1px solid #a5d6a7; background: #e8f5e9; border-radius: 2px; font-size: 11px;"><i class="bi bi-check"></i> ONNX Converted</span>`;
+        } else {
+          actionsHtml += `<button class="win-button" style="margin-left: 12px; font-weight: bold; background-color: #2b5797; color: white;" id="convert-btn-${m.id}" onclick="convertModel('${m.id}')"><i class="bi bi-gear-fill"></i> Convert to ONNX</button>`;
+        }
+      }
+
       if (m.status === "downloaded" && m.quantizable && m.quantizable.length > 0) {
         actionsHtml += `<span style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; font-size: 11px;">`;
         actionsHtml += `Quantize:`;
@@ -168,6 +180,13 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
             </div>
           </div>
           <div id="progress-${m.id}" class="model-progress" style="display: none;"></div>
+          <div id="conversion-log-container-${m.id}" style="display: ${m.id === activeConversionModelId ? 'block' : 'none'}; margin-top: 8px; border: 1px solid var(--sys-border-dark, #b0b0b0); background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', monospace; font-size: 11px; padding: 6px; border-radius: 2px; box-sizing: border-box;">
+            <div style="font-weight: bold; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; color: #858585;">
+              <span>CONVERSION CONSOLE LOGS</span>
+              <span id="conversion-status-${m.id}">Converting...</span>
+            </div>
+            <pre id="conversion-log-text-${m.id}" style="margin: 0; max-height: 150px; overflow-y: auto; white-space: pre-wrap; font-family: inherit; line-height: 1.4; color: #a9b7c6; text-align: left;"></pre>
+          </div>
         </div>
       `;
     }
@@ -182,6 +201,10 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
 
   htmlResult += `</div>`;
   container.innerHTML = htmlResult;
+
+  if (activeConversionModelId) {
+    resumeConversionPolling(activeConversionModelId);
+  }
 }
 
 export function startModelDownloadPolling() {
@@ -300,6 +323,129 @@ async function removeModel(modelId: string) {
   }
 }
 
+function resumeConversionPolling(modelId: string) {
+  if (activeConversionPollInterval) {
+    clearInterval(activeConversionPollInterval);
+    activeConversionPollInterval = null;
+  }
+
+  // Pre-configure the current button and log container status if they exist
+  const initialBtn = document.getElementById(`convert-btn-${modelId}`) as HTMLButtonElement;
+  if (initialBtn) {
+    initialBtn.disabled = true;
+    initialBtn.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> Converting...`;
+  }
+  const initialLogContainer = document.getElementById(`conversion-log-container-${modelId}`);
+  if (initialLogContainer) {
+    initialLogContainer.style.display = "block";
+    const initialLogStatus = document.getElementById(`conversion-status-${modelId}`);
+    if (initialLogStatus) {
+      initialLogStatus.textContent = "Converting...";
+    }
+  }
+
+  activeConversionPollInterval = setInterval(async () => {
+    // Check if the models view is currently active in the DOM.
+    // If not, pause polling to avoid polluting backend logs.
+    const modelsContainer = document.getElementById("settings-models");
+    if (!modelsContainer) {
+      clearInterval(activeConversionPollInterval);
+      activeConversionPollInterval = null;
+      return;
+    }
+
+    // Resolve elements dynamically inside the tick to handle tab switches
+    const btn = document.getElementById(`convert-btn-${modelId}`) as HTMLButtonElement;
+    const logContainer = document.getElementById(`conversion-log-container-${modelId}`);
+    const logText = document.getElementById(`conversion-log-text-${modelId}`);
+    const logStatus = document.getElementById(`conversion-status-${modelId}`);
+
+    try {
+      const logResp = await callService({ GetConversionLogs: { model_id: modelId } });
+      if ("ConversionLogsResult" in logResp) {
+        const { logs, is_running } = logResp.ConversionLogsResult;
+        
+        if (logText) {
+          logText.textContent = logs;
+          logText.scrollTop = logText.scrollHeight;
+        }
+        if (logContainer) {
+          logContainer.style.display = "block";
+        }
+        if (logStatus) {
+          logStatus.textContent = is_running ? "Converting..." : "Completed";
+        }
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> Converting...`;
+        }
+
+        if (!is_running) {
+          clearInterval(activeConversionPollInterval);
+          activeConversionPollInterval = null;
+          activeConversionModelId = null;
+          if (logStatus) logStatus.textContent = "Completed";
+          if (btn) {
+            btn.style.display = "none";
+          }
+          refreshModelStatus();
+        }
+      } else {
+        clearInterval(activeConversionPollInterval);
+        activeConversionPollInterval = null;
+        if (logStatus) logStatus.textContent = "Error reading logs";
+        if (btn) btn.disabled = false;
+      }
+    } catch (err: any) {
+      clearInterval(activeConversionPollInterval);
+      activeConversionPollInterval = null;
+      if (logStatus) logStatus.textContent = "Failed";
+      if (btn) btn.disabled = false;
+    }
+  }, 500);
+}
+
+async function convertModel(modelId: string) {
+  const btn = document.getElementById(`convert-btn-${modelId}`) as HTMLButtonElement;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> Converting...`;
+  }
+
+  const logContainer = document.getElementById(`conversion-log-container-${modelId}`);
+  const logText = document.getElementById(`conversion-log-text-${modelId}`);
+  const logStatus = document.getElementById(`conversion-status-${modelId}`);
+
+  if (logContainer) logContainer.style.display = "block";
+  if (logText) logText.textContent = "Starting conversion process...\n";
+  if (logStatus) logStatus.textContent = "Converting...";
+
+  try {
+    const resp = await callService({ ConvertModel: { model_id: modelId } });
+    if ("ModelActionResult" in resp && resp.ModelActionResult.success) {
+      activeConversionModelId = modelId;
+      resumeConversionPolling(modelId);
+    } else {
+      const msg = "ModelActionResult" in resp ? resp.ModelActionResult.message : "Failed to initiate conversion.";
+      if (logStatus) logStatus.textContent = "Failed to start";
+      if (logText) logText.textContent += `\nError: ${msg}`;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="bi bi-gear-fill"></i> Convert to ONNX`;
+      }
+      showErrorAlert("Error", msg);
+    }
+  } catch (e: any) {
+    if (logStatus) logStatus.textContent = "Error";
+    if (logText) logText.textContent += `\nError: ${e.message || e}`;
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="bi bi-gear-fill"></i> Convert to ONNX`;
+    }
+    showErrorAlert("Error", e.message || e);
+  }
+}
+
 async function quantizeModel(modelId: string, format: string) {
   const btn = event?.target as HTMLButtonElement;
   if (btn) {
@@ -332,12 +478,14 @@ async function quantizeModel(modelId: string, format: string) {
       UpdateSettings: {
         clip_device: s.clip_device,
         tagger_device: s.tagger_device,
+        tagger_wd_device: s.tagger_wd_device,
         idle_timeout_secs: s.idle_timeout_secs,
         embedding_model: s.embedding_model,
         detection_device: s.detection_device,
         detection_metrics_device: s.detection_metrics_device,
         ocr_device: s.ocr_device,
         model_precisions: precs,
+        preferred_tagger: s.preferred_tagger,
       }
     });
     

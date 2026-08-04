@@ -1,9 +1,23 @@
 use anyhow::{Context, Error};
 use clap::{Parser, Subcommand};
 use curator_core::constants::resolve_data_dir;
-use curator_core::ipc::{EmbeddingModel, ImageDetails, Request, Response};
+use curator_core::ipc::{EmbeddingModel, ImageDetails, Request, Response, TaggerModel};
 use std::fs;
 use std::path::PathBuf;
+
+fn parse_tagger(value: &str) -> TaggerModel {
+    match value {
+        "camie" | "camie-tagger-v2" => TaggerModel::Camie,
+        "wd-eva02" | "wd-eva02-tagger-2026-canary" => TaggerModel::WdEva02,
+        other => {
+            eprintln!(
+                "Unknown tagger '{}'. Valid options: 'camie' or 'wd-eva02'. Defaulting to 'camie'.",
+                other
+            );
+            TaggerModel::Camie
+        }
+    }
+}
 
 
 #[derive(Parser, Debug)]
@@ -62,7 +76,7 @@ enum Commands {
     Show { image_id: i64 },
     /// Validate a plugin's manifest.json file
     ValidatePlugin { manifest_path: String },
-    /// Auto-tag a single image with Camie Tagger v2
+    /// Auto-tag a single image with the preferred tagger
     TagAuto {
         /// ID of the image to tag
         image_id: i64,
@@ -75,10 +89,14 @@ enum Commands {
         /// Wipe existing AI tags before running
         #[arg(short, long)]
         force: bool,
+
+        /// Tagger to use: 'camie' or 'wd-eva02'. Defaults to the preferred tagger.
+        #[arg(long)]
+        tagger: Option<String>,
     },
     /// Auto-tag all images in the library that don't already have AI tags
     TagAutoBatch {
-        /// Confidence threshold. Defaults to 0.50 (balanced).
+        /// Confidence threshold. Defaults to the tagger's balanced default.
         #[arg(short, long)]
         threshold: Option<f32>,
 
@@ -86,10 +104,24 @@ enum Commands {
         #[arg(short, long)]
         force: bool,
 
+        /// Tagger to use: 'camie' or 'wd-eva02'. Defaults to the preferred tagger.
+        #[arg(long)]
+        tagger: Option<String>,
+
         /// Optional list of specific image IDs (space-separated). If omitted, tags all untagged images.
         image_ids: Vec<i64>,
     },
-    /// Show the current status of the Camie Tagger model
+    /// Tag every image already tagged by --from with the --to tagger
+    TagBackfill {
+        /// Source tagger whose tagged images seed the work set ('camie' or 'wd-eva02')
+        #[arg(long)]
+        from: String,
+
+        /// Destination tagger to run ('camie' or 'wd-eva02')
+        #[arg(long)]
+        to: String,
+    },
+    /// Show the current status of all tagger models
     TaggerStatus,
     /// Run CPU vs GPU ONNX model benchmark
     Benchmark {
@@ -180,19 +212,21 @@ async fn main() -> Result<(), Error> {
             image_id,
             threshold,
             force,
+            tagger,
         } => Request::TagImage {
             image_id,
             threshold,
             force: Some(force),
+            tagger: tagger.as_deref().map(parse_tagger),
         },
         Commands::TagAutoBatch {
             threshold,
             force,
+            tagger,
             image_ids,
         } => {
             if image_ids.is_empty() {
                 // Fetch all image IDs from the service first if no IDs provided.
-                // For simplicity we use a large ListImages request.
                 eprintln!(
                     "No image IDs provided; batch will tag ALL images. \
                      This may take a long time. Use Ctrl+C to cancel, \
@@ -202,15 +236,21 @@ async fn main() -> Result<(), Error> {
                     image_ids: vec![],
                     threshold,
                     force: Some(force),
+                    tagger: tagger.as_deref().map(parse_tagger),
                 }
             } else {
                 Request::TagImageBatch {
                     image_ids,
                     threshold,
                     force: Some(force),
+                    tagger: tagger.as_deref().map(parse_tagger),
                 }
             }
         }
+        Commands::TagBackfill { from, to } => Request::BackfillTagSource {
+            from_tagger: parse_tagger(&from),
+            to_tagger: parse_tagger(&to),
+        },
         Commands::TaggerStatus => Request::GetTaggerStatus,
         Commands::Benchmark { model } => {
             let emb_model = match model.as_str() {
@@ -256,6 +296,7 @@ async fn main() -> Result<(), Error> {
             tagger_gpu_time_ms,
             tagger_gpu_error,
             has_gpu,
+            taggers,
         } => {
             println!("Benchmark Results:");
             println!("GPU Support: {}", if has_gpu { "Yes" } else { "No" });
@@ -273,20 +314,47 @@ async fn main() -> Result<(), Error> {
             if let Some(err) = clip_gpu_error {
                 println!("  GPU Load Error: {}", err);
             }
-            println!("\nCamie Tagger v2 Model (512x512):");
-            if let Some(cpu) = tagger_cpu_time_ms {
-                println!("  CPU: {:.2} ms/image", cpu);
-                if let Some(gpu) = tagger_gpu_time_ms {
-                    println!("  GPU: {:.2} ms/image ({:.2}x speedup)", gpu, cpu / gpu);
+
+            let mut printed_any_tagger = false;
+            for t in &taggers {
+                printed_any_tagger = true;
+                println!("\n{} ({}x{}):", t.name, t.input_size, t.input_size);
+                if let Some(cpu) = t.cpu_time_ms {
+                    println!("  CPU: {:.2} ms/image", cpu);
+                    if let Some(gpu) = t.gpu_time_ms {
+                        println!("  GPU: {:.2} ms/image ({:.2}x speedup)", gpu, cpu / gpu);
+                    } else {
+                        println!("  GPU: N/A");
+                    }
                 } else {
+                    println!("  CPU: N/A");
                     println!("  GPU: N/A");
                 }
-            } else {
-                println!("  CPU: N/A");
-                println!("  GPU: N/A");
+                if let Some(err) = &t.gpu_error {
+                    println!("  Tagger Error: {}", err);
+                }
             }
-            if let Some(err) = tagger_gpu_error {
-                println!("  Tagger Error: {}", err);
+            if !printed_any_tagger {
+                let label = if tagger_cpu_time_ms.is_some() {
+                    "Tagger"
+                } else {
+                    "Camie Tagger v2"
+                };
+                println!("\n{} (512x512):", label);
+                if let Some(cpu) = tagger_cpu_time_ms {
+                    println!("  CPU: {:.2} ms/image", cpu);
+                    if let Some(gpu) = tagger_gpu_time_ms {
+                        println!("  GPU: {:.2} ms/image ({:.2}x speedup)", gpu, cpu / gpu);
+                    } else {
+                        println!("  GPU: N/A");
+                    }
+                } else {
+                    println!("  CPU: N/A");
+                    println!("  GPU: N/A");
+                }
+                if let Some(err) = tagger_gpu_error {
+                    println!("  Tagger Error: {}", err);
+                }
             }
         }
         Response::ImportResult {
@@ -403,28 +471,25 @@ async fn main() -> Result<(), Error> {
             println!("  Failed:  {}", failed);
         }
         Response::TaggerStatusResult {
-            loaded,
-            model_path,
-            total_tags,
+            preferred_tagger,
+            taggers,
         } => {
-            println!("Camie Tagger v2 Status:");
-            println!(
-                "  Loaded:     {}",
-                if loaded {
-                    "Yes"
-                } else {
-                    "No (lazy — loads on first use)"
-                }
-            );
-            println!("  Model path: {}", model_path);
-            println!(
-                "  Tag count:  {}",
-                if total_tags > 0 {
-                    total_tags.to_string()
-                } else {
-                    "N/A (not loaded)".to_string()
-                }
-            );
+            println!("Preferred tagger: {:?}", preferred_tagger);
+            for t in &taggers {
+                println!("Tagger: {} ({})", t.name, t.key);
+                println!(
+                    "  Loaded:     {}",
+                    if t.loaded {
+                        "Yes"
+                    } else {
+                        "No (lazy — loads on first use)"
+                    }
+                );
+                println!("  Model path: {}", t.model_path);
+                println!("  Tag count:  {}", t.total_tags);
+                println!("  Threshold:  {:.4}", t.default_threshold);
+                println!("  Input size: {}x{}", t.input_size, t.input_size);
+            }
         }
         Response::SettingsResult {
             clip_device,
@@ -435,6 +500,8 @@ async fn main() -> Result<(), Error> {
             detection_metrics_device,
             ocr_device,
             model_precisions,
+            preferred_tagger,
+            taggers,
         } => {
             println!("Settings:");
             println!("  CLIP device:              {:?}", clip_device);
@@ -445,6 +512,13 @@ async fn main() -> Result<(), Error> {
             println!("  Detection metrics device: {:?}", detection_metrics_device);
             println!("  OCR device:               {:?}", ocr_device);
             println!("  Model precisions:         {:?}", model_precisions);
+            println!("  Preferred tagger:         {:?}", preferred_tagger);
+            for t in taggers {
+                println!(
+                    "  Tagger [{}] loaded={} tags={}",
+                    t.key, t.loaded, t.total_tags
+                );
+            }
         }
         Response::PreprocessBenchmarkResult { report } => {
             println!("{}", report);

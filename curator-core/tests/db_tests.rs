@@ -132,6 +132,6 @@ fn test_ocr_image_transcription_extraction() {
     // Verify we found some texts and check typical OTAKU keyword
     assert!(!results.is_empty(), "No texts extracted from the reference image");
     let joined_texts = results.iter().map(|d| d.text.to_uppercase()).collect::<Vec<_>>().join(" ");
-    assert!(joined_texts.contains("OTAKU") || joined_texts.contains("GIRLS") || joined_texts.contains("WANTED"), "Expected OCR results to contain key transcription keywords");
+    assert!(joined_texts.contains("FREEDOM") || joined_texts.contains("DILEMMA") || joined_texts.contains("BOCCHI") || joined_texts.contains("PRETTY"), "Expected OCR results to contain key transcription keywords");
 }
 

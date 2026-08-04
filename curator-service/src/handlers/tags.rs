@@ -11,18 +11,29 @@ pub async fn add_tag_logic(
 ) -> Result<()> {
     let source_id = resolve_source_id(db, "user").await?;
 
-    // Upsert tag with RETURNING id + insert image_tag in one transaction.
+    // Insert tag without clobbering an existing category; when the tag already
+    // exists, the insert returns no row and we fetch its id by name.
     let mut tx = db.begin().await?;
-    let tag_row: (i64,) = sqlx::query_as(
+    let tag_row: Option<(i64,)> = sqlx::query_as(
         "INSERT INTO tags (name, category) VALUES (?, ?)
-         ON CONFLICT(name) DO UPDATE SET category = excluded.category
+         ON CONFLICT(name) DO NOTHING
          RETURNING id",
     )
     .bind(tag)
     .bind(category)
-    .fetch_one(&mut *tx)
+    .fetch_optional(&mut *tx)
     .await?;
-    let tag_id = tag_row.0;
+
+    let tag_id = match tag_row {
+        Some((id,)) => id,
+        None => {
+            let existing: (i64,) = sqlx::query_as("SELECT id FROM tags WHERE name = ?")
+                .bind(tag)
+                .fetch_one(&mut *tx)
+                .await?;
+            existing.0
+        }
+    };
 
     sqlx::query(
         "INSERT OR REPLACE INTO image_tags (image_id, tag_id, source_id, confidence, is_deleted)
@@ -197,21 +208,24 @@ pub async fn set_favorite_logic(
 }
 
 pub async fn get_tag_statistics_logic(
+    preferred_source: &str,
     db: &SqlitePool,
 ) -> Result<Vec<curator_core::ipc::TagStat>> {
+    let source_id = resolve_source_id(db, preferred_source).await.unwrap_or(0);
     let tags = sqlx::query_as::<_, curator_core::ipc::TagStat>(
         r#"
         SELECT t.name AS tag, t.category AS category, g.count AS count
         FROM (
             SELECT tag_id, COUNT(*) AS count
             FROM image_tags
-            WHERE is_deleted = 0
+            WHERE is_deleted = 0 AND source_id = ?
             GROUP BY tag_id
         ) g
         JOIN tags t ON t.id = g.tag_id
         ORDER BY count DESC
         "#,
     )
+    .bind(source_id)
     .fetch_all(db)
     .await?;
 

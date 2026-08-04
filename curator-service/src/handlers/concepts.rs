@@ -270,6 +270,7 @@ pub async fn list_concepts_logic(db: &SqlitePool) -> Result<Vec<CustomConcept>> 
 pub async fn get_concept_samples_logic(
     db: &SqlitePool,
     concept_id: i64,
+    preferred_source: &str,
 ) -> Result<Vec<curator_core::ipc::ImageDetails>> {
     let sample_rows: Vec<(i64,)> = sqlx::query_as(
         "SELECT image_id FROM custom_concept_samples WHERE concept_id = ?",
@@ -280,7 +281,7 @@ pub async fn get_concept_samples_logic(
 
     let ids: Vec<i64> = sample_rows.into_iter().map(|r| r.0).collect();
     // Batch-fetch all sample details (4 queries total) instead of N×6.
-    let samples = super::image::batch_get_images_logic(&ids, db)
+    let samples = super::image::batch_get_images_logic(&ids, preferred_source, db)
         .await
         .unwrap_or_default();
     Ok(samples)

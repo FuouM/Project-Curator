@@ -3,8 +3,8 @@ use clap::Parser;
 use curator_core::constants::resolve_data_dir;
 use curator_core::db::init_db;
 use curator_core::detection::{CCIPModel, DetectionPipeline, YoloDetector};
-use curator_core::ipc::{Request, Response};
-use curator_core::tagger::TaggerEngine;
+use curator_core::ipc::{Request, Response, TaggerModel};
+use curator_core::tagger::TaggerManager;
 use curator_core::thumbnail::ThumbnailCache;
 use curator_core::vector::{ModelManager, VectorIndex};
 use serde::{Deserialize, Serialize};
@@ -31,7 +31,7 @@ struct ClientContext {
     db: SqlitePool,
     model_manager: Arc<ModelManager>,
     vector_index: Arc<VectorIndex>,
-    tagger: Arc<TaggerEngine>,
+    taggers: Arc<TaggerManager>,
     detection: Arc<DetectionPipeline>,
     ocr: Arc<curator_core::OcrDetector>,
     service_key: Arc<String>,
@@ -47,6 +47,8 @@ struct ClientContext {
 pub(crate) struct AppSettings {
     clip_device: curator_core::ipc::DevicePreference,
     tagger_device: curator_core::ipc::DevicePreference,
+    #[serde(default)]
+    tagger_wd_device: curator_core::ipc::DevicePreference,
     #[serde(default = "default_idle_timeout")]
     idle_timeout_secs: u64,
     #[serde(default)]
@@ -59,6 +61,9 @@ pub(crate) struct AppSettings {
     ocr_device: curator_core::ipc::DevicePreference,
     #[serde(default)]
     model_precisions: std::collections::HashMap<String, curator_core::ipc::ModelPrecision>,
+    /// Preferred tagger whose tags are surfaced in the UI.
+    #[serde(default)]
+    preferred_tagger: TaggerModel,
 }
 
 fn default_idle_timeout() -> u64 {
@@ -74,12 +79,14 @@ impl Default for AppSettings {
         Self {
             clip_device: curator_core::ipc::DevicePreference::Auto,
             tagger_device: curator_core::ipc::DevicePreference::Auto,
+            tagger_wd_device: curator_core::ipc::DevicePreference::Auto,
             idle_timeout_secs: default_idle_timeout(),
             embedding_model: curator_core::ipc::EmbeddingModel::ClipVitB32,
             detection_device: curator_core::ipc::DevicePreference::Auto,
             detection_metrics_device: curator_core::ipc::DevicePreference::Cpu,
             ocr_device: curator_core::ipc::DevicePreference::Auto,
             model_precisions: std::collections::HashMap::new(),
+            preferred_tagger: TaggerModel::Camie,
         }
     }
 }
@@ -163,6 +170,12 @@ async fn main() -> Result<(), Error> {
     .await?;
 
     sqlx::query(
+        "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES ('ai:wd-eva02-tagger-2026-canary', 'AI_MODEL', '{}')"
+    )
+    .execute(&db)
+    .await?;
+
+    sqlx::query(
         "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES ('ai:mobileclip-s2', 'AI_MODEL', '{}')"
     )
     .execute(&db)
@@ -184,8 +197,8 @@ async fn main() -> Result<(), Error> {
 
     let settings = load_settings(&data_dir);
     info!(
-        "Settings loaded: clip_device={:?}, tagger_device={:?}, detection_device={:?}, detection_metrics_device={:?}, idle_timeout={}s",
-        settings.clip_device, settings.tagger_device, settings.detection_device, settings.detection_metrics_device, settings.idle_timeout_secs
+        "Settings loaded: clip_device={:?}, tagger_device={:?}, tagger_wd_device={:?}, detection_device={:?}, detection_metrics_device={:?}, idle_timeout={}s",
+        settings.clip_device, settings.tagger_device, settings.tagger_wd_device, settings.detection_device, settings.detection_metrics_device, settings.idle_timeout_secs
     );
 
     let model_dir = data_dir.join("models");
@@ -219,13 +232,18 @@ async fn main() -> Result<(), Error> {
         .as_ref()
         .map(PathBuf::from)
         .unwrap_or_else(|| data_dir.join("models"));
-    let tagger = Arc::new(TaggerEngine::new(
+    let taggers = Arc::new(TaggerManager::new(
         &tagger_dir,
         settings.tagger_device.clone(),
+        settings.tagger_wd_device.clone(),
     ));
     info!(
-        "Camie Tagger configured at {:?} with device {:?} (model loads on first use)",
-        tagger_dir, settings.tagger_device
+        "Tagger engines configured at {:?} with devices: camie={:?}, wd={:?} (models load on first use)",
+        tagger_dir, settings.tagger_device, settings.tagger_wd_device
+    );
+    info!(
+        "Preferred tagger: {:?}",
+        settings.preferred_tagger
     );
 
     let prefer_quantized_yolo = settings
@@ -278,7 +296,9 @@ async fn main() -> Result<(), Error> {
     // Build the node registry with all system nodes
     let mut node_registry = curator_core::NodeRegistry::new();
     node_registry.register(model_manager.clone());
-    node_registry.register(tagger.clone());
+    for tg in taggers.all() {
+        node_registry.register(tg);
+    }
     node_registry.register(ocr.clone());
     info!("Node registry initialized with {} system nodes", node_registry.len());
     let _node_registry = Arc::new(node_registry);
@@ -290,7 +310,7 @@ async fn main() -> Result<(), Error> {
 
     {
         let mm = model_manager.clone();
-        let tg = tagger.clone();
+        let tgs = taggers.clone();
         let ocr_timeout = ocr.clone();
         let st = settings_arc.clone();
         tokio::spawn(async move {
@@ -306,8 +326,10 @@ async fn main() -> Result<(), Error> {
                 if mm.is_loaded() && mm.idle_secs() >= timeout {
                     mm.unload();
                 }
-                if tg.is_loaded() && tg.idle_secs() >= timeout {
-                    tg.unload();
+                for tg in tgs.all() {
+                    if tg.is_loaded() && tg.idle_secs() >= timeout {
+                        tg.unload();
+                    }
                 }
                 if ocr_timeout.is_loaded() && ocr_timeout.idle_secs() >= timeout {
                     ocr_timeout.unload();
@@ -328,7 +350,7 @@ async fn main() -> Result<(), Error> {
             db,
             model_manager,
             vector_index,
-            tagger,
+            taggers,
             detection,
             ocr,
             service_key: Arc::new(service_key),
@@ -363,7 +385,13 @@ impl Curator for CuratorServiceImpl {
         let req_payload = request.into_inner();
         let request_str = req_payload.request_json;
 
-        info!("Received gRPC Request: {}", request_str);
+        let is_noisy = request_str.contains("GetConversionLogs") || request_str.contains("GetDownloadProgress");
+
+        if !is_noisy {
+            info!("Received gRPC Request: {}", request_str);
+        } else {
+            tracing::debug!("Received gRPC Request: {}", request_str);
+        }
 
         let request_parsed: Request = match serde_json::from_str(&request_str) {
             Ok(r) => r,
@@ -381,7 +409,7 @@ impl Curator for CuratorServiceImpl {
             &self.ctx.db,
             &self.ctx.model_manager,
             &self.ctx.vector_index,
-            &self.ctx.tagger,
+            &self.ctx.taggers,
             &self.ctx.detection,
             &self.ctx.ocr,
             &self.ctx.data_dir,
@@ -394,7 +422,11 @@ impl Curator for CuratorServiceImpl {
         .await;
 
         let response_json = serde_json::to_string(&response).map_err(|e| Status::internal(e.to_string()))?;
-        info!("Sending gRPC Response: {}", response_json);
+        if !is_noisy {
+            info!("Sending gRPC Response: {}", response_json);
+        } else {
+            tracing::debug!("Sending gRPC Response: {}", response_json);
+        }
         Ok(TonicResponse::new(CuratorResponse { response_json }))
     }
 }

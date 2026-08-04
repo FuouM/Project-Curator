@@ -33,7 +33,12 @@ async fn test_image_processing_benchmark_iterative_paths() {
     assert_eq!(images2.len(), 0);
 
     // 6. Test run_single_image_benchmark with nonexistent path (should error out)
-    let result = run_single_image_benchmark(&model_manager, "dummy_path_nonexistent.jpg").await;
+    let result = run_single_image_benchmark(
+        &model_manager,
+        "dummy_path_nonexistent.jpg",
+        &curator_core::tagger::CAMIE_SPEC,
+    )
+    .await;
     assert!(result.is_err());
     let err_msg = result.err().unwrap().to_string();
     assert!(err_msg.contains("Image file does not exist"), "Expected error message to mention nonexistent: {}", err_msg);
