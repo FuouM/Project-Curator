@@ -22,6 +22,8 @@ ureq = "3"
 
 [profile.dev]
 opt-level = 0
+incremental = false
+
 
 [profile.dev.package."fast_image_resize"]
 opt-level = 3
