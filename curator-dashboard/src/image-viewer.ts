@@ -54,25 +54,13 @@ function closeImageViewer() {
 function updateDetectionButton(active: boolean) {
   const btn = document.getElementById("image-viewer-toggle-detections");
   if (!btn) return;
-  if (active) {
-    btn.classList.add("active");
-    btn.style.background = "var(--sys-accent-light, #cce5ff)";
-  } else {
-    btn.classList.remove("active");
-    btn.style.background = "";
-  }
+  btn.classList.toggle("active", active);
 }
 
 function updateOcrButton(active: boolean) {
   const btn = document.getElementById("image-viewer-toggle-ocr");
   if (!btn) return;
-  if (active) {
-    btn.classList.add("active");
-    btn.style.background = "var(--sys-accent-light, #cce5ff)";
-  } else {
-    btn.classList.remove("active");
-    btn.style.background = "";
-  }
+  btn.classList.toggle("active", active);
 }
 
 async function toggleOcr() {
