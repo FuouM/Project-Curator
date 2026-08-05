@@ -492,15 +492,28 @@ export function renderSettingsHtml(): SafeHtml {
       </div>
     </div>
 
-    <!-- Thumbnail Cache -->
+    <!-- Thumbnail Settings -->
     <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
-      <div class="group-box-title">Thumbnail Cache</div>
-      <p style="font-size: 11px; color: #333333;">Purge cached thumbnails for images that are no longer present on disk, or clear the entire thumbnail cache to force regeneration on demand.</p>
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-        <button class="win-button" id="clear-thumbnail-cache-btn"><i class="bi bi-trash"></i> Clear Thumbnail Cache</button>
-        <span id="clear-thumbnail-status-msg" style="font-size: 11px;"></span>
-        <button class="win-button danger" id="purge-missing-thumbs-btn"><i class="bi bi-trash"></i> Purge Missing Thumbnails</button>
-        <span id="purge-status-msg" style="font-size: 11px;"></span>
+      <div class="group-box-title">Thumbnail Settings</div>
+      <div style="border-top: 1px solid #e5e7eb; margin: 4px 0; padding-top: 8px;">
+        <label style="font-weight: 600; display: block; margin-bottom: 4px;">Thumbnail Cache</label>
+        <p style="font-size: 11px; color: #333333; margin: 0 0 8px;">Purge cached thumbnails for images that are no longer present on disk, or clear the entire thumbnail cache to force regeneration on demand.</p>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <button class="win-button" id="clear-thumbnail-cache-btn"><i class="bi bi-trash"></i> Clear Thumbnail Cache</button>
+          <span id="clear-thumbnail-status-msg" style="font-size: 11px;"></span>
+          <button class="win-button danger" id="purge-missing-thumbs-btn"><i class="bi bi-trash"></i> Purge Missing Thumbnails</button>
+          <span id="purge-status-msg" style="font-size: 11px;"></span>
+        </div>
+      </div>
+      <div style="border-top: 1px solid #e5e7eb; margin: 4px 0; padding-top: 8px;">
+        <label style="font-weight: 600; display: block; margin-bottom: 4px;">Crop Thumbnails</label>
+        <p style="font-size: 11px; color: #333333; margin: 0 0 8px;">Clear the cached bounding box crops. This forces the system to regenerate crop thumbnails from original files on demand.</p>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button class="win-button" id="clear-crop-cache-btn">
+            <i class="bi bi-trash"></i> Clear Crop Cache
+          </button>
+          <span id="clear-crop-cache-status-msg" style="font-size: 11px; min-height: 16px;"></span>
+        </div>
       </div>
     </div>
 
@@ -513,18 +526,6 @@ export function renderSettingsHtml(): SafeHtml {
           <i class="bi bi-folder-fill"></i> Backfill Image Folders
         </button>
         <span id="backfill-status-msg" style="font-size: 11px; min-height: 16px;"></span>
-      </div>
-    </div>
-
-    <!-- Cache Management -->
-    <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
-      <div class="group-box-title">Cache Management</div>
-      <p style="font-size: 11px; color: #333333;">Clear the cached bounding box crops. This forces the system to regenerate crop thumbnails from original files on demand.</p>
-      <div style="display: flex; gap: 8px; align-items: center;">
-        <button class="win-button" id="clear-crop-cache-btn">
-          <i class="bi bi-trash"></i> Clear Crop Cache
-        </button>
-        <span id="clear-crop-cache-status-msg" style="font-size: 11px; min-height: 16px;"></span>
       </div>
     </div>
 
