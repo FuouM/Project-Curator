@@ -31,6 +31,7 @@ export type RequestPayload =
   | { GetDashboardInit: null }
   | { GetImportedFolders: null }
   | { BackfillImageFolders: null }
+  | { BackfillMediaMetadata: null }
   | { UpdateFolderPath: { id: number; new_path: string } }
   | { DeleteFolder: { id: number } }
   | { DetectDuplicateFolders: null }
@@ -145,6 +146,17 @@ export interface ImageDetails {
   is_missing: boolean;
   character_identities: CharacterIdentitySummary[];
   ocr_text?: string;
+  width?: number | null;
+  height?: number | null;
+  animation?: AnimationSummary | null;
+}
+
+export interface AnimationSummary {
+  format: string;
+  frame_count: number;
+  duration_ms: number;
+  loop_count?: number | null;
+  is_animated: boolean;
 }
 
 export interface CharacterIdentitySummary {
@@ -231,6 +243,7 @@ export type ResponsePayload =
     } }
   | { ImportedFoldersResult: { folders: FolderDetails[] } }
   | { BackfillResult: { images_backfilled: number } }
+  | { MediaMetadataBackfillResult: { processed: number; updated: number } }
   | { ReindexFailedResult: { requeued: number } }
   | { UpdateFolderPathResult: { success: boolean } }
   | { DeleteFolderResult: { success: boolean } }
@@ -364,6 +377,7 @@ export interface CardImageData {
   isMissing?: boolean;
   characterIdentities?: CharacterIdentitySummary[];
   ocrText?: string;
+  animation?: AnimationSummary | null;
 }
 
 export interface OcrResult {

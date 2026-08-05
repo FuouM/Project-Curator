@@ -65,6 +65,27 @@ export function setupMaintenanceButtons() {
     backfillBtn.removeAttribute("disabled");
   });
 
+  // Backfill media metadata button
+  const backfillMediaBtn = document.getElementById("backfill-media-metadata-btn");
+  const backfillMediaStatus = document.getElementById("backfill-media-metadata-status-msg");
+  backfillMediaBtn?.addEventListener("click", async () => {
+    if (!backfillMediaStatus) return;
+    setStatusMessage(backfillMediaStatus, "Backfilling media metadata...", "loading");
+    backfillMediaBtn.setAttribute("disabled", "true");
+    try {
+      const resp = await callService({ BackfillMediaMetadata: null });
+      if ("MediaMetadataBackfillResult" in resp) {
+        const { processed, updated } = resp.MediaMetadataBackfillResult;
+        setStatusMessage(backfillMediaStatus, `Done! ${updated} image(s) updated (${processed} scanned).`, "success");
+      } else if ("Error" in resp) {
+        setStatusMessage(backfillMediaStatus, "Failed: " + resp.Error.message, "error");
+      }
+    } catch (e: any) {
+      setStatusMessage(backfillMediaStatus, "Error: " + (e.message || e), "error");
+    }
+    backfillMediaBtn.removeAttribute("disabled");
+  });
+
   // Clear crop cache button
   const clearCropCacheBtn = document.getElementById("clear-crop-cache-btn");
   const clearCropCacheStatus = document.getElementById("clear-crop-cache-status-msg");

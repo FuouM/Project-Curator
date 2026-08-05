@@ -556,6 +556,18 @@ export function renderSettingsHtml(): SafeHtml {
       </div>
     </div>
 
+    <!-- Media Metadata -->
+    <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+      <div class="group-box-title">Media Metadata</div>
+      <p style="font-size: 11px; color: #333333;">Populate dimensions and GIF animation details (frame count, duration) for images imported before media metadata tracking existed.</p>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button class="win-button" id="backfill-media-metadata-btn">
+          <i class="bi bi-film"></i> Backfill Media Metadata
+        </button>
+        <span id="backfill-media-metadata-status-msg" style="font-size: 11px; min-height: 16px;"></span>
+      </div>
+    </div>
+
 
   `;
 }

@@ -7,6 +7,7 @@ pub mod detection;
 pub mod filename_parser;
 pub mod image_decode;
 pub mod ipc;
+pub mod media;
 pub mod onnx;
 pub mod pipeline;
 pub mod preprocess;
@@ -29,6 +30,7 @@ pub use db::models;
 pub use detection::{CCIPModel, DetectionPipeline, YoloDetector, OcrDetector, OcrDetection};
 pub use filename_parser::FilenameParser;
 pub use ipc::{DevicePreference, ImageDetails, Request, Response, SearchMatch, TagSummary, OcrResult};
+pub use media::{is_gif, read_dimensions, read_gif_animation, AnimationInfo};
 pub use tagger::{TagPrediction, TaggerEngine, TaggerManager};pub use vector::{ModelManager, VectorIndex, apply_device_preference, OnnxConfig};
 pub use image;
 

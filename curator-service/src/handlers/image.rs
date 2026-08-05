@@ -325,6 +325,42 @@ pub async fn list_images_logic(
     Ok((images, total_count))
 }
 
+/// Batch-fetch animated media metadata for image IDs.
+async fn fetch_animation_metadata_batch(
+    ids: &[i64],
+    db: &SqlitePool,
+) -> std::collections::HashMap<i64, curator_core::ipc::AnimationSummary> {
+    let mut map = std::collections::HashMap::new();
+    if ids.is_empty() {
+        return map;
+    }
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT image_id, format, frame_count, duration_ms, loop_count, is_animated
+         FROM image_animation_metadata WHERE image_id IN ({})",
+        placeholders
+    );
+    let mut q = sqlx::query_as::<_, (i64, String, i64, i64, Option<i64>, bool)>(&sql);
+    for id in ids {
+        q = q.bind(id);
+    }
+    if let Ok(rows) = q.fetch_all(db).await {
+        for (image_id, format, frame_count, duration_ms, loop_count, is_animated) in rows {
+            map.insert(
+                image_id,
+                curator_core::ipc::AnimationSummary {
+                    format,
+                    frame_count,
+                    duration_ms,
+                    loop_count,
+                    is_animated,
+                },
+            );
+        }
+    }
+    map
+}
+
 pub async fn get_image_logic(
     image_id: i64,
     preferred_source: &str,
@@ -426,6 +462,10 @@ pub async fn get_image_logic(
     .fetch_optional(db)
     .await?;
 
+    let animation = fetch_animation_metadata_batch(&[image_id], db)
+        .await
+        .remove(&image_id);
+
     Ok(ImageDetails {
         id: img.id,
         sha256: img.sha256,
@@ -440,6 +480,9 @@ pub async fn get_image_logic(
         is_missing: img.is_missing,
         character_identities,
         ocr_text,
+        width: img.width,
+        height: img.height,
+        animation,
     })
 }
 
@@ -457,13 +500,13 @@ pub async fn batch_get_images_logic(
     let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
 
     let base_sql = format!(
-        "SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite, i.is_missing
+        "SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite, i.is_missing, i.width, i.height
          FROM images i
          WHERE i.id IN ({}) AND i.deleted_at IS NULL
          ORDER BY i.created_at DESC, i.id DESC",
         placeholders
     );
-    let mut base_q = sqlx::query_as::<_, (i64, String, String, i64, String, bool, bool)>(&base_sql);
+    let mut base_q = sqlx::query_as::<_, (i64, String, String, i64, String, bool, bool, Option<i64>, Option<i64>)>(&base_sql);
     for id in ids {
         base_q = base_q.bind(id);
     }
@@ -472,7 +515,7 @@ pub async fn batch_get_images_logic(
     let mut image_order: Vec<i64> = Vec::new();
     let mut image_map: std::collections::HashMap<i64, ImageDetails> =
         std::collections::HashMap::new();
-    for (id, sha256, current_filepath, mtime, created_at, favorite, is_missing) in base_rows {
+    for (id, sha256, current_filepath, mtime, created_at, favorite, is_missing, width, height) in base_rows {
         image_order.push(id);
         image_map.insert(
             id,
@@ -490,6 +533,9 @@ pub async fn batch_get_images_logic(
                 is_missing,
                 character_identities: Vec::new(),
                 ocr_text: None,
+                width,
+                height,
+                animation: None,
             },
         );
     }
@@ -604,6 +650,12 @@ pub async fn batch_get_images_logic(
         }
     }
 
+    for (img_id, animation) in fetch_animation_metadata_batch(ids, db).await {
+        if let Some(img) = image_map.get_mut(&img_id) {
+            img.animation = Some(animation);
+        }
+    }
+
     let mut images: Vec<ImageDetails> = Vec::with_capacity(image_order.len());
     for id in image_order {
         if let Some(mut img) = image_map.remove(&id) {
@@ -625,6 +677,7 @@ async fn fetch_image_details_batch(
     let sql = format!(
         r#"
         SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite, i.is_missing,
+               i.width, i.height,
                t.name, t.category, it.confidence, s.name as source_name
         FROM images i
         LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0 AND it.source_id = {source_id}
@@ -653,6 +706,8 @@ async fn fetch_image_details_batch(
         created_at,
         favorite,
         is_missing,
+        width,
+        height,
         tag_name,
         tag_category,
         confidence,
@@ -676,6 +731,9 @@ async fn fetch_image_details_batch(
             is_missing,
             character_identities: Vec::new(),
             ocr_text: None,
+            width,
+            height,
+            animation: None,
         });
         if let (Some(name), Some(category)) = (tag_name, tag_category) {
             if source_name.as_deref() != Some("filename_parser") {
@@ -774,6 +832,12 @@ async fn fetch_image_details_batch(
                 if let Some(img) = image_map.get_mut(&img_id) {
                     img.ocr_text = Some(text);
                 }
+            }
+        }
+
+        for (img_id, animation) in fetch_animation_metadata_batch(&img_ids, db).await {
+            if let Some(img) = image_map.get_mut(&img_id) {
+                img.animation = Some(animation);
             }
         }
     }

@@ -23,6 +23,20 @@ pub struct Image {
     pub favorite: bool,
     #[sqlx(default)]
     pub is_missing: bool,
+    #[sqlx(default)]
+    pub width: Option<i64>,
+    #[sqlx(default)]
+    pub height: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ImageAnimationMetadata {
+    pub image_id: i64,
+    pub format: String,
+    pub frame_count: i64,
+    pub duration_ms: i64,
+    pub loop_count: Option<i64>,
+    pub is_animated: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]

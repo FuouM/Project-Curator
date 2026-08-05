@@ -8,6 +8,71 @@ use tracing::{info, warn};
 
 use super::common::resolve_source_id;
 
+/// Best-effort media metadata extracted from a file header.
+/// Extraction failures are logged and stored as `None`, matching the phash
+/// convention: a corrupt file must never block library import.
+struct MediaExtract {
+    width: Option<i64>,
+    height: Option<i64>,
+    animation: Option<curator_core::media::AnimationInfo>,
+}
+
+fn extract_media_info(path: &Path) -> MediaExtract {
+    let (width, height) = match curator_core::media::read_dimensions(path) {
+        Ok((w, h)) => (Some(w as i64), Some(h as i64)),
+        Err(e) => {
+            warn!("Failed to read dimensions for {:?}: {:?}", path, e);
+            (None, None)
+        }
+    };
+
+    let animation = if curator_core::media::is_gif(path) {
+        match curator_core::media::read_gif_animation(path) {
+            Ok(info) => Some(info),
+            Err(e) => {
+                warn!("Failed to read GIF animation metadata for {:?}: {:?}", path, e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    MediaExtract {
+        width,
+        height,
+        animation,
+    }
+}
+
+/// Upsert animated media metadata for an image (no-op for static images).
+async fn upsert_animation_metadata(
+    exec: &mut sqlx::SqliteConnection,
+    image_id: i64,
+    media: &MediaExtract,
+) -> Result<()> {
+    if let Some(anim) = &media.animation {
+        sqlx::query(
+            "INSERT INTO image_animation_metadata (image_id, format, frame_count, duration_ms, loop_count, is_animated)
+             VALUES (?, 'gif', ?, ?, ?, 1)
+             ON CONFLICT(image_id) DO UPDATE SET
+               format = excluded.format,
+               frame_count = excluded.frame_count,
+               duration_ms = excluded.duration_ms,
+               loop_count = excluded.loop_count,
+               is_animated = excluded.is_animated,
+               updated_at = CURRENT_TIMESTAMP",
+        )
+        .bind(image_id)
+        .bind(anim.frame_count as i64)
+        .bind(anim.duration_ms)
+        .bind(anim.loop_count.map(|c| c as i64))
+        .execute(&mut *exec)
+        .await?;
+    }
+    Ok(())
+}
+
 pub async fn get_or_create_folder(folder_path: &str, db: &SqlitePool) -> Result<i64> {
     let existing: Option<(i64,)> = sqlx::query_as("SELECT id FROM folders WHERE path = ? LIMIT 1")
         .bind(folder_path)
@@ -69,22 +134,27 @@ pub async fn import_single_image(
         }
     };
 
+    let media = extract_media_info(path);
+
     let existing: Option<(i64, String)> =
         sqlx::query_as("SELECT id, current_filepath FROM images WHERE sha256 = ?")
             .bind(&sha256)
             .fetch_optional(db)
             .await?;
 
-    if let Some((id, _old_path)) = existing {
+    let mut tx = db.begin().await?;
+    let id = if let Some((id, _old_path)) = existing {
         sqlx::query(
-            "UPDATE images SET current_filepath = ?, mtime = ?, phash = ?, folder_id = COALESCE(folder_id, ?), deleted_at = NULL WHERE id = ?",
+            "UPDATE images SET current_filepath = ?, mtime = ?, phash = ?, width = COALESCE(?, width), height = COALESCE(?, height), folder_id = COALESCE(folder_id, ?), deleted_at = NULL WHERE id = ?",
         )
         .bind(path_str)
         .bind(mtime)
         .bind(&phash)
+        .bind(media.width)
+        .bind(media.height)
         .bind(folder_id)
         .bind(id)
-        .execute(db)
+        .execute(&mut *tx)
         .await?;
 
         let vec_exists: Option<(String,)> = sqlx::query_as(
@@ -92,7 +162,7 @@ pub async fn import_single_image(
         )
         .bind(id)
         .bind(clip_source_id)
-        .fetch_optional(db)
+        .fetch_optional(&mut *tx)
         .await
         .unwrap_or(None);
 
@@ -102,31 +172,37 @@ pub async fn import_single_image(
             )
             .bind(id)
             .bind(clip_source_id)
-            .execute(db)
+            .execute(&mut *tx)
             .await?;
         }
-        return Ok((id, sha256));
-    }
+        id
+    } else {
+        let id = sqlx::query(
+            "INSERT INTO images (sha256, phash, current_filepath, mtime, folder_id, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&sha256)
+        .bind(&phash)
+        .bind(path_str)
+        .bind(mtime)
+        .bind(folder_id)
+        .bind(media.width)
+        .bind(media.height)
+        .execute(&mut *tx)
+        .await?
+        .last_insert_rowid();
 
-    let id = sqlx::query(
-        "INSERT INTO images (sha256, phash, current_filepath, mtime, folder_id) VALUES (?, ?, ?, ?, ?)",
-    )
-    .bind(&sha256)
-    .bind(&phash)
-    .bind(path_str)
-    .bind(mtime)
-    .bind(folder_id)
-    .execute(db)
-    .await?
-    .last_insert_rowid();
+        sqlx::query(
+            "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
+        )
+        .bind(id)
+        .bind(clip_source_id)
+        .execute(&mut *tx)
+        .await?;
+        id
+    };
 
-    sqlx::query(
-        "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
-    )
-    .bind(id)
-    .bind(clip_source_id)
-    .execute(db)
-    .await?;
+    upsert_animation_metadata(&mut tx, id, &media).await?;
+    tx.commit().await?;
 
     Ok((id, sha256))
 }
@@ -194,6 +270,7 @@ pub async fn import_image_logic(
             sha256: String,
             mtime: i64,
             phash: Option<String>,
+            media: MediaExtract,
         }
 
         let mut prepped_images = Vec::with_capacity(paths_vec.len());
@@ -216,11 +293,13 @@ pub async fn import_image_logic(
                                 .unwrap_or(0);
                             if let Ok(data) = fs::read(p) {
                                 let sha256 = format!("{:x}", sha2::Sha256::digest(&data));
+                                let media = extract_media_info(p);
                                 items.push(PreppedImage {
                                     path_str: p_str,
                                     sha256,
                                     mtime,
                                     phash: None,
+                                    media,
                                 });
                             }
                         }
@@ -257,11 +336,13 @@ pub async fn import_image_logic(
 
             let img_id = if let Some((id, _old_path)) = existing {
                 let _ = sqlx::query(
-                    "UPDATE images SET current_filepath = ?, mtime = ?, phash = ?, folder_id = COALESCE(folder_id, ?), deleted_at = NULL WHERE id = ?",
+                    "UPDATE images SET current_filepath = ?, mtime = ?, phash = ?, width = COALESCE(?, width), height = COALESCE(?, height), folder_id = COALESCE(folder_id, ?), deleted_at = NULL WHERE id = ?",
                 )
                 .bind(&item.path_str)
                 .bind(item.mtime)
                 .bind(&item.phash)
+                .bind(item.media.width)
+                .bind(item.media.height)
                 .bind(folder_id)
                 .bind(id)
                 .execute(&mut *tx)
@@ -288,13 +369,15 @@ pub async fn import_image_logic(
                 id
             } else {
                 let id = sqlx::query(
-                    "INSERT INTO images (sha256, phash, current_filepath, mtime, folder_id) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO images (sha256, phash, current_filepath, mtime, folder_id, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 )
                 .bind(&item.sha256)
                 .bind(&item.phash)
                 .bind(&item.path_str)
                 .bind(item.mtime)
                 .bind(Some(folder_id))
+                .bind(item.media.width)
+                .bind(item.media.height)
                 .execute(&mut *tx)
                 .await?
                 .last_insert_rowid();
@@ -309,6 +392,8 @@ pub async fn import_image_logic(
 
                 id
             };
+
+            upsert_animation_metadata(&mut tx, img_id, &item.media).await?;
 
             if !imported_any {
                 first_id = img_id;
@@ -387,6 +472,55 @@ pub async fn backfill_image_folders(db: &SqlitePool) -> Result<i64> {
 
     info!("Backfilled {} images with folder assignments", backfilled);
     Ok(backfilled)
+}
+
+/// Populate media metadata (dimensions, GIF animation details) for images that
+/// are missing it. Returns `(processed, updated)`.
+pub async fn backfill_media_metadata(db: &SqlitePool) -> Result<(i64, i64)> {
+    let rows: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT i.id, i.current_filepath
+         FROM images i
+         LEFT JOIN image_animation_metadata am ON am.image_id = i.id
+         WHERE i.deleted_at IS NULL
+           AND (i.width IS NULL OR i.height IS NULL OR (am.image_id IS NULL AND LOWER(i.current_filepath) LIKE '%.gif'))",
+    )
+    .fetch_all(db)
+    .await?;
+
+    let mut processed: i64 = 0;
+    let mut updated: i64 = 0;
+    let mut tx = db.begin().await?;
+    for (id, filepath) in rows {
+        let path = Path::new(&filepath);
+        if !path.exists() {
+            continue;
+        }
+        let media = extract_media_info(path);
+        processed += 1;
+        let mut changed = false;
+        if media.width.is_some() || media.height.is_some() {
+            sqlx::query(
+                "UPDATE images SET width = COALESCE(?, width), height = COALESCE(?, height) WHERE id = ?",
+            )
+            .bind(media.width)
+            .bind(media.height)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+            changed = true;
+        }
+        if media.animation.is_some() {
+            upsert_animation_metadata(&mut tx, id, &media).await?;
+            changed = true;
+        }
+        if changed {
+            updated += 1;
+        }
+    }
+    tx.commit().await?;
+
+    info!("Backfilled media metadata: {} processed, {} updated", processed, updated);
+    Ok((processed, updated))
 }
 
 pub async fn get_imported_folders_logic(

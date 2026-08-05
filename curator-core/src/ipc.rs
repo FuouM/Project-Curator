@@ -227,6 +227,9 @@ pub enum Request {
     GetImportedFolders,
     /// Backfill existing images with their parent folder assignments.
     BackfillImageFolders,
+    /// Backfill missing media metadata (dimensions, GIF animation details)
+    /// for already-imported images.
+    BackfillMediaMetadata,
     /// Update the path of an imported folder.
     UpdateFolderPath {
         id: i64,
@@ -657,6 +660,11 @@ pub enum Response {
     BackfillResult {
         images_backfilled: i64,
     },
+    /// Result of backfilling media metadata (dimensions, GIF animation details).
+    MediaMetadataBackfillResult {
+        processed: i64,
+        updated: i64,
+    },
     /// Result of reindexing failed vectors.
     ReindexFailedResult {
         requeued: i64,
@@ -950,6 +958,24 @@ pub struct ImageDetails {
     pub character_identities: Vec<CharacterIdentitySummary>,
     #[serde(default)]
     pub ocr_text: Option<String>,
+    #[serde(default)]
+    pub width: Option<i64>,
+    #[serde(default)]
+    pub height: Option<i64>,
+    #[serde(default)]
+    pub animation: Option<AnimationSummary>,
+}
+
+/// Animated media details (present only for animated files, e.g. GIF).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnimationSummary {
+    pub format: String,
+    pub frame_count: i64,
+    /// Raw sum of per-frame delays in milliseconds.
+    pub duration_ms: i64,
+    /// Netscape loop count: `None` = no loop extension, `0` = infinite.
+    pub loop_count: Option<i64>,
+    pub is_animated: bool,
 }
 
 /// Lightweight character identity reference for card display.

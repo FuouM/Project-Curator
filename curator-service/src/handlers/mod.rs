@@ -75,6 +75,8 @@ pub(crate) type ImageRow = (
     String,
     bool,
     bool,
+    Option<i64>,
+    Option<i64>,
     Option<String>,
     Option<String>,
     Option<f32>,
@@ -772,6 +774,16 @@ pub async fn handle_request(
         Request::BackfillImageFolders => match import::backfill_image_folders(db).await {
             Ok(count) => Response::BackfillResult {
                 images_backfilled: count,
+            },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
+        Request::BackfillMediaMetadata => match import::backfill_media_metadata(db).await {
+            Ok((processed, updated)) => Response::MediaMetadataBackfillResult {
+                processed,
+                updated,
             },
             Err(e) => Response::Error {
                 message: e.to_string(),
