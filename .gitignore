@@ -1,5 +1,6 @@
 test_images
 !assets/test_images
+.plans
 
 .curator/
 .curator_test/
