@@ -1,5 +1,5 @@
 import { callService } from "../ipc";
-import { SafeHtml, html } from "../components";
+import { SafeHtml, html, maskPath } from "../components";
 import { setStatusMessage } from "../utils";
 import { getImageClickAction, setImageClickAction, getTagCopyReplaceUnderscores, setTagCopyReplaceUnderscores } from "../state";
 import { applySettingsToUI, refreshTaggerStatus } from "./dashboard";
@@ -48,20 +48,28 @@ export function setupSettings() {
   // Path visibility setting (localStorage)
   const pathVisRadios = document.querySelectorAll('input[name="path-vis"]') as NodeListOf<HTMLInputElement>;
   const pathFoldersInput = document.getElementById("settings-path-folders") as HTMLInputElement;
+  const pathPreviewEl = document.getElementById("settings-path-preview");
   const savedMode = localStorage.getItem("curator-path-vis-mode") || "filename";
   const savedFolders = parseInt(localStorage.getItem("curator-path-vis-folders") || "1", 10);
   pathVisRadios.forEach(r => { r.checked = r.value === savedMode; });
   if (pathFoldersInput) pathFoldersInput.value = savedFolders.toString();
+  const SAMPLE_PATH = "C:\\Users\\demo\\Pictures\\Anime\\Series\\Scene 01\\sample_image.png";
+  const renderPathPreview = () => {
+    if (pathPreviewEl) pathPreviewEl.textContent = maskPath(SAMPLE_PATH);
+  };
   pathVisRadios.forEach(r => {
     r.addEventListener("change", () => {
       localStorage.setItem("curator-path-vis-mode", r.value);
+      renderPathPreview();
     });
   });
   if (pathFoldersInput) {
     pathFoldersInput.addEventListener("change", () => {
       localStorage.setItem("curator-path-vis-folders", pathFoldersInput.value);
+      renderPathPreview();
     });
   }
+  renderPathPreview();
 
   // Tag copy formatting setting (localStorage)
   const tagCopyReplaceUnderscoresCheckbox = document.getElementById("settings-tag-copy-replace-underscores") as HTMLInputElement;
@@ -255,6 +263,10 @@ export function renderSettingsHtml(): SafeHtml {
             <input type="number" id="settings-path-folders" class="input-field" min="0" max="10" value="1" style="width: 48px; padding: 2px 4px; font-size: 12px;"> folder(s) + filename
           </label>
         </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 6px 10px; background-color: var(--sys-window-bg); border: 1px solid var(--sys-border-dark); border-radius: 3px;">
+        <i class="bi bi-file-earmark-image" style="color: var(--sys-border-focus); font-size: 13px;"></i>
+        <span id="settings-path-preview" style="font-size: 12px; font-family: 'Consolas', 'Courier New', monospace; color: #333333; user-select: text;"></span>
       </div>
       <div class="form-group" style="flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 8px;">
         <label style="font-weight: 600; min-width: 120px;">Favorites Button Visibility:</label>
