@@ -137,14 +137,18 @@ async function runTagging() {
   const thresholdSelect = el<HTMLSelectElement>("toolbox-tagger-threshold-select");
   const threshold = thresholdSelect ? parseFloat(thresholdSelect.value) : 0.5;
 
+  const taggerSelect = el<HTMLSelectElement>("toolbox-tagger-select");
+  const tagger = taggerSelect ? (taggerSelect.value || null) : null;
+
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = '<i class="bi bi-arrow-clockwise animate-spin"></i> Tagging...';
   }
-  setStatusMessage(status, "Running Camie Tagger...", "loading");
+  const taggerName = tagger === "wd-eva02" ? "WD EVA02 Tagger" : "Camie Tagger";
+  setStatusMessage(status, `Running ${taggerName}...`, "loading");
 
   try {
-    const resp = await callService({ EphemeralTagImage: { path: currentPath, threshold } });
+    const resp = await callService({ EphemeralTagImage: { path: currentPath, threshold, tagger } });
     if ("EphemeralTagResult" in resp) {
       const tags: TagSummary[] = resp.EphemeralTagResult.tags;
       if (tags.length === 0) {
@@ -610,7 +614,12 @@ export function renderToolboxHtml(): SafeHtml {
 
         <div class="group-box toolbox-panel">
           <div class="group-box-title"><i class="bi bi-stars"></i> AUTO TAG</div>
-          <div class="form-group" style="margin-top: 6px;">
+          <div class="form-group" style="margin-top: 6px; flex-wrap: wrap;">
+            <select class="input-field" id="toolbox-tagger-select" style="width: 155px; font-size: 11px;" title="Tagger model to use for this run">
+              <option value="" selected>Preferred Tagger</option>
+              <option value="camie">Camie Tagger v2</option>
+              <option value="wd-eva02">WD EVA02 Tagger</option>
+            </select>
             <select class="input-field" id="toolbox-tagger-threshold-select" style="width: 155px; font-size: 11px;">
               <option value="0.5" selected>Balanced (0.50)</option>
               <option value="0.65">High Precision (0.65)</option>

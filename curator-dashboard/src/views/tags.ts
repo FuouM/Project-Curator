@@ -1,7 +1,7 @@
 import { callService } from "../ipc";
 import { logJS } from "../utils";
 import { maskPath } from "../components";
-import { renderTagListHtml, getTagPillHtml, renderCardTagsContainerHtml } from "../cards";
+import { getTagPillHtml, renderCardTagsContainerHtml } from "../cards";
 import { showErrorAlert } from "../alert";
 
 export async function openTagModal(imgId: number, path: string) {

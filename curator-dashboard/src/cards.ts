@@ -179,7 +179,7 @@ export function renderCardTagsContainerHtml(img: { tags: TagSummary[] }, isFeatu
     } else if (firstAITag.source_name === "ai:wd-eva02-tagger-2026-canary") {
       taggerLabel = "WD EVA02";
     } else {
-      taggerLabel = firstAITag.source_name.replace("ai:", "").toUpperCase();
+      taggerLabel = (firstAITag.source_name ?? "").replace("ai:", "").toUpperCase();
     }
   } else {
     const hasUser = tags.some(t => t.category === "user");
@@ -187,7 +187,7 @@ export function renderCardTagsContainerHtml(img: { tags: TagSummary[] }, isFeatu
   }
 
   if (!taggerLabel && tags.length === 0) {
-    return "";
+    return "" as SafeHtml;
   }
   
   if (!taggerLabel) {
@@ -947,7 +947,6 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
     card.dataset.imageId = img.id.toString();
     card.dataset.filepath = img.filepath;
 
-    const tagHtml = renderTagListHtml(img.tags);
     const parsedHtml = img.parsedMetadata ? renderParsedMetadataHtml(img.parsedMetadata) : "";
 
     const identityHtml = (img.characterIdentities && img.characterIdentities.length > 0)
