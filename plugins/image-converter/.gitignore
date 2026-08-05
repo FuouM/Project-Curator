@@ -1,0 +1,12 @@
+# Generated runtime state (ComfyUI custom-node convention)
+# Converted files go to the user-chosen output_dir outside the repo; these
+# entries only guard incidental state this plugin may create.
+/cache/
+/output/
+/temp/
+/data/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.log

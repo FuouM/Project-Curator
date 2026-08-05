@@ -25,9 +25,10 @@ import { renderBenchmarkHtml } from "./views/benchmark";
 import { renderSettingsHtml } from "./views/settings";
 import { renderComponentsHtml } from "./views/components-view";
 import { renderModelsHtml, setupModelsView } from "./views/models";
-import { renderImages, setupGridDelegation } from "./cards";
+import { renderImages, setupGridDelegation, setupGlobalContextMenu } from "./cards";
 import { setGalleryPage, getImagesPerPage, setLuckyHighlightId } from "./state";
 import { refreshGallery } from "./views/gallery";
+import { initPlugins } from "./plugin-host";
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { PhysicalSize, PhysicalPosition } from "@tauri-apps/api/dpi";
@@ -151,6 +152,8 @@ function init() {
   if (viewComponents) viewComponents.innerHTML = renderComponentsHtml();
 
   setupNavigation();
+  initPlugins().catch((e) => console.error("initPlugins failed:", e));
+  setupGlobalContextMenu();
   setupImport();
   setupSearch();
   setupTags();

@@ -64,6 +64,9 @@ pub(crate) struct AppSettings {
     /// Preferred tagger whose tags are surfaced in the UI.
     #[serde(default)]
     preferred_tagger: TaggerModel,
+    /// Enable/disable state of discovered plugins, keyed by plugin name.
+    #[serde(default)]
+    enabled_plugins: std::collections::HashMap<String, bool>,
 }
 
 fn default_idle_timeout() -> u64 {
@@ -87,6 +90,7 @@ impl Default for AppSettings {
             ocr_device: curator_core::ipc::DevicePreference::Auto,
             model_precisions: std::collections::HashMap::new(),
             preferred_tagger: TaggerModel::Camie,
+            enabled_plugins: std::collections::HashMap::new(),
         }
     }
 }

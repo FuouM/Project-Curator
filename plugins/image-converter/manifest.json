@@ -1,0 +1,12 @@
+{
+  "name": "image-converter",
+  "version": "1.0.0",
+  "description": "Batch-converts images to PNG, JPG, WebP, GIF, BMP, TIFF, QOI, TGA, PNM, HDR, ICO, EXR, or AVIF without touching your library.",
+  "author": "Project Curator",
+  "permissions": ["ui:inject"],
+  "components": {
+    "ui": "index.js",
+    "type": "javascript"
+  },
+  "hooks": []
+}

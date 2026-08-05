@@ -1,0 +1,43 @@
+/* ── Plugin System ─────────────────────────────────────────────────────── */
+
+/* Right-click context menu on image cards (D2) */
+.plugin-context-menu {
+  position: fixed;
+  z-index: var(--z-modal, 9999);
+  min-width: 180px;
+  background-color: var(--sys-menu-bg, #f9f9f9);
+  border: 1px solid var(--sys-menu-border, #d0d0d0);
+  border-radius: 0;
+  padding: 2px;
+  box-shadow: none;
+}
+
+.plugin-context-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--sys-control-text, #000);
+  cursor: default;
+  white-space: nowrap;
+}
+
+.plugin-context-item:hover {
+  background-color: var(--sys-button-hover, #e5f1fb);
+}
+
+.plugin-context-separator {
+  height: 1px;
+  background-color: var(--sys-menu-border, #d0d0d0);
+  margin: 3px 6px;
+}
+
+/* Plugin Management Hub */
+.plugin-row-disabled {
+  opacity: 0.55;
+}
+
+.plugin-disabled-label {
+  color: var(--sys-text-subtle, #555555);
+}

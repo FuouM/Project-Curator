@@ -69,6 +69,7 @@ export function renderGalleryHtml(): SafeHtml {
           <button type="button" class="win-button primary" id="gallery-teach-concept-btn" style="display: none; font-size: 11px;">
             <i class="bi bi-magic"></i> Teach Concept (<span id="teach-select-count">0</span>)
           </button>
+          <div class="selection-toolbar-actions extensions-toolbar" style="display: none;"></div>
           <button type="button" class="win-button" id="gallery-lucky-btn">
             <i class="bi bi-shuffle"></i> I'm Feeling Lucky
           </button>
@@ -209,4 +210,9 @@ export function updateSelectionUI() {
 
   if (teachBtn) teachBtn.style.display = count > 0 ? "inline-block" : "none";
   if (searchTeachBtn) searchTeachBtn.style.display = count > 0 ? "inline-block" : "none";
+
+  const extSlots = document.querySelectorAll<HTMLElement>("#extensions-toolbar, .extensions-toolbar");
+  extSlots.forEach((el) => {
+    el.style.display = isSelectMode && count > 0 ? "inline-flex" : "none";
+  });
 }

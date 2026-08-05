@@ -85,7 +85,13 @@ export type RequestPayload =
   | { GetDownloadProgress: null }
   | { QuantizeModel: { model_id: string; format: string } }
   | { ConvertModel: { model_id: string } }
-  | { GetConversionLogs: { model_id: string } };
+  | { GetConversionLogs: { model_id: string } }
+  | { ValidatePlugin: { manifest_path: string } }
+  | { ListPlugins: null }
+  | { SetPluginEnabled: { plugin_name: string; enabled: boolean } }
+  | { ReadPluginFile: { plugin_name: string; relative_path: string } }
+  | { EphemeralConvertImages: { conversions: [string, string][]; quality: number } }
+  | { PathExists: { path: string } };
 
 export interface TokenBlock {
   token_type: string;
@@ -305,7 +311,11 @@ export type ResponsePayload =
   | { ModelStatusResult: { models: ModelStatusInfo[] } }
   | { DownloadProgressResult: { downloads: DownloadProgress[] } }
   | { ModelActionResult: { success: boolean; message: string } }
-  | { ConversionLogsResult: { logs: string; is_running: boolean } };
+  | { ConversionLogsResult: { logs: string; is_running: boolean } }
+  | { PluginsListResult: { plugins: PluginInfo[] } }
+  | { PluginFileResult: { content: string } }
+  | { ConvertImagesResult: { converted: ConvertedFileInfo[] } }
+  | { PathExistsResult: { exists: boolean } };
 
 export interface CharacterDetection {
   id: number;
@@ -413,4 +423,42 @@ export interface DownloadProgress {
   bytes_per_second: number;
   elapsed_secs: number;
   error: string | null;
+}
+
+// --- Plugin System Types (match curator-core::ipc) ---
+
+export interface PluginInfo {
+  name: string;
+  version: string;
+  description: string;
+  permissions: string[];
+  ui: string | null;
+  hooks: string[];
+  loaded: boolean;
+  enabled: boolean;
+  manifest_path: string;
+}
+
+export interface ConvertedFileInfo {
+  source_path: string;
+  output_path: string;
+  error: string | null;
+}
+
+export interface TagContext {
+  name: string;
+  category: string;
+  source_id: string;
+  confidence: number | null;
+}
+
+export interface AssetContext {
+  asset_id: number;
+  path: string;
+  hash: string;
+  mime_type?: string;
+  width?: number;
+  height?: number;
+  tags: TagContext[];
+  indexed_at?: string;
 }

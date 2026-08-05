@@ -276,6 +276,109 @@ export function renderParsedMetadataHtml(meta: ParsedMetadata): SafeHtml {
 
 // --- Event Delegation (one listener per grid, not per card) ---
 
+// ---------------------------------------------------------------------------
+// Plugin Right-Click Context Menu (D2) — global delegator covering all grids
+// ---------------------------------------------------------------------------
+
+let globalContextMenuSetup = false;
+
+export function setupGlobalContextMenu() {
+  if (globalContextMenuSetup) return;
+  globalContextMenuSetup = true;
+
+  document.addEventListener("contextmenu", (e) => {
+    const target = e.target as HTMLElement;
+    const card = target.closest(".image-card") as HTMLElement | null;
+    if (!card) return;
+    e.preventDefault();
+    showContextMenu(e.clientX, e.clientY, card);
+  });
+
+  document.addEventListener("mousedown", (e) => {
+    const menu = document.getElementById("plugin-context-menu");
+    if (!menu) return;
+    const target = e.target as HTMLElement;
+    if (!menu.contains(target)) hideContextMenu();
+  });
+}
+
+function ensureContextMenuEl(): HTMLElement {
+  let menu = document.getElementById("plugin-context-menu");
+  if (!menu) {
+    menu = document.createElement("div");
+    menu.id = "plugin-context-menu";
+    menu.className = "plugin-context-menu";
+    menu.style.display = "none";
+    document.body.appendChild(menu);
+  }
+  return menu;
+}
+
+function hideContextMenu() {
+  const menu = document.getElementById("plugin-context-menu");
+  if (menu) menu.style.display = "none";
+}
+
+function positionContextMenu(menu: HTMLElement, x: number, y: number) {
+  const rect = menu.getBoundingClientRect();
+  const maxX = window.innerWidth - rect.width - 4;
+  const maxY = window.innerHeight - rect.height - 4;
+  menu.style.left = `${Math.min(x, maxX)}px`;
+  menu.style.top = `${Math.min(y, maxY)}px`;
+}
+
+function showContextMenu(x: number, y: number, card: HTMLElement) {
+  const imageId = parseInt(card.dataset.imageId || "0", 10);
+  const filepath = card.dataset.filepath || "";
+  if (!imageId) return;
+
+  const menu = ensureContextMenuEl();
+  menu.innerHTML = "";
+
+  const coreItems: Array<{ label: string; icon: string; onClick: () => void }> = [
+    { label: "Open Image", icon: "bi bi-eye", onClick: () => openImageViewer(filepath, imageId) },
+    { label: "Copy Image", icon: "bi bi-clipboard", onClick: () => handleCopyClick(card, imageId) },
+    { label: "Image Details", icon: "bi bi-info-circle", onClick: () => handleInfoClick(imageId) },
+  ];
+
+  for (const item of coreItems) {
+    const el = document.createElement("div");
+    el.className = "plugin-context-item";
+    el.innerHTML = `<i class="${item.icon}"></i> ${item.label}`;
+    el.addEventListener("click", () => {
+      hideContextMenu();
+      item.onClick();
+    });
+    menu.appendChild(el);
+  }
+
+  const pluginItems = window.PluginHost?.getContextMenuItems() || [];
+  if (pluginItems.length > 0) {
+    const sep = document.createElement("div");
+    sep.className = "plugin-context-separator";
+    menu.appendChild(sep);
+
+    for (const item of pluginItems) {
+      const el = document.createElement("div");
+      el.className = "plugin-context-item";
+      el.textContent = item.label;
+      el.addEventListener("click", async () => {
+        hideContextMenu();
+        try {
+          const asset = await window.PluginHost.fetchAssetContext(imageId);
+          item.fn(asset);
+        } catch (e) {
+          console.error("Plugin context-menu action failed:", e);
+        }
+      });
+      menu.appendChild(el);
+    }
+  }
+
+  menu.style.display = "block";
+  positionContextMenu(menu, x, y);
+}
+
 export function setupGridDelegation(grid: HTMLElement) {
   grid.addEventListener("mousedown", trackOcrMouseDown);
   grid.addEventListener("click", (e) => {
@@ -631,6 +734,16 @@ function openImageInfoModal(img: ImageDetails) {
     '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">' + tagsHtml + '</div>' +
     parsedHtml +
     detectionsHtml;
+
+  // Plugin metadata renderers (design doc 8.2) — appended below core content.
+  try {
+    const asset = window.PluginHost?.getAssetContext(img);
+    if (asset) {
+      window.PluginHost.renderMetadataSections(asset).forEach((el) => body.appendChild(el));
+    }
+  } catch (e) {
+    console.error("Plugin metadata renderer failed:", e);
+  }
 
   modal.classList.add("active");
 

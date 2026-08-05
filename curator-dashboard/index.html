@@ -73,6 +73,7 @@
                 <span><i class="bi bi-plug"></i></span> Plugins
               </li>
             </ul>
+            <ul class="tree-leaf-list" id="extensions-nav-list"></ul>
           </li>
           <li class="tree-node" style="margin-top: 10px;">
             <div class="tree-node-title"><i class="bi bi-folder-fill"></i> System Diagnostics</div>
@@ -140,21 +141,13 @@
         <!-- SEARCH VIEW -->
         <section class="view-section" id="view-search"></section>
 
-        <!-- PLUGINS VIEW -->
+        <!-- PLUGINS VIEW (Management Hub) -->
         <section class="view-section" id="view-plugins">
-          <div class="group-box">
-            <div class="group-box-title">Verify Plugin manifest.json</div>
-            <form id="plugin-form">
-              <div class="form-group">
-                <div class="input-wrapper" style="flex: 1;">
-                  <input class="input-field has-clear" id="plugin-path-input" placeholder="Enter absolute path to manifest.json file..." required />
-                  <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
-                </div>
-                <button type="submit" class="win-button">Validate Signature</button>
-              </div>
-            </form>
-            <div id="plugin-validation-result" style="margin-top: 12px; font-size: 11px;">
-              <!-- Result details -->
+          <div id="plugins-hub-skeleton">
+            <div class="group-box">
+              <div class="group-box-title">Installed Plugins</div>
+              <div class="skeleton-loader"></div>
+              <div class="skeleton-loader"></div>
             </div>
           </div>
         </section>

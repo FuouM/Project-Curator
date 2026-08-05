@@ -494,6 +494,7 @@ async fn main() -> Result<(), Error> {
         Response::SettingsResult {
             clip_device,
             tagger_device,
+            tagger_wd_device,
             idle_timeout_secs,
             embedding_model,
             detection_device,
@@ -506,6 +507,7 @@ async fn main() -> Result<(), Error> {
             println!("Settings:");
             println!("  CLIP device:              {:?}", clip_device);
             println!("  Tagger device:            {:?}", tagger_device);
+            println!("  Tagger WD device:         {:?}", tagger_wd_device);
             println!("  Idle timeout:             {}s", idle_timeout_secs);
             println!("  Embedding model:          {:?}", embedding_model);
             println!("  Detection device:         {:?}", detection_device);

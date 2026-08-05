@@ -328,6 +328,7 @@ export function renderSearchHtml(): SafeHtml {
           <button type="button" class="win-button primary" id="search-teach-concept-btn" style="display: none; font-size: 11px;">
             <i class="bi bi-magic"></i> Teach Concept (<span id="search-teach-select-count">0</span>)
           </button>
+          <div class="selection-toolbar-actions extensions-toolbar" style="display: none;"></div>
         </div>
       </div>
       <div class="image-grid" id="search-results-grid">

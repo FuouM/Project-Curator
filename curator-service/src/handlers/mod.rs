@@ -4,6 +4,7 @@ pub mod image;
 pub mod import;
 pub mod misc;
 pub mod models;
+pub mod plugins;
 pub mod search;
 pub mod settings;
 pub mod tags;
@@ -452,6 +453,23 @@ pub async fn handle_request(
                 },
             }
         }
+
+        Request::ListPlugins => plugins::list_plugins(data_dir, settings).await,
+
+        Request::SetPluginEnabled { plugin_name, enabled } => {
+            plugins::set_plugin_enabled(data_dir, settings, &plugin_name, enabled).await
+        }
+
+        Request::ReadPluginFile { plugin_name, relative_path } => {
+            plugins::read_plugin_file(data_dir, &plugin_name, &relative_path).await
+        }
+
+        Request::EphemeralConvertImages {
+            conversions,
+            quality,
+        } => plugins::convert_images(conversions, quality).await,
+
+        Request::PathExists { path } => plugins::path_exists(&path).await,
 
         Request::GetTaggerStatus => {
             let preferred = { settings.lock().await.preferred_tagger };

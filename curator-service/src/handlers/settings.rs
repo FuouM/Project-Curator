@@ -121,6 +121,7 @@ pub async fn update_settings_logic(
     let ocr_dev = s.ocr_device.clone();
     let model_precs = s.model_precisions.clone();
     let preferred = s.preferred_tagger;
+    let enabled_plugins = s.enabled_plugins.clone();
 
     let settings_to_save = s.clone();
     let data_dir_buf = data_dir.to_path_buf();
@@ -181,5 +182,6 @@ pub async fn update_settings_logic(
         ocr_device: ocr_dev,
         model_precisions: model_precs,
         preferred_tagger: preferred,
+        enabled_plugins,
     })
 }

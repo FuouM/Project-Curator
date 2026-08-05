@@ -130,6 +130,29 @@ pub enum Request {
     ValidatePlugin {
         manifest_path: String,
     },
+    /// List all discovered plugins in the workspace-root `plugins/` directory.
+    ListPlugins,
+    /// Persist the enabled/disabled state of a plugin in settings.json.
+    SetPluginEnabled {
+        plugin_name: String,
+        enabled: bool,
+    },
+    /// Read a file (e.g. compiled JS bundle) from a plugin directory.
+    ReadPluginFile {
+        plugin_name: String,
+        relative_path: String,
+    },
+    /// Decode and re-encode image paths to a target format without touching the
+    /// library (ephemeral, mirrors the Toolbox `Ephemeral*` convention). Takes
+    /// explicit (source_path, target_path) mappings.
+    EphemeralConvertImages {
+        conversions: Vec<(String, String)>,
+        quality: u8,
+    },
+    /// Check if a path exists on the local filesystem.
+    PathExists {
+        path: String,
+    },
     /// Run a tagger on a single image (on-demand, lazy-loads model).
     TagImage {
         image_id: i64,
@@ -538,6 +561,22 @@ pub enum Response {
         valid: bool,
         error: Option<String>,
     },
+    /// Result of listing discovered plugins.
+    PluginsListResult {
+        plugins: Vec<PluginInfo>,
+    },
+    /// Result of reading a plugin file (e.g. JS bundle content).
+    PluginFileResult {
+        content: String,
+    },
+    /// Result of an ephemeral image conversion batch.
+    ConvertImagesResult {
+        converted: Vec<ConvertedFileInfo>,
+    },
+    /// Result of a path existence check.
+    PathExistsResult {
+        exists: bool,
+    },
     /// Result of a single-image auto-tag operation.
     TagImageResult {
         image_id: i64,
@@ -846,6 +885,33 @@ pub struct TagStat {
     pub tag: String,
     pub category: String,
     pub count: i64,
+}
+
+/// Metadata describing a discovered plugin (parsed from `manifest.json`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginInfo {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub permissions: Vec<String>,
+    /// `components.ui` relative path, when present.
+    pub ui: Option<String>,
+    pub hooks: Vec<String>,
+    /// True when the manifest parsed successfully.
+    pub loaded: bool,
+    /// From `AppSettings.enabled_plugins`, default `true` when absent.
+    pub enabled: bool,
+    /// Absolute path to the plugin's `manifest.json` (for `ValidatePlugin`).
+    pub manifest_path: String,
+}
+
+/// Per-file result of an ephemeral conversion. `error` is set when that item
+/// failed; the batch continues for the remaining files.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConvertedFileInfo {
+    pub source_path: String,
+    pub output_path: String,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
