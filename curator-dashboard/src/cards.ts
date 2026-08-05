@@ -1125,9 +1125,6 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
       : "";
 
     const isGif = /\.gif$/i.test(img.filepath);
-    const frameBadge = img.animation?.frame_count
-      ? `<div class="frame-count-badge"><i class="bi bi-film"></i> ${img.animation.frame_count} frames</div>`
-      : "";
 
         // Pre-populate GIF path in cache to avoid flash/delay
     if (isGif && !thumbCache.has(img.id)) {
@@ -1150,7 +1147,6 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
         <img data-thumb-id="${img.id}" data-filepath="${img.filepath}" data-pending="${isPending ? '1' : '0'}" ${srcAttr} alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" class="${imgClass}" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
         ${missingBadge}
-        ${frameBadge}
         ${img.badgeHtml || ""}
         <div class="copy-btn" title="Copy image to clipboard"><i class="bi bi-clipboard"></i></div>
         <div class="info-btn" title="View image details" data-id="${img.id}"><i class="bi bi-info-circle"></i></div>
