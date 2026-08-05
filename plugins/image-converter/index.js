@@ -162,6 +162,18 @@
     if (item) item.click();
   }
 
+  function closeInfoModal() {
+    var modal = document.getElementById("image-info-modal");
+    if (!modal || !modal.classList.contains("active")) return;
+    // Reuse the core modal's own close handler (removes the .active class).
+    var closeBtn = modal.querySelector(".modal-close");
+    if (closeBtn) {
+      closeBtn.click();
+    } else {
+      modal.classList.remove("active");
+    }
+  }
+
   async function checkFileExists(path) {
     var resp = await PH.callService("PathExists", { path: path });
     return !!(resp && resp.PathExistsResult && resp.PathExistsResult.exists);
@@ -396,8 +408,6 @@
       });
     }
 
-    qualityVisibility();
-
     // Output-dir manual typing
     if (outInput) {
       outInput.addEventListener("change", function () {
@@ -405,8 +415,17 @@
       });
     }
 
-    setupDropZone();
-    updateQueueList();
+    // This container is still detached from the document while renderTab runs
+    // (the plugin-host refresh callback appends it after tab.render() returns),
+    // so every document.getElementById lookup inside qualityVisibility,
+    // setupDropZone, updateQueueList, and updateProgress would silently no-op.
+    // Defer them until the section is mounted.
+    setTimeout(function () {
+      qualityVisibility();
+      setupDropZone();
+      updateQueueList();
+      updateProgress(0, queue.length);
+    }, 0);
     return container;
   }
 
@@ -430,6 +449,7 @@
     sendBtn.addEventListener("click", function () {
       addToQueue(asset.path);
       log("Sent to converter: " + asset.path, "info");
+      closeInfoModal();
       navigateToTab();
     });
     return box;
@@ -439,12 +459,14 @@
     var paths = (selection || []).map(function (a) { return a.path; }).filter(Boolean);
     if (paths.length === 0) return;
     paths.forEach(addToQueue);
+    closeInfoModal();
     navigateToTab();
   });
 
   PH.registerContextMenuItem("image-converter-ctx", "Send to Converter", function (asset) {
     if (!asset || !asset.path) return;
     addToQueue(asset.path);
+    closeInfoModal();
     navigateToTab();
   });
 
