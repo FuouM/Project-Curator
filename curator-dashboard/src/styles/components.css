@@ -520,3 +520,61 @@
   color: var(--sys-text-subtle, #555);
 }
 
+/* Model device settings cards */
+.device-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+}
+.device-card {
+  border: 1px solid var(--sys-border-dark);
+  border-radius: 3px;
+  background-color: var(--sys-window-bg);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.device-card.span-full {
+  grid-column: 1 / -1;
+}
+.device-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #333333;
+}
+.device-card-title i {
+  color: var(--sys-border-focus);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.device-card-desc {
+  font-size: 10.5px;
+  color: #666666;
+  line-height: 1.35;
+  margin: 0;
+}
+.device-card-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+.device-card-row > label {
+  font-weight: 600;
+  font-size: 11px;
+  color: #444444;
+  white-space: nowrap;
+  margin-right: auto;
+}
+.device-card-row .input-field {
+  height: 22px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+

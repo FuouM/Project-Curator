@@ -311,36 +311,32 @@ export function renderSettingsHtml(): SafeHtml {
     </div>
 
     <!-- Model Device Settings -->
-    <div class="group-box" style="display: flex; flex-direction: column; gap: 16px;">
+    <div class="group-box" style="display: flex; flex-direction: column; gap: 12px;">
       <div class="group-box-title">Model Device Settings</div>
-      <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">Choose whether each model runs on CPU or GPU, and how long to keep models in memory after last use.</p>
+      <p style="font-size: 11px; color: #333333; margin-bottom: 4px;">Choose whether each model runs on CPU or GPU, and how long to keep models in memory after last use.</p>
 
-      <div style="display: flex; flex-direction: column; gap: 16px;">
+      <div class="device-grid">
 
         <!-- Embedding Model -->
-        <div class="group-box" style="padding: 12px;">
-          <div class="group-box-title">Active Embedding Model</div>
-          <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">
-            Select the model used for vector embeddings. Changing the model will automatically clear the current vector index and reindex all images in the database.
-          </p>
-          <div style="display: flex; gap: 16px; align-items: center;">
-            <div class="form-group" style="margin-bottom: 0;">
-              <label style="font-weight: 600; min-width: 120px;">Model:</label>
-              <select class="input-field" id="settings-embedding-model" style="width: 280px;">
-                <option value="clip-vit-b-32">CLIP ViT-B/32 (Standard)</option>
-                <option value="mobileclip-s2">MobileCLIP-S2 (Fast + Accurate)</option>
-              </select>
-            </div>
-            <button class="win-button" id="reindex-vectors-btn" style="padding: 4px 8px; font-size: 11px;">
+        <div class="device-card span-full">
+          <div class="device-card-title"><i class="bi bi-layers"></i> Active Embedding Model</div>
+          <p class="device-card-desc">Select the model used for vector embeddings. Changing the model will automatically clear the current vector index and reindex all images in the database.</p>
+          <div class="device-card-row">
+            <label>Model:</label>
+            <select class="input-field" id="settings-embedding-model" style="width: 220px;">
+              <option value="clip-vit-b-32">CLIP ViT-B/32 (Standard)</option>
+              <option value="mobileclip-s2">MobileCLIP-S2 (Fast + Accurate)</option>
+            </select>
+            <button class="win-button" id="reindex-vectors-btn" style="padding: 2px 8px; font-size: 11px;">
               <i class="bi bi-arrow-repeat"></i> Reindex Everything
             </button>
-            <button class="win-button" id="reindex-failed-btn" style="padding: 4px 8px; font-size: 11px;">
+            <button class="win-button" id="reindex-failed-btn" style="padding: 2px 8px; font-size: 11px;">
               <i class="bi bi-arrow-repeat"></i> Retry Failed
             </button>
           </div>
           <!-- Reindexing Progress -->
-          <div id="reindex-progress-container" style="display: none; margin-top: 12px; border-top: 1px solid #eee; padding-top: 12px;">
-            <div style="margin-bottom: 10px;">
+          <div id="reindex-progress-container" style="display: none; margin-top: 4px; border-top: 1px solid #eee; padding-top: 10px;">
+            <div style="margin-bottom: 8px;">
               <div style="display: flex; justify-content: space-between; font-size: 11px; color: #333; margin-bottom: 4px;">
                 <span id="reindex-preprocess-text">Preprocessing progress: 0/0 (0%)</span>
                 <span style="font-weight: 600; color: #3b82f6;">CPU Preprocessing</span>
@@ -362,12 +358,12 @@ export function renderSettingsHtml(): SafeHtml {
         </div>
 
         <!-- CLIP Device -->
-        <div class="group-box" style="padding: 12px;">
-          <div class="group-box-title">CLIP ViT-B/32 (Semantic Search)</div>
-          <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">Powers image embedding generation and text-to-image semantic search.</p>
-          <div class="form-group">
-            <label style="font-weight: 600; min-width: 120px;">Device:</label>
-            <select class="input-field" id="settings-clip-device" style="width: 180px;">
+        <div class="device-card">
+          <div class="device-card-title"><i class="bi bi-search"></i> CLIP ViT-B/32</div>
+          <p class="device-card-desc">Powers image embedding generation and text-to-image semantic search.</p>
+          <div class="device-card-row">
+            <label>Device:</label>
+            <select class="input-field" id="settings-clip-device" style="width: 150px;">
               <option value="auto">Auto (GPU if available)</option>
               <option value="cpu">CPU Only</option>
               <option value="gpu">GPU Only</option>
@@ -376,12 +372,12 @@ export function renderSettingsHtml(): SafeHtml {
         </div>
 
         <!-- Preferred Tagger -->
-        <div class="group-box" style="padding: 12px;">
-          <div class="group-box-title">Preferred Tagger Model</div>
-          <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">Choose which auto-tagger model is active and displayed across the app.</p>
-          <div class="form-group" style="display: flex; gap: 8px; align-items: center;">
-            <label style="font-weight: 600; min-width: 120px;">Preferred Tagger:</label>
-            <select class="input-field" id="settings-preferred-tagger" style="width: 180px;">
+        <div class="device-card">
+          <div class="device-card-title"><i class="bi bi-star"></i> Preferred Tagger</div>
+          <p class="device-card-desc">Choose which auto-tagger model is active and displayed across the app.</p>
+          <div class="device-card-row">
+            <label>Tagger:</label>
+            <select class="input-field" id="settings-preferred-tagger" style="width: 150px;">
               <option value="camie">Camie Tagger v2 (Default)</option>
               <option value="wd-eva02">WD EVA02 Tagger (Canary)</option>
             </select>
@@ -390,12 +386,12 @@ export function renderSettingsHtml(): SafeHtml {
         </div>
 
         <!-- Tagger Device -->
-        <div class="group-box" style="padding: 12px;">
-          <div class="group-box-title">Camie Tagger v2 Device</div>
-          <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">Powers Camie Tagger model inference device preference.</p>
-          <div class="form-group" style="display: flex; gap: 8px; align-items: center;">
-            <label style="font-weight: 600; min-width: 120px;">Device:</label>
-            <select class="input-field" id="settings-tagger-device" style="width: 180px;">
+        <div class="device-card">
+          <div class="device-card-title"><i class="bi bi-tag-fill"></i> Camie Tagger Device</div>
+          <p class="device-card-desc">Inference device preference for the Camie Tagger v2 model.</p>
+          <div class="device-card-row">
+            <label>Device:</label>
+            <select class="input-field" id="settings-tagger-device" style="width: 150px;">
               <option value="auto">Auto (GPU if available)</option>
               <option value="cpu">CPU Only</option>
               <option value="gpu">GPU Only</option>
@@ -405,12 +401,12 @@ export function renderSettingsHtml(): SafeHtml {
         </div>
 
         <!-- WD Tagger Device -->
-        <div class="group-box" style="padding: 12px;">
-          <div class="group-box-title">WD EVA02 Tagger Device</div>
-          <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">Powers WD EVA02 Tagger model inference device preference.</p>
-          <div class="form-group" style="display: flex; gap: 8px; align-items: center;">
-            <label style="font-weight: 600; min-width: 120px;">Device:</label>
-            <select class="input-field" id="settings-tagger-wd-device" style="width: 180px;">
+        <div class="device-card">
+          <div class="device-card-title"><i class="bi bi-tags"></i> WD EVA02 Tagger Device</div>
+          <p class="device-card-desc">Inference device preference for the WD EVA02 Tagger model.</p>
+          <div class="device-card-row">
+            <label>Device:</label>
+            <select class="input-field" id="settings-tagger-wd-device" style="width: 150px;">
               <option value="auto">Auto (GPU if available)</option>
               <option value="cpu">CPU Only</option>
               <option value="gpu">GPU Only</option>
@@ -420,22 +416,20 @@ export function renderSettingsHtml(): SafeHtml {
         </div>
 
         <!-- Detection Devices -->
-        <div class="group-box" style="padding: 12px;">
-          <div class="group-box-title">Character Detection (YOLO + CCIP)</div>
-          <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">
-            YOLO detects character bounding boxes; CCIP extracts identity embeddings. The metrics model is tiny (16x768) and should stay on CPU.
-          </p>
-          <div class="form-group">
-            <label style="font-weight: 600; min-width: 120px;">Feature extractors:</label>
-            <select class="input-field" id="settings-detection-device" style="width: 180px;">
+        <div class="device-card">
+          <div class="device-card-title"><i class="bi bi-bounding-box"></i> Character Detection</div>
+          <p class="device-card-desc">YOLO detects character bounding boxes; CCIP extracts identity embeddings. The metrics model is tiny (16x768) and should stay on CPU.</p>
+          <div class="device-card-row">
+            <label>Feature extractors:</label>
+            <select class="input-field" id="settings-detection-device" style="width: 150px;">
               <option value="auto">Auto (GPU if available)</option>
               <option value="cpu">CPU Only</option>
               <option value="gpu">GPU Only</option>
             </select>
           </div>
-          <div class="form-group">
-            <label style="font-weight: 600; min-width: 120px;">Metrics (similarity):</label>
-            <select class="input-field" id="settings-detection-metrics-device" style="width: 180px;">
+          <div class="device-card-row">
+            <label>Metrics (similarity):</label>
+            <select class="input-field" id="settings-detection-metrics-device" style="width: 150px;">
               <option value="auto">Auto (GPU if available)</option>
               <option value="cpu" selected>CPU Only</option>
               <option value="gpu">GPU Only</option>
@@ -444,12 +438,12 @@ export function renderSettingsHtml(): SafeHtml {
         </div>
 
         <!-- OCR Device -->
-        <div class="group-box" style="padding: 12px;">
-          <div class="group-box-title">OCR Text Recognition (PP-OCRv6 small)</div>
-          <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">Powers Optical Character Recognition and text box detection.</p>
-          <div class="form-group">
-            <label style="font-weight: 600; min-width: 120px;">OCR Device:</label>
-            <select class="input-field" id="settings-ocr-device" style="width: 180px;">
+        <div class="device-card">
+          <div class="device-card-title"><i class="bi bi-fonts"></i> OCR Text Recognition</div>
+          <p class="device-card-desc">Powers Optical Character Recognition and text box detection (PP-OCRv6 small).</p>
+          <div class="device-card-row">
+            <label>OCR Device:</label>
+            <select class="input-field" id="settings-ocr-device" style="width: 150px;">
               <option value="auto">Auto (GPU if available)</option>
               <option value="cpu">CPU Only</option>
               <option value="gpu">GPU Only</option>
@@ -458,14 +452,12 @@ export function renderSettingsHtml(): SafeHtml {
         </div>
 
         <!-- Idle Timeout -->
-        <div class="group-box" style="padding: 12px;">
-          <div class="group-box-title">Memory Management</div>
-          <p style="font-size: 11px; color: #666; margin-bottom: 8px; margin-top: 4px;">
-            Automatically unload models from memory after a period of inactivity to free GPU/RAM.
-          </p>
-          <div class="form-group">
-            <label style="font-weight: 600; min-width: 120px;">Idle timeout:</label>
-            <select class="input-field" id="settings-idle-timeout" style="width: 180px;">
+        <div class="device-card">
+          <div class="device-card-title"><i class="bi bi-memory"></i> Memory Management</div>
+          <p class="device-card-desc">Automatically unload models from memory after a period of inactivity to free GPU/RAM.</p>
+          <div class="device-card-row">
+            <label>Idle timeout:</label>
+            <select class="input-field" id="settings-idle-timeout" style="width: 150px;">
               <option value="60">1 minute</option>
               <option value="120">2 minutes</option>
               <option value="300" selected>5 minutes</option>
