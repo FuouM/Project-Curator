@@ -263,10 +263,22 @@ fn build_tensor(data: &[u8], target: u32, nw: u32, nh: u32) {
 #[tokio::test]
 async fn test_vector_indexing_and_clip_inference() {
     let temp_dir = tempdir().unwrap();
-    let model_dir = temp_dir.path().join("models");
     let index_path = temp_dir.path().join("vector_index.usearch");
 
-    let model_manager = ModelManager::new(&model_dir, DevicePreference::Auto);
+    // Resolve models dir from CURATOR_DATA_DIR env var or workspace-relative
+    // .curator/models (matches test_text_similarity_and_padding_behavior).
+    let data_dir_env = std::env::var("CURATOR_DATA_DIR").ok();
+    let default_data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join(".curator");
+    let model_dir = match &data_dir_env {
+        Some(p) => std::path::PathBuf::from(p).join("models"),
+        None => default_data_dir.join("models"),
+    };
+    let model_dir = model_dir.as_path();
+
+    let model_manager = ModelManager::new(model_dir, DevicePreference::Auto);
     model_manager
         .init()
         .expect("Failed to initialize CLIP models");

@@ -213,7 +213,7 @@ mod tests {
     }
 
     fn write_temp(bytes: &[u8]) -> NamedTempFile {
-        let mut f = NamedTempFile::new().unwrap();
+        let mut f = tempfile::Builder::new().suffix(".gif").tempfile().unwrap();
         f.write_all(bytes).unwrap();
         f
     }
