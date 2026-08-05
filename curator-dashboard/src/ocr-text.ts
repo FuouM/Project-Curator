@@ -8,17 +8,22 @@ export interface PlacedLabel {
 export interface OcrTextSettings {
   fontSize: number;
   strokeWidth: number;
+  fontFamily: string;
 }
 
 const FONT_SIZE_KEY = "curator-ocr-font-size";
 const STROKE_WIDTH_KEY = "curator-ocr-stroke-width";
+const FONT_FAMILY_KEY = "curator-ocr-font-family";
+const DEFAULT_FONT_FAMILY = "Segoe UI";
 
 export function getOcrTextSettings(): OcrTextSettings {
   const fontSize = parseInt(localStorage.getItem(FONT_SIZE_KEY) || "12", 10);
   const strokeWidth = parseInt(localStorage.getItem(STROKE_WIDTH_KEY) || "5", 10);
+  const fontFamily = localStorage.getItem(FONT_FAMILY_KEY) || DEFAULT_FONT_FAMILY;
   return {
     fontSize: Number.isFinite(fontSize) ? fontSize : 12,
     strokeWidth: Number.isFinite(strokeWidth) ? strokeWidth : 5,
+    fontFamily,
   };
 }
 
@@ -89,7 +94,7 @@ export interface OcrPreviewBox {
 // Renders a sample OCR overlay (boxes + non-overlapping text labels) using the
 // current settings, used for the live preview in Settings.
 export function buildOcrLabelSvg(boxes: OcrPreviewBox[], viewW: number, viewH: number): string {
-  const { fontSize, strokeWidth } = getOcrTextSettings();
+  const { fontSize, strokeWidth, fontFamily } = getOcrTextSettings();
   const sorted = [...boxes].sort((a, b) => {
     const ay = Math.min(a.pts[0][1], a.pts[1][1], a.pts[2][1], a.pts[3][1]);
     const by = Math.min(b.pts[0][1], b.pts[1][1], b.pts[2][1], b.pts[3][1]);
@@ -111,7 +116,7 @@ export function buildOcrLabelSvg(boxes: OcrPreviewBox[], viewW: number, viewH: n
     const pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placed, 3, { w: viewW, h: viewH });
     placed.push({ x: pos.x, y: pos.y, w: labelW, h: labelH });
     labels +=
-      `<text x="${pos.x}" y="${pos.y + fontSize}" fill="#ffffff" style="font-size:${fontSize}px" ` +
+      `<text x="${pos.x}" y="${pos.y + fontSize}" fill="#ffffff" style="font-size:${fontSize}px; font-family:${fontFamily}, sans-serif" ` +
       `font-weight="600" paint-order="stroke" stroke="rgba(0,0,0,0.8)" ` +
       `stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">${b.text}</text>`;
   }

@@ -103,9 +103,14 @@ export function setupSettings() {
   // OCR text rendering settings (localStorage) with live preview
   const ocrFontSizeSelect = document.getElementById("settings-ocr-font-size") as HTMLSelectElement;
   const ocrStrokeWidthSelect = document.getElementById("settings-ocr-stroke-width") as HTMLSelectElement;
-  const { fontSize, strokeWidth } = getOcrTextSettings();
+  const ocrFontFamilySelect = document.getElementById("settings-ocr-font-family") as HTMLSelectElement;
+  const { fontSize, strokeWidth, fontFamily } = getOcrTextSettings();
   if (ocrFontSizeSelect) ocrFontSizeSelect.value = fontSize.toString();
   if (ocrStrokeWidthSelect) ocrStrokeWidthSelect.value = strokeWidth.toString();
+  if (ocrFontFamilySelect) {
+    ocrFontFamilySelect.value = fontFamily;
+    if (!ocrFontFamilySelect.value) ocrFontFamilySelect.value = "Segoe UI";
+  }
 
   const OCR_PREVIEW_BOXES = [
     { pts: [[20, 20], [150, 18], [152, 42], [22, 44]], text: "Lorem ipsum", color: "#3498db", fill: "rgba(52, 152, 219, 0.15)" },
@@ -129,6 +134,12 @@ export function setupSettings() {
   if (ocrStrokeWidthSelect) {
     ocrStrokeWidthSelect.addEventListener("change", () => {
       localStorage.setItem("curator-ocr-stroke-width", ocrStrokeWidthSelect.value);
+      renderOcrPreview();
+    });
+  }
+  if (ocrFontFamilySelect) {
+    ocrFontFamilySelect.addEventListener("change", () => {
+      localStorage.setItem("curator-ocr-font-family", ocrFontFamilySelect.value);
       renderOcrPreview();
     });
   }
@@ -293,31 +304,47 @@ export function renderSettingsHtml(): SafeHtml {
           <option value="external">Open with Default Application</option>
         </select>
       </div>
-      <div style="border-top: 1px solid #e5e7eb; margin: 4px 0; padding-top: 12px;">
-        <label style="font-weight: 600; display: block; margin-bottom: 6px;">OCR Text Rendering:</label>
-        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
-          <div class="form-group">
-            <label style="font-weight: 600; min-width: 120px;">Font Size:</label>
-            <select class="input-field" id="settings-ocr-font-size" style="width: 140px;">
-              <option value="10">Small (10px)</option>
-              <option value="12" selected>Normal (12px)</option>
-              <option value="14">Large (14px)</option>
-              <option value="16">Extra Large (16px)</option>
-            </select>
+      <div style="border: 1px solid var(--sys-border-dark); border-radius: 3px; background-color: var(--sys-window-bg); padding: 10px 12px; display: flex; flex-direction: column; gap: 10px;">
+        <label style="font-weight: 600; display: flex; align-items: center; gap: 6px; color: #333333;"><i class="bi bi-fonts" style="color: var(--sys-border-focus);"></i> OCR Text Rendering</label>
+        <div class="ocr-render-grid">
+          <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+              <label style="font-weight: 600; white-space: nowrap; width: 88px;">Font:</label>
+              <select class="input-field" id="settings-ocr-font-family" style="flex: 1; min-width: 0;">
+                <option value="Segoe UI">Segoe UI (Default)</option>
+                <option value="Arial">Arial</option>
+                <option value="Calibri">Calibri</option>
+                <option value="Tahoma">Tahoma</option>
+                <option value="Verdana">Verdana</option>
+                <option value="Consolas">Consolas</option>
+                <option value="Courier New">Courier New</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Times New Roman">Times New Roman</option>
+              </select>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+              <label style="font-weight: 600; white-space: nowrap; width: 88px;">Font Size:</label>
+              <select class="input-field" id="settings-ocr-font-size" style="flex: 1; min-width: 0;">
+                <option value="10">Small (10px)</option>
+                <option value="12" selected>Normal (12px)</option>
+                <option value="14">Large (14px)</option>
+                <option value="16">Extra Large (16px)</option>
+              </select>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+              <label style="font-weight: 600; white-space: nowrap; width: 88px;">Text Outline:</label>
+              <select class="input-field" id="settings-ocr-stroke-width" style="flex: 1; min-width: 0;">
+                <option value="0">None</option>
+                <option value="2">Thin (2px)</option>
+                <option value="3">Medium (3px)</option>
+                <option value="5" selected>Thick (5px)</option>
+              </select>
+            </div>
           </div>
-          <div class="form-group">
-            <label style="font-weight: 600; min-width: 120px;">Text Outline:</label>
-            <select class="input-field" id="settings-ocr-stroke-width" style="width: 140px;">
-              <option value="0">None</option>
-              <option value="2">Thin (2px)</option>
-              <option value="3">Medium (3px)</option>
-              <option value="5" selected>Thick (5px)</option>
-            </select>
+          <div style="min-width: 0;">
+            <label style="font-weight: 600; display: block; margin-bottom: 4px;">Preview:</label>
+            <div id="settings-ocr-preview" style="border: 1px solid #cccccc; border-radius: 4px; overflow: hidden; max-width: 420px;"></div>
           </div>
-        </div>
-        <div style="margin-top: 4px;">
-          <label style="font-weight: 600; display: block; margin-bottom: 4px;">Preview:</label>
-          <div id="settings-ocr-preview" style="border: 1px solid #cccccc; border-radius: 4px; overflow: hidden; max-width: 420px;"></div>
         </div>
       </div>
     </div>

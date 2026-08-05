@@ -181,7 +181,7 @@ async function toggleOcr() {
 
     // Pass 2: draw text labels on top, shifting each below any previous label
     // so overlapping boxes don't stack text on top of one another.
-    const { fontSize, strokeWidth } = getOcrTextSettings();
+    const { fontSize, strokeWidth, fontFamily } = getOcrTextSettings();
     const placedLabels: PlacedLabel[] = [];
     for (const { det, minX, minY } of boxGeom) {
       const labelW = estimateLabelWidth(det.text, fontSize);
@@ -197,6 +197,7 @@ async function toggleOcr() {
       label.setAttribute("y", String(pos.y + fontSize));
       label.setAttribute("fill", "#ffffff");
       label.style.fontSize = `${fontSize}px`;
+      label.style.fontFamily = `${fontFamily}, sans-serif`;
       label.setAttribute("font-weight", "600");
       label.setAttribute("paint-order", "stroke");
       label.setAttribute("stroke", "rgba(0,0,0,0.8)");
