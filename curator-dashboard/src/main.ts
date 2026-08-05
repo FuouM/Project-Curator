@@ -1,4 +1,5 @@
 import "bootstrap-icons/font/bootstrap-icons.css";
+import "./styles.css";
 import { setupImageViewer, openImageViewer } from "./image-viewer";
 import { setupLogTabs } from "./views/logs";
 import { setupBenchmark } from "./views/benchmark";
@@ -41,12 +42,18 @@ async function restoreWindowState() {
         await appWindow.maximize();
       } else {
         if (width && height) {
-          await appWindow.setSize(new PhysicalSize(width, height));
+          const guardedWidth = Math.max(width, 800);
+          const guardedHeight = Math.max(height, 600);
+          await appWindow.setSize(new PhysicalSize(guardedWidth, guardedHeight));
         }
-        if (x !== undefined && y !== undefined) {
+        if (x !== undefined && y !== undefined && x > -10000 && y > -10000) {
           await appWindow.setPosition(new PhysicalPosition(x, y));
+        } else {
+          await appWindow.center();
         }
       }
+    } else {
+      await appWindow.center();
     }
   } catch (err) {
     console.error("Window state restore error:", err);
@@ -78,13 +85,15 @@ function setupWindowStateListener() {
         } else {
           const outerSize = await appWindow.outerSize();
           const outerPosition = await appWindow.outerPosition();
-          localStorage.setItem("curator-window-state", JSON.stringify({
-            width: outerSize.width,
-            height: outerSize.height,
-            x: outerPosition.x,
-            y: outerPosition.y,
-            maximized: false
-          }));
+          if (outerSize.width > 200 && outerSize.height > 150 && outerPosition.x > -10000 && outerPosition.y > -10000) {
+            localStorage.setItem("curator-window-state", JSON.stringify({
+              width: outerSize.width,
+              height: outerSize.height,
+              x: outerPosition.x,
+              y: outerPosition.y,
+              maximized: false
+            }));
+          }
         }
       } catch (err) {
         console.error("Window state save error:", err);
