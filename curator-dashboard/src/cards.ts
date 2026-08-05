@@ -2,7 +2,7 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { renderTagPill, maskPath, SafeHtml, html } from "./components";
 import { CardImageData, ImageDetails, SearchMatch, TagSummary, ParsedMetadata } from "./types";
 import { imageBytesToPngBlob } from "./utils";
-import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId } from "./state";
+import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId, formatCopiedTags } from "./state";
 import { openImageViewer } from "./image-viewer";
 import { callService } from "./ipc";
 import { refreshCharacters } from "./views/characters";
@@ -195,11 +195,15 @@ export function renderCardTagsContainerHtml(img: { tags: TagSummary[] }, isFeatu
   }
 
   const tagHtml = isFeatured ? renderTagListHtml(tags, tags.length) : renderTagListHtml(tags);
+  const copyText = tags.map(t => t.tag).join(", ").replace(/"/g, "&quot;");
 
   return `
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; width: 100%;">
       <div style="font-family: monospace; font-size: 10px; font-weight: bold; background-color: var(--sys-control-bg, #fff); border: 1px solid var(--sys-border-dark, #b0b0b0); border-radius: 2px; padding: 2px 6px; color: var(--sys-text-secondary, #666); text-transform: uppercase; letter-spacing: 0.5px; line-height: 1; white-space: nowrap;">${taggerLabel}</div>
       <div style="flex: 1; height: 1px; background-color: var(--sys-border-dark, #b0b0b0);"></div>
+      <button type="button" class="tag-copy-btn" data-action="copy-tags" data-copy-tags="${copyText}" title="Copy tags to clipboard">
+        <i class="bi bi-clipboard"></i>
+      </button>
     </div>
     <div class="tag-list" style="margin-top: 0;">
       ${tagHtml}
@@ -308,6 +312,10 @@ export function setupGridDelegation(grid: HTMLElement) {
         handleOcrCopy(actionBtn);
         return;
       }
+      if (action === "copy-tags") {
+        handleCardTagsCopy(actionBtn);
+        return;
+      }
       if (action === "open-tags") {
         openTagModal(imageId, fp);
       } else if (action === "find-similar") {
@@ -406,6 +414,10 @@ export function attachCardEventHandlers(
       handleOcrCopy(target.closest("[data-action='copy-ocr']") as HTMLElement);
       return;
     }
+    if (target.closest("[data-action='copy-tags']")) {
+      handleCardTagsCopy(target.closest("[data-action='copy-tags']") as HTMLElement);
+      return;
+    }
     if (target.closest("[data-action='toggle-ocr']")) {
       const block = target.closest("[data-action='toggle-ocr']") as HTMLElement;
       toggleOcrIfClick(block, e as MouseEvent);
@@ -476,6 +488,22 @@ function handleOcrCopy(icon: HTMLElement) {
       setTimeout(() => {
         icon.innerHTML = originalHtml;
         icon.classList.remove("copied");
+      }, 1500);
+    })
+    .catch(() => {});
+}
+
+function handleCardTagsCopy(btn: HTMLElement) {
+  const text = formatCopiedTags(btn.dataset.copyTags || "");
+  if (!text) return;
+  const originalHtml = btn.innerHTML;
+  navigator.clipboard.writeText(text)
+    .then(() => {
+      btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+      btn.classList.add("copied");
+      setTimeout(() => {
+        btn.innerHTML = originalHtml;
+        btn.classList.remove("copied");
       }, 1500);
     })
     .catch(() => {});

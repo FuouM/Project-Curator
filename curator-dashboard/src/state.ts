@@ -49,3 +49,18 @@ export function setIsSelectMode(v: boolean) { isSelectMode = v; }
 // --- Lucky Highlight State ---
 export let luckyHighlightId: number | null = null;
 export function setLuckyHighlightId(id: number | null) { luckyHighlightId = id; }
+
+// --- Tag Copy Formatting ---
+const TAG_COPY_REPLACE_UNDERSCORES_KEY = "curator-tag-copy-replace-underscores";
+
+export function getTagCopyReplaceUnderscores(): boolean {
+  return localStorage.getItem(TAG_COPY_REPLACE_UNDERSCORES_KEY) === "true";
+}
+
+export function setTagCopyReplaceUnderscores(v: boolean) {
+  localStorage.setItem(TAG_COPY_REPLACE_UNDERSCORES_KEY, v.toString());
+}
+
+export function formatCopiedTags(text: string): string {
+  return getTagCopyReplaceUnderscores() ? text.replace(/_/g, " ") : text;
+}

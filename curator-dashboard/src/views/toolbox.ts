@@ -5,6 +5,7 @@ import { maskPath, renderTagPill, SafeHtml, html, type TagSummary } from "../com
 import { navigateToView } from "./navigation";
 import { buildOcrLabelSvg } from "../ocr-text";
 import { logJS, setStatusMessage, escapeHtml } from "../utils";
+import { formatCopiedTags } from "../state";
 
 const IDENTITY_COLORS = [
   "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6",
@@ -177,10 +178,12 @@ async function copyTags() {
   const tagList = el("toolbox-tag-list");
   const status = el("toolbox-tag-status");
   if (!tagList || !status) return;
-  const text = Array.from(tagList.querySelectorAll(".tag-pill"))
-    .map((p) => p.childNodes[0]?.textContent?.replace(/\u200B/g, "") || "")
-    .filter(Boolean)
-    .join(", ");
+  const text = formatCopiedTags(
+    Array.from(tagList.querySelectorAll(".tag-pill"))
+      .map((p) => p.childNodes[0]?.textContent?.replace(/\u200B/g, "") || "")
+      .filter(Boolean)
+      .join(", ")
+  );
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);

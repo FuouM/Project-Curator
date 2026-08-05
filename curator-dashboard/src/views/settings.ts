@@ -1,7 +1,7 @@
 import { callService } from "../ipc";
 import { SafeHtml, html } from "../components";
 import { setStatusMessage } from "../utils";
-import { getImageClickAction, setImageClickAction } from "../state";
+import { getImageClickAction, setImageClickAction, getTagCopyReplaceUnderscores, setTagCopyReplaceUnderscores } from "../state";
 import { applySettingsToUI, refreshTaggerStatus } from "./dashboard";
 import { updateBenchmarkModelHeader } from "./benchmark";
 import { updateReindexProgress, startReindexPolling } from "./settings-reindex";
@@ -60,6 +60,15 @@ export function setupSettings() {
   if (pathFoldersInput) {
     pathFoldersInput.addEventListener("change", () => {
       localStorage.setItem("curator-path-vis-folders", pathFoldersInput.value);
+    });
+  }
+
+  // Tag copy formatting setting (localStorage)
+  const tagCopyReplaceUnderscoresCheckbox = document.getElementById("settings-tag-copy-replace-underscores") as HTMLInputElement;
+  if (tagCopyReplaceUnderscoresCheckbox) {
+    tagCopyReplaceUnderscoresCheckbox.checked = getTagCopyReplaceUnderscores();
+    tagCopyReplaceUnderscoresCheckbox.addEventListener("change", () => {
+      setTagCopyReplaceUnderscores(tagCopyReplaceUnderscoresCheckbox.checked);
     });
   }
 
@@ -251,6 +260,12 @@ export function renderSettingsHtml(): SafeHtml {
         <label style="font-weight: 600; min-width: 120px;">Favorites Button Visibility:</label>
         <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;">
           <input type="checkbox" id="settings-favorite-always-show" checked> Always show star on favorited images
+        </label>
+      </div>
+      <div class="form-group" style="flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 8px;">
+        <label style="font-weight: 600; min-width: 120px;">Copied Tags:</label>
+        <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;">
+          <input type="checkbox" id="settings-tag-copy-replace-underscores"> Replace underscores with spaces in copied tags
         </label>
       </div>
     </div>
