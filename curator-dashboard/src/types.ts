@@ -392,6 +392,7 @@ export interface ModelStatusInfo {
   description: string;
   category: string;
   optional: boolean;
+  url: string;
   files: ManifestFileInfo[];
   downloaded_files: string[];
   total_size: number;

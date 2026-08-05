@@ -1006,6 +1006,7 @@ pub struct ModelStatusInfo {
     pub description: String,
     pub category: String,
     pub optional: bool,
+    pub url: String,
     pub files: Vec<ManifestFileInfo>,
     /// Relative paths of files that exist on disk.
     pub downloaded_files: Vec<String>,

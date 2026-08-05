@@ -41,6 +41,8 @@ struct ModelManifestEntry {
     category: String,
     #[serde(default)]
     optional: bool,
+    #[serde(default)]
+    url: String,
     files: Vec<ManifestFileEntry>,
     #[serde(default)]
     quantizable: Vec<String>,
@@ -135,6 +137,7 @@ pub async fn get_model_status(
             description: entry.description.clone(),
             category: entry.category.clone(),
             optional: entry.optional,
+            url: entry.url.clone(),
             files: entry
                 .files
                 .iter()

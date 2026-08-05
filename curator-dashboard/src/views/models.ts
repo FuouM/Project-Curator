@@ -169,6 +169,7 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
             <div>
               <strong style="font-size: 13px;">${m.name}</strong> ${optLabel}
               <div style="font-size: 11px; color: #555; margin-top: 2px;">${m.description}</div>
+              ${m.url ? `<div style="font-size: 10px; margin-top: 2px;"><a href="${m.url}" target="_blank" rel="noopener" style="color: #2b5797; text-decoration: none;">${m.url} <i class="bi bi-box-arrow-up-right" style="font-size: 9px;"></i></a></div>` : ""}
               <div style="font-size: 11px; color: #777; margin-top: 2px;">${fileStatusText}</div>
               ${reqLabel}
             </div>
