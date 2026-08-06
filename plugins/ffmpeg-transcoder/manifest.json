@@ -1,0 +1,12 @@
+{
+  "name": "ffmpeg-transcoder",
+  "version": "1.0.0",
+  "description": "Transcodes video files (MP4/WebM) between formats and codecs using the service's FFmpeg pipeline, without touching your library.",
+  "author": "Project Curator",
+  "permissions": ["ui:inject"],
+  "components": {
+    "ui": "index.js",
+    "type": "javascript"
+  },
+  "hooks": []
+}
