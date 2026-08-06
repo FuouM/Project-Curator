@@ -1292,7 +1292,7 @@ export function setupBrowseButton(btnId: string, targetInput: HTMLInputElement, 
 export function refreshCardOcr(imageId: number, ocrText: string) {
   const cards = document.querySelectorAll(`[data-image-id="${imageId}"]`);
   cards.forEach(card => {
-    const info = card.querySelector(".image-info");
+    const info = card.querySelector<HTMLElement>(".image-info, .featured-details");
     if (!info) return;
 
     const existing = info.querySelector(".ocr-block");
@@ -1301,9 +1301,11 @@ export function refreshCardOcr(imageId: number, ocrText: string) {
       if (existing) {
         existing.outerHTML = html;
       } else {
-        const tagList = info.querySelector(".tag-list");
-        if (tagList) {
-          tagList.insertAdjacentHTML("beforebegin", html);
+        const anchor = info.querySelector(".identity-list") ?? info.querySelector(".card-tags-container");
+        if (anchor) {
+          anchor.insertAdjacentHTML("beforebegin", html);
+        } else {
+          info.insertAdjacentHTML("beforeend", html);
         }
       }
     } else if (existing) {
