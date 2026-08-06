@@ -3,7 +3,7 @@ import { maskPath } from "./components";
 import { logJS } from "./utils";
 import { getImageClickAction } from "./state";
 import { callService } from "./ipc";
-import { estimateLabelWidth, getOcrTextSettings, placeLabelAvoidingOverlap, type PlacedLabel } from "./ocr-text";
+import { buildVerticalSpans, estimateLabelWidth, fitLabelInBox, getOcrTextSettings, isVerticalBox, placeLabelAvoidingOverlap, type PlacedLabel } from "./ocr-text";
 import { showErrorAlert } from "./alert";
 
 let currentViewerPath: string | null = null;
@@ -147,7 +147,7 @@ async function toggleOcr() {
 
     // Collect per-detection polygon geometry so all boxes can be drawn first
     // and all text labels afterwards (keeping text on top of the boxes).
-    const boxGeom: { det: any; points: number[][]; minX: number; minY: number }[] = [];
+    const boxGeom: { det: any; points: number[][]; minX: number; minY: number; maxX: number; maxY: number }[] = [];
     for (const det of sortedDetections) {
       const points = [
         [det.x0 * scaleX, det.y0 * scaleY],
@@ -160,6 +160,8 @@ async function toggleOcr() {
         points,
         minX: Math.min(points[0][0], points[1][0], points[2][0], points[3][0]),
         minY: Math.min(points[0][1], points[1][1], points[2][1], points[3][1]),
+        maxX: Math.max(points[0][0], points[1][0], points[2][0], points[3][0]),
+        maxY: Math.max(points[0][1], points[1][1], points[2][1], points[3][1]),
       });
     }
 
@@ -195,31 +197,90 @@ async function toggleOcr() {
     }
 
     // Pass 2: draw text labels on top, shifting each below any previous label
-    // so overlapping boxes don't stack text on top of one another.
-    const { fontSize, strokeWidth, fontFamily } = getOcrTextSettings();
+    // so overlapping boxes don't stack text on top of one another. In fit-in-box
+    // mode the label is instead scaled and centered inside its own detection box;
+    // vertical boxes render as a top-to-bottom character column when enabled.
+    const { fontSize, strokeWidth, fontFamily, fitInBox, verticalText } = getOcrTextSettings();
+    const pad = Math.max(1, Math.ceil(strokeWidth / 2));
     const placedLabels: PlacedLabel[] = [];
-    for (const { det, minX, minY } of boxGeom) {
-      const labelW = estimateLabelWidth(det.text, fontSize);
-      const labelH = fontSize + 4;
-      const pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placedLabels, 3, {
-        w: img.clientWidth,
-        h: img.clientHeight,
-      });
-      placedLabels.push({ x: pos.x, y: pos.y, w: labelW, h: labelH });
+    for (const { det, points, minX, minY, maxX, maxY } of boxGeom) {
+      const boxW = maxX - minX;
+      const boxH = maxY - minY;
+      const boxVertical = isVerticalBox(points);
+      const vertical = verticalText && boxVertical;
+      // A vertical box without vertical stacking should not be fit-scaled: the
+      // horizontal label would collapse into a sliver, so render it with the
+      // normal overlap-avoidance placement instead.
+      const fitEffective = fitInBox && !(boxVertical && !verticalText);
+      let fs = fontSize;
+      let pos: { x: number; y: number };
+      let letterSpacing = 0;
+      let verticalSpacing = 0;
+      if (vertical && fitInBox) {
+        const fit = fitLabelInBox(det.text as string, boxW, boxH, pad, true, fontFamily);
+        fs = fit.fontSize;
+        pos = { x: minX + fit.x, y: minY + fit.y };
+        verticalSpacing = fit.spacing;
+        const final = placeLabelAvoidingOverlap(pos.x, pos.y, fit.w, fit.h, placedLabels, 3, {
+          w: img.clientWidth,
+          h: img.clientHeight,
+        });
+        pos = { x: final.x, y: final.y };
+        placedLabels.push({ x: pos.x, y: pos.y, w: fit.w, h: fit.h });
+      } else if (vertical) {
+        const chars = Array.from(det.text as string);
+        const count = Math.max(chars.length, 1);
+        const labelW = chars.length
+          ? Math.max(...chars.map(ch => estimateLabelWidth(ch as string, fs)))
+          : fs * 0.6;
+        const labelH = fs * count;
+        pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placedLabels, 3, {
+          w: img.clientWidth,
+          h: img.clientHeight,
+        });
+        placedLabels.push({ x: pos.x, y: pos.y, w: labelW, h: labelH });
+      } else if (fitEffective) {
+        const fit = fitLabelInBox(det.text as string, boxW, boxH, pad, false, fontFamily);
+        fs = fit.fontSize;
+        pos = { x: minX + fit.x, y: minY + fit.y };
+        letterSpacing = fit.spacing;
+        const final = placeLabelAvoidingOverlap(pos.x, pos.y, fit.w, fit.h, placedLabels, 3, {
+          w: img.clientWidth,
+          h: img.clientHeight,
+        });
+        pos = { x: final.x, y: final.y };
+        placedLabels.push({ x: pos.x, y: pos.y, w: fit.w, h: fit.h });
+      } else {
+        const labelW = estimateLabelWidth(det.text, fs);
+        const labelH = fs + 4;
+        pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placedLabels, 3, {
+          w: img.clientWidth,
+          h: img.clientHeight,
+        });
+        placedLabels.push({ x: pos.x, y: pos.y, w: labelW, h: labelH });
+      }
 
       const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      label.setAttribute("x", String(pos.x));
-      label.setAttribute("y", String(pos.y + fontSize));
       label.setAttribute("fill", "#ffffff");
-      label.style.fontSize = `${fontSize}px`;
+      label.style.fontSize = `${fs}px`;
+      label.setAttribute("font-size", String(fs));
       label.style.fontFamily = `${fontFamily}, sans-serif`;
+      if (letterSpacing > 0) label.style.letterSpacing = `${letterSpacing}px`;
       label.setAttribute("font-weight", "600");
       label.setAttribute("paint-order", "stroke");
       label.setAttribute("stroke", "rgba(0,0,0,0.8)");
       label.setAttribute("stroke-width", String(strokeWidth));
       label.setAttribute("stroke-linecap", "round");
       label.setAttribute("stroke-linejoin", "round");
-      label.textContent = det.text;
+      if (vertical) {
+        label.setAttribute("x", "0");
+        label.setAttribute("y", "0");
+        label.innerHTML = buildVerticalSpans(det.text, pos.x, pos.y + fs, fs, verticalSpacing);
+      } else {
+        label.setAttribute("x", String(pos.x));
+        label.setAttribute("y", String(pos.y + fs));
+        label.textContent = det.text;
+      }
       ocrOverlay.appendChild(label);
     }
 
