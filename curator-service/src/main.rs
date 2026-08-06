@@ -41,7 +41,7 @@ struct ClientContext {
     download_progress: handlers::models::DownloadProgressMap,
     cancel_tokens: handlers::models::CancelTokens,
     benchmark_progress: handlers::BenchmarkProgressMap,
-    transcode_progress: handlers::plugins::TranscodeProgressMap,
+    transcode_progress: handlers::transcode::TranscodeProgressMap,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -353,7 +353,7 @@ async fn main() -> Result<(), Error> {
     let download_progress: handlers::models::DownloadProgressMap = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
     let cancel_tokens: handlers::models::CancelTokens = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
     let benchmark_progress: handlers::BenchmarkProgressMap = Arc::new(tokio::sync::Mutex::new(None));
-    let transcode_progress: handlers::plugins::TranscodeProgressMap =
+    let transcode_progress: handlers::transcode::TranscodeProgressMap =
         Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
 
     let service_impl = CuratorServiceImpl {

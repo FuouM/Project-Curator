@@ -1,5 +1,6 @@
 pub mod common;
 pub mod concepts;
+pub mod convert;
 pub mod image;
 pub mod import;
 pub mod misc;
@@ -8,6 +9,7 @@ pub mod plugins;
 pub mod search;
 pub mod settings;
 pub mod tags;
+pub mod transcode;
 
 use curator_core::detection::DetectionPipeline;
 use curator_core::ipc::{EmbeddingModel, ModelPrecision, Request, Response, TaggerBenchmarkInfo};
@@ -128,7 +130,7 @@ pub async fn handle_request(
     download_progress: &models::DownloadProgressMap,
     cancel_tokens: &models::CancelTokens,
     benchmark_progress: &BenchmarkProgressMap,
-    transcode_progress: &plugins::TranscodeProgressMap,
+    transcode_progress: &transcode::TranscodeProgressMap,
 ) -> Response {
     let preferred_source = {
         let s = settings.lock().await;
@@ -457,7 +459,7 @@ pub async fn handle_request(
         },
 
         Request::ValidatePlugin { manifest_path } => {
-            match misc::validate_plugin_logic(&manifest_path).await {
+            match plugins::validate_plugin_logic(&manifest_path).await {
                 Ok((name, version)) => Response::ValidationResult {
                     name,
                     version,
@@ -486,9 +488,9 @@ pub async fn handle_request(
         Request::EphemeralConvertImages {
             conversions,
             quality,
-        } => plugins::convert_images(conversions, quality).await,
+        } => convert::convert_images(conversions, quality).await,
 
-        Request::PathExists { path } => plugins::path_exists(&path).await,
+        Request::PathExists { path } => misc::path_exists(&path).await,
 
         Request::GetFFmpegStatus => {
             let explicit = { settings.lock().await.ffmpeg_path.clone() };
@@ -556,7 +558,7 @@ pub async fn handle_request(
                 explicit.as_deref().map(Path::new),
             ) {
                 Ok(ffmpeg) => {
-                    let res = plugins::start_transcode(
+                    let res = transcode::start_transcode(
                         &job_id,
                         &input_path,
                         &output_path,
@@ -589,7 +591,7 @@ pub async fn handle_request(
         }
 
         Request::GetTranscodeProgress { job_id } => {
-            plugins::get_transcode_progress(&job_id, transcode_progress).await
+            transcode::get_transcode_progress(&job_id, transcode_progress).await
         }
 
         Request::GetTaggerStatus => {
