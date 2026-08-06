@@ -28,7 +28,7 @@ pub use benchmark::{
 pub use crop_cache::CropCache;
 pub use db::init_db;
 pub use db::models;
-pub use detection::{CCIPModel, DetectionPipeline, YoloDetector, OcrDetector, OcrDetection};
+pub use detection::{CCIPModel, DetectionPipeline, YoloDetector, OcrDetector, OcrDetection, BubbleDetection, MangaBubbleDetector};
 pub use filename_parser::FilenameParser;
 pub use ipc::{DevicePreference, ImageDetails, Request, Response, SearchMatch, TagSummary, OcrResult};
 pub use media::{is_gif, read_dimensions, read_gif_animation, sha256_file, AnimationInfo};
