@@ -1,4 +1,5 @@
 import { callService } from "../ipc";
+import { invoke } from "@tauri-apps/api/core";
 import { SafeHtml, html, maskPath } from "../components";
 import { setStatusMessage } from "../utils";
 import { getImageClickAction, setImageClickAction, getTagCopyReplaceUnderscores, setTagCopyReplaceUnderscores } from "../state";
@@ -244,7 +245,143 @@ export function setupSettings() {
       applySettingsToUI(resp);
     } catch (e) {}
     refreshTaggerStatus();
+    refreshFfmpegStatus();
   });
+
+  // ── FFmpeg ────────────────────────────────────────────────────────────────
+  const ffmpegStatusRow = document.getElementById("ffmpeg-status-row");
+  const ffmpegPathInput = document.getElementById("settings-ffmpeg-path") as HTMLInputElement | null;
+  const ffmpegSaveStatus = document.getElementById("ffmpeg-save-status-msg");
+
+  async function refreshFfmpegStatus() {
+    if (!ffmpegStatusRow) return;
+    try {
+      const resp = await callService({ GetFFmpegStatus: null });
+      if ("FFmpegStatusResult" in resp) {
+        const r = resp.FFmpegStatusResult;
+        if (r.available) {
+          ffmpegStatusRow.innerHTML =
+            `<span style="color: #107c41;"><i class="bi bi-check-circle-fill"></i> Available</span>` +
+            `<code style="font-size: 10px; word-break: break-all;">${r.resolved_path ?? ""}</code>` +
+            (r.version ? `<span style="color: #666;">${r.version}</span>` : "");
+        } else {
+          ffmpegStatusRow.innerHTML =
+            `<span style="color: #a4262c;"><i class="bi bi-exclamation-circle-fill"></i> Not found</span>` +
+            `<span style="color: #666;">Video import/transcoding requires FFmpeg. Place <code>ffmpeg.exe</code> in the data <code>bin</code> folder or set a path below.</span>`;
+        }
+        if (ffmpegPathInput) {
+          ffmpegPathInput.value = r.resolved_path ?? "";
+        }
+      }
+    } catch (e) {}
+  }
+
+  document.getElementById("browse-ffmpeg-btn")?.addEventListener("click", async () => {
+    try {
+      const selected: string | null = await invoke("select_path", { isDirectory: false });
+      if (selected && ffmpegPathInput) {
+        ffmpegPathInput.value = selected;
+      }
+    } catch (e) {
+      console.error("FFmpeg browse error:", e);
+    }
+  });
+
+  document.getElementById("save-ffmpeg-path-btn")?.addEventListener("click", async () => {
+    if (!ffmpegSaveStatus) return;
+    const value = ffmpegPathInput ? ffmpegPathInput.value.trim() : "";
+    setStatusMessage(ffmpegSaveStatus, "Saving...", "loading");
+    try {
+      const resp = await callService({ SetFFmpegPath: { path: value || null } });
+      if ("Success" in resp) {
+        setStatusMessage(ffmpegSaveStatus, "FFmpeg path saved.", "success");
+        await refreshFfmpegStatus();
+      } else if ("Error" in resp) {
+        setStatusMessage(ffmpegSaveStatus, "Failed: " + resp.Error.message, "error");
+      }
+    } catch (e: any) {
+      setStatusMessage(ffmpegSaveStatus, "Error: " + (e.message || e), "error");
+    }
+  });
+
+  // ── FFmpeg one-click download (reuses the model-download progress map) ───
+  const ffmpegDlBtn = document.getElementById("download-ffmpeg-btn");  const ffmpegDlStatus = document.getElementById("ffmpeg-dl-status-msg");
+  const ffmpegDlBar = document.getElementById("ffmpeg-dl-progress");
+  const ffmpegDlFill = document.getElementById("ffmpeg-dl-progress-fill");
+  let ffmpegDlTimer: number | null = null;
+
+  document.getElementById("ffmpeg-release-link")?.addEventListener("click", () => {
+    window.open("https://www.gyan.dev/ffmpeg/builds/", "_blank", "noopener");
+  });
+
+  function ffmpegDlStopPolling() {
+    if (ffmpegDlTimer !== null) {
+      window.clearInterval(ffmpegDlTimer);
+      ffmpegDlTimer = null;
+    }
+  }
+
+  function ffmpegDlStartPolling() {
+    ffmpegDlStopPolling();
+    ffmpegDlTimer = window.setInterval(async () => {
+      try {
+        const resp = await callService({ GetDownloadProgress: null });
+        if (!("DownloadProgressResult" in resp)) return;
+        const dl = resp.DownloadProgressResult.downloads.find((d: any) => d.model_id === "ffmpeg-portable");
+        if (!dl) return;
+        const pct = dl.bytes_total > 0
+          ? Math.round((dl.bytes_downloaded / dl.bytes_total) * 100)
+          : 0;
+        if (ffmpegDlBar) ffmpegDlBar.style.display = "";
+        if (ffmpegDlFill) ffmpegDlFill.style.width = pct + "%";
+        if (ffmpegDlStatus) {
+          setStatusMessage(ffmpegDlStatus, `Downloading... ${pct}% (${dl.bytes_downloaded} / ${dl.bytes_total} bytes)`, "loading");
+        }
+        if (dl.status === "completed") {
+          ffmpegDlStopPolling();
+          if (ffmpegDlBar) ffmpegDlBar.style.display = "none";
+          setStatusMessage(ffmpegDlStatus, "FFmpeg downloaded and verified.", "success");
+          if (ffmpegDlBtn) ffmpegDlBtn.removeAttribute("disabled");
+          await refreshFfmpegStatus();
+        } else if (dl.status === "failed" || dl.status === "cancelled") {
+          ffmpegDlStopPolling();
+          if (ffmpegDlBar) ffmpegDlBar.style.display = "none";
+          setStatusMessage(ffmpegDlStatus, dl.error || `FFmpeg download ${dl.status}.`, "error");
+          if (ffmpegDlBtn) ffmpegDlBtn.removeAttribute("disabled");
+        }
+      } catch (e) {
+        // transient poll errors are ignored; next tick retries
+      }
+    }, 500);
+  }
+
+  ffmpegDlBtn?.addEventListener("click", async () => {
+    if (!ffmpegDlStatus) return;
+    setStatusMessage(ffmpegDlStatus, "Starting download...", "loading");
+    ffmpegDlBtn.setAttribute("disabled", "true");
+    try {
+      const resp = await callService({ DownloadFFmpeg: null });
+      if ("FFmpegDownloadResult" in resp) {
+        const r = resp.FFmpegDownloadResult;
+        if (r.started) {
+          setStatusMessage(ffmpegDlStatus, "Download started.", "loading");
+          ffmpegDlStartPolling();
+        } else {
+          setStatusMessage(ffmpegDlStatus, r.message, r.message.includes("already") ? "success" : "error");
+          ffmpegDlBtn.removeAttribute("disabled");
+          if (!r.message.includes("already")) await refreshFfmpegStatus();
+        }
+      } else if ("Error" in resp) {
+        setStatusMessage(ffmpegDlStatus, "Failed: " + resp.Error.message, "error");
+        ffmpegDlBtn.removeAttribute("disabled");
+      }
+    } catch (e: any) {
+      setStatusMessage(ffmpegDlStatus, "Error: " + (e.message || e), "error");
+      ffmpegDlBtn.removeAttribute("disabled");
+    }
+  });
+
+  refreshFfmpegStatus();
 }
 
 // ---------------------------------------------------------------------------
@@ -568,6 +705,34 @@ export function renderSettingsHtml(): SafeHtml {
       </div>
     </div>
 
+    <!-- FFmpeg -->
+    <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+      <div class="group-box-title"><i class="bi bi-collection-play"></i> FFmpeg</div>
+      <p style="font-size: 11px; color: #333333; margin: 0;">FFmpeg is required for video import, frame extraction, animated previews, and transcoding. Curator resolves it from your configured path, the local <code>bin</code> folder, or your system PATH.</p>
+      <div id="ffmpeg-status-row" style="display: flex; align-items: center; gap: 8px; font-size: 11px;"></div>
+      <div style="border-top: 1px solid #e5e7eb; margin: 4px 0; padding-top: 8px;">
+        <label style="font-weight: 600; display: block; margin-bottom: 4px;">Executable Path (optional)</label>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <input type="text" id="settings-ffmpeg-path" style="flex: 1; padding: 4px 8px; font-size: 11px; border: 1px solid #b0b0b0; border-radius: 2px;" placeholder="Leave empty to auto-detect" />
+          <button class="win-button" id="browse-ffmpeg-btn"><i class="bi bi-folder2-open"></i> Browse</button>
+          <button class="win-button primary" id="save-ffmpeg-path-btn"><i class="bi bi-check-lg"></i> Save</button>
+        </div>
+        <span id="ffmpeg-save-status-msg" style="font-size: 11px; min-height: 16px;"></span>
+      </div>
+      <div style="border-top: 1px solid #e5e7eb; margin: 4px 0; padding-top: 8px;">
+        <label style="font-weight: 600; display: block; margin-bottom: 4px;">Portable Download</label>
+        <p style="font-size: 11px; color: #333333; margin: 0 0 8px;">Downloads the portable Windows FFmpeg build into the data <code>bin</code> folder and verifies it by running <code>ffmpeg -version</code>.</p>
+        <p style="font-size: 11px; color: #333333; margin: 0 0 8px;">
+          Source: <a href="javascript:void(0)" id="ffmpeg-release-link" style="color: #004aad; text-decoration: none;">gyan.dev FFmpeg release builds</a>
+          <span style="color: #777777;">(ffmpeg-release-essentials.zip)</span>
+        </p>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <button class="win-button" id="download-ffmpeg-btn"><i class="bi bi-download"></i> Download FFmpeg</button>
+          <div class="progress-bar" style="flex: 1; max-width: 240px; display: none;" id="ffmpeg-dl-progress"><div class="progress-fill" id="ffmpeg-dl-progress-fill" style="width: 0%;"></div></div>
+          <span id="ffmpeg-dl-status-msg" style="font-size: 11px; min-height: 16px;"></span>
+        </div>
+      </div>
+    </div>
 
   `;
 }

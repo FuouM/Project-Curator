@@ -34,16 +34,20 @@ pub async fn tag_image_logic(
     let source_name = tagger.spec().source_name;
 
     let t0 = std::time::Instant::now();
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT current_filepath FROM images WHERE id = ? AND deleted_at IS NULL")
-            .bind(image_id)
-            .fetch_optional(db)
-            .await?;
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT current_filepath, video_frame_path FROM images WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(image_id)
+    .fetch_optional(db)
+    .await?;
 
-    let filepath = match row {
-        Some(r) => r.0,
+    let (current_filepath, video_frame_path) = match row {
+        Some(r) => r,
         None => anyhow::bail!("Image {} not found", image_id),
     };
+    let filepath = curator_core::video::decode_path(&current_filepath, video_frame_path.as_deref())
+        .to_string_lossy()
+        .into_owned();
     let db_resolve_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
     let t1 = std::time::Instant::now();
@@ -361,6 +365,45 @@ async fn fetch_animation_metadata_batch(
     map
 }
 
+/// Batch-fetch video metadata for image IDs.
+async fn fetch_video_metadata_batch(
+    ids: &[i64],
+    db: &SqlitePool,
+) -> std::collections::HashMap<i64, curator_core::ipc::VideoSummary> {
+    let mut map = std::collections::HashMap::new();
+    if ids.is_empty() {
+        return map;
+    }
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT image_id, format, duration_ms, fps, video_codec, audio_codec, bitrate, width, height
+         FROM video_media_metadata WHERE image_id IN ({})",
+        placeholders
+    );
+    let mut q = sqlx::query_as::<_, (i64, String, i64, f64, String, Option<String>, Option<i64>, Option<i64>, Option<i64>)>(&sql);
+    for id in ids {
+        q = q.bind(id);
+    }
+    if let Ok(rows) = q.fetch_all(db).await {
+        for (image_id, format, duration_ms, fps, video_codec, audio_codec, bitrate, width, height) in rows {
+            map.insert(
+                image_id,
+                curator_core::ipc::VideoSummary {
+                    format,
+                    duration_ms,
+                    fps,
+                    video_codec,
+                    audio_codec,
+                    bitrate,
+                    width,
+                    height,
+                },
+            );
+        }
+    }
+    map
+}
+
 pub async fn get_image_logic(
     image_id: i64,
     preferred_source: &str,
@@ -466,6 +509,10 @@ pub async fn get_image_logic(
         .await
         .remove(&image_id);
 
+    let video = fetch_video_metadata_batch(&[image_id], db)
+        .await
+        .remove(&image_id);
+
     Ok(ImageDetails {
         id: img.id,
         sha256: img.sha256,
@@ -483,6 +530,7 @@ pub async fn get_image_logic(
         width: img.width,
         height: img.height,
         animation,
+        video,
     })
 }
 
@@ -536,6 +584,7 @@ pub async fn batch_get_images_logic(
                 width,
                 height,
                 animation: None,
+                video: None,
             },
         );
     }
@@ -656,6 +705,12 @@ pub async fn batch_get_images_logic(
         }
     }
 
+    for (img_id, video) in fetch_video_metadata_batch(ids, db).await {
+        if let Some(img) = image_map.get_mut(&img_id) {
+            img.video = Some(video);
+        }
+    }
+
     let mut images: Vec<ImageDetails> = Vec::with_capacity(image_order.len());
     for id in image_order {
         if let Some(mut img) = image_map.remove(&id) {
@@ -734,6 +789,7 @@ async fn fetch_image_details_batch(
             width,
             height,
             animation: None,
+            video: None,
         });
         if let (Some(name), Some(category)) = (tag_name, tag_category) {
             if source_name.as_deref() != Some("filename_parser") {
@@ -840,6 +896,12 @@ async fn fetch_image_details_batch(
                 img.animation = Some(animation);
             }
         }
+
+        for (img_id, video) in fetch_video_metadata_batch(&img_ids, db).await {
+            if let Some(img) = image_map.get_mut(&img_id) {
+                img.video = Some(video);
+            }
+        }
     }
 
     let mut images: Vec<ImageDetails> = Vec::with_capacity(image_order.len());
@@ -858,14 +920,14 @@ pub async fn get_thumbnail_logic(
     cache: &ThumbnailCache,
     db: &SqlitePool,
 ) -> Result<(Option<Vec<u8>>, bool)> {
-    let row: Option<(String, i64, bool)> = sqlx::query_as(
-        "SELECT current_filepath, mtime, is_missing FROM images WHERE id = ? AND deleted_at IS NULL",
+    let row: Option<(String, i64, bool, Option<String>)> = sqlx::query_as(
+        "SELECT current_filepath, mtime, is_missing, video_frame_path FROM images WHERE id = ? AND deleted_at IS NULL",
     )
     .bind(image_id)
     .fetch_optional(db)
     .await?;
 
-    let (filepath, mtime, is_missing) = match row {
+    let (filepath, mtime, is_missing, video_frame_path) = match row {
         Some(r) => r,
         None => return Ok((None, true)),
     };
@@ -877,16 +939,23 @@ pub async fn get_thumbnail_logic(
     // Cache is keyed on (image_id, width, mtime) so a replaced file with the
     // same path never serves a stale thumbnail and a width change never serves
     // a wrong-size blob.
-    if let Some(cached) = cache.get(image_id, width, mtime).await {
+    if let Some(cached) = cache.get(image_id, width, mtime, thumbnail::THUMB_KIND_STATIC).await {
         return Ok((Some(cached), false));
     }
 
-    let thumb_path: std::path::PathBuf = filepath.into();
+    // Videos are hashed/probed against their cached first-frame PNG so the
+    // thumbnail pipeline always decodes decodable pixels.
+    let thumb_path: std::path::PathBuf = match video_frame_path {
+        Some(frame) if Path::new(&frame).exists() => frame.into(),
+        _ => filepath.into(),
+    };
     match tokio::task::spawn_blocking(move || thumbnail::generate_thumbnail(&thumb_path, width))
         .await
     {
         Ok(Ok(webp_bytes)) => {
-            let _ = cache.put(image_id, width, mtime, &webp_bytes).await;
+            let _ = cache
+                .put(image_id, width, mtime, thumbnail::THUMB_KIND_STATIC, &webp_bytes)
+                .await;
             Ok((Some(webp_bytes), false))
         }
         _ => Ok((None, true)),

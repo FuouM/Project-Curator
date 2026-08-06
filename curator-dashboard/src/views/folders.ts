@@ -2,14 +2,195 @@ import { invoke } from "@tauri-apps/api/core";
 import { callService } from "../ipc";
 import { logJS, escapeHtml, formatDate } from "../utils";
 import { maskPath, SafeHtml, html } from "../components";
-import type { DuplicateFolderGroup } from "../types";
+import type { DuplicateFolderGroup, FolderDetails } from "../types";
 
 let duplicateGroups: DuplicateFolderGroup[] = [];
+
+function folderRowHtml(folder: FolderDetails): string {
+  const totalVectors = folder.vector_ready + folder.vector_pending;
+  const vectorText = totalVectors > 0
+    ? `<span style="color: #2e7d32;">${folder.vector_ready}</span> / ${totalVectors}`
+    : '<span style="color: #999;">0</span>';
+
+  // Media with no vector row yet (not ready, not pending/preprocessing, and
+  // excluding files missing from disk) still needs indexing.
+  const totalMedia = folder.image_count + folder.video_count;
+  const needsIndexCount = Math.max(0,
+    totalMedia - folder.vector_ready - folder.vector_pending - folder.missing_image_count - folder.missing_video_count);
+
+  const statusIcon = folder.is_missing
+    ? '<i class="bi bi-exclamation-triangle" style="color: #e8912d;" title="Folder missing from disk"></i>'
+    : folder.missing_image_count > 0 || folder.missing_video_count > 0
+      ? `<i class="bi bi-exclamation-circle" style="color: #e8912d;" title="${folder.missing_image_count + folder.missing_video_count} missing file(s)"></i>`
+      : '<i class="bi bi-check-circle" style="color: #2e7d32;" title="Folder exists"></i>';
+
+  let rowClass = folder.is_missing ? 'folders-row missing' : 'folders-row';
+  if (needsIndexCount > 0) rowClass += ' needs-index';
+
+  let html = `<tr class="${rowClass}" data-folder-id="${folder.id}" data-folder-path="${escapeHtml(folder.path)}">
+    <td style="text-align: center;">${statusIcon}</td>
+    <td style="font-weight: 600;">${escapeHtml(folder.name)}</td>
+    <td style="font-size: 11px; color: #555; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(folder.path)}">${maskPath(folder.path)}</td>
+    <td style="white-space: nowrap;"><div style="display: flex; justify-content: flex-end; align-items: center;">${folder.image_count}<i class="bi bi-image" style="color: #1a7f37; margin-left: 4px; font-size: 11px;" title="Image files"></i><span style="display: inline-block; width: 34px; text-align: left; font-size: 10px; color: #e8912d; margin-left: 4px;" title="${folder.missing_image_count} missing">${folder.missing_image_count > 0 ? `(-${folder.missing_image_count})` : ''}</span></div></td>
+    <td style="white-space: nowrap;"><div style="display: flex; justify-content: flex-end; align-items: center;">${folder.video_count}<i class="bi bi-film" style="color: #6a3fa0; margin-left: 4px; font-size: 11px;" title="Video files (mp4/webm)"></i><span style="display: inline-block; width: 34px; text-align: left; font-size: 10px; color: #e8912d; margin-left: 4px;" title="${folder.missing_video_count} missing">${folder.missing_video_count > 0 ? `(-${folder.missing_video_count})` : ''}</span></div></td>
+    <td style="text-align: right;">${vectorText}${needsIndexCount > 0 ? ` <span style="color: #e8912d; font-size: 10px; font-weight: 600;" title="Media without a vector">(+${needsIndexCount} unindexed)</span>` : ''}</td>
+    <td style="font-size: 11px; color: #555;">${formatDate(folder.imported_at)}</td>
+    <td style="text-align: center; white-space: nowrap;">`;
+
+  if (folder.is_missing) {
+    html += `
+      <button class="win-button folders-update-btn" data-folder-id="${folder.id}" style="font-size: 11px; padding: 2px 8px; margin-right: 4px;" title="Update folder path">
+        <i class="bi bi-pencil"></i> Update Path
+      </button>
+      <button class="win-button danger folders-remove-btn" data-folder-id="${folder.id}" style="font-size: 11px; padding: 2px 8px;" title="Remove folder record">
+        <i class="bi bi-trash"></i> Remove
+      </button>`;
+  } else {
+    html += `
+      <button class="win-button folders-open-btn" data-path="${escapeHtml(folder.path)}" style="font-size: 11px; padding: 2px 8px;">
+        <i class="bi bi-folder2-open"></i> Open
+      </button>
+      <button class="win-button folders-rescan-btn" data-folder-id="${folder.id}" style="font-size: 11px; padding: 2px 8px; margin-left: 4px;" title="Scan for new images and videos added since import">
+        <i class="bi bi-arrow-repeat"></i> Rescan
+      </button>
+      <button class="win-button folders-index-btn" data-folder-id="${folder.id}" style="font-size: 11px; padding: 2px 8px; margin-left: 4px;" title="Queue vector indexing for media without a ready vector">
+        <i class="bi bi-cpu"></i> Index
+      </button>`;
+  }
+
+  html += `</td></tr>`;
+  return html;
+}
+
+function bindFolderActions(container: HTMLElement) {
+  container.querySelectorAll<HTMLElement>(".folders-open-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const path = btn.getAttribute("data-path");
+      if (path) {
+        try {
+          await invoke("open_file_externally", { path });
+        } catch (err: any) {
+          logJS("Failed to open folder: " + (err?.message || String(err)));
+        }
+      }
+    });
+  });
+
+  container.querySelectorAll<HTMLButtonElement>(".folders-rescan-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const folderId = parseInt(btn.getAttribute("data-folder-id") || "0");
+      if (!folderId) return;
+
+      const original = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<i class="bi bi-arrow-repeat"></i> Scanning...`;
+      try {
+        const resp = await callService({ RescanFolder: { folder_id: folderId } });
+        if ("RescanFolderResult" in resp) {
+          const { imported, found } = resp.RescanFolderResult;
+          const msg = imported > 0
+            ? `Rescan imported ${imported} new media file(s) (${found} supported files found).`
+            : `Folder is up to date (${found} supported files found, nothing new).`;
+          logJS(msg);
+          refreshFolders();
+        } else if ("Error" in resp) {
+          logJS("Rescan failed: " + resp.Error.message);
+        }
+      } catch (err: any) {
+        logJS("Rescan error: " + (err?.message || String(err)));
+      }
+      btn.disabled = false;
+      btn.innerHTML = original;
+    });
+  });
+
+  container.querySelectorAll<HTMLButtonElement>(".folders-index-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const folderId = parseInt(btn.getAttribute("data-folder-id") || "0");
+      if (!folderId) return;
+
+      const original = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<i class="bi bi-cpu"></i> Queueing...`;
+      try {
+        const resp = await callService({ IndexFolder: { folder_id: folderId } });
+        if ("IndexFolderResult" in resp) {
+          const queued = resp.IndexFolderResult.queued;
+          const msg = queued > 0
+            ? `Queued ${queued} media file(s) for vector indexing.`
+            : "All media in this folder already has a vector.";
+          logJS(msg);
+          refreshFolders();
+        } else if ("Error" in resp) {
+          logJS("Index failed: " + resp.Error.message);
+        }
+      } catch (err: any) {
+        logJS("Index error: " + (err?.message || String(err)));
+      }
+      btn.disabled = false;
+      btn.innerHTML = original;
+    });
+  });
+
+  container.querySelectorAll<HTMLElement>(".folders-update-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const folderId = parseInt(btn.getAttribute("data-folder-id") || "0");
+      if (!folderId) return;
+
+      try {
+        const selected: string | null = await invoke("select_path", { isDirectory: true });
+        if (selected) {
+          const updateResp = await callService({ UpdateFolderPath: { id: folderId, new_path: selected } });
+          if ("UpdateFolderPathResult" in updateResp && updateResp.UpdateFolderPathResult.success) {
+            logJS("Folder path updated successfully");
+            refreshFolders();
+          } else if ("Error" in updateResp) {
+            logJS("Failed to update folder path: " + updateResp.Error.message);
+          }
+        }
+      } catch (err: any) {
+        logJS("Failed to update folder path: " + (err?.message || String(err)));
+      }
+    });
+  });
+
+  container.querySelectorAll<HTMLElement>(".folders-remove-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const folderId = parseInt(btn.getAttribute("data-folder-id") || "0");
+      if (!folderId) return;
+
+      if (!confirm("Remove this folder record? Images will not be deleted.")) return;
+
+      try {
+        const deleteResp = await callService({ DeleteFolder: { id: folderId } });
+        if ("DeleteFolderResult" in deleteResp && deleteResp.DeleteFolderResult.success) {
+          logJS("Folder record removed");
+          refreshFolders();
+        } else if ("Error" in deleteResp) {
+          logJS("Failed to remove folder: " + deleteResp.Error.message);
+        }
+      } catch (err: any) {
+        logJS("Failed to remove folder: " + (err?.message || String(err)));
+      }
+    });
+  });
+}
 
 export async function refreshFolders() {
   const container = document.getElementById("folders-content");
   if (!container) return;
-  container.innerHTML = '<p style="color: #666; font-style: italic;">Loading folders...</p>';
+
+  const existingTable = container.querySelector<HTMLTableElement>(".folders-table");
+  const firstLoad = !existingTable;
+
+  if (firstLoad) {
+    container.innerHTML = '<p style="color: #666; font-style: italic;">Loading folders...</p>';
+  }
 
   try {
     const resp = await callService({ GetImportedFolders: null });
@@ -24,133 +205,40 @@ export async function refreshFolders() {
       return;
     }
 
-    let content = `<div style="margin-bottom: 8px; display: flex; gap: 6px;">
-      <button class="win-button" id="folders-reconcile-btn" style="font-size: 11px; padding: 3px 10px;">
-        <i class="bi bi-arrow-left-right"></i> Reconcile Duplicates
-      </button>
-    </div>`;
+    const rowsHtml = folders.map(folderRowHtml).join("");
 
-    content += `<table class="folders-table">
-      <thead>
-        <tr>
-          <th style="text-align: left;">Status</th>
-          <th style="text-align: left;">Folder Name</th>
-          <th style="text-align: left;">Path</th>
-          <th style="text-align: right;">Images</th>
-          <th style="text-align: right;">Vectors</th>
-          <th style="text-align: left;">Imported</th>
-          <th style="text-align: center;">Actions</th>
-        </tr>
-      </thead>
-      <tbody>`;
-
-    for (const folder of folders) {
-      const totalVectors = folder.vector_ready + folder.vector_pending;
-      const vectorText = totalVectors > 0
-        ? `<span style="color: #2e7d32;">${folder.vector_ready}</span> / ${totalVectors}`
-        : '<span style="color: #999;">—</span>';
-
-      const statusIcon = folder.is_missing
-        ? '<i class="bi bi-exclamation-triangle" style="color: #e8912d;" title="Folder missing from disk"></i>'
-        : folder.missing_image_count > 0
-          ? `<i class="bi bi-exclamation-circle" style="color: #e8912d;" title="${folder.missing_image_count} missing image(s)"></i>`
-          : '<i class="bi bi-check-circle" style="color: #2e7d32;" title="Folder exists"></i>';
-
-      const rowClass = folder.is_missing ? 'folders-row missing' : 'folders-row';
-
-      content += `<tr class="${rowClass}" data-folder-id="${folder.id}" data-folder-path="${escapeHtml(folder.path)}">
-        <td style="text-align: center;">${statusIcon}</td>
-        <td style="font-weight: 600;">${escapeHtml(folder.name)}</td>
-        <td style="font-size: 11px; color: #555; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(folder.path)}">${maskPath(folder.path)}</td>
-        <td style="text-align: right;">${folder.image_count}${folder.missing_image_count > 0 ? ` <span style="color: #e8912d; font-size: 10px;" title="${folder.missing_image_count} missing">(-${folder.missing_image_count})</span>` : ''}</td>
-        <td style="text-align: right;">${vectorText}</td>
-        <td style="font-size: 11px; color: #555;">${formatDate(folder.imported_at)}</td>
-        <td style="text-align: center; white-space: nowrap;">`;
-
-      if (folder.is_missing) {
-        content += `
-          <button class="win-button folders-update-btn" data-folder-id="${folder.id}" style="font-size: 11px; padding: 2px 8px; margin-right: 4px;" title="Update folder path">
-            <i class="bi bi-pencil"></i> Update Path
+    if (firstLoad) {
+      container.innerHTML = `
+        <div style="margin-bottom: 8px; display: flex; gap: 6px;">
+          <button class="win-button" id="folders-reconcile-btn" style="font-size: 11px; padding: 3px 10px;">
+            <i class="bi bi-arrow-left-right"></i> Reconcile Duplicates
           </button>
-          <button class="win-button danger folders-remove-btn" data-folder-id="${folder.id}" style="font-size: 11px; padding: 2px 8px;" title="Remove folder record">
-            <i class="bi bi-trash"></i> Remove
-          </button>`;
-      } else {
-        content += `
-          <button class="win-button folders-open-btn" data-path="${escapeHtml(folder.path)}" style="font-size: 11px; padding: 2px 8px;">
-            <i class="bi bi-folder2-open"></i> Open
-          </button>`;
-      }
+        </div>
+        <table class="folders-table">
+          <thead>
+            <tr>
+              <th style="text-align: left;">Status</th>
+              <th style="text-align: left;">Folder Name</th>
+              <th style="text-align: left;">Path</th>
+              <th style="text-align: right; padding-right: 54px;">Images</th>
+              <th style="text-align: right; padding-right: 54px;">Videos</th>
+              <th style="text-align: right;">Vectors</th>
+              <th style="text-align: left;">Imported</th>
+              <th style="text-align: center;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        <div id="folders-reconcile-panel" style="display: none; margin-top: 12px;"></div>`;
 
-      content += `</td></tr>`;
+      document.getElementById("folders-reconcile-btn")?.addEventListener("click", handleReconcileClick);
+    } else {
+      // In-place refresh: keep header and reconcile panel, only swap the rows.
+      const tbody = existingTable!.querySelector<HTMLTableSectionElement>("tbody");
+      if (tbody) tbody.innerHTML = rowsHtml;
     }
 
-    content += '</tbody></table>';
-    content += '<div id="folders-reconcile-panel" style="display: none; margin-top: 12px;"></div>';
-    container.innerHTML = content;
-
-    // Reconcile button
-    document.getElementById("folders-reconcile-btn")?.addEventListener("click", handleReconcileClick);
-
-    // Existing button handlers
-    container.querySelectorAll<HTMLElement>(".folders-open-btn").forEach((btn) => {
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const path = btn.getAttribute("data-path");
-        if (path) {
-          try {
-            await invoke("open_file_externally", { path });
-          } catch (err: any) {
-            logJS("Failed to open folder: " + (err?.message || String(err)));
-          }
-        }
-      });
-    });
-
-    container.querySelectorAll<HTMLElement>(".folders-update-btn").forEach((btn) => {
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const folderId = parseInt(btn.getAttribute("data-folder-id") || "0");
-        if (!folderId) return;
-
-        try {
-          const selected: string | null = await invoke("select_path", { isDirectory: true });
-          if (selected) {
-            const updateResp = await callService({ UpdateFolderPath: { id: folderId, new_path: selected } });
-            if ("UpdateFolderPathResult" in updateResp && updateResp.UpdateFolderPathResult.success) {
-              logJS("Folder path updated successfully");
-              refreshFolders();
-            } else if ("Error" in updateResp) {
-              logJS("Failed to update folder path: " + updateResp.Error.message);
-            }
-          }
-        } catch (err: any) {
-          logJS("Failed to update folder path: " + (err?.message || String(err)));
-        }
-      });
-    });
-
-    container.querySelectorAll<HTMLElement>(".folders-remove-btn").forEach((btn) => {
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const folderId = parseInt(btn.getAttribute("data-folder-id") || "0");
-        if (!folderId) return;
-
-        if (!confirm("Remove this folder record? Images will not be deleted.")) return;
-
-        try {
-          const deleteResp = await callService({ DeleteFolder: { id: folderId } });
-          if ("DeleteFolderResult" in deleteResp && deleteResp.DeleteFolderResult.success) {
-            logJS("Folder record removed");
-            refreshFolders();
-          } else if ("Error" in deleteResp) {
-            logJS("Failed to remove folder: " + deleteResp.Error.message);
-          }
-        } catch (err: any) {
-          logJS("Failed to remove folder: " + (err?.message || String(err)));
-        }
-      });
-    });
+    bindFolderActions(container);
   } catch (e: any) {
     container.innerHTML = `<p style="color: #a80000;">Error: ${e.message || e}</p>`;
   }

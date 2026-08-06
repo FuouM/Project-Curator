@@ -14,6 +14,7 @@ pub mod preprocess;
 pub mod tagger;
 pub mod thumbnail;
 pub mod vector;
+pub mod video;
 
 pub use onnx::ManagedSession;
 
@@ -30,7 +31,8 @@ pub use db::models;
 pub use detection::{CCIPModel, DetectionPipeline, YoloDetector, OcrDetector, OcrDetection};
 pub use filename_parser::FilenameParser;
 pub use ipc::{DevicePreference, ImageDetails, Request, Response, SearchMatch, TagSummary, OcrResult};
-pub use media::{is_gif, read_dimensions, read_gif_animation, AnimationInfo};
+pub use media::{is_gif, read_dimensions, read_gif_animation, sha256_file, AnimationInfo};
+pub use video::{decode_path, is_video, VideoInfo};
 pub use tagger::{TagPrediction, TaggerEngine, TaggerManager};pub use vector::{ModelManager, VectorIndex, apply_device_preference, OnnxConfig};
 pub use image;
 

@@ -16,19 +16,39 @@ const IDENTITY_COLORS = [
   "#1abc9c", "#e67e22", "#34495e", "#e91e63", "#00bcd4",
 ];
 
+function isVideoPath(p: string): boolean {
+  return /\.(mp4|webm)$/i.test(p);
+}
+
 export function openImageViewer(filepath: string, _imageId?: number) {
   const modal = document.getElementById("image-viewer-modal");
   const img = document.getElementById("image-viewer-img") as HTMLImageElement;
+  const video = document.getElementById("image-viewer-video") as HTMLVideoElement;
   const title = document.getElementById("image-viewer-filename");
   const overlay = document.getElementById("image-viewer-detections-overlay");
   const ocrOverlay = document.getElementById("image-viewer-ocr-overlay");
 
-  if (!modal || !img || !title) return;
+  if (!modal || !title) return;
 
   currentViewerPath = filepath;
   currentViewerImageId = _imageId ?? null;
   title.textContent = maskPath(filepath);
-  img.src = convertFileSrc(filepath);
+
+  const isVideo = isVideoPath(filepath);
+  if (img) img.style.display = isVideo ? "none" : "";
+  if (video) {
+    if (isVideo) {
+      video.src = convertFileSrc(filepath);
+      video.style.display = "";
+      void video.play().catch(() => {});
+    } else {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+      video.style.display = "none";
+    }
+  }
+  if (img && !isVideo) img.src = convertFileSrc(filepath);
   modal.classList.add("active");
 
   // Reset detections
@@ -43,7 +63,9 @@ export function openImageViewer(filepath: string, _imageId?: number) {
 function closeImageViewer() {
   const modal = document.getElementById("image-viewer-modal");
   const img = document.getElementById("image-viewer-img") as HTMLImageElement | null;
-  if (img) img.src = "";
+  const video = document.getElementById("image-viewer-video") as HTMLVideoElement | null;
+  if (img) { img.src = ""; img.style.display = ""; }
+  if (video) { video.pause(); video.removeAttribute("src"); video.load(); video.style.display = "none"; }
   if (modal) modal.classList.remove("active");
   currentViewerPath = null;
   currentViewerImageId = null;
@@ -63,8 +85,13 @@ function updateOcrButton(active: boolean) {
   btn.classList.toggle("active", active);
 }
 
+function currentViewerIsVideo(): boolean {
+  return currentViewerPath ? isVideoPath(currentViewerPath) : false;
+}
+
 async function toggleOcr() {
   if (!currentViewerImageId) return;
+  if (currentViewerIsVideo()) return;
 
   const ocrOverlay = document.getElementById("image-viewer-ocr-overlay");
   if (!ocrOverlay) return;
@@ -207,6 +234,7 @@ async function toggleOcr() {
 
 async function toggleDetections() {
   if (!currentViewerImageId) return;
+  if (currentViewerIsVideo()) return;
 
   const overlay = document.getElementById("image-viewer-detections-overlay");
   if (!overlay) return;
@@ -297,7 +325,7 @@ export function setupImageViewer() {
 
   document.getElementById("image-viewer-modal")?.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
-    if (!target.closest("button") && !target.closest(".image-viewer-close") && target.tagName !== "IMG") {
+    if (!target.closest("button") && !target.closest(".image-viewer-close") && target.tagName !== "IMG" && target.tagName !== "VIDEO") {
       closeImageViewer();
     }
   });

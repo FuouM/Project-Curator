@@ -463,6 +463,314 @@ pub async fn download_model(
     }
 }
 
+const FFMPEG_DOWNLOAD_ID: &str = "ffmpeg-portable";
+/// Portable Windows FFmpeg essentials build (ffmpeg.exe + ffprobe.exe + a few
+/// DLLs). Pinned to the `release` branch so the URL never depends on a version
+/// string; integrity is verified by executing `ffmpeg -version` after unpack.
+const FFMPEG_DOWNLOAD_URL: &str = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+
+/// Download the portable FFmpeg build into `<data_dir>/bin/` as a background
+/// job. Progress is recorded on the shared download progress map under the
+/// reserved id "ffmpeg-portable" and surfaced through GetDownloadProgress.
+/// On completion, `ffmpeg.exe`/`ffprobe.exe` are verified by running
+/// `-version`; a failed verification surfaces as an error (no silent fallback).
+pub async fn download_ffmpeg(
+    data_dir: &Path,
+    progress_map: &DownloadProgressMap,
+    cancel_tokens: &CancelTokens,
+) -> Response {
+    let bin_dir = data_dir.join("bin");
+    if let Err(e) = std::fs::create_dir_all(&bin_dir) {
+        return Response::FFmpegDownloadResult {
+            started: false,
+            message: format!("Failed to create bin directory: {}", e),
+        };
+    }
+
+    // Already downloading?
+    {
+        let progress = progress_map.lock().await;
+        if let Some(p) = progress.get(FFMPEG_DOWNLOAD_ID) {
+            if p.status == "downloading" {
+                return Response::FFmpegDownloadResult {
+                    started: false,
+                    message: "FFmpeg download already in progress".to_string(),
+                };
+            }
+        }
+    }
+
+    // Already installed (verified) — bail early with a clear message.
+    let ffmpeg_exe = bin_dir.join("ffmpeg.exe");
+    if ffmpeg_exe.exists() {
+        let ok = probe_ffmpeg_binary(&ffmpeg_exe);
+        if ok {
+            return Response::FFmpegDownloadResult {
+                started: false,
+                message: "FFmpeg is already installed and verified".to_string(),
+            };
+        }
+    }
+
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+    {
+        let mut tokens = cancel_tokens.lock().await;
+        tokens.insert(FFMPEG_DOWNLOAD_ID.to_string(), cancel_token.clone());
+    }
+    {
+        let mut progress = progress_map.lock().await;
+        progress.insert(
+            FFMPEG_DOWNLOAD_ID.to_string(),
+            DownloadProgress {
+                model_id: FFMPEG_DOWNLOAD_ID.to_string(),
+                status: "downloading".to_string(),
+                files_total: 1,
+                files_completed: 0,
+                bytes_total: 0,
+                bytes_downloaded: 0,
+                bytes_per_second: 0,
+                elapsed_secs: 0.0,
+                error: None,
+            },
+        );
+    }
+
+    let data_dir_owned = data_dir.to_path_buf();
+    let bin_dir_owned = bin_dir;
+    let progress_map_clone = progress_map.clone();
+    let cancel_tokens_clone = cancel_tokens.clone();
+
+    tokio::spawn(async move {
+        let start_time = Instant::now();
+        let zip_path = data_dir_owned.join("bin").join("ffmpeg-release-essentials.zip");
+        let temp_path = zip_path.with_extension("tmp");
+
+        // ── 1. Download zip (streamed, byte-progress reported) ─────────────
+        let agent = ureq::Agent::new_with_defaults();
+        let mut response = match agent.get(FFMPEG_DOWNLOAD_URL).call() {
+            Ok(r) => r,
+            Err(e) => {
+                let mut progress = progress_map_clone.lock().await;
+                if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
+                    p.status = "failed".to_string();
+                    p.error = Some(format!("Download failed: {}", e));
+                }
+                let mut tokens = cancel_tokens_clone.lock().await;
+                tokens.remove(FFMPEG_DOWNLOAD_ID);
+                return;
+            }
+        };
+
+        let content_length = response
+            .headers()
+            .get("Content-Length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        let mut reader = response.body_mut().as_reader();
+        let mut file = match std::fs::File::create(&temp_path) {
+            Ok(f) => f,
+            Err(e) => {
+                let mut progress = progress_map_clone.lock().await;
+                if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
+                    p.status = "failed".to_string();
+                    p.error = Some(format!("Failed to create temp file: {}", e));
+                }
+                let mut tokens = cancel_tokens_clone.lock().await;
+                tokens.remove(FFMPEG_DOWNLOAD_ID);
+                return;
+            }
+        };
+
+        let mut downloaded: u64 = 0;
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            if cancel_tokens_clone.lock().await.get(FFMPEG_DOWNLOAD_ID).map(|t| t.is_cancelled()).unwrap_or(false) {
+                let _ = std::fs::remove_file(&temp_path);
+                let mut progress = progress_map_clone.lock().await;
+                if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
+                    p.status = "cancelled".to_string();
+                }
+                let mut tokens = cancel_tokens_clone.lock().await;
+                tokens.remove(FFMPEG_DOWNLOAD_ID);
+                return;
+            }
+
+            let n = match std::io::Read::read(&mut reader, &mut buf) {
+                Ok(0) => break,
+                Ok(n) => n,
+                Err(e) => {
+                    let _ = std::fs::remove_file(&temp_path);
+                    let mut progress = progress_map_clone.lock().await;
+                    if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
+                        p.status = "failed".to_string();
+                        p.error = Some(format!("Download read error: {}", e));
+                    }
+                    let mut tokens = cancel_tokens_clone.lock().await;
+                    tokens.remove(FFMPEG_DOWNLOAD_ID);
+                    return;
+                }
+            };
+            if let Err(e) = std::io::Write::write_all(&mut file, &buf[..n]) {
+                let _ = std::fs::remove_file(&temp_path);
+                let mut progress = progress_map_clone.lock().await;
+                if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
+                    p.status = "failed".to_string();
+                    p.error = Some(format!("Download write error: {}", e));
+                }
+                let mut tokens = cancel_tokens_clone.lock().await;
+                tokens.remove(FFMPEG_DOWNLOAD_ID);
+                return;
+            }
+            downloaded += n as u64;
+            let elapsed = start_time.elapsed().as_secs_f64();
+            let bps = if elapsed > 0.0 { (downloaded as f64 / elapsed) as u64 } else { 0 };
+            let mut progress = progress_map_clone.lock().await;
+            if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
+                p.bytes_downloaded = downloaded;
+                p.bytes_total = content_length.max(downloaded);
+                p.bytes_per_second = bps;
+                p.elapsed_secs = elapsed;
+            }
+        }
+        drop(file);
+
+        if let Err(e) = std::fs::rename(&temp_path, &zip_path) {
+            let _ = std::fs::remove_file(&temp_path);
+            let mut progress = progress_map_clone.lock().await;
+            if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
+                p.status = "failed".to_string();
+                p.error = Some(format!("Failed to finalize download: {}", e));
+            }
+            let mut tokens = cancel_tokens_clone.lock().await;
+            tokens.remove(FFMPEG_DOWNLOAD_ID);
+            return;
+        }
+
+        // ── 2. Extract ffmpeg.exe + ffprobe.exe into bin/ ─────────────────
+        // zip::ZipArchive holds a non-Send reader, so extraction runs on a
+        // blocking thread; the extracted count/error are reported afterwards.
+        let extract_res = {
+            let bin_dir_extract = bin_dir_owned.clone();
+            let zip_path_extract = zip_path.clone();
+            tokio::task::spawn_blocking(move || extract_ffmpeg_binaries(&zip_path_extract, &bin_dir_extract))
+                .await
+        };
+        let _ = std::fs::remove_file(&zip_path);
+
+        let extracted = match extract_res {
+            Ok(Ok(n)) => n,
+            Ok(Err(e)) => {
+                let mut progress = progress_map_clone.lock().await;
+                if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
+                    p.status = "failed".to_string();
+                    p.error = Some(e);
+                }
+                let mut tokens = cancel_tokens_clone.lock().await;
+                tokens.remove(FFMPEG_DOWNLOAD_ID);
+                return;
+            }
+            Err(e) => {
+                let mut progress = progress_map_clone.lock().await;
+                if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
+                    p.status = "failed".to_string();
+                    p.error = Some(format!("Extraction task failed: {}", e));
+                }
+                let mut tokens = cancel_tokens_clone.lock().await;
+                tokens.remove(FFMPEG_DOWNLOAD_ID);
+                return;
+            }
+        };
+
+        let mut progress = progress_map_clone.lock().await;
+        if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
+            p.files_completed = extracted;
+        }
+        drop(progress);
+
+        // ── 3. Verify by executing ffmpeg -version ─────────────────────────
+        let ffmpeg_path = bin_dir_owned.join("ffmpeg.exe");
+        let verified = probe_ffmpeg_binary(&ffmpeg_path);
+        let mut progress = progress_map_clone.lock().await;
+        if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
+            if verified {
+                p.status = "completed".to_string();
+                p.error = None;
+            } else {
+                p.status = "failed".to_string();
+                p.error = Some(format!(
+                    "FFmpeg extracted but failed verification ({}); try re-downloading",
+                    ffmpeg_path.display()
+                ));
+            }
+            p.bytes_per_second = 0;
+        }
+        drop(progress);
+
+        let mut tokens = cancel_tokens_clone.lock().await;
+        tokens.remove(FFMPEG_DOWNLOAD_ID);
+
+        if verified {
+            info!("FFmpeg download completed and verified at {:?}", ffmpeg_path);
+        } else {
+            error!("FFmpeg download completed but verification failed at {:?}", ffmpeg_path);
+        }
+    });
+
+    Response::FFmpegDownloadResult {
+        started: true,
+        message: format!("FFmpeg download started from {}", FFMPEG_DOWNLOAD_URL),
+    }
+}
+
+/// Run `ffmpeg -version` and return whether it exited successfully.
+fn probe_ffmpeg_binary(path: &Path) -> bool {
+    std::process::Command::new(path)
+        .arg("-version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Walk a downloaded FFmpeg archive and write `ffmpeg.exe`/`ffprobe.exe` (from
+/// the build's `bin/` folder) into `bin_dir`. Runs on a blocking thread.
+fn extract_ffmpeg_binaries(zip_path: &Path, bin_dir: &Path) -> Result<usize, String> {
+    let file = std::fs::File::open(zip_path)
+        .map_err(|e| format!("Failed to open downloaded archive: {}", e))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|e| format!("Corrupt FFmpeg archive: {}", e))?;
+
+    let mut extracted = 0usize;
+    for i in 0..archive.len() {
+        let mut entry = match archive.by_index(i) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if entry.is_dir() {
+            continue;
+        }
+        let name = entry.name().replace('\\', "/");
+        let target = match name.rsplit('/').next() {
+            Some(base) if base == "ffmpeg.exe" || base == "ffprobe.exe" => base.to_string(),
+            _ => continue,
+        };
+        let dest_path = bin_dir.join(&target);
+        let mut out = std::fs::File::create(&dest_path)
+            .map_err(|e| format!("Failed to write {}: {}", target, e))?;
+        std::io::copy(&mut entry, &mut out)
+            .map_err(|e| format!("Failed to extract {}: {}", target, e))?;
+        extracted += 1;
+    }
+
+    if extracted < 2 {
+        return Err(format!(
+            "Archive did not contain ffmpeg.exe/ffprobe.exe (found {} binary)", extracted
+        ));
+    }
+    Ok(extracted)
+}
+
 /// Cancel an in-progress download.
 pub async fn cancel_download(
     model_id: &str,

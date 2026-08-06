@@ -2,7 +2,6 @@ use anyhow::Result;
 use curator_core::concept::bytes_to_vector;
 use curator_core::ipc::{EmbeddingModel, SearchMatch};
 use curator_core::vector::{ModelManager, VectorIndex};
-use sha2::Digest;
 use super::image::batch_get_images_logic;
 
 pub struct SearchParams {
@@ -16,7 +15,58 @@ pub struct SearchParams {
     pub character_identity_id: Option<i64>,
     pub ocr_filter: Option<bool>,
     pub ocr_text_search: Option<String>,
+    pub media_type: Option<String>,
     pub limit: usize,
+}
+
+/// Returns `(WHERE-clause suffix, boolean video predicate)` for a media-kind
+/// filter. The WHERE suffix is used directly in list queries; the boolean
+/// predicate is used for post-filtering a candidate id set.
+fn media_sql_clause(kind: Option<&str>) -> (String, String) {
+    match kind {
+        Some("video") => (
+            "AND (LOWER(current_filepath) LIKE '%.mp4' OR LOWER(current_filepath) LIKE '%.webm')".to_string(),
+            "(LOWER(i.current_filepath) LIKE '%.mp4' OR LOWER(i.current_filepath) LIKE '%.webm')".to_string(),
+        ),
+        Some("image") => (
+            "AND NOT (LOWER(current_filepath) LIKE '%.mp4' OR LOWER(current_filepath) LIKE '%.webm')".to_string(),
+            "NOT (LOWER(i.current_filepath) LIKE '%.mp4' OR LOWER(i.current_filepath) LIKE '%.webm')".to_string(),
+        ),
+        _ => (String::new(), "1".to_string()),
+    }
+}
+
+/// Resolve a reverse-search query file into a decodable image path. For videos
+/// the first frame is extracted to a temp PNG (FFmpeg) so the perceptual hash
+/// and CLIP embedding operate on actual pixels; static images pass through.
+/// Returns `(path_to_use, cleanup_path)` where `cleanup_path` is `Some` when a
+/// temp frame was produced and must be removed after the search completes.
+fn resolve_query_image(
+    query_path: &std::path::Path,
+    data_dir: &std::path::Path,
+    ffmpeg: &std::path::Path,
+) -> (std::path::PathBuf, Option<std::path::PathBuf>) {
+    if !curator_core::video::is_video(query_path) {
+        return (query_path.to_path_buf(), None);
+    }
+    match curator_core::video::extract_video_frame(query_path, 0, ffmpeg) {
+        Ok(frame) => {
+            let tmp = data_dir.join("search_tmp").join(format!(
+                "query_frame_{}.png",
+                uuid::Uuid::new_v4()
+            ));
+            if let Some(parent) = tmp.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Ok(bytes) = curator_core::video::frame_to_png_bytes(&frame) {
+                if std::fs::write(&tmp, &bytes).is_ok() {
+                    return (tmp.clone(), Some(tmp));
+                }
+            }
+            (query_path.to_path_buf(), None)
+        }
+        Err(_) => (query_path.to_path_buf(), None),
+    }
 }
 
 /// Parse search terms supporting quoted strings and field:value syntax.
@@ -68,6 +118,8 @@ pub async fn search_logic(
     db: &SqlitePool,
     model_manager: &ModelManager,
     vector_index: &VectorIndex,
+    data_dir: &std::path::Path,
+    ffmpeg: Option<std::path::PathBuf>,
 ) -> Result<Vec<SearchMatch>> {
     let SearchParams {
         query_text,
@@ -80,6 +132,7 @@ pub async fn search_logic(
         character_identity_id,
         ocr_filter,
         ocr_text_search,
+        media_type,
         limit,
     } = params;
     let mut candidate_ids: Option<std::collections::HashSet<i64>> = None;
@@ -193,11 +246,19 @@ pub async fn search_logic(
     if let Some(ref img_path) = query_image_path {
         let path = std::path::Path::new(&img_path);
         if path.exists() {
-            if let Ok(data) = tokio::fs::read(path).await {
-                let sha256 = format!("{:x}", sha2::Sha256::digest(&data));
+            // Videos can't be decoded directly — use the extracted first frame.
+            let (usable, mut cleanup) = match &ffmpeg {
+                Some(ffmpeg) if ffmpeg.exists() => resolve_query_image(path, data_dir, ffmpeg),
+                _ => (path.to_path_buf(), None),
+            };
+
+            // Exact sha256 identity: hashes the WHOLE file (matching how videos
+            // are deduplicated at import time), not just the decoded first frame.
+            let file_sha = tokio::task::block_in_place(|| curator_core::media::sha256_file(path));
+            if let Ok(sha) = file_sha {
                 let rows: Vec<(i64,)> =
                     sqlx::query_as("SELECT id FROM images WHERE sha256 = ? AND deleted_at IS NULL")
-                        .bind(&sha256)
+                        .bind(&sha)
                         .fetch_all(db)
                         .await
                         .unwrap_or_else(|e| {
@@ -207,10 +268,12 @@ pub async fn search_logic(
                 for r in rows {
                     exact_matches.insert(r.0);
                 }
+            } else {
+                tracing::warn!("Failed to hash query file {:?}", path);
             }
 
             // Perceptual hash decodes the image (CPU-bound) — off the reactor.
-            let query_ahash = tokio::task::block_in_place(|| curator_core::vector::compute_ahash(path));
+            let query_ahash = tokio::task::block_in_place(|| curator_core::vector::compute_ahash(&usable));
             if let Ok(query_ahash) = query_ahash {
                 let query_val = u64::from_str_radix(&query_ahash, 16).unwrap_or(0);
                 let rows: Vec<(i64, String)> = sqlx::query_as(
@@ -232,7 +295,15 @@ pub async fn search_logic(
             }
 
             // CLIP image embedding = full decode + resize + ONNX (CPU-bound) — off the reactor.
-            let query_vector = tokio::task::block_in_place(|| model_manager.generate_image_embedding(path))?;
+            let query_vector = match tokio::task::block_in_place(|| model_manager.generate_image_embedding(&usable)) {
+                Ok(v) => v,
+                Err(e) => {
+                    if let Some(cleanup_path) = cleanup.take() {
+                        let _ = std::fs::remove_file(cleanup_path);
+                    }
+                    return Err(e);
+                }
+            };
             let results = vector_index.search(&query_vector, limit.max(100))?;
 
             let mut ids = std::collections::HashSet::new();
@@ -242,6 +313,10 @@ pub async fn search_logic(
                 vector_scores.insert(id_i64, 1.0 - dist);
             }
             candidate_ids = Some(ids);
+
+            if let Some(cleanup_path) = cleanup {
+                let _ = std::fs::remove_file(cleanup_path);
+            }
         }
     }
 
@@ -439,17 +514,40 @@ pub async fn search_logic(
         || ocr_text_search.is_some();
 
     let target_ids = if !has_query {
-        let latest: Vec<(i64,)> = sqlx::query_as(
-            "SELECT id FROM images WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ?",
-        )
-        .bind(limit as i64)
-        .fetch_all(db)
-        .await?;
+        let (media_where, _) = media_sql_clause(media_type.as_deref());
+        let sql = format!(
+            "SELECT id FROM images WHERE deleted_at IS NULL {media_where} ORDER BY created_at DESC LIMIT ?"
+        );
+        let latest: Vec<(i64,)> = sqlx::query_as(&sql)
+            .bind(limit as i64)
+            .fetch_all(db)
+            .await?;
         latest.into_iter().map(|r| r.0).collect()
     } else {
         let mut ids: Vec<i64> = target_set.into_iter().collect();
         ids.sort_unstable();
         ids
+    };
+
+    // Media kind filter: "image" excludes videos, "video" keeps only videos.
+    let target_ids: Vec<i64> = match media_type.as_deref() {
+        None => target_ids,
+        Some(_) if !has_query => target_ids,
+        Some(kind) if !target_ids.is_empty() => {
+            let placeholders = target_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let (_, is_video_clause) = media_sql_clause(Some(kind));
+            let sql = format!(
+                "SELECT i.id FROM images i WHERE i.id IN ({}) AND {} AND i.deleted_at IS NULL",
+                placeholders, is_video_clause
+            );
+            let mut query = sqlx::query_as::<_, (i64,)>(&sql);
+            for id in &target_ids {
+                query = query.bind(id);
+            }
+            let rows: Vec<(i64,)> = query.fetch_all(db).await?;
+            rows.into_iter().map(|r| r.0).collect()
+        }
+        Some(_) => Vec::new(),
     };
 
     let batch_details = batch_get_images_logic(&target_ids, preferred_source, db)
@@ -491,6 +589,10 @@ pub async fn search_logic(
             parsed_metadata: details.parsed_metadata.clone(),
             ocr_text: details.ocr_text.clone(),
             character_identities: details.character_identities.clone(),
+            animation: details.animation.clone(),
+            video: details.video.clone(),
+            favorite: details.favorite,
+            is_missing: details.is_missing,
         });
     }
 

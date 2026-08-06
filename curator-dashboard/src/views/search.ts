@@ -61,16 +61,34 @@ export function setupSearch() {
   function updateImagePreview() {
     const container = document.getElementById("search-image-preview-container");
     const img = document.getElementById("search-image-preview-img") as HTMLImageElement;
+    const video = document.getElementById("search-image-preview-video") as HTMLVideoElement;
     const filenameSpan = document.getElementById("search-image-preview-filename");
-    if (!imageInput || !container || !img || !filenameSpan) return;
+    if (!imageInput || !container || !img || !video || !filenameSpan) return;
 
     const path = imageInput.value.trim();
+    const isVideo = /\.(mp4|webm)$/i.test(path);
     if (path) {
-      img.src = convertFileSrc(path);
+      if (isVideo) {
+        img.src = "";
+        img.style.display = "none";
+        video.src = convertFileSrc(path);
+        video.style.display = "";
+        void video.play().catch(() => {});
+      } else {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+        video.style.display = "none";
+        img.src = convertFileSrc(path);
+        img.style.display = "";
+      }
       filenameSpan.textContent = maskPath(path);
       filenameSpan.title = path;
       container.style.display = "flex";
     } else {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
       img.src = "";
       filenameSpan.textContent = "";
       filenameSpan.title = "";
@@ -131,9 +149,11 @@ export function setupSearch() {
       const ocrFilter = ocrFilterCheckbox?.checked ? true : null;
       const ocrTextInput = document.getElementById("search-ocr-text-input") as HTMLInputElement;
       const ocrTextSearch = ocrTextInput?.value.trim() || null;
+      const mediaTypeSelect = document.getElementById("search-media-type-select") as HTMLSelectElement;
+      const mediaType = mediaTypeSelect && mediaTypeSelect.value ? mediaTypeSelect.value : null;
 
       const resp = await callService({
-        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, filename_filter: filenameFilter, parse_filter: parseFilter, parse_type: parseType, concept_id: conceptIdVal, character_identity_id: null, ocr_filter: ocrFilter, ocr_text_search: ocrTextSearch, limit: 50 }
+        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, filename_filter: filenameFilter, parse_filter: parseFilter, parse_type: parseType, concept_id: conceptIdVal, character_identity_id: null, ocr_filter: ocrFilter, ocr_text_search: ocrTextSearch, media_type: mediaType, limit: 50 }
       });
 
       if ("SearchResult" in resp) {
@@ -222,6 +242,13 @@ export function renderSearchHtml(): SafeHtml {
                 <option value="">-- All Concepts --</option>
               </select>
             </div>
+            <div class="input-wrapper" style="flex: 0 0 110px;">
+              <select class="input-field" id="search-media-type-select" style="width: 100%; height: 24px;" title="Filter results by media type">
+                <option value="">All Media</option>
+                <option value="image">Images</option>
+                <option value="video">Videos</option>
+              </select>
+            </div>
             <div class="input-wrapper" style="flex: 1; position: relative;">
               <input class="input-field has-clear" id="search-tag-input" placeholder="Filter by tag(s), comma-separated..." autocomplete="off" />
               <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
@@ -275,7 +302,8 @@ export function renderSearchHtml(): SafeHtml {
             <button type="submit" class="win-button" style="width: 100px; font-weight: bold;">Search</button>
           </div>
           <div id="search-image-preview-container" style="display: none; align-items: center; gap: 10px; margin-top: 4px; padding: 6px; border: 1px dashed var(--sys-border-dark); background-color: var(--sys-window-bg); max-width: 350px;">
-            <img id="search-image-preview-img" src="" alt="Query Preview" style="height: 60px; width: 60px; object-fit: cover; border: 1px solid var(--sys-border-dark);" />
+            <img id="search-image-preview-img" src="" alt="Query Preview" style="height: 60px; width: 60px; object-fit: cover; border: 1px solid var(--sys-border-dark); display: none;" />
+            <video id="search-image-preview-video" muted playsinline preload="metadata" style="height: 60px; width: 60px; object-fit: cover; border: 1px solid var(--sys-border-dark); display: none;"></video>
             <div style="display: flex; flex-direction: column; gap: 2px; overflow: hidden; flex: 1;">
               <span style="font-weight: bold; font-size: 11px;">Input Query Image:</span>
               <span id="search-image-preview-filename" style="font-size: 10px; color: #555555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title=""></span>

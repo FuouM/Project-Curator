@@ -103,6 +103,17 @@ pub(crate) struct ImageProcessingBenchmarkProgress {
 pub(crate) type BenchmarkProgressMap =
     Arc<tokio::sync::Mutex<Option<ImageProcessingBenchmarkProgress>>>;
 
+/// Resolve the FFmpeg executable honoring the persisted explicit path. Returns
+/// `Ok(path)` when found; callers decide whether missing FFmpeg is an error
+/// (import/transcode) or reported status (Settings UI).
+pub(crate) async fn resolve_ffmpeg_path(
+    data_dir: &Path,
+    settings: &Arc<tokio::sync::Mutex<AppSettings>>,
+) -> anyhow::Result<std::path::PathBuf> {
+    let explicit = { settings.lock().await.ffmpeg_path.clone() };
+    curator_core::video::resolve_ffmpeg_path(data_dir, explicit.as_deref().map(Path::new))
+}
+
 pub async fn handle_request(
     request: Request,
     db: &SqlitePool,
@@ -117,6 +128,7 @@ pub async fn handle_request(
     download_progress: &models::DownloadProgressMap,
     cancel_tokens: &models::CancelTokens,
     benchmark_progress: &BenchmarkProgressMap,
+    transcode_progress: &plugins::TranscodeProgressMap,
 ) -> Response {
     let preferred_source = {
         let s = settings.lock().await;
@@ -300,7 +312,8 @@ pub async fn handle_request(
                 let s = settings.lock().await;
                 s.embedding_model
             };
-            match import::import_image_logic(&path, db, active).await {
+            let ffmpeg = resolve_ffmpeg_path(data_dir, settings).await.ok();
+            match import::import_image_logic(&path, db, active, ffmpeg.as_deref(), data_dir).await {
                 Ok((id, sha256, count, folder_id)) => Response::ImportResult {
                     image_id: id,
                     sha256,
@@ -353,6 +366,7 @@ pub async fn handle_request(
             character_identity_id,
             ocr_filter,
             ocr_text_search,
+            media_type,
             limit,
         } => {
             match search::search_logic(
@@ -367,12 +381,15 @@ pub async fn handle_request(
                     character_identity_id,
                     ocr_filter,
                     ocr_text_search,
+                    media_type,
                     limit,
                 },
                 &preferred_source,
                 db,
                 model_manager,
                 vector_index,
+                data_dir,
+                resolve_ffmpeg_path(data_dir, settings).await.ok(),
             )
             .await
             {
@@ -472,6 +489,96 @@ pub async fn handle_request(
         } => plugins::convert_images(conversions, quality).await,
 
         Request::PathExists { path } => plugins::path_exists(&path).await,
+
+        Request::GetFFmpegStatus => {
+            let explicit = { settings.lock().await.ffmpeg_path.clone() };
+            let resolved = curator_core::video::resolve_ffmpeg_path(
+                data_dir,
+                explicit.as_deref().map(Path::new),
+            )
+            .ok();
+            match resolved {
+                Some(p) => {
+                    let version =
+                        curator_core::video::probe_ffmpeg_version(&p).unwrap_or_default();
+                    Response::FFmpegStatusResult {
+                        resolved_path: Some(p.to_string_lossy().into_owned()),
+                        version: Some(version),
+                        available: true,
+                    }
+                }
+                None => Response::FFmpegStatusResult {
+                    resolved_path: explicit,
+                    version: None,
+                    available: false,
+                },
+            }
+        }
+
+        Request::SetFFmpegPath { path } => {
+            let mut s = settings.lock().await;
+            s.ffmpeg_path = path.clone();
+            let settings_to_save = s.clone();
+            let data_dir_buf = data_dir.to_path_buf();
+            drop(s);
+            match tokio::task::spawn_blocking(move || crate::save_settings(&data_dir_buf, &settings_to_save))
+                .await
+            {
+                Ok(Ok(())) => Response::Success,
+                Ok(Err(e)) => Response::Error {
+                    message: format!("Failed to save settings: {:?}", e),
+                },
+                Err(e) => Response::Error {
+                    message: format!("Settings save task failed: {:?}", e),
+                },
+            }
+        }
+
+        Request::TranscodeVideo {
+            job_id,
+            input_path,
+            output_path,
+            target_format,
+            vcodec,
+            acodec,
+            crf,
+            preset,
+        } => {
+            let explicit = { settings.lock().await.ffmpeg_path.clone() };
+            match curator_core::video::resolve_ffmpeg_path(
+                data_dir,
+                explicit.as_deref().map(Path::new),
+            ) {
+                Ok(ffmpeg) => {
+                    let res = plugins::start_transcode(
+                        &job_id,
+                        &input_path,
+                        &output_path,
+                        &target_format,
+                        vcodec,
+                        acodec,
+                        crf,
+                        preset,
+                        &ffmpeg,
+                        transcode_progress,
+                    )
+                    .await;
+                    match res {
+                        Ok(()) => Response::Success,
+                        Err(e) => Response::Error {
+                            message: e.to_string(),
+                        },
+                    }
+                }
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+        Request::GetTranscodeProgress { job_id } => {
+            plugins::get_transcode_progress(&job_id, transcode_progress).await
+        }
 
         Request::GetTaggerStatus => {
             let preferred = { settings.lock().await.preferred_tagger };
@@ -780,15 +887,18 @@ pub async fn handle_request(
             },
         },
 
-        Request::BackfillMediaMetadata => match import::backfill_media_metadata(db).await {
-            Ok((processed, updated)) => Response::MediaMetadataBackfillResult {
-                processed,
-                updated,
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
+        Request::BackfillMediaMetadata => {
+            let ffmpeg = resolve_ffmpeg_path(data_dir, settings).await.ok();
+            match import::backfill_media_metadata(db, ffmpeg.as_deref(), data_dir).await {
+                Ok((processed, updated)) => Response::MediaMetadataBackfillResult {
+                    processed,
+                    updated,
+                },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
 
         Request::UpdateFolderPath { id, new_path } => {
             match import::update_folder_path_logic(id, &new_path, db).await {
@@ -827,6 +937,39 @@ pub async fn handle_request(
                 message: e.to_string(),
             },
         },
+
+        Request::RescanFolder { folder_id } => {
+            let active = {
+                let s = settings.lock().await;
+                s.embedding_model
+            };
+            let ffmpeg = resolve_ffmpeg_path(data_dir, settings).await.ok();
+            match import::rescan_folder_logic(folder_id, db, active, ffmpeg.as_deref(), data_dir)
+                .await
+            {
+                Ok((imported, found)) => Response::RescanFolderResult {
+                    folder_id,
+                    imported,
+                    found,
+                },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+        Request::IndexFolder { folder_id } => {
+            let active = {
+                let s = settings.lock().await;
+                s.embedding_model
+            };
+            match import::index_folder_logic(folder_id, db, active).await {
+                Ok(queued) => Response::IndexFolderResult { folder_id, queued },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
 
         Request::CreateConcept {
             name,
@@ -1645,7 +1788,7 @@ pub async fn handle_request(
         },
 
         Request::RunOcr { image_id } => {
-            let row: Option<(String,)> = match sqlx::query_as("SELECT current_filepath FROM images WHERE id = ? AND deleted_at IS NULL")
+            let row: Option<(String, Option<String>)> = match sqlx::query_as("SELECT current_filepath, video_frame_path FROM images WHERE id = ? AND deleted_at IS NULL")
                 .bind(image_id)
                 .fetch_optional(db)
                 .await
@@ -1654,10 +1797,16 @@ pub async fn handle_request(
                 Err(e) => return Response::Error { message: format!("DB Error: {:?}", e) },
             };
 
-            let filepath = match row {
-                Some(r) => r.0,
+            let (current_filepath, video_frame_path) = match row {
+                Some(r) => r,
                 None => return Response::Error { message: format!("Image {} not found", image_id) },
             };
+            let filepath = curator_core::video::decode_path(
+                &current_filepath,
+                video_frame_path.as_deref(),
+            )
+            .to_string_lossy()
+            .into_owned();
 
             let filepath_path = std::path::Path::new(&filepath);
             if !filepath_path.exists() {
@@ -1952,6 +2101,9 @@ pub async fn handle_request(
         }
         Request::GetDownloadProgress => {
             models::get_download_progress(download_progress).await
+        }
+        Request::DownloadFFmpeg => {
+            models::download_ffmpeg(data_dir, download_progress, cancel_tokens).await
         }
         Request::QuantizeModel { model_id, format } => {
             models::quantize_model(&data_dir.join("models"), &model_id, &format).await

@@ -159,6 +159,13 @@
 .folders-row.missing:hover {
   background-color: #fef8f0;
 }
+.folders-row.needs-index {
+  border-left: 3px solid #e8912d;
+  background-color: #fff8e6;
+}
+.folders-row.needs-index:hover {
+  background-color: #fff3d6;
+}
 
 .curator-table {
   width: 100%;

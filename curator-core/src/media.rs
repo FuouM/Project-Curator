@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use sha2::Digest;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
@@ -14,8 +15,44 @@ pub struct AnimationInfo {
     pub loop_count: Option<u16>,
 }
 
+/// Streaming SHA-256 of the entire file contents (constant memory, safe for
+/// large videos). Returns an error when the file cannot be opened or read.
+pub fn sha256_file(path: &Path) -> Result<String> {
+    let file = File::open(path).with_context(|| format!("Cannot open file {:?}", path))?;
+    let mut reader = BufReader::new(file);
+    let mut hasher = sha2::Sha256::new();
+    let mut buf = vec![0u8; 65536];
+    loop {
+        let n = reader
+            .read(&mut buf)
+            .with_context(|| format!("Cannot read file {:?}", path))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
 /// Read image dimensions from the file header without decoding pixel data.
+/// Videos (mp4/webm) are probed via FFmpeg when `ffmpeg_path` is provided.
 pub fn read_dimensions(path: &Path) -> Result<(u32, u32)> {
+    if crate::video::is_video(path) {
+        return match crate::video::resolve_ffmpeg_path(
+            crate::constants::resolve_data_dir().as_path(),
+            None,
+        ) {
+            Ok(ffmpeg) => {
+                let info = crate::video::read_video_metadata(path, &ffmpeg)?;
+                Ok((info.width, info.height))
+            }
+            Err(e) => anyhow::bail!(
+                "Cannot read video dimensions for {:?}: {}",
+                path,
+                e
+            ),
+        };
+    }
     let reader = image::ImageReader::open(path)
         .with_context(|| format!("Cannot open image {:?}", path))?;
     let (w, h) = reader

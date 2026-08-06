@@ -11,6 +11,11 @@ const WEBP_METHOD: i32 = 2;
 const DEFAULT_MAX_ENTRIES: usize = 200_000;
 const EVICTION_CHECK_INTERVAL: u64 = 1000;
 
+/// Cache variant key: static single-frame thumbnail.
+pub const THUMB_KIND_STATIC: u8 = 0;
+/// Cache variant key: animated WebP preview clip (videos only).
+pub const THUMB_KIND_ANIMATED: u8 = 1;
+
 pub struct ThumbnailCache {
     db: SqlitePool,
     op_count: std::sync::atomic::AtomicU64,
@@ -32,11 +37,13 @@ impl ThumbnailCache {
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS thumbnails (
-                image_id   INTEGER PRIMARY KEY,
+                image_id   INTEGER NOT NULL,
                 width      INTEGER NOT NULL,
                 mtime      INTEGER NOT NULL DEFAULT 0,
+                kind       INTEGER NOT NULL DEFAULT 0,
                 data       BLOB NOT NULL,
-                created_at INTEGER NOT NULL
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (image_id, width, kind)
             )",
         )
         .execute(&db)
@@ -49,6 +56,11 @@ impl ThumbnailCache {
             .await?;
         if !cols.iter().any(|name| name == "mtime") {
             sqlx::query("ALTER TABLE thumbnails ADD COLUMN mtime INTEGER NOT NULL DEFAULT 0")
+                .execute(&db)
+                .await?;
+        }
+        if !cols.iter().any(|name| name == "kind") {
+            sqlx::query("ALTER TABLE thumbnails ADD COLUMN kind INTEGER NOT NULL DEFAULT 0")
                 .execute(&db)
                 .await?;
         }
@@ -66,13 +78,14 @@ impl ThumbnailCache {
         }))
     }
 
-    pub async fn get(&self, image_id: i64, width: u32, mtime: i64) -> Option<Vec<u8>> {
+    pub async fn get(&self, image_id: i64, width: u32, mtime: i64, kind: u8) -> Option<Vec<u8>> {
         let row: Option<(Vec<u8>,)> = sqlx::query_as(
-            "SELECT data FROM thumbnails WHERE image_id = ? AND width = ? AND mtime = ?",
+            "SELECT data FROM thumbnails WHERE image_id = ? AND width = ? AND mtime = ? AND kind = ?",
         )
         .bind(image_id)
         .bind(width)
         .bind(mtime)
+        .bind(kind)
         .fetch_optional(&self.db)
         .await
         .ok()?;
@@ -80,18 +93,26 @@ impl ThumbnailCache {
         row.map(|(data,)| data)
     }
 
-    pub async fn put(&self, image_id: i64, width: u32, mtime: i64, data: &[u8]) -> Result<()> {
+    pub async fn put(
+        &self,
+        image_id: i64,
+        width: u32,
+        mtime: i64,
+        kind: u8,
+        data: &[u8],
+    ) -> Result<()> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
 
         sqlx::query(
-            "INSERT OR REPLACE INTO thumbnails (image_id, width, mtime, data, created_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO thumbnails (image_id, width, mtime, kind, data, created_at) VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind(image_id)
         .bind(width)
         .bind(mtime)
+        .bind(kind)
         .bind(data)
         .bind(now)
         .execute(&self.db)
@@ -252,4 +273,17 @@ pub fn generate_thumbnail(source_path: &Path, target_width: u32) -> Result<Vec<u
         .map_err(|e| anyhow::anyhow!("Failed to encode WebP thumbnail: {e:?}"))?;
 
     Ok(webp_memory.to_vec())
+}
+
+/// Generate an animated WebP preview clip for a video via FFmpeg (grid
+/// thumbnail). `width` is the target width; `fps` and `quality` control the
+/// clip density and compression. Delegates to `crate::video`.
+pub fn generate_video_preview(
+    source_path: &Path,
+    ffmpeg_path: &Path,
+    width: u32,
+    fps: u8,
+    quality: u8,
+) -> Result<Vec<u8>> {
+    crate::video::extract_video_preview(source_path, ffmpeg_path, width, fps, quality)
 }

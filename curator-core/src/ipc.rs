@@ -101,6 +101,9 @@ pub enum Request {
         ocr_filter: Option<bool>,
         #[serde(default)]
         ocr_text_search: Option<String>,
+        /// Restrict results to a media kind: `"image"`, `"video"`, or `None` for all.
+        #[serde(default)]
+        media_type: Option<String>,
         limit: usize,
     },
     GetStatus,
@@ -152,6 +155,32 @@ pub enum Request {
     /// Check if a path exists on the local filesystem.
     PathExists {
         path: String,
+    },
+    /// Resolve and report the current FFmpeg installation state.
+    GetFFmpegStatus,
+    /// Persist an explicit FFmpeg path (`None` reverts to auto-detect).
+    SetFFmpegPath {
+        path: Option<String>,
+    },
+    /// Start an asynchronous FFmpeg transcode job. Progress is polled via
+    /// `GetTranscodeProgress { job_id }` (unary gRPC transport).
+    TranscodeVideo {
+        job_id: String,
+        input_path: String,
+        output_path: String,
+        target_format: String,
+        #[serde(default)]
+        vcodec: Option<String>,
+        #[serde(default)]
+        acodec: Option<String>,
+        #[serde(default)]
+        crf: Option<u32>,
+        #[serde(default)]
+        preset: Option<String>,
+    },
+    /// Poll the progress of a running transcode job.
+    GetTranscodeProgress {
+        job_id: String,
     },
     /// Run a tagger on a single image (on-demand, lazy-loads model).
     TagImage {
@@ -245,6 +274,19 @@ pub enum Request {
     MergeFolders {
         keep_folder_id: i64,
         merge_folder_id: i64,
+    },
+    /// Re-scan an imported folder for new media files (images + videos) and
+    /// import them, skipping already-known content by content hash. Used to
+    /// pick up video files that were ignored when the folder was imported
+    /// before video support existed.
+    RescanFolder {
+        folder_id: i64,
+    },
+    /// Queue vector indexing for media in an imported folder that does not yet
+    /// have a `ready` vector for the active embedding model (skips rows already
+    /// pending/preprocessing/ready). Runs in the background worker.
+    IndexFolder {
+        folder_id: i64,
     },
     /// Create a new custom concept from sample images.
     CreateConcept {
@@ -484,6 +526,10 @@ pub enum Request {
     GetConversionLogs {
         model_id: String,
     },
+    /// Download a portable FFmpeg build (ffmpeg.exe + ffprobe.exe) into the
+    /// data dir `bin/` folder. Progress is tracked on the same progress map as
+    /// model downloads; verify by running `ffmpeg -version` after extraction.
+    DownloadFFmpeg,
     /// Tag every image already tagged by `from_tagger` using `to_tagger`
     /// (used by the "backfill camie-tagged images with Ashen" button).
     BackfillTagSource {
@@ -579,6 +625,23 @@ pub enum Response {
     /// Result of a path existence check.
     PathExistsResult {
         exists: bool,
+    },
+    /// Result of an FFmpeg availability / version check.
+    FFmpegStatusResult {
+        resolved_path: Option<String>,
+        version: Option<String>,
+        available: bool,
+    },
+    /// Live progress of an asynchronous transcode job.
+    TranscodeProgressResult {
+        job_id: String,
+        running: bool,
+        percent: f32,
+        fps: f32,
+        x_speed: f32,
+        out_time_ms: i64,
+        output_path: Option<String>,
+        error: Option<String>,
     },
     /// Result of a single-image auto-tag operation.
     TagImageResult {
@@ -685,6 +748,20 @@ pub enum Response {
     MergeFoldersResult {
         success: bool,
         images_moved: i64,
+    },
+    /// Result of re-scanning an imported folder for new media files.
+    RescanFolderResult {
+        folder_id: i64,
+        /// New files imported by the rescan (0 when everything was already known).
+        imported: i64,
+        /// Total supported media files found in the folder during the scan.
+        found: i64,
+    },
+    /// Result of queueing vector indexing for an imported folder.
+    IndexFolderResult {
+        folder_id: i64,
+        /// Media files newly queued for vectorization.
+        queued: i64,
     },
     /// List of custom concepts.
     ConceptListResult {
@@ -885,6 +962,11 @@ pub enum Response {
         logs: String,
         is_running: bool,
     },
+    /// Result of starting (or failing to start) the portable FFmpeg download.
+    FFmpegDownloadResult {
+        started: bool,
+        message: String,
+    },
 }
 
 
@@ -936,6 +1018,14 @@ pub struct SearchMatch {
     pub ocr_text: Option<String>,
     #[serde(default)]
     pub character_identities: Vec<CharacterIdentitySummary>,
+    #[serde(default)]
+    pub animation: Option<AnimationSummary>,
+    #[serde(default)]
+    pub video: Option<VideoSummary>,
+    #[serde(default)]
+    pub favorite: bool,
+    #[serde(default)]
+    pub is_missing: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -964,6 +1054,9 @@ pub struct ImageDetails {
     pub height: Option<i64>,
     #[serde(default)]
     pub animation: Option<AnimationSummary>,
+    /// Video stream & container details (present only for mp4/webm assets).
+    #[serde(default)]
+    pub video: Option<VideoSummary>,
 }
 
 /// Animated media details (present only for animated files, e.g. GIF).
@@ -976,6 +1069,19 @@ pub struct AnimationSummary {
     /// Netscape loop count: `None` = no loop extension, `0` = infinite.
     pub loop_count: Option<i64>,
     pub is_animated: bool,
+}
+
+/// Video stream & container details for mp4/webm assets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoSummary {
+    pub format: String,
+    pub duration_ms: i64,
+    pub fps: f64,
+    pub video_codec: String,
+    pub audio_codec: Option<String>,
+    pub bitrate: Option<i64>,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
 }
 
 /// Lightweight character identity reference for card display.
@@ -1010,9 +1116,13 @@ pub struct FolderDetails {
     pub name: String,
     pub imported_at: String,
     pub image_count: i64,
+    /// Count of video files (mp4/webm) in this folder.
+    pub video_count: i64,
     pub vector_ready: i64,
     pub vector_pending: i64,
     pub missing_image_count: i64,
+    /// Count of missing (deleted from disk) video files in this folder.
+    pub missing_video_count: i64,
     pub is_missing: bool,
 }
 

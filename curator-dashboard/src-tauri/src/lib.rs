@@ -8,7 +8,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use curator_core::grpc::curator_client::CuratorClient;
 use tonic::transport::Channel;
 
-use curator_core::thumbnail::{ThumbnailCache, generate_thumbnail};
+use curator_core::thumbnail::ThumbnailCache;
 use curator_core::constants::resolve_data_dir;
 
 /// Resolved once at first use; all functions reference this.
@@ -320,30 +320,60 @@ async fn get_thumbnail(image_id: i64) -> Result<Vec<u8>, String> {
         SqlitePool::connect_with(opts).await.expect("Failed to open images DB")
     }).await;
 
-    let row: Option<(String, i64)> = sqlx::query_as(
-        "SELECT current_filepath, mtime FROM images WHERE id = ? AND deleted_at IS NULL",
+    let row: Option<(String, i64, Option<String>)> = sqlx::query_as(
+        "SELECT current_filepath, mtime, video_frame_path FROM images WHERE id = ? AND deleted_at IS NULL",
     )
     .bind(image_id)
     .fetch_optional(db)
     .await
     .map_err(|e| e.to_string())?;
 
-    let (filepath, mtime) = row.ok_or("Image not found")?;
+    let (filepath, mtime, video_frame_path) = row.ok_or("Image not found")?;
 
-    // Cache is keyed on (image_id, width, mtime) to avoid stale thumbnails
-    // when a file is replaced and wrong-size blobs across width changes.
-    if let Some(data) = cache.get(image_id, 200, mtime).await {
+    // Cache is keyed on (image_id, width, mtime, kind) to avoid stale thumbnails
+    // when a file is replaced, wrong-size blobs across width changes, and stale
+    // static single-frame thumbs for videos (which now render animated WebP).
+    let is_vid = curator_core::video::is_video(std::path::Path::new(&filepath));
+    let kind = if is_vid {
+        curator_core::thumbnail::THUMB_KIND_ANIMATED
+    } else {
+        curator_core::thumbnail::THUMB_KIND_STATIC
+    };
+    if let Some(data) = cache.get(image_id, 200, mtime, kind).await {
         return Ok(data);
     }
 
-    let thumb_path: std::path::PathBuf = filepath.into();
-
-    let webp_bytes = tokio::task::spawn_blocking(move || generate_thumbnail(&thumb_path, 200))
+    // For videos, generate a lightweight 2-second animated WebP preview thumbnail
+    // via FFmpeg. Fall back to static thumbnail of extracted first-frame PNG if FFmpeg fails.
+    let webp_bytes = if is_vid {
+        let data_dir = data_dir();
+        let ffmpeg_res = curator_core::video::resolve_ffmpeg_path(&data_dir, None);
+        let vid_path = std::path::PathBuf::from(&filepath);
+        tokio::task::spawn_blocking(move || {
+            if let Ok(ffmpeg) = ffmpeg_res {
+                if let Ok(animated) = curator_core::thumbnail::generate_video_preview(&vid_path, &ffmpeg, 200, 12, 65) {
+                    return Ok(animated);
+                }
+            }
+            // Fallback to static thumbnail of first frame if preview generation fails
+            let thumb_src = match video_frame_path {
+                Some(ref frame) if std::path::Path::new(frame).exists() => std::path::PathBuf::from(frame),
+                _ => std::path::PathBuf::from(&filepath),
+            };
+            curator_core::thumbnail::generate_thumbnail(&thumb_src, 200)
+        })
         .await
         .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+    } else {
+        let thumb_src = std::path::PathBuf::from(&filepath);
+        tokio::task::spawn_blocking(move || curator_core::thumbnail::generate_thumbnail(&thumb_src, 200))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?
+    };
 
-    let _ = cache.put(image_id, 200, mtime, &webp_bytes).await;
+    let _ = cache.put(image_id, 200, mtime, kind, &webp_bytes).await;
     Ok(webp_bytes)
 }
 

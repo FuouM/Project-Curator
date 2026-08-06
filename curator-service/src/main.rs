@@ -41,6 +41,7 @@ struct ClientContext {
     download_progress: handlers::models::DownloadProgressMap,
     cancel_tokens: handlers::models::CancelTokens,
     benchmark_progress: handlers::BenchmarkProgressMap,
+    transcode_progress: handlers::plugins::TranscodeProgressMap,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,6 +68,9 @@ pub(crate) struct AppSettings {
     /// Enable/disable state of discovered plugins, keyed by plugin name.
     #[serde(default)]
     enabled_plugins: std::collections::HashMap<String, bool>,
+    /// Explicit FFmpeg executable path, if the user configured one.
+    #[serde(default)]
+    ffmpeg_path: Option<String>,
 }
 
 fn default_idle_timeout() -> u64 {
@@ -91,6 +95,7 @@ impl Default for AppSettings {
             model_precisions: std::collections::HashMap::new(),
             preferred_tagger: TaggerModel::Camie,
             enabled_plugins: std::collections::HashMap::new(),
+            ffmpeg_path: None,
         }
     }
 }
@@ -348,6 +353,8 @@ async fn main() -> Result<(), Error> {
     let download_progress: handlers::models::DownloadProgressMap = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
     let cancel_tokens: handlers::models::CancelTokens = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
     let benchmark_progress: handlers::BenchmarkProgressMap = Arc::new(tokio::sync::Mutex::new(None));
+    let transcode_progress: handlers::plugins::TranscodeProgressMap =
+        Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
 
     let service_impl = CuratorServiceImpl {
         ctx: Arc::new(ClientContext {
@@ -364,6 +371,7 @@ async fn main() -> Result<(), Error> {
             download_progress,
             cancel_tokens,
             benchmark_progress,
+            transcode_progress,
         }),
     };
 
@@ -422,6 +430,7 @@ impl Curator for CuratorServiceImpl {
             &self.ctx.download_progress,
             &self.ctx.cancel_tokens,
             &self.ctx.benchmark_progress,
+            &self.ctx.transcode_progress,
         )
         .await;
 

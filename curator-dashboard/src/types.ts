@@ -7,7 +7,7 @@ export type RequestPayload =
   | { AddTag: { image_id: number; tag: string; category: string } }
   | { RemoveTag: { image_id: number; tag: string } }
   | { UnblacklistTag: { image_id: number; tag: string } }
-  | { Search: { query_text: string | null; query_image_path: string | null; tag_filter: string | null; filename_filter: string | null; parse_filter: string | null; parse_type: string | null; concept_id: number | null; character_identity_id: number | null; ocr_filter: boolean | null; ocr_text_search: string | null; limit: number } }
+  | { Search: { query_text: string | null; query_image_path: string | null; tag_filter: string | null; filename_filter: string | null; parse_filter: string | null; parse_type: string | null; concept_id: number | null; character_identity_id: number | null; ocr_filter: boolean | null; ocr_text_search: string | null; media_type: string | null; limit: number } }
   | { ListImages: { limit: number; offset: number; only_favorites?: boolean | null } }
   | { SetFavorite: { image_id: number; favorite: boolean } }
   | { GetImage: { image_id: number } }
@@ -36,6 +36,8 @@ export type RequestPayload =
   | { DeleteFolder: { id: number } }
   | { DetectDuplicateFolders: null }
   | { MergeFolders: { keep_folder_id: number; merge_folder_id: number } }
+  | { RescanFolder: { folder_id: number } }
+  | { IndexFolder: { folder_id: number } }
   | { CreateConcept: { name: string; category: string; threshold: number; sample_image_ids: number[] } }
   | { ListConcepts: null }
   | { UpdateConcept: { id: number; threshold: number | null; category: string | null } }
@@ -92,7 +94,12 @@ export type RequestPayload =
   | { SetPluginEnabled: { plugin_name: string; enabled: boolean } }
   | { ReadPluginFile: { plugin_name: string; relative_path: string } }
   | { EphemeralConvertImages: { conversions: [string, string][]; quality: number } }
-  | { PathExists: { path: string } };
+  | { PathExists: { path: string } }
+  | { GetFFmpegStatus: null }
+  | { SetFFmpegPath: { path: string | null } }
+  | { DownloadFFmpeg: null }
+  | { TranscodeVideo: { job_id: string; input_path: string; output_path: string; target_format: string; vcodec?: string | null; acodec?: string | null; crf?: number | null; preset?: string | null } }
+  | { GetTranscodeProgress: { job_id: string } };
 
 export interface TokenBlock {
   token_type: string;
@@ -131,6 +138,10 @@ export interface SearchMatch {
   parsed_metadata?: ParsedMetadata;
   ocr_text?: string;
   character_identities?: CharacterIdentitySummary[];
+  animation?: AnimationSummary | null;
+  video?: VideoSummary | null;
+  favorite: boolean;
+  is_missing?: boolean;
 }
 
 export interface ImageDetails {
@@ -149,6 +160,7 @@ export interface ImageDetails {
   width?: number | null;
   height?: number | null;
   animation?: AnimationSummary | null;
+  video?: VideoSummary | null;
 }
 
 export interface AnimationSummary {
@@ -157,6 +169,17 @@ export interface AnimationSummary {
   duration_ms: number;
   loop_count?: number | null;
   is_animated: boolean;
+}
+
+export interface VideoSummary {
+  format: string;
+  duration_ms: number;
+  fps: number;
+  video_codec: string;
+  audio_codec?: string | null;
+  bitrate?: number | null;
+  width?: number | null;
+  height?: number | null;
 }
 
 export interface CharacterIdentitySummary {
@@ -184,9 +207,11 @@ export interface FolderDetails {
   name: string;
   imported_at: string;
   image_count: number;
+  video_count: number;
   vector_ready: number;
   vector_pending: number;
   missing_image_count: number;
+  missing_video_count: number;
   is_missing: boolean;
 }
 
@@ -249,6 +274,8 @@ export type ResponsePayload =
   | { DeleteFolderResult: { success: boolean } }
   | { DuplicateFoldersResult: { groups: DuplicateFolderGroup[] } }
   | { MergeFoldersResult: { success: boolean; images_moved: number } }
+  | { RescanFolderResult: { folder_id: number; imported: number; found: number } }
+  | { IndexFolderResult: { folder_id: number; queued: number } }
   | { ConceptListResult: { concepts: CustomConcept[] } }
   | { ConceptResult: { concept: CustomConcept } }
   | { ConceptRescannedResult: { concept_id: number; tagged_count: number } }
@@ -328,7 +355,10 @@ export type ResponsePayload =
   | { PluginsListResult: { plugins: PluginInfo[] } }
   | { PluginFileResult: { content: string } }
   | { ConvertImagesResult: { converted: ConvertedFileInfo[] } }
-  | { PathExistsResult: { exists: boolean } };
+  | { PathExistsResult: { exists: boolean } }
+  | { FFmpegStatusResult: { resolved_path: string | null; version: string | null; available: boolean } }
+  | { FFmpegDownloadResult: { started: boolean; message: string } }
+  | { TranscodeProgressResult: { job_id: string; running: boolean; percent: number; fps: number; x_speed: number; out_time_ms: number; output_path: string; error: string | null } };
 
 export interface CharacterDetection {
   id: number;
@@ -378,6 +408,7 @@ export interface CardImageData {
   characterIdentities?: CharacterIdentitySummary[];
   ocrText?: string;
   animation?: AnimationSummary | null;
+  video?: VideoSummary | null;
 }
 
 export interface OcrResult {

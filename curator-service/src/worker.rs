@@ -187,7 +187,14 @@ impl BackgroundWorker {
                 let mm = mm_pre.clone();
                 let paths: Vec<String> = pending_images
                     .iter()
-                    .map(|img| img.current_filepath.clone())
+                    .map(|img| {
+                        curator_core::video::decode_path(
+                            &img.current_filepath,
+                            img.video_frame_path.as_deref(),
+                        )
+                        .to_string_lossy()
+                        .into_owned()
+                    })
                     .collect();
                 let preprocessed_res =
                     tokio::task::spawn_blocking(move || mm.preprocess_image_batch(&paths)).await;

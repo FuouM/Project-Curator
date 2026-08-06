@@ -1,5 +1,6 @@
 use anyhow::Result;
 use curator_core::ipc::EmbeddingModel;
+use curator_core::video::{self, VideoInfo};
 use sha2::Digest;
 use sqlx::SqlitePool;
 use std::fs;
@@ -10,14 +11,87 @@ use super::common::resolve_source_id;
 
 /// Best-effort media metadata extracted from a file header.
 /// Extraction failures are logged and stored as `None`, matching the phash
-/// convention: a corrupt file must never block library import.
+/// convention: a corrupt file must never block library import. Missing FFmpeg
+/// for a video, however, is an environmental failure and fails fast.
 struct MediaExtract {
     width: Option<i64>,
     height: Option<i64>,
     animation: Option<curator_core::media::AnimationInfo>,
+    video: Option<VideoInfo>,
+    video_frame_path: Option<String>,
 }
 
-fn extract_media_info(path: &Path) -> MediaExtract {
+/// SHA-256 of the file's first 64 KiB (streamed, constant memory). Used as a
+/// best-effort identity fallback when the whole file cannot be read.
+fn header_sha256(path: &Path) -> String {
+    use std::io::Read;
+    let mut file = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return String::new(),
+    };
+    let mut buf = vec![0u8; 65536];
+    let mut total = 0usize;
+    let mut hasher = sha2::Sha256::new();
+    while let Ok(n) = file.read(&mut buf) {
+        if n == 0 {
+            break;
+        }
+        total += n;
+        hasher.update(&buf[..n]);
+        if total >= 65536 {
+            break;
+        }
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+/// Extract the first frame (0.0s) of a video to the derived frame cache and
+/// return `(cache_path, sha256_of_frame)`.
+fn extract_frame_to_cache(path: &Path, ffmpeg: &Path, data_dir: &Path) -> Result<(String, String)> {
+    let frame_dir = data_dir.join("video_frames");
+    fs::create_dir_all(&frame_dir)?;
+    let frame = video::extract_video_frame(path, 0, ffmpeg)?;
+    let png = video::frame_to_png_bytes(&frame)?;
+    let sha = format!("{:x}", sha2::Sha256::digest(&png));
+    let target = frame_dir.join(format!("{}.png", &sha[..32]));
+    if !target.exists() {
+        fs::write(&target, &png)?;
+    }
+    Ok((target.to_string_lossy().into_owned(), sha))
+}
+
+fn extract_media_info(path: &Path, ffmpeg: Option<&Path>, data_dir: &Path) -> Result<MediaExtract> {
+    if curator_core::video::is_video(path) {
+        let ffmpeg = match ffmpeg {
+            Some(p) => p,
+            None => anyhow::bail!(
+                "Video file {:?} detected but FFmpeg is not configured. Open Settings → FFmpeg to resolve it.",
+                path
+            ),
+        };
+        let video = match video::read_video_metadata(path, ffmpeg) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                warn!("Failed to probe video {:?}: {:?}", path, e);
+                None
+            }
+        };
+        let frame_path = match extract_frame_to_cache(path, ffmpeg, data_dir) {
+            Ok((p, _)) => Some(p),
+            Err(e) => {
+                warn!("Failed to extract first frame for {:?}: {:?}", path, e);
+                None
+            }
+        };
+        return Ok(MediaExtract {
+            width: video.as_ref().map(|v| v.width as i64),
+            height: video.as_ref().map(|v| v.height as i64),
+            animation: None,
+            video,
+            video_frame_path: frame_path,
+        });
+    }
+
     let (width, height) = match curator_core::media::read_dimensions(path) {
         Ok((w, h)) => (Some(w as i64), Some(h as i64)),
         Err(e) => {
@@ -38,10 +112,28 @@ fn extract_media_info(path: &Path) -> MediaExtract {
         None
     };
 
-    MediaExtract {
+    Ok(MediaExtract {
         width,
         height,
         animation,
+        video: None,
+        video_frame_path: None,
+    })
+}
+
+/// Content identity hash. Videos and images both hash the entire file
+/// (streamed, constant memory) so a duplicate is detected regardless of its
+/// container or codec. Corrupt/unreadable files fall back to the header hash.
+fn compute_content_sha(path: &Path, media: &MediaExtract) -> String {
+    if let Ok(sha) = curator_core::media::sha256_file(path) {
+        return sha;
+    }
+    if media.video.is_some() {
+        return header_sha256(path);
+    }
+    match fs::read(path) {
+        Ok(data) => format!("{:x}", sha2::Sha256::digest(&data)),
+        Err(_) => header_sha256(path),
     }
 }
 
@@ -71,6 +163,49 @@ async fn upsert_animation_metadata(
         .await?;
     }
     Ok(())
+}
+
+/// Upsert video stream/container metadata for an image (no-op for images).
+async fn upsert_video_metadata(
+    exec: &mut sqlx::SqliteConnection,
+    image_id: i64,
+    media: &MediaExtract,
+) -> Result<()> {
+    if let Some(v) = &media.video {
+        sqlx::query(
+            "INSERT INTO video_media_metadata (image_id, format, duration_ms, fps, video_codec, audio_codec, bitrate)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(image_id) DO UPDATE SET
+               format = excluded.format,
+               duration_ms = excluded.duration_ms,
+               fps = excluded.fps,
+               video_codec = excluded.video_codec,
+               audio_codec = excluded.audio_codec,
+               bitrate = excluded.bitrate,
+               updated_at = CURRENT_TIMESTAMP",
+        )
+        .bind(image_id)
+        .bind(&v.format)
+        .bind(v.duration_ms)
+        .bind(v.fps)
+        .bind(&v.video_codec)
+        .bind(&v.audio_codec)
+        .bind(v.bitrate)
+        .execute(&mut *exec)
+        .await?;
+    }
+    Ok(())
+}
+
+/// Resolve the perceptual hash source path for an image (videos use their
+/// extracted first frame so the hash is computed on decodable pixels).
+fn phash_source_path(media: &MediaExtract, path: &Path) -> std::path::PathBuf {
+    if media.video.is_some() {
+        if let Some(fp) = &media.video_frame_path {
+            return Path::new(fp).to_path_buf();
+        }
+    }
+    path.to_path_buf()
 }
 
 pub async fn get_or_create_folder(folder_path: &str, db: &SqlitePool) -> Result<i64> {
@@ -105,14 +240,16 @@ pub async fn import_single_image(
     db: &SqlitePool,
     active: EmbeddingModel,
     folder_id: Option<i64>,
+    ffmpeg: Option<&Path>,
+    data_dir: &Path,
 ) -> Result<(i64, String)> {
     let path = Path::new(path_str);
     if !path.exists() {
         return Err(anyhow::anyhow!("File does not exist: {}", path_str));
     }
 
-    let data = fs::read(path)?;
-    let sha256 = format!("{:x}", sha2::Sha256::digest(&data));
+    let media = extract_media_info(path, ffmpeg, data_dir)?;
+    let sha256 = compute_content_sha(path, &media);
 
     let metadata = fs::metadata(path)?;
     let mtime = metadata
@@ -126,15 +263,13 @@ pub async fn import_single_image(
     };
     let clip_source_id = resolve_source_id(db, source_name).await?;
 
-    let phash = match curator_core::vector::compute_ahash(path) {
+    let phash = match curator_core::vector::compute_ahash(phash_source_path(&media, path)) {
         Ok(h) => Some(h),
         Err(e) => {
-            warn!("Failed to compute aHash for image {:?}: {:?}", path, e);
+            warn!("Failed to compute aHash for {:?}: {:?}", path, e);
             None
         }
     };
-
-    let media = extract_media_info(path);
 
     let existing: Option<(i64, String)> =
         sqlx::query_as("SELECT id, current_filepath FROM images WHERE sha256 = ?")
@@ -142,17 +277,32 @@ pub async fn import_single_image(
             .fetch_optional(db)
             .await?;
 
+    // Reconciliation: old rows (e.g. videos hashed by first frame before the
+    // whole-file sha change) are found by path and re-hashed in place so a
+    // rescan upgrades their identity instead of inserting a duplicate.
+    let existing = match existing {
+        Some(row) => Some(row),
+        None => sqlx::query_as(
+            "SELECT id, current_filepath FROM images WHERE current_filepath = ? AND deleted_at IS NULL",
+        )
+        .bind(path_str)
+        .fetch_optional(db)
+        .await?,
+    };
+
     let mut tx = db.begin().await?;
     let id = if let Some((id, _old_path)) = existing {
         sqlx::query(
-            "UPDATE images SET current_filepath = ?, mtime = ?, phash = ?, width = COALESCE(?, width), height = COALESCE(?, height), folder_id = COALESCE(folder_id, ?), deleted_at = NULL WHERE id = ?",
+            "UPDATE images SET sha256 = ?, current_filepath = ?, mtime = ?, phash = ?, width = COALESCE(?, width), height = COALESCE(?, height), folder_id = COALESCE(folder_id, ?), video_frame_path = COALESCE(?, video_frame_path), deleted_at = NULL WHERE id = ?",
         )
+        .bind(&sha256)
         .bind(path_str)
         .bind(mtime)
         .bind(&phash)
         .bind(media.width)
         .bind(media.height)
         .bind(folder_id)
+        .bind(&media.video_frame_path)
         .bind(id)
         .execute(&mut *tx)
         .await?;
@@ -178,7 +328,7 @@ pub async fn import_single_image(
         id
     } else {
         let id = sqlx::query(
-            "INSERT INTO images (sha256, phash, current_filepath, mtime, folder_id, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO images (sha256, phash, current_filepath, mtime, folder_id, width, height, video_frame_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&sha256)
         .bind(&phash)
@@ -187,6 +337,7 @@ pub async fn import_single_image(
         .bind(folder_id)
         .bind(media.width)
         .bind(media.height)
+        .bind(&media.video_frame_path)
         .execute(&mut *tx)
         .await?
         .last_insert_rowid();
@@ -202,6 +353,7 @@ pub async fn import_single_image(
     };
 
     upsert_animation_metadata(&mut tx, id, &media).await?;
+    upsert_video_metadata(&mut tx, id, &media).await?;
     tx.commit().await?;
 
     Ok((id, sha256))
@@ -211,6 +363,8 @@ pub async fn import_image_logic(
     path_str: &str,
     db: &SqlitePool,
     active: EmbeddingModel,
+    ffmpeg: Option<&Path>,
+    data_dir: &Path,
 ) -> Result<(i64, String, usize, Option<i64>)> {
     let path = Path::new(path_str);
     if !path.exists() {
@@ -238,7 +392,7 @@ pub async fn import_image_logic(
                     let ext_lower = ext.to_lowercase();
                     if matches!(
                         ext_lower.as_str(),
-                        "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" | "tiff"
+                        "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" | "tiff" | "mp4" | "webm"
                     ) {
                         image_paths.push(current_path);
                     }
@@ -275,11 +429,16 @@ pub async fn import_image_logic(
 
         let mut prepped_images = Vec::with_capacity(paths_vec.len());
 
+        // ffmpeg/data_dir are borrowed read-only inside the scoped threads.
+        let ffmpeg_owned = ffmpeg.map(|p| p.to_path_buf());
+
         std::thread::scope(|s| {
             let mut handles = Vec::with_capacity(num_threads);
 
             for chunk in paths_vec.chunks(chunk_size) {
                 let chunk_paths = chunk.to_vec();
+                let ffmpeg_ref = ffmpeg_owned.clone();
+                let data_dir_owned = data_dir.to_path_buf();
                 let handle = s.spawn(move || {
                     let mut items = Vec::with_capacity(chunk_paths.len());
                     for p_str in chunk_paths {
@@ -291,17 +450,28 @@ pub async fn import_image_logic(
                                 .and_then(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).ok())
                                 .map(|d| d.as_secs() as i64)
                                 .unwrap_or(0);
-                            if let Ok(data) = fs::read(p) {
-                                let sha256 = format!("{:x}", sha2::Sha256::digest(&data));
-                                let media = extract_media_info(p);
-                                items.push(PreppedImage {
-                                    path_str: p_str,
-                                    sha256,
-                                    mtime,
-                                    phash: None,
-                                    media,
-                                });
-                            }
+                            let media = match extract_media_info(
+                                p,
+                                ffmpeg_ref.as_deref(),
+                                &data_dir_owned,
+                            ) {
+                                Ok(m) => m,
+                                Err(e) => {
+                                    warn!(
+                                        "Failed to extract media info for {:?}: {:?}",
+                                        p, e
+                                    );
+                                    continue;
+                                }
+                            };
+                            let sha256 = compute_content_sha(p, &media);
+                            items.push(PreppedImage {
+                                path_str: p_str,
+                                sha256,
+                                mtime,
+                                phash: None,
+                                media,
+                            });
                         }
                     }
                     items
@@ -334,16 +504,31 @@ pub async fn import_image_logic(
                     .fetch_optional(&mut *tx)
                     .await?;
 
+            // Reconciliation: old rows (e.g. videos hashed by first frame before
+            // the whole-file sha change) are found by path and re-hashed in place
+            // so a rescan upgrades their identity instead of inserting a duplicate.
+            let existing = match existing {
+                Some(row) => Some(row),
+                None => sqlx::query_as(
+                    "SELECT id, current_filepath FROM images WHERE current_filepath = ? AND deleted_at IS NULL",
+                )
+                .bind(&item.path_str)
+                .fetch_optional(&mut *tx)
+                .await?,
+            };
+
             let img_id = if let Some((id, _old_path)) = existing {
                 let _ = sqlx::query(
-                    "UPDATE images SET current_filepath = ?, mtime = ?, phash = ?, width = COALESCE(?, width), height = COALESCE(?, height), folder_id = COALESCE(folder_id, ?), deleted_at = NULL WHERE id = ?",
+                    "UPDATE images SET sha256 = ?, current_filepath = ?, mtime = ?, phash = ?, width = COALESCE(?, width), height = COALESCE(?, height), folder_id = COALESCE(folder_id, ?), video_frame_path = COALESCE(?, video_frame_path), deleted_at = NULL WHERE id = ?",
                 )
+                .bind(&item.sha256)
                 .bind(&item.path_str)
                 .bind(item.mtime)
                 .bind(&item.phash)
                 .bind(item.media.width)
                 .bind(item.media.height)
                 .bind(folder_id)
+                .bind(&item.media.video_frame_path)
                 .bind(id)
                 .execute(&mut *tx)
                 .await;
@@ -369,7 +554,7 @@ pub async fn import_image_logic(
                 id
             } else {
                 let id = sqlx::query(
-                    "INSERT INTO images (sha256, phash, current_filepath, mtime, folder_id, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO images (sha256, phash, current_filepath, mtime, folder_id, width, height, video_frame_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 )
                 .bind(&item.sha256)
                 .bind(&item.phash)
@@ -378,6 +563,7 @@ pub async fn import_image_logic(
                 .bind(Some(folder_id))
                 .bind(item.media.width)
                 .bind(item.media.height)
+                .bind(&item.media.video_frame_path)
                 .execute(&mut *tx)
                 .await?
                 .last_insert_rowid();
@@ -394,6 +580,7 @@ pub async fn import_image_logic(
             };
 
             upsert_animation_metadata(&mut tx, img_id, &item.media).await?;
+            upsert_video_metadata(&mut tx, img_id, &item.media).await?;
 
             if !imported_any {
                 first_id = img_id;
@@ -417,7 +604,8 @@ pub async fn import_image_logic(
             .and_then(|p| p.to_str())
             .unwrap_or(path_str);
         let folder_id = get_or_create_folder(parent_dir, db).await?;
-        let (id, sha) = import_single_image(path_str, db, active, Some(folder_id)).await?;
+        let (id, sha) =
+            import_single_image(path_str, db, active, Some(folder_id), ffmpeg, data_dir).await?;
         Ok((id, sha, 1, Some(folder_id)))
     }
 }
@@ -474,15 +662,22 @@ pub async fn backfill_image_folders(db: &SqlitePool) -> Result<i64> {
     Ok(backfilled)
 }
 
-/// Populate media metadata (dimensions, GIF animation details) for images that
-/// are missing it. Returns `(processed, updated)`.
-pub async fn backfill_media_metadata(db: &SqlitePool) -> Result<(i64, i64)> {
+/// Populate media metadata (dimensions, GIF animation details, video probe
+/// details) for images that are missing it. Returns `(processed, updated)`.
+pub async fn backfill_media_metadata(
+    db: &SqlitePool,
+    ffmpeg: Option<&Path>,
+    data_dir: &Path,
+) -> Result<(i64, i64)> {
     let rows: Vec<(i64, String)> = sqlx::query_as(
         "SELECT i.id, i.current_filepath
          FROM images i
          LEFT JOIN image_animation_metadata am ON am.image_id = i.id
+         LEFT JOIN video_media_metadata vm ON vm.image_id = i.id
          WHERE i.deleted_at IS NULL
-           AND (i.width IS NULL OR i.height IS NULL OR (am.image_id IS NULL AND LOWER(i.current_filepath) LIKE '%.gif'))",
+           AND (i.width IS NULL OR i.height IS NULL
+                OR (am.image_id IS NULL AND LOWER(i.current_filepath) LIKE '%.gif')
+                OR (vm.image_id IS NULL AND (LOWER(i.current_filepath) LIKE '%.mp4' OR LOWER(i.current_filepath) LIKE '%.webm')))",
     )
     .fetch_all(db)
     .await?;
@@ -495,15 +690,16 @@ pub async fn backfill_media_metadata(db: &SqlitePool) -> Result<(i64, i64)> {
         if !path.exists() {
             continue;
         }
-        let media = extract_media_info(path);
+        let media = extract_media_info(path, ffmpeg, data_dir)?;
         processed += 1;
         let mut changed = false;
         if media.width.is_some() || media.height.is_some() {
             sqlx::query(
-                "UPDATE images SET width = COALESCE(?, width), height = COALESCE(?, height) WHERE id = ?",
+                "UPDATE images SET width = COALESCE(?, width), height = COALESCE(?, height), video_frame_path = COALESCE(?, video_frame_path) WHERE id = ?",
             )
             .bind(media.width)
             .bind(media.height)
+            .bind(&media.video_frame_path)
             .bind(id)
             .execute(&mut *tx)
             .await?;
@@ -511,6 +707,10 @@ pub async fn backfill_media_metadata(db: &SqlitePool) -> Result<(i64, i64)> {
         }
         if media.animation.is_some() {
             upsert_animation_metadata(&mut tx, id, &media).await?;
+            changed = true;
+        }
+        if media.video.is_some() {
+            upsert_video_metadata(&mut tx, id, &media).await?;
             changed = true;
         }
         if changed {
@@ -533,6 +733,7 @@ pub async fn get_imported_folders_logic(
         name: String,
         imported_at: String,
         image_count: i64,
+        video_count: i64,
         vector_ready: i64,
         vector_pending: i64,
     }
@@ -544,7 +745,8 @@ pub async fn get_imported_folders_logic(
             f.path,
             f.name,
             f.imported_at,
-            COUNT(i.id) as image_count,
+            COUNT(CASE WHEN LOWER(i.current_filepath) NOT LIKE '%.mp4' AND LOWER(i.current_filepath) NOT LIKE '%.webm' THEN 1 END) as image_count,
+            COALESCE(SUM(CASE WHEN LOWER(i.current_filepath) LIKE '%.mp4' OR LOWER(i.current_filepath) LIKE '%.webm' THEN 1 ELSE 0 END), 0) as video_count,
             COALESCE(SUM(CASE WHEN iv.vector_state = 'ready' THEN 1 ELSE 0 END), 0) as vector_ready,
             COALESCE(SUM(CASE WHEN iv.vector_state IN ('pending', 'preprocessing') THEN 1 ELSE 0 END), 0) as vector_pending
         FROM folders f
@@ -570,10 +772,17 @@ pub async fn get_imported_folders_logic(
     .fetch_all(db)
     .await?;
 
-    let mut missing_per_folder: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+    let mut missing_per_folder: std::collections::HashMap<i64, (i64, i64)> = std::collections::HashMap::new();
     for fi in &folder_images {
         if !Path::new(&fi.current_filepath).exists() {
-            *missing_per_folder.entry(fi.folder_id).or_insert(0) += 1;
+            let is_video = fi.current_filepath.to_lowercase().ends_with(".mp4")
+                || fi.current_filepath.to_lowercase().ends_with(".webm");
+            let entry = missing_per_folder.entry(fi.folder_id).or_insert((0, 0));
+            if is_video {
+                entry.1 += 1;
+            } else {
+                entry.0 += 1;
+            }
         }
     }
 
@@ -581,16 +790,19 @@ pub async fn get_imported_folders_logic(
         .into_iter()
         .map(|r| {
             let is_missing = !Path::new(&r.path).exists();
-            let missing_image_count = missing_per_folder.get(&r.id).copied().unwrap_or(0);
+            let (missing_image_count, missing_video_count) =
+                missing_per_folder.get(&r.id).copied().unwrap_or((0, 0));
             curator_core::ipc::FolderDetails {
                 id: r.id,
                 path: r.path,
                 name: r.name,
                 imported_at: r.imported_at,
                 image_count: r.image_count,
+                video_count: r.video_count,
                 vector_ready: r.vector_ready,
                 vector_pending: r.vector_pending,
                 missing_image_count,
+                missing_video_count,
                 is_missing,
             }
         })
@@ -645,6 +857,110 @@ pub async fn delete_folder_logic(id: i64, db: &SqlitePool) -> Result<bool> {
     } else {
         Err(anyhow::anyhow!("Folder not found: id={}", id))
     }
+}
+
+/// Re-scan an imported folder for media files that are not yet in the library
+/// (notably videos that were ignored before video support). Reuses the normal
+/// import pipeline, which deduplicates by content hash, so already-known files
+/// are updated in place rather than re-inserted. Returns `(newly_imported,
+/// total_supported_found)`.
+pub async fn rescan_folder_logic(
+    folder_id: i64,
+    db: &SqlitePool,
+    active: EmbeddingModel,
+    ffmpeg: Option<&Path>,
+    data_dir: &Path,
+) -> Result<(i64, i64)> {
+    let folder_path: Option<String> =
+        sqlx::query_scalar("SELECT path FROM folders WHERE id = ?")
+            .bind(folder_id)
+            .fetch_optional(db)
+            .await?;
+    let path = match folder_path {
+        Some(p) => p,
+        None => anyhow::bail!("Folder not found: id={}", folder_id),
+    };
+
+    if !Path::new(&path).exists() {
+        return Err(anyhow::anyhow!(
+            "Folder path no longer exists on disk: {}",
+            path
+        ));
+    }
+
+    let before: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM images WHERE folder_id = ? AND deleted_at IS NULL",
+    )
+    .bind(folder_id)
+    .fetch_one(db)
+    .await?;
+
+    let (_id, _sha, found, _folder_id) =
+        import_image_logic(&path, db, active, ffmpeg, data_dir).await?;
+
+    let after: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM images WHERE folder_id = ? AND deleted_at IS NULL",
+    )
+    .bind(folder_id)
+    .fetch_one(db)
+    .await?;
+
+    let imported = (after - before).max(0);
+    let found_i64 = found as i64;
+    info!(
+        "Rescanned folder {} ({:?}): {} new media, {} total supported found",
+        folder_id, path, imported, found_i64
+    );
+    Ok((imported, found_i64))
+}
+
+/// Queue vector indexing for media in an imported folder that does not yet have
+/// a `ready` vector for the active embedding model. Rows that are already
+/// `pending`/`preprocessing`/`ready` are left untouched, so this is safe to run
+/// repeatedly. Returns the number of media files newly queued.
+pub async fn index_folder_logic(
+    folder_id: i64,
+    db: &SqlitePool,
+    active: EmbeddingModel,
+) -> Result<i64> {
+    let folder_exists: Option<(i64,)> =
+        sqlx::query_as("SELECT id FROM folders WHERE id = ?")
+            .bind(folder_id)
+            .fetch_optional(db)
+            .await?;
+    if folder_exists.is_none() {
+        anyhow::bail!("Folder not found: id={}", folder_id);
+    }
+
+    let source_name = match active {
+        EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
+        EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
+    };
+    let source_id = resolve_source_id(db, source_name).await?;
+
+    let result = sqlx::query(
+        "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state, vector_checksum)
+         SELECT i.id, ?, '', 'pending', NULL
+         FROM images i
+         WHERE i.folder_id = ? AND i.deleted_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM image_vectors iv
+             WHERE iv.image_id = i.id AND iv.source_id = ?
+               AND iv.vector_state IN ('ready', 'pending', 'preprocessing')
+           )",
+    )
+    .bind(source_id)
+    .bind(folder_id)
+    .bind(source_id)
+    .execute(db)
+    .await?;
+
+    let queued = result.rows_affected() as i64;
+    info!(
+        "Queued {} media file(s) for indexing in folder {}",
+        queued, folder_id
+    );
+    Ok(queued)
 }
 
 pub async fn detect_duplicate_folders_logic(

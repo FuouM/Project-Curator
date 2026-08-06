@@ -27,6 +27,8 @@ pub struct Image {
     pub width: Option<i64>,
     #[sqlx(default)]
     pub height: Option<i64>,
+    #[sqlx(default)]
+    pub video_frame_path: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]

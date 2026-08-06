@@ -37,7 +37,10 @@ impl DetectionPipeline {
             .await?
             .context(format!("Image {} not found", image_id))?;
 
-        let filepath = std::path::Path::new(&image.current_filepath);
+        let filepath = crate::video::decode_path(
+            &image.current_filepath,
+            image.video_frame_path.as_deref(),
+        );
         if !filepath.exists() {
             anyhow::bail!("Image file not found: {:?}", filepath);
         }
@@ -58,7 +61,7 @@ impl DetectionPipeline {
 
         let t_decode = std::time::Instant::now();
         // Decode + YOLO + CCIP are CPU-bound — keep them off the reactor thread.
-        let (rgb_buf, width, height) = tokio::task::block_in_place(|| image_decode::decode_rgb(filepath))?;
+        let (rgb_buf, width, height) = tokio::task::block_in_place(|| image_decode::decode_rgb(&filepath))?;
         let img = RgbImage::from_raw(width, height, rgb_buf)
             .context("Failed to create RgbImage from decoded buffer")?;
         let decode_ms = t_decode.elapsed().as_millis();
@@ -532,13 +535,16 @@ impl DetectionPipeline {
             .fetch_one(&self.db)
             .await?;
 
-        let filepath = std::path::Path::new(&image.current_filepath);
+        let filepath = crate::video::decode_path(
+            &image.current_filepath,
+            image.video_frame_path.as_deref(),
+        );
         if !filepath.exists() {
             anyhow::bail!("Image file not found: {:?}", filepath);
         }
 
         // 4. Decode image
-        let (rgb_buf, width, height) = tokio::task::block_in_place(|| image_decode::decode_rgb(filepath))?;
+        let (rgb_buf, width, height) = tokio::task::block_in_place(|| image_decode::decode_rgb(&filepath))?;
         let img = RgbImage::from_raw(width, height, rgb_buf)
             .context("Failed to create RgbImage from decoded buffer")?;
 
@@ -593,13 +599,16 @@ impl DetectionPipeline {
             .await?
             .context(format!("Image {} not found", image_id))?;
 
-        let filepath = std::path::Path::new(&image.current_filepath);
+        let filepath = crate::video::decode_path(
+            &image.current_filepath,
+            image.video_frame_path.as_deref(),
+        );
         if !filepath.exists() {
             anyhow::bail!("Image file not found: {:?}", filepath);
         }
 
         // 2. Decode image
-        let (rgb_buf, width, height) = tokio::task::block_in_place(|| image_decode::decode_rgb(filepath))?;
+        let (rgb_buf, width, height) = tokio::task::block_in_place(|| image_decode::decode_rgb(&filepath))?;
         let img = RgbImage::from_raw(width, height, rgb_buf)
             .context("Failed to create RgbImage from decoded buffer")?;
 
@@ -931,12 +940,15 @@ impl DetectionPipeline {
             .await
             .context("Image not found")?;
 
-        let filepath = std::path::Path::new(&image.current_filepath);
+        let filepath = crate::video::decode_path(
+            &image.current_filepath,
+            image.video_frame_path.as_deref(),
+        );
         if !filepath.exists() {
             return Ok(None);
         }
 
-        let current_filepath = image.current_filepath.clone();
+        let current_filepath = filepath;
         let bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
             let path = std::path::Path::new(&current_filepath);
             let (rgb_buf, width, height) = image_decode::decode_rgb(path)?;

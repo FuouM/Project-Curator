@@ -665,6 +665,12 @@ function handleInfoClick(imageId: number) {
 }
 
 function formatDuration(ms: number): string {
+  if (ms >= 60000) {
+    const total = Math.round(ms / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
   if (ms >= 1000) return `${(ms / 1000).toFixed(1)} s`;
   return `${ms} ms`;
 }
@@ -709,6 +715,14 @@ function openImageInfoModal(img: ImageDetails) {
     mediaRows.push(["Duration", formatDuration(img.animation.duration_ms)]);
     const loopText = img.animation.loop_count === 0 ? "Infinite" : img.animation.loop_count ? `${img.animation.loop_count} time(s)` : "Once";
     mediaRows.push(["Loop", loopText]);
+  }
+  if (img.video) {
+    mediaRows.push(["Format", img.video.format.toUpperCase()]);
+    mediaRows.push(["Duration", formatDuration(img.video.duration_ms)]);
+    if (img.video.fps > 0) mediaRows.push(["FPS", String(img.video.fps)]);
+    mediaRows.push(["Video Codec", img.video.video_codec]);
+    if (img.video.audio_codec) mediaRows.push(["Audio Codec", img.video.audio_codec]);
+    if (img.video.bitrate) mediaRows.push(["Bitrate", `${(img.video.bitrate / 1000).toFixed(0)} kb/s`]);
   }
   const mediaHtml = mediaRows.length
     ? '<div class="group-box" style="margin-top:8px;"><div class="group-box-title"><i class="bi bi-film"></i> Media Info</div><table class="curator-table" style="font-size:11px;"><tbody>' +
@@ -1124,6 +1138,10 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
       ? '<div class="badge-missing"><i class="bi bi-exclamation-triangle"></i> Missing</div>'
       : "";
 
+    const videoBadge = img.video
+      ? `<div class="badge-video" title="${img.video.format.toUpperCase()} · ${img.video.video_codec}"><i class="bi bi-play-btn-fill"></i> ${formatDuration(img.video.duration_ms)}</div>`
+      : "";
+
     const isGif = /\.gif$/i.test(img.filepath);
 
         // Pre-populate GIF path in cache to avoid flash/delay
@@ -1147,6 +1165,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
         <img data-thumb-id="${img.id}" data-filepath="${img.filepath}" data-pending="${isPending ? '1' : '0'}" ${srcAttr} alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" class="${imgClass}" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
         ${missingBadge}
+        ${videoBadge}
         ${img.badgeHtml || ""}
         <div class="copy-btn" title="Copy image to clipboard"><i class="bi bi-clipboard"></i></div>
         <div class="info-btn" title="View image details" data-id="${img.id}"><i class="bi bi-info-circle"></i></div>
@@ -1215,6 +1234,7 @@ export function renderImages(images: ImageDetails[], gridId: string) {
     characterIdentities: img.character_identities,
     ocrText: img.ocr_text,
     animation: img.animation,
+    video: img.video,
   }));
 
   renderCards(cards, grid);
@@ -1238,11 +1258,15 @@ export function renderSearchResults(matches: SearchMatch[]) {
       id: m.id,
       filepath: m.filepath,
       tags: m.tags,
+      favorite: m.favorite,
       badgeHtml: `<div class="vector-badge" style="background-color: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor};">${scoreBadgeText}</div>`,
       emptyMessage: "No matching results found.",
       parsedMetadata: m.parsed_metadata,
+      isMissing: m.is_missing,
       ocrText: m.ocr_text,
       characterIdentities: m.character_identities,
+      animation: m.animation,
+      video: m.video,
     };
   });
 

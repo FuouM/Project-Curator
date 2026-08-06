@@ -8,9 +8,42 @@ use std::fs;
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing::info;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tracing::{error, info};
 
 use crate::AppSettings;
+
+/// Shared state for active FFmpeg transcode jobs, keyed by `job_id`. Progress
+/// is written by the spawned ffmpeg task and polled via `GetTranscodeProgress`
+/// (the gRPC-over-pipe transport is unary request/response).
+pub type TranscodeProgressMap =
+    Arc<tokio::sync::Mutex<std::collections::HashMap<String, TranscodeJobState>>>;
+
+#[derive(Clone)]
+pub struct TranscodeJobState {
+    pub running: bool,
+    pub percent: f32,
+    pub fps: f32,
+    pub x_speed: f32,
+    pub out_time_ms: i64,
+    pub output_path: Option<String>,
+    pub error: Option<String>,
+}
+
+fn default_job_state(job_id: &str, output_path: String) -> (String, TranscodeJobState) {
+    (
+        job_id.to_string(),
+        TranscodeJobState {
+            running: true,
+            percent: 0.0,
+            fps: 0.0,
+            x_speed: 0.0,
+            out_time_ms: 0,
+            output_path: Some(output_path),
+            error: None,
+        },
+    )
+}
 
 /// Target formats accepted by `EphemeralConvertImages`, restricted to the
 /// `image` crate's default-feature encode set. `avif` is encode-only here
@@ -421,4 +454,211 @@ fn f32_bytes(raw: &[f32]) -> Vec<u8> {
         bytes.extend_from_slice(&v.to_ne_bytes());
     }
     bytes
+}
+
+// ── FFmpeg Transcode (polled async job) ────────────────────────────────────
+
+/// Map a codec/format hint onto explicit FFmpeg args. Preset names follow the
+/// `-preset` values of the target encoder.
+fn transcode_encoder_args(target_format: &str, vcodec: Option<&str>, crf: Option<u32>, preset: Option<&str>) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
+    let codec = vcodec.unwrap_or(match target_format {
+        "mp4" => "libx264",
+        "webm" => "libvpx-vp9",
+        other => other,
+    });
+    args.push("-c:v".into());
+    args.push(codec.to_string());
+    if let Some(crf) = crf {
+        args.push("-crf".into());
+        args.push(crf.to_string());
+    }
+    if let Some(p) = preset {
+        args.push("-preset".into());
+        args.push(p.to_string());
+    }
+    args
+}
+
+/// Start an async FFmpeg transcode. Progress is streamed via `-progress
+/// pipe:1` and recorded into `map` under `job_id`; callers poll it with
+/// `get_transcode_progress`. Fails fast when the input file is missing.
+pub async fn start_transcode(
+    job_id: &str,
+    input_path: &str,
+    output_path: &str,
+    target_format: &str,
+    vcodec: Option<String>,
+    acodec: Option<String>,
+    crf: Option<u32>,
+    preset: Option<String>,
+    ffmpeg_path: &Path,
+    map: &TranscodeProgressMap,
+) -> anyhow::Result<()> {
+    let input = Path::new(input_path);
+    if !input.is_file() {
+        anyhow::bail!("Input file not found: {}", input_path);
+    }
+    let output = Path::new(output_path);
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    // Probe total duration (best-effort) so the progress percent is meaningful.
+    let total_duration_ms = curator_core::video::read_video_metadata(input, ffmpeg_path)
+        .map(|v| v.duration_ms.max(1))
+        .unwrap_or(1);
+
+    {
+        let mut guard = map.lock().await;
+        let (key, state) = default_job_state(job_id, output_path.to_string());
+        guard.insert(key, state);
+    }
+
+    let mut cmd = tokio::process::Command::new(ffmpeg_path);
+    cmd.arg("-hide_banner")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-progress")
+        .arg("pipe:1")
+        .arg("-y")
+        .arg("-i")
+        .arg(input_path)
+        .args(transcode_encoder_args(target_format, vcodec.as_deref(), crf, preset.as_deref()));
+    if let Some(ac) = acodec {
+        if ac == "none" {
+            cmd.arg("-an");
+        } else {
+            cmd.arg("-c:a").arg(ac);
+        }
+    } else {
+        cmd.arg("-c:a").arg(match target_format {
+            "webm" => "libopus",
+            _ => "aac",
+        });
+    }
+    cmd.arg("-f").arg(target_format).arg(output_path)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let mut child = cmd.spawn().context("Failed to spawn FFmpeg")?;
+    let stdout = child.stdout.take().expect("ffmpeg stdout piped");
+    let stderr = child.stderr.take().expect("ffmpeg stderr piped");
+    let map_task = map.clone();
+    let job_id_task = job_id.to_string();
+    let total_task = total_duration_ms;
+
+    let reader_task = tokio::spawn(async move {
+        let mut reader = BufReader::new(stdout).lines();
+        let mut fps: f32 = 0.0;
+        let mut speed: f32 = 0.0;
+        let mut out_time_us: u64 = 0;
+        while let Ok(Some(line)) = reader.next_line().await {
+            if let Some(v) = line.strip_prefix("fps=") {
+                fps = v.trim().parse().unwrap_or(fps);
+            } else if let Some(v) = line.strip_prefix("speed=") {
+                speed = v
+                    .trim()
+                    .trim_end_matches('x')
+                    .parse()
+                    .unwrap_or(speed);
+            } else if let Some(v) = line.strip_prefix("out_time_us=") {
+                out_time_us = v.trim().parse().unwrap_or(out_time_us);
+            } else if line.starts_with("progress=") {
+                let done = line.trim() == "progress=end";
+                let mut guard = map_task.lock().await;
+                if let Some(state) = guard.get_mut(&job_id_task) {
+                    state.fps = fps;
+                    state.x_speed = speed;
+                    state.out_time_ms = (out_time_us / 1000) as i64;
+                    state.percent = ((state.out_time_ms as f64 / total_task as f64) * 100.0)
+                        .clamp(0.0, 100.0) as f32;
+                    state.running = !done;
+                }
+            }
+        }
+    });
+
+    // Drain stderr so the FFmpeg process never blocks on a full pipe; keep the
+    // tail of the output for the failure diagnostics reported to the UI.
+    let stderr_task = tokio::spawn(async move {
+        let mut reader = BufReader::new(stderr).lines();
+        let mut tail: Vec<String> = Vec::new();
+        while let Ok(Some(line)) = reader.next_line().await {
+            if tail.len() >= 20 {
+                tail.remove(0);
+            }
+            tail.push(line);
+        }
+        tail.join("\n")
+    });
+
+    // Finalize job state once the process exits. Runs detached so the IPC
+    // request returns immediately and callers poll via GetTranscodeProgress.
+    let map_fin = map.clone();
+    let job_id_fin = job_id.to_string();
+    let output_fin = output_path.to_string();
+    tokio::spawn(async move {
+        let status = child.wait().await.context("FFmpeg process wait failed");
+        let stderr_tail = stderr_task.await.unwrap_or_default();
+        let _ = reader_task.await;
+
+        let mut guard = map_fin.lock().await;
+        if let Some(state) = guard.get_mut(&job_id_fin) {
+            state.running = false;
+            match status {
+                Ok(s) if s.success() => {
+                    state.percent = 100.0;
+                }
+                Ok(s) => {
+                    state.error = Some(format!(
+                        "FFmpeg exited with status: {}",
+                        s
+                    ));
+                }
+                Err(e) => {
+                    state.error = Some(format!("{}", e));
+                }
+            }
+            if state.error.is_some() && !stderr_tail.is_empty() {
+                state.error = Some(format!("{}\n{}", state.error.clone().unwrap_or_default(), stderr_tail));
+            }
+            if state.error.is_some() {
+                error!(
+                    "Transcode job {} failed for {:?}: {:?}",
+                    job_id_fin, output_fin, state.error
+                );
+            }
+        }
+    });
+
+    info!("Transcode job {} started for {:?}", job_id, output_path);
+    Ok(())
+}
+
+/// Poll the current state of a transcode job.
+pub async fn get_transcode_progress(job_id: &str, map: &TranscodeProgressMap) -> Response {
+    let guard = map.lock().await;
+    match guard.get(job_id) {
+        Some(state) => Response::TranscodeProgressResult {
+            job_id: job_id.to_string(),
+            running: state.running,
+            percent: state.percent,
+            fps: state.fps,
+            x_speed: state.x_speed,
+            out_time_ms: state.out_time_ms,
+            output_path: state.output_path.clone(),
+            error: state.error.clone(),
+        },
+        None => Response::TranscodeProgressResult {
+            job_id: job_id.to_string(),
+            running: false,
+            percent: 0.0,
+            fps: 0.0,
+            x_speed: 0.0,
+            out_time_ms: 0,
+            output_path: None,
+            error: Some("Unknown transcode job".to_string()),
+        },
+    }
 }
