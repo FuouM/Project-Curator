@@ -152,6 +152,7 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
    * Preserve dependencies in isolated backup directories (e.g., `.curator_ort_dlls_backup/`) before performing directory cleanup operations.
 5. **Git Workflows & Commit Guidelines:**
    * **No Automated Commits:** Do not run `git commit` or `git push` unless explicitly requested by the user.
+   * **Verify Diff Before Committing:** When requested to commit, **always** run and inspect `git diff` first to verify the exact changes. This ensures you do not stage unintended modifications or accidentally overwrite the work of other concurrent agents operating outside of your context.
    * **No Wildcard Staging:** Do not run `git add .` or `git add -A`. Explicitly stage target files by path.
    * **Commit Message Format:** Summarize changes with a semantic title (`type: description`), followed by detailed bullet points documenting specific file modifications.
 6. **No Lazy Implementations / Strict Analytical Grounding:**
