@@ -32,6 +32,25 @@
   var preset = "";
   var busy = false;
   var pollTimer = null;
+  var verbose = localStorage.getItem("ffmpeg-transcoder-verbose") === "true";
+
+  function setVerbose(value) {
+    verbose = !!value;
+    localStorage.setItem("ffmpeg-transcoder-verbose", verbose ? "true" : "false");
+  }
+
+  function verboseLog(message, kind) {
+    if (verbose) log(message, kind);
+  }
+
+  function formatDuration(ms) {
+    if (ms < 1000) return Math.round(ms) + " ms";
+    var s = ms / 1000;
+    if (s < 60) return s.toFixed(1) + " s";
+    var m = Math.floor(s / 60);
+    var rem = Math.round(s % 60);
+    return m + "m " + rem + "s";
+  }
 
   function el(id) {
     return document.getElementById(id);
@@ -92,14 +111,14 @@
       return;
     }
     if (inQueue[path]) {
-      log("Already queued: " + path, "info");
+      verboseLog("Already queued: " + path, "info");
       return;
     }
     inQueue[path] = true;
     queue.push(path);
     updateQueueList();
     updateProgress(0, queue.length);
-    log("Queued: " + path, "info");
+    verboseLog("Queued: " + path, "info");
   }
 
   function updateProgress(done, total) {
@@ -122,7 +141,12 @@
     }
   }
 
-  function getUniqueOutputPath(sourcePath, outputDir, targetExt) {
+  async function checkFileExists(path) {
+    var resp = await PH.callService("PathExists", { path: path });
+    return !!(resp && resp.PathExistsResult && resp.PathExistsResult.exists);
+  }
+
+  async function getUniqueOutputPath(sourcePath, outputDir, targetExt) {
     var base = sourcePath.split(/[\\/]/).pop();
     var idx = base.lastIndexOf('.');
     var stem = idx !== -1 ? base.substring(0, idx) : base;
@@ -131,11 +155,20 @@
     if (cleanOutDir.charAt(cleanOutDir.length - 1) === sep) {
       cleanOutDir = cleanOutDir.substring(0, cleanOutDir.length - 1);
     }
-    var candidate = cleanOutDir + sep + stem + "." + targetExt;
-    if (candidate.toLowerCase() === sourcePath.toLowerCase()) {
-      candidate = cleanOutDir + sep + stem + "_converted." + targetExt;
+    var n = 0;
+    while (true) {
+      var name = n === 0 ? (stem + "." + targetExt) : (stem + "_" + n + "." + targetExt);
+      var candidate = cleanOutDir + sep + name;
+      if (candidate.toLowerCase() === sourcePath.toLowerCase()) {
+        n++;
+        continue;
+      }
+      var exists = await checkFileExists(candidate);
+      if (!exists) {
+        return candidate;
+      }
+      n++;
     }
-    return candidate;
   }
 
   function closeInfoModal() {
@@ -160,6 +193,8 @@
 
   function pollProgress(jobId, sourcePath, outputPath, doneCallback) {
     if (pollTimer) clearTimeout(pollTimer);
+    var commandLogged = false;
+    var startedAt = Date.now();
     var tick = async function () {
       var resp = await PH.callService("GetTranscodeProgress", { job_id: jobId });
       var progress = resp && resp.TranscodeProgressResult;
@@ -172,26 +207,31 @@
       var fill = el("transcoder-progress-fill");
       var text = el("transcoder-progress-text");
       if (fill) fill.style.width = pct + "%";
+      var base = sourcePath.split(/[\\/]/).pop();
       if (text) {
         var detail = progress.x_speed ? "  (" + progress.fps.toFixed(1) + " fps, " + progress.x_speed.toFixed(2) + "x)" : "";
-        text.textContent = sourcePath.split(/[\\/]/).pop() + " " + pct + "%" + detail;
+        text.textContent = base + " " + pct + "%" + detail;
+      }
+      if (verbose && !commandLogged && progress.command) {
+        commandLogged = true;
+        verboseLog("COMMAND " + progress.command, "info");
       }
       if (progress.error) {
-        log("FAIL " + sourcePath + " - " + progress.error, "error");
+        log("FAIL " + sourcePath + " - " + progress.error + " (" + formatDuration(Date.now() - startedAt) + ")", "error");
         setBusy(false);
         updateProgress(0, queue.length);
         doneCallback(false);
         return;
       }
       if (!progress.running && pct >= 100) {
-        log("OK " + sourcePath + "  ->  " + progress.output_path, "success");
+        log("OK " + sourcePath + "  ->  " + progress.output_path + "  (" + formatDuration(Date.now() - startedAt) + ")", "success");
         setBusy(false);
         updateProgress(0, queue.length);
         doneCallback(true);
         return;
       }
       if (!progress.running) {
-        log("FAIL " + sourcePath + " - job ended before completion.", "error");
+        log("FAIL " + sourcePath + " - job ended before completion. (" + formatDuration(Date.now() - startedAt) + ")", "error");
         setBusy(false);
         updateProgress(0, queue.length);
         doneCallback(false);
@@ -215,16 +255,30 @@
 
     var sources = queue.slice();
     setBusy(true);
-    log("Transcoding " + sources.length + " video(s) to " + targetFormat + " ...", "info");
+    var batchStartedAt = Date.now();
+    log("Resolving output paths and detecting collisions...", "info");
 
+    var transcodes = [];
+    try {
+      for (var i = 0; i < sources.length; i++) {
+        var tgt = await getUniqueOutputPath(sources[i], outputDir, targetFormat);
+        transcodes.push([sources[i], tgt]);
+      }
+    } catch (err) {
+      log("Path resolution failed: " + (err && err.message ? err.message : String(err)), "error");
+      setBusy(false);
+      return;
+    }
+
+    log("Transcoding " + transcodes.length + " video(s) to " + targetFormat + " ...", "info");
     var next = async function (index) {
-      if (index >= sources.length) {
-        log("Done.", "success");
+      if (index >= transcodes.length) {
+        log("Done. Total: " + formatDuration(Date.now() - batchStartedAt), "success");
         setBusy(false);
         return;
       }
-      var src = sources[index];
-      var tgt = getUniqueOutputPath(src, outputDir, targetFormat);
+      var src = transcodes[index][0];
+      var tgt = transcodes[index][1];
       var jobId = makeJobId();
       try {
         var resp = await PH.callService("TranscodeVideo", {
@@ -335,7 +389,10 @@
       '    </div>' +
 
       '    <div class="group-box" style="margin-top:8px;">' +
-      '      <div class="group-box-title"><i class="bi bi-terminal"></i> Output Log</div>' +
+      '      <div class="group-box-title"><i class="bi bi-terminal"></i> Output Log' +
+      '        <label style="margin-left:8px;font-weight:400;font-size:10px;color:#777;display:inline-flex;align-items:center;gap:4px;cursor:pointer;">' +
+      '          <input type="checkbox" id="transcoder-verbose" /> Verbose' +
+      '        </label></div>' +
       '      <div id="transcoder-log" style="height:140px;overflow-y:auto;background-color:#1e1e1e;color:#cccccc;border:1px solid #7a7a7a;padding:8px;font-family:\'Consolas\',monospace;font-size:11px;white-space:pre-wrap;"></div>' +
       '    </div>' +
       '  </div>' +
@@ -363,7 +420,7 @@
           if (path) {
             outInput.value = path;
             outputDir = path;
-            log("Output directory set: " + path, "success");
+            verboseLog("Output directory set: " + path, "success");
           }
         }).catch(function (err) {
           log("Folder picker failed: " + (err && err.message ? err.message : err), "error");
@@ -434,6 +491,15 @@
     }
 
     setCodecOptions();
+
+    var verboseCheckbox = container.querySelector("#transcoder-verbose");
+    if (verboseCheckbox) {
+      verboseCheckbox.checked = verbose;
+      verboseCheckbox.addEventListener("change", function () {
+        setVerbose(verboseCheckbox.checked);
+        log(verbose ? "Verbose logging enabled." : "Verbose logging disabled.", "info");
+      });
+    }
 
     setTimeout(function () {
       setupDropZone();

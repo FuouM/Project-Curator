@@ -642,6 +642,8 @@ pub enum Response {
         out_time_ms: i64,
         output_path: Option<String>,
         error: Option<String>,
+        /// Full FFmpeg command line that was spawned, for verbose plugin logs.
+        command: Option<String>,
     },
     /// Result of a single-image auto-tag operation.
     TagImageResult {

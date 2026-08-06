@@ -28,6 +28,8 @@ pub struct TranscodeJobState {
     pub out_time_ms: i64,
     pub output_path: Option<String>,
     pub error: Option<String>,
+    /// Full FFmpeg command line, exposed for verbose plugin logging.
+    pub command: Option<String>,
 }
 
 fn default_job_state(job_id: &str, output_path: String) -> (String, TranscodeJobState) {
@@ -41,6 +43,7 @@ fn default_job_state(job_id: &str, output_path: String) -> (String, TranscodeJob
             out_time_ms: 0,
             output_path: Some(output_path),
             error: None,
+            command: None,
         },
     )
 }
@@ -541,6 +544,21 @@ pub async fn start_transcode(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
+    // Expose the full command line so plugins can log exactly what ran.
+    let command_string = {
+        let mut parts = vec![ffmpeg_path.display().to_string()];
+        for arg in cmd.as_std().get_args() {
+            parts.push(format!("{}", arg.to_string_lossy()));
+        }
+        parts.join(" ")
+    };
+    {
+        let mut guard = map.lock().await;
+        if let Some(state) = guard.get_mut(job_id) {
+            state.command = Some(command_string);
+        }
+    }
+
     let mut child = cmd.spawn().context("Failed to spawn FFmpeg")?;
     let stdout = child.stdout.take().expect("ffmpeg stdout piped");
     let stderr = child.stderr.take().expect("ffmpeg stderr piped");
@@ -649,6 +667,7 @@ pub async fn get_transcode_progress(job_id: &str, map: &TranscodeProgressMap) ->
             out_time_ms: state.out_time_ms,
             output_path: state.output_path.clone(),
             error: state.error.clone(),
+            command: state.command.clone(),
         },
         None => Response::TranscodeProgressResult {
             job_id: job_id.to_string(),
@@ -659,6 +678,7 @@ pub async fn get_transcode_progress(job_id: &str, map: &TranscodeProgressMap) ->
             out_time_ms: 0,
             output_path: None,
             error: Some("Unknown transcode job".to_string()),
+            command: None,
         },
     }
 }
