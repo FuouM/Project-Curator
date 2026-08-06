@@ -542,6 +542,7 @@ pub async fn handle_request(
             vcodec,
             acodec,
             crf,
+            video_bitrate,
             preset,
         } => {
             let explicit = { settings.lock().await.ffmpeg_path.clone() };
@@ -558,6 +559,7 @@ pub async fn handle_request(
                         vcodec,
                         acodec,
                         crf,
+                        video_bitrate,
                         preset,
                         &ffmpeg,
                         transcode_progress,

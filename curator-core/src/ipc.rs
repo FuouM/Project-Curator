@@ -175,6 +175,9 @@ pub enum Request {
         acodec: Option<String>,
         #[serde(default)]
         crf: Option<u32>,
+        /// Average video bitrate in kbps (mutually exclusive with `crf`).
+        #[serde(default)]
+        video_bitrate: Option<u32>,
         #[serde(default)]
         preset: Option<String>,
     },

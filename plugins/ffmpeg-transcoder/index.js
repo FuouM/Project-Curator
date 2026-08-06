@@ -28,7 +28,9 @@
   var targetFormat = "mp4";
   var vcodec = "";
   var acodec = "";
+  var qualityMode = "crf";
   var crf = 23;
+  var bitrateKbps = 6000;
   var preset = "";
   var busy = false;
   var pollTimer = null;
@@ -288,7 +290,8 @@
           target_format: targetFormat,
           vcodec: vcodec || null,
           acodec: acodec || null,
-          crf: crf > 0 ? crf : null,
+          crf: qualityMode === "crf" && crf > 0 ? crf : null,
+          video_bitrate: qualityMode === "bitrate" && bitrateKbps > 0 ? bitrateKbps : null,
           preset: preset || null
         });
         if (resp && resp.Error) {
@@ -374,8 +377,21 @@
       '    </div>' +
 
       '    <div class="form-group">' +
-      '      <label for="transcoder-crf" style="min-width:110px;">CRF (quality): <span id="transcoder-crf-value">23</span></label>' +
-      '      <input type="range" id="transcoder-crf" min="0" max="51" value="23" style="flex:1;max-width:220px;" />' +
+      '      <label for="transcoder-quality-mode" style="min-width:110px;">Quality:</label>' +
+      '      <select class="input-field" id="transcoder-quality-mode" style="width:130px;height:24px;">' +
+      '        <option value="crf">CRF</option>' +
+      '        <option value="bitrate">Avg bitrate</option>' +
+      '      </select>' +
+      '      <div id="transcoder-crf-group" style="display:flex;align-items:center;gap:8px;flex:1;">' +
+      '        <label for="transcoder-crf" style="font-size:10px;color:#777;white-space:nowrap;">more quality</label>' +
+      '        <input type="range" id="transcoder-crf" min="0" max="51" value="23" style="flex:1;max-width:160px;" />' +
+      '        <label for="transcoder-crf" style="font-size:10px;color:#777;white-space:nowrap;">less quality</label>' +
+      '        <span id="transcoder-crf-value" style="font-size:11px;color:#555;min-width:30px;">23</span>' +
+      '      </div>' +
+      '      <div id="transcoder-bitrate-group" style="display:none;align-items:center;gap:8px;">' +
+      '        <input type="number" id="transcoder-bitrate" min="100" step="100" value="6000" style="width:100px;height:24px;" class="input-field" />' +
+      '        <label for="transcoder-bitrate" style="font-size:10px;color:#777;white-space:nowrap;">kbps</label>' +
+      '      </div>' +
       '      <label for="transcoder-preset" style="min-width:70px;">Preset:</label>' +
       '      <select class="input-field" id="transcoder-preset" style="width:130px;height:24px;"></select>' +
       '    </div>' +
@@ -505,6 +521,28 @@
         if (crfValue) crfValue.textContent = String(crf);
       });
     }
+
+    var qualityModeSelect = container.querySelector("#transcoder-quality-mode");
+    var crfGroup = container.querySelector("#transcoder-crf-group");
+    var bitrateGroup = container.querySelector("#transcoder-bitrate-group");
+    var bitrateInput = container.querySelector("#transcoder-bitrate");
+    function updateQualityMode() {
+      var mode = qualityModeSelect ? qualityModeSelect.value : "crf";
+      qualityMode = mode;
+      if (crfGroup) crfGroup.style.display = mode === "crf" ? "flex" : "none";
+      if (bitrateGroup) bitrateGroup.style.display = mode === "bitrate" ? "flex" : "none";
+      if (bitrateInput) bitrateInput.disabled = mode !== "bitrate";
+    }
+    if (qualityModeSelect) {
+      qualityModeSelect.value = qualityMode;
+      qualityModeSelect.addEventListener("change", updateQualityMode);
+    }
+    if (bitrateInput) {
+      bitrateInput.addEventListener("input", function () {
+        bitrateKbps = parseInt(bitrateInput.value, 10) || 0;
+      });
+    }
+    updateQualityMode();
 
     setCodecOptions();
 

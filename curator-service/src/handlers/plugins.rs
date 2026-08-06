@@ -462,8 +462,15 @@ fn f32_bytes(raw: &[f32]) -> Vec<u8> {
 // ── FFmpeg Transcode (polled async job) ────────────────────────────────────
 
 /// Map a codec/format hint onto explicit FFmpeg args. Preset names follow the
-/// `-preset` values of the target encoder.
-fn transcode_encoder_args(target_format: &str, vcodec: Option<&str>, crf: Option<u32>, preset: Option<&str>) -> Vec<String> {
+/// `-preset` values of the target encoder. `crf` and `video_bitrate_kbps` are
+/// mutually exclusive quality controls.
+fn transcode_encoder_args(
+    target_format: &str,
+    vcodec: Option<&str>,
+    crf: Option<u32>,
+    video_bitrate_kbps: Option<u32>,
+    preset: Option<&str>,
+) -> Vec<String> {
     let mut args: Vec<String> = Vec::new();
     let codec = vcodec.unwrap_or(match target_format {
         "mp4" => "libx264",
@@ -475,6 +482,10 @@ fn transcode_encoder_args(target_format: &str, vcodec: Option<&str>, crf: Option
     if let Some(crf) = crf {
         args.push("-crf".into());
         args.push(crf.to_string());
+    }
+    if let Some(bitrate) = video_bitrate_kbps {
+        args.push("-b:v".into());
+        args.push(format!("{}k", bitrate));
     }
     if let Some(p) = preset {
         args.push("-preset".into());
@@ -494,6 +505,7 @@ pub async fn start_transcode(
     vcodec: Option<String>,
     acodec: Option<String>,
     crf: Option<u32>,
+    video_bitrate: Option<u32>,
     preset: Option<String>,
     ffmpeg_path: &Path,
     map: &TranscodeProgressMap,
@@ -527,7 +539,13 @@ pub async fn start_transcode(
         .arg("-y")
         .arg("-i")
         .arg(input_path)
-        .args(transcode_encoder_args(target_format, vcodec.as_deref(), crf, preset.as_deref()));
+        .args(transcode_encoder_args(
+            target_format,
+            vcodec.as_deref(),
+            crf,
+            video_bitrate,
+            preset.as_deref(),
+        ));
     if let Some(ac) = acodec {
         if ac == "none" {
             cmd.arg("-an");
