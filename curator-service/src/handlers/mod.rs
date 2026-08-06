@@ -544,6 +544,10 @@ pub async fn handle_request(
             crf,
             video_bitrate,
             preset,
+            target_size_mb,
+            audio_bitrate,
+            mixdown,
+            sample_rate,
             custom_args,
         } => {
             let explicit = { settings.lock().await.ffmpeg_path.clone() };
@@ -562,6 +566,10 @@ pub async fn handle_request(
                         crf,
                         video_bitrate,
                         preset,
+                        target_size_mb,
+                        audio_bitrate,
+                        mixdown,
+                        sample_rate,
                         custom_args,
                         &ffmpeg,
                         transcode_progress,

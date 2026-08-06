@@ -199,6 +199,7 @@ async fn main() -> Result<(), Error> {
             filename_filter: None,
             ocr_filter: None,
             ocr_text_search: None,
+            media_type: None,
             limit,
         },
         Commands::List { limit, offset } => Request::ListImages {

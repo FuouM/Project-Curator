@@ -32,6 +32,10 @@
   var crf = 23;
   var bitrateKbps = 6000;
   var preset = "";
+  var targetSizeMb = 25;
+  var audioBitrateKbps = 0;
+  var mixdown = "";
+  var sampleRate = 0;
   var mode = localStorage.getItem("ffmpeg-transcoder-mode") || "guided";
   var customArgs = localStorage.getItem("ffmpeg-transcoder-custom-args") || "";
   var busy = false;
@@ -54,6 +58,15 @@
     var m = Math.floor(s / 60);
     var rem = Math.round(s % 60);
     return m + "m " + rem + "s";
+  }
+
+  function formatBytes(bytes) {
+    if (bytes === undefined || bytes === null || isNaN(bytes)) return "unknown size";
+    if (bytes === 0) return "0 B";
+    var k = 1024;
+    var sizes = ["B", "KB", "MB", "GB"];
+    var i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   }
 
   function el(id) {
@@ -228,7 +241,19 @@
         return;
       }
       if (!progress.running && pct >= 100) {
-        log("OK " + sourcePath + "  ->  " + progress.output_path + "  (" + formatDuration(Date.now() - startedAt) + ")", "success");
+        var sizeInfo = "";
+        if (progress.input_size_bytes !== undefined && progress.input_size_bytes !== null &&
+            progress.output_size_bytes !== undefined && progress.output_size_bytes !== null) {
+          var breakdown = "";
+          if (progress.output_video_size_bytes !== undefined && progress.output_video_size_bytes !== null &&
+              progress.output_audio_size_bytes !== undefined && progress.output_audio_size_bytes !== null) {
+            breakdown = " (Video: " + formatBytes(progress.output_video_size_bytes) + ", Audio: " + formatBytes(progress.output_audio_size_bytes) + ")";
+          }
+          sizeInfo = " [" + formatBytes(progress.input_size_bytes) + " -> " + formatBytes(progress.output_size_bytes) + breakdown + "]";
+        }
+        var msg = "OK " + sourcePath + sizeInfo + "  ->  " + progress.output_path + "  (" + formatDuration(Date.now() - startedAt) + ")";
+        log(msg, "success");
+        console.log("ffmpeg-transcoder: " + msg);
         setBusy(false);
         updateProgress(0, queue.length);
         doneCallback(true);
@@ -310,6 +335,10 @@
           crf: isCustom ? null : (qualityMode === "crf" && crf > 0 ? crf : null),
           video_bitrate: isCustom ? null : (qualityMode === "bitrate" && bitrateKbps > 0 ? bitrateKbps : null),
           preset: isCustom ? null : (preset || null),
+          target_size_mb: isCustom ? null : (qualityMode === "size_budget" && targetSizeMb > 0 ? targetSizeMb : null),
+          audio_bitrate: isCustom ? null : (audioBitrateKbps > 0 ? audioBitrateKbps : null),
+          mixdown: isCustom ? null : (mixdown || null),
+          sample_rate: isCustom ? null : (sampleRate > 0 ? sampleRate : null),
           custom_args: isCustom ? customArgs.trim() : null
         });
         if (resp && resp.Error) {
@@ -407,6 +436,7 @@
       '      <select class="input-field" id="transcoder-quality-mode" style="width:130px;height:24px;">' +
       '        <option value="crf">CRF</option>' +
       '        <option value="bitrate">Avg bitrate</option>' +
+      '        <option value="size_budget">Size budget</option>' +
       '      </select>' +
       '      <div id="transcoder-crf-group" style="display:flex;align-items:center;gap:8px;flex:1;">' +
       '        <label for="transcoder-crf" style="font-size:10px;color:#777;white-space:nowrap;">more quality</label>' +
@@ -418,8 +448,52 @@
       '        <input type="number" id="transcoder-bitrate" min="100" step="100" value="6000" style="width:100px;height:24px;" class="input-field" />' +
       '        <label for="transcoder-bitrate" style="font-size:10px;color:#777;white-space:nowrap;">kbps</label>' +
       '      </div>' +
+      '      <div id="transcoder-size-budget-group" style="display:none;align-items:center;gap:8px;">' +
+      '        <input type="number" id="transcoder-size-budget" min="1" value="25" style="width:80px;height:24px;" class="input-field" />' +
+      '        <label for="transcoder-size-budget" style="font-size:10px;color:#777;white-space:nowrap;">MB</label>' +
+      '        <button type="button" class="win-button transcoder-size-preset" data-val="8" style="font-size:10px;padding:1px 6px;">8 MB</button>' +
+      '        <button type="button" class="win-button transcoder-size-preset" data-val="25" style="font-size:10px;padding:1px 6px;">25 MB</button>' +
+      '        <button type="button" class="win-button transcoder-size-preset" data-val="50" style="font-size:10px;padding:1px 6px;">50 MB</button>' +
+      '        <button type="button" class="win-button transcoder-size-preset" data-val="100" style="font-size:10px;padding:1px 6px;">100 MB</button>' +
+      '      </div>' +
       '      <label for="transcoder-preset" style="min-width:70px;">Preset:</label>' +
       '      <select class="input-field" id="transcoder-preset" style="width:130px;height:24px;"></select>' +
+      '    </div>' +
+      '    <div class="group-box" id="transcoder-audio-settings-block">' +
+      '      <div class="group-box-title"><i class="bi bi-music-note-beamed"></i> Audio Settings</div>' +
+      '      <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;padding:4px 0;">' +
+      '        <div class="form-group" style="margin-bottom:0;">' +
+      '          <label for="transcoder-audio-bitrate" style="min-width:80px;">Bitrate:</label>' +
+      '          <select class="input-field" id="transcoder-audio-bitrate" style="width:100px;height:24px;">' +
+      '            <option value="0">Auto</option>' +
+      '            <option value="64">64 kbps</option>' +
+      '            <option value="96">96 kbps</option>' +
+      '            <option value="128">128 kbps</option>' +
+      '            <option value="192">192 kbps</option>' +
+      '            <option value="256">256 kbps</option>' +
+      '            <option value="320">320 kbps</option>' +
+      '          </select>' +
+      '        </div>' +
+      '        <div class="form-group" style="margin-bottom:0;">' +
+      '          <label for="transcoder-audio-mixdown" style="min-width:60px;">Channels:</label>' +
+      '          <select class="input-field" id="transcoder-audio-mixdown" style="width:100px;height:24px;">' +
+      '            <option value="">Original</option>' +
+      '            <option value="mono">Mono</option>' +
+      '            <option value="stereo">Stereo</option>' +
+      '            <option value="5.1">5.1 channels</option>' +
+      '          </select>' +
+      '        </div>' +
+      '        <div class="form-group" style="margin-bottom:0;">' +
+      '          <label for="transcoder-audio-samplerate" style="min-width:80px;">Sample Rate:</label>' +
+      '          <select class="input-field" id="transcoder-audio-samplerate" style="width:100px;height:24px;">' +
+      '            <option value="0">Original</option>' +
+      '            <option value="22050">22050 Hz</option>' +
+      '            <option value="32000">32000 Hz</option>' +
+      '            <option value="44100">44100 Hz</option>' +
+      '            <option value="48000">48000 Hz</option>' +
+      '          </select>' +
+      '        </div>' +
+      '      </div>' +
       '    </div>' +
 
       '    <div class="group-box" id="transcoder-custom-args-block" style="display:none;">' +
@@ -506,14 +580,29 @@
     var acodecSelect = container.querySelector("#transcoder-acodec");
     var presetSelect = container.querySelector("#transcoder-preset");
 
+    function updateAudioControls() {
+      var acVal = acodecSelect ? acodecSelect.value : "";
+      var block = container.querySelector("#transcoder-audio-settings-block");
+      if (block) {
+        block.style.display = acVal === "none" ? "none" : "block";
+      }
+      var isCopy = acVal === "copy";
+      var abSelect = container.querySelector("#transcoder-audio-bitrate");
+      var mdSelect = container.querySelector("#transcoder-audio-mixdown");
+      var srSelect = container.querySelector("#transcoder-audio-samplerate");
+      if (abSelect) abSelect.disabled = isCopy;
+      if (mdSelect) mdSelect.disabled = isCopy;
+      if (srSelect) srSelect.disabled = isCopy;
+    }
+
     function setCodecOptions() {
       var format = formatSelect ? formatSelect.value : "mp4";
       var vcodecs = format === "webm"
-        ? [["", "Auto"], ["libvpx-vp9", "VP9"], ["libvpx", "VP8"], ["libaom-av1", "AV1"]]
-        : [["", "Auto"], ["libx264", "H.264"], ["libx265", "H.265"], ["libaom-av1", "AV1"]];
+        ? [["", "Auto"], ["libvpx-vp9", "VP9"], ["libvpx", "VP8"], ["libaom-av1", "AV1"], ["copy", "Copy stream"]]
+        : [["", "Auto"], ["libx264", "H.264"], ["libx265", "H.265"], ["libaom-av1", "AV1"], ["copy", "Copy stream"]];
       var acodecs = format === "webm"
-        ? [["", "Auto"], ["libopus", "Opus"], ["none", "No audio"]]
-        : [["", "Auto"], ["aac", "AAC"], ["mp3", "MP3"], ["none", "No audio"]];
+        ? [["", "Auto"], ["libopus", "Opus"], ["vorbis", "Vorbis"], ["copy", "Copy stream"], ["none", "No audio"]]
+        : [["", "Auto"], ["aac", "AAC"], ["mp3", "MP3"], ["vorbis", "Vorbis"], ["copy", "Copy stream"], ["none", "No audio"]];
       if (vcodecSelect) {
         var prevV = vcodec;
         vcodecSelect.innerHTML = vcodecs.map(function (c) {
@@ -536,6 +625,7 @@
           return '<option value="' + p[0] + '">' + p[1] + '</option>';
         }).join("");
       }
+      updateAudioControls();
     }
 
     if (formatSelect) {
@@ -546,7 +636,12 @@
       });
     }
     if (vcodecSelect) vcodecSelect.addEventListener("change", function () { vcodec = vcodecSelect.value; });
-    if (acodecSelect) acodecSelect.addEventListener("change", function () { acodec = acodecSelect.value; });
+    if (acodecSelect) {
+      acodecSelect.addEventListener("change", function () {
+        acodec = acodecSelect.value;
+        updateAudioControls();
+      });
+    }
     if (presetSelect) presetSelect.addEventListener("change", function () { preset = presetSelect.value; });
 
     var crfInput = container.querySelector("#transcoder-crf");
@@ -562,11 +657,15 @@
     var crfGroup = container.querySelector("#transcoder-crf-group");
     var bitrateGroup = container.querySelector("#transcoder-bitrate-group");
     var bitrateInput = container.querySelector("#transcoder-bitrate");
+    var sizeBudgetGroup = container.querySelector("#transcoder-size-budget-group");
+    var sizeBudgetInput = container.querySelector("#transcoder-size-budget");
+
     function updateQualityMode() {
       var mode = qualityModeSelect ? qualityModeSelect.value : "crf";
       qualityMode = mode;
       if (crfGroup) crfGroup.style.display = mode === "crf" ? "flex" : "none";
       if (bitrateGroup) bitrateGroup.style.display = mode === "bitrate" ? "flex" : "none";
+      if (sizeBudgetGroup) sizeBudgetGroup.style.display = mode === "size_budget" ? "flex" : "none";
       if (bitrateInput) bitrateInput.disabled = mode !== "bitrate";
     }
     if (qualityModeSelect) {
@@ -578,12 +677,54 @@
         bitrateKbps = parseInt(bitrateInput.value, 10) || 0;
       });
     }
+    if (sizeBudgetInput) {
+      sizeBudgetInput.value = String(targetSizeMb);
+      sizeBudgetInput.addEventListener("input", function () {
+        targetSizeMb = parseFloat(sizeBudgetInput.value) || 25;
+      });
+    }
+    var sizePresets = container.querySelectorAll(".transcoder-size-preset");
+    sizePresets.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var val = btn.getAttribute("data-val");
+        if (sizeBudgetInput) {
+          sizeBudgetInput.value = val;
+          targetSizeMb = parseFloat(val) || 25;
+        }
+      });
+    });
+
+    var audioBitrateSelect = container.querySelector("#transcoder-audio-bitrate");
+    if (audioBitrateSelect) {
+      audioBitrateSelect.value = String(audioBitrateKbps);
+      audioBitrateSelect.addEventListener("change", function () {
+        audioBitrateKbps = parseInt(audioBitrateSelect.value, 10) || 0;
+      });
+    }
+
+    var audioMixdownSelect = container.querySelector("#transcoder-audio-mixdown");
+    if (audioMixdownSelect) {
+      audioMixdownSelect.value = mixdown;
+      audioMixdownSelect.addEventListener("change", function () {
+        mixdown = audioMixdownSelect.value;
+      });
+    }
+
+    var audioSampleRateSelect = container.querySelector("#transcoder-audio-samplerate");
+    if (audioSampleRateSelect) {
+      audioSampleRateSelect.value = String(sampleRate);
+      audioSampleRateSelect.addEventListener("change", function () {
+        sampleRate = parseInt(audioSampleRateSelect.value, 10) || 0;
+      });
+    }
+
     updateQualityMode();
 
     var modeSelect = container.querySelector("#transcoder-mode");
     var vcodecWrap = container.querySelector("#transcoder-vcodec-wrap");
     var acodecWrap = container.querySelector("#transcoder-acodec-wrap");
     var qualityRow = container.querySelector("#transcoder-quality-row");
+    var audioSettingsBlock = container.querySelector("#transcoder-audio-settings-block");
     var customBlock = container.querySelector("#transcoder-custom-args-block");
     var customTextarea = container.querySelector("#transcoder-custom-args");
 
@@ -593,6 +734,10 @@
       if (vcodecWrap) vcodecWrap.style.display = isCustom ? "none" : "";
       if (acodecWrap) acodecWrap.style.display = isCustom ? "none" : "";
       if (qualityRow) qualityRow.style.display = isCustom ? "none" : "";
+      if (audioSettingsBlock) {
+        var acVal = acodecSelect ? acodecSelect.value : "";
+        audioSettingsBlock.style.display = (isCustom || acVal === "none") ? "none" : "block";
+      }
       if (customBlock) customBlock.style.display = isCustom ? "block" : "none";
     }
 

@@ -154,6 +154,11 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
    * **No Automated Commits:** Do not run `git commit` or `git push` unless explicitly requested by the user.
    * **No Wildcard Staging:** Do not run `git add .` or `git add -A`. Explicitly stage target files by path.
    * **Commit Message Format:** Summarize changes with a semantic title (`type: description`), followed by detailed bullet points documenting specific file modifications.
+6. **No Lazy Implementations / Strict Analytical Grounding:**
+   * **NEVER** use hardcoded approximations, generic magic numbers, or static defaults (such as a hardcoded frame rate fallback or dummy overhead percentage) when the actual parameters can be probed or calculated.
+   * Refactor resource pipelines to fetch required metadata once at logical boundaries. Avoid duplicate process spawning (e.g. running multiple `ffprobe` operations on the same asset).
+   * Derive calculations, allocations, and constraints mathematically from format specifications, track counts, and duration metrics.
+   * **Self-Adversarial Verification:** Before finalizing any task, the agent must perform an explicit meta-cognitive self-audit. Inspect your own implementation plan and output code for hidden laziness, magic safety numbers, or unresolved assumptions. Force yourself to outline and justify these decisions, and refactor any shortcut into a mathematically sound, first-principles solution.
 
 ### Frontend Design Skill (`/frontend-design`) Integration
 

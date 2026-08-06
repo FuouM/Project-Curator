@@ -180,6 +180,18 @@ pub enum Request {
         video_bitrate: Option<u32>,
         #[serde(default)]
         preset: Option<String>,
+        /// Target size budget in MB.
+        #[serde(default)]
+        target_size_mb: Option<f64>,
+        /// Audio bitrate in kbps.
+        #[serde(default)]
+        audio_bitrate: Option<u32>,
+        /// Mixdown/Channels option (e.g. mono, stereo, 5.1).
+        #[serde(default)]
+        mixdown: Option<String>,
+        /// Sample rate in Hz.
+        #[serde(default)]
+        sample_rate: Option<u32>,
         /// Raw FFmpeg arguments for a fully custom command. `{input}` and
         /// `{output}` placeholders are substituted with the source and output
         /// paths. Mutually exclusive with the guided `vcodec`/`acodec`/
@@ -653,6 +665,14 @@ pub enum Response {
         error: Option<String>,
         /// Full FFmpeg command line that was spawned, for verbose plugin logs.
         command: Option<String>,
+        #[serde(default)]
+        input_size_bytes: Option<u64>,
+        #[serde(default)]
+        output_size_bytes: Option<u64>,
+        #[serde(default)]
+        output_video_size_bytes: Option<u64>,
+        #[serde(default)]
+        output_audio_size_bytes: Option<u64>,
     },
     /// Result of a single-image auto-tag operation.
     TagImageResult {

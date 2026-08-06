@@ -13,6 +13,8 @@ pub struct VideoInfo {
     pub fps: f64,
     pub video_codec: String,
     pub audio_codec: Option<String>,
+    pub audio_bitrate: Option<i64>,
+    pub sample_rate: Option<u32>,
     pub bitrate: Option<i64>,
     pub width: u32,
     pub height: u32,
@@ -138,6 +140,7 @@ struct ProbeStream {
     avg_frame_rate: Option<String>,
     duration: Option<String>,
     bit_rate: Option<String>,
+    sample_rate: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -226,6 +229,12 @@ fn probe_with_ffprobe(path: &Path, ffprobe: &Path) -> Result<VideoInfo> {
         fps: parse_ratio(fps_src),
         video_codec: vs.codec_name.clone().unwrap_or_else(|| "unknown".into()),
         audio_codec: audio_stream.and_then(|s| s.codec_name.clone()),
+        audio_bitrate: audio_stream
+            .and_then(|s| s.bit_rate.as_deref())
+            .and_then(|b| b.trim().parse::<i64>().ok()),
+        sample_rate: audio_stream
+            .and_then(|s| s.sample_rate.as_deref())
+            .and_then(|sr| sr.trim().parse::<u32>().ok()),
         bitrate: bitrate_src.and_then(|b| b.trim().parse().ok()),
         width: vs.width.unwrap_or(0),
         height: vs.height.unwrap_or(0),
@@ -319,6 +328,8 @@ fn parse_ffmpeg_i_stderr(path: &Path, ffmpeg_path: &Path) -> Result<VideoInfo> {
                     fps: 0.0,
                     video_codec: codec,
                     audio_codec: None,
+                    audio_bitrate: None,
+                    sample_rate: None,
                     bitrate,
                     width: res.0,
                     height: res.1,
