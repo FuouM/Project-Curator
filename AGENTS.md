@@ -144,7 +144,8 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
 ## 6. Code Style & Safety Mandates
 
 1. **No Absolute Paths:** **NEVER** write or commit absolute file paths (`C:\...`, `file:///...`). Always use repository-relative paths and portable environment resolution.
-2. **NO Fallbacks Policy:** **NEVER** implement silent fallbacks (e.g., creating dummy placeholder files, silencing error responses, or copying fallback images). If a process fails, fail fast, raise a clear error, and expose the underlying issue.
+2. **NO Fallbacks / Feature Removal Policy:** **NEVER** implement silent fallbacks, comment out broken logic, or strip out features (such as `sccache`, test suites, or performance configurations) simply to bypass or dodge an error. When an error or warning occurs, diagnose and fix the root cause properly. Fail fast, preserve required tooling, and expose underlying issues cleanly.
+
 3. **First-Principles Model Verification:** Before modifying inference logic in `curator-core`, create or run standalone programmatic test binaries in `curator-core/src/bin/` (e.g., `test_ort_standalone.rs`) to verify ONNX model initialization and tensor shapes step-by-step.
 4. **Filesystem Safety & Binary Preservation:**
    * **NEVER** run destructive cleanup commands (`Remove-Item -Force`, `git clean -fd`) on binary runtime files (`.dll`, `.lib`, `.onnx`).

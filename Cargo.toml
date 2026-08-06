@@ -22,7 +22,11 @@ ureq = "3"
 
 [profile.dev]
 opt-level = 0
+debug = 1
 incremental = false
+
+
+
 
 
 [profile.dev.package."fast_image_resize"]
@@ -93,9 +97,6 @@ opt-level = 3
 opt-level = 3
 
 [profile.dev.package."ort"]
-opt-level = 2
-
-[profile.dev.package."curator-core"]
 opt-level = 2
 
 [profile.release]
