@@ -244,7 +244,7 @@ pub async fn download_model(
             }
         }
 
-        for (_i, (url, dest, expected_sha)) in files.iter().enumerate() {
+        for (url, dest, expected_sha) in files.iter() {
             // Check for cancellation
             {
                 let tokens = cancel_tokens_clone.lock().await;
@@ -1102,25 +1102,19 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Response {
                 loop {
                     tokio::select! {
                         line_opt = stdout_reader.next_line() => {
-                            match line_opt {
-                                Ok(Some(line)) => {
-                                    let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
-                                    let mut logs = logs_m.lock().unwrap();
-                                    logs.push_str(&line);
-                                    logs.push('\n');
-                                }
-                                _ => {}
+                            if let Ok(Some(line)) = line_opt {
+                                let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
+                                let mut logs = logs_m.lock().unwrap();
+                                logs.push_str(&line);
+                                logs.push('\n');
                             }
                         }
                         line_opt = stderr_reader.next_line() => {
-                            match line_opt {
-                                Ok(Some(line)) => {
-                                    let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
-                                    let mut logs = logs_m.lock().unwrap();
-                                    logs.push_str(&line);
-                                    logs.push('\n');
-                                }
-                                _ => {}
+                            if let Ok(Some(line)) = line_opt {
+                                let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
+                                let mut logs = logs_m.lock().unwrap();
+                                logs.push_str(&line);
+                                logs.push('\n');
                             }
                         }
                         status = child.wait() => {

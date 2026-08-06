@@ -153,22 +153,6 @@ pub(crate) fn preprocess_yolo(
     let pad_x = (target_size - new_w) / 2;
     let pad_y = (target_size - new_h) / 2;
 
-    let s = target_size as usize;
-    let mut tensor = Array4::<f32>::zeros((1, 3, s, s));
-    let slice = tensor.as_slice_mut().unwrap();
-
-    let pad_r = PAD_COLOR[0] as f32 / 255.0;
-    let pad_g = PAD_COLOR[1] as f32 / 255.0;
-    let pad_b = PAD_COLOR[2] as f32 / 255.0;
-
-    for y in 0..s {
-        for x in 0..s {
-            slice[y * s + x] = pad_r;
-            slice[1 * s * s + y * s + x] = pad_g;
-            slice[2 * s * s + y * s + x] = pad_b;
-        }
-    }
-
     // Fit-to-640 bilinear resize (standard YOLO letterbox, not nearest-neighbour),
     // then copy into the padded tensor. fast_image_resize is ~24x faster than the
     // legacy image-crate Triangle filter and far more accurate than hand-rolled
@@ -190,18 +174,20 @@ pub(crate) fn preprocess_yolo(
         fast_image_resize::ResizeAlg::Convolution(fast_image_resize::FilterType::Bilinear),
     );
     resizer.resize(&src, &mut dst, Some(&opts))?;
-    let data = dst.buffer();
 
-    for y in 0..new_h {
-        let dst_y = (pad_y + y) as usize;
-        for x in 0..new_w {
-            let src_idx = ((y * new_w + x) * 3) as usize;
-            let dst_x = (pad_x + x) as usize;
-            slice[dst_y * s + dst_x] = data[src_idx] as f32 / 255.0;
-            slice[1 * s * s + dst_y * s + dst_x] = data[src_idx + 1] as f32 / 255.0;
-            slice[2 * s * s + dst_y * s + dst_x] = data[src_idx + 2] as f32 / 255.0;
-        }
-    }
+    // Normalize with mean=0/std=1 (equivalent to a raw /255.0), letterbox fill
+    // keeps YOLO's own PAD_COLOR [114,114,114]. Do NOT use
+    // crate::preprocess::PAD_COLOR ([124,116,104]) here - it would change the
+    // letterbox inputs and potentially alter detections.
+    let tensor = crate::preprocess::build_tensor(
+        dst.buffer(),
+        target_size,
+        new_w,
+        new_h,
+        &[0.0f32; 3],
+        &[1.0f32; 3],
+        &PAD_COLOR,
+    );
 
     Ok((tensor, PadInfo { pad_x, pad_y, scale }))
 }

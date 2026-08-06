@@ -77,10 +77,7 @@ impl CropCache {
     }
 
     pub async fn put(&self, detection_id: i64, size: u32, data: &[u8]) -> Result<()> {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
+        let now = crate::util::now_secs() as i64;
 
         sqlx::query(
             "INSERT OR REPLACE INTO detection_crops (detection_id, size, data, created_at) VALUES (?, ?, ?, ?)",
@@ -102,10 +99,7 @@ impl CropCache {
         if crops.is_empty() {
             return Ok(());
         }
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
+        let now = crate::util::now_secs() as i64;
 
         let mut tx = self.db.begin().await?;
         for &(detection_id, size, ref data) in crops {

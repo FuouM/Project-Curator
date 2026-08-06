@@ -1,18 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use ort::session::Session;
 use crate::ipc::DevicePreference;
+use crate::util::now_secs;
 use crate::vector::device::{apply_device_preference, OnnxConfig};
-
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
 
 pub struct ManagedSession {
     name: String,
@@ -157,13 +150,5 @@ impl ManagedSession {
         let mut guard = self.session.lock().unwrap();
         let session = guard.as_mut().context("Session not initialized")?;
         f(session)
-    }
-
-    /// Execute a closure against the session. GPU-to-CPU fallback has been removed.
-    pub fn with_session_fallback<F, R>(&self, f: F) -> Result<R>
-    where
-        F: Fn(&mut Session) -> Result<R>,
-    {
-        self.with_session(f)
     }
 }

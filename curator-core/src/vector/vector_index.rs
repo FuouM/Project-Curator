@@ -60,7 +60,7 @@ impl VectorIndex {
         Ok(())
     }
 
-    pub fn add_batch(&self, items: &[(u64, Vec<f32>)]) -> Result<(), Error> {
+    pub fn add_batch(&self, items: &[(u64, &[f32])]) -> Result<(), Error> {
         for (id, vector) in items {
             self.add_without_save(*id, vector)?;
         }

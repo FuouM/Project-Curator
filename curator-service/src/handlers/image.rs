@@ -986,10 +986,7 @@ pub async fn get_featured_image(
     preferred_source: &str,
 ) -> Option<ImageDetails> {
     let today_str = {
-        let secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let secs = curator_core::util::now_secs();
         let day_number = secs / 86400;
         format!("day_{}", day_number)
     };

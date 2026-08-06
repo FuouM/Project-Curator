@@ -333,12 +333,35 @@ pub fn train_linear_svm_decision_boundary(
 }
 
 /// Scores a candidate vector against a concept prototype using CL2N (Centered L2 Normalization).
+///
+/// Zero-allocation equivalent of `cosine_similarity(center_and_normalize_vector(candidate, gm),
+/// prototype)`: it reproduces the legacy arithmetic exactly (per-element `centered/norm`,
+/// then a plain dot product), so results are bit-identical to the allocating path while
+/// avoiding the per-comparison heap churn during high-volume concept matching.
 pub fn score_cl2n_concept(candidate: &[f32], prototype: &[f32], global_mean: Option<&[f32]>) -> f32 {
     if candidate.len() != prototype.len() || prototype.is_empty() {
         return 0.0;
     }
-    let centered_candidate = center_and_normalize_vector(candidate, global_mean);
-    cosine_similarity(&centered_candidate, prototype)
+    let gm = global_mean.filter(|m| m.len() == candidate.len());
+    let mut norm_sq = 0.0f32;
+    for i in 0..candidate.len() {
+        let centered = candidate[i] - gm.map_or(0.0, |m| m[i]);
+        norm_sq += centered * centered;
+    }
+    let norm = norm_sq.sqrt();
+    let mut dot = 0.0f32;
+    if norm > 0.0 {
+        for i in 0..candidate.len() {
+            let centered = candidate[i] - gm.map_or(0.0, |m| m[i]);
+            dot += (centered / norm) * prototype[i];
+        }
+    } else {
+        for i in 0..candidate.len() {
+            let centered = candidate[i] - gm.map_or(0.0, |m| m[i]);
+            dot += centered * prototype[i];
+        }
+    }
+    dot
 }
 
 /// Computes temperature-scaled Softmax / Sigmoid decision probability [0.0, 1.0]
@@ -495,5 +518,38 @@ mod tests {
         // Positives are along +x, negatives along -x; decision weight should point along +x
         assert!(w[0] > 0.8);
         assert!(w[1].abs() < 0.2);
+    }
+
+    /// The zero-allocation closed form must be bit-identical to the allocating
+    /// `cosine_similarity(center_and_normalize_vector(...), prototype)` path,
+    /// including gm length-mismatch and all-zero vector edge cases.
+    #[test]
+    fn score_cl2n_concept_closed_form_matches_allocating_path() {
+        let legacy = |candidate: &[f32], prototype: &[f32], gm: Option<&[f32]>| -> f32 {
+            let centered = center_and_normalize_vector(candidate, gm);
+            cosine_similarity(&centered, prototype)
+        };
+
+        type Case = (Vec<f32>, Vec<f32>, Option<Vec<f32>>);
+        let cases: Vec<Case> = vec![
+            (vec![1.0, 2.0, 3.0], vec![0.1, 0.2, 0.3], Some(vec![0.5, 0.5, 0.5])),
+            (vec![0.0, 0.0, 0.0], vec![0.1, 0.2, 0.3], Some(vec![0.5, 0.5, 0.5])),
+            (vec![1.0, 2.0], vec![0.1, 0.2], Some(vec![0.5, 0.5, 0.5])), // gm length mismatch
+            (vec![1.0, 2.0], vec![0.1, 0.2], None),                       // no mean
+            (vec![0.3, -0.7, 1.1, 2.2], vec![0.2, 0.4, 0.6, 0.8], Some(vec![0.0, 0.0, 0.0, 0.0])),
+        ];
+
+        for (candidate, prototype, gm) in cases {
+            let expected = legacy(&candidate, &prototype, gm.as_deref());
+            let actual = score_cl2n_concept(&candidate, &prototype, gm.as_deref());
+            assert_eq!(
+                expected.to_bits(),
+                actual.to_bits(),
+                "mismatch for candidate={:?} prototype={:?} gm={:?}",
+                candidate,
+                prototype,
+                gm
+            );
+        }
     }
 }

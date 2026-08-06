@@ -198,17 +198,8 @@ impl TaggerEngine {
         }
 
         predictions.sort_by(|a, b| {
-            let priority = |cat: &str| -> i32 {
-                match cat {
-                    "character" => 0,
-                    "copyright" => 1,
-                    "meta" => 2,
-                    _ => 3,
-                }
-            };
-
-            let p_a = priority(&a.category);
-            let p_b = priority(&b.category);
+            let p_a = tag_category_priority(&a.category);
+            let p_b = tag_category_priority(&b.category);
 
             if p_a != p_b {
                 p_a.cmp(&p_b)
@@ -329,5 +320,56 @@ impl TaggerManager {
     pub fn set_device_all(&self, device: DevicePreference) {
         self.camie.set_device(device.clone());
         self.wd.set_device(device);
+    }
+}
+
+/// Deliberately character-first tag ordering for tagger predictions
+/// (character 0, copyright 1, meta 2, user/other 3). This is a *different*
+/// ordering from `crate::util::tag_sort_priority` (user-first) and MUST NOT be
+/// swapped for it - the tagger ranks characters first by design.
+fn tag_category_priority(cat: &str) -> i32 {
+    match cat {
+        "character" => 0,
+        "copyright" => 1,
+        "meta" => 2,
+        _ => 3,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tagger_ordering_is_character_first() {
+        let mut preds = [
+            TagPrediction { tag: "user_tag".to_string(), category: "user".into(), confidence: 0.9 },
+            TagPrediction { tag: "char".to_string(), category: "character".into(), confidence: 0.1 },
+            TagPrediction { tag: "meta_tag".to_string(), category: "meta".into(), confidence: 0.8 },
+            TagPrediction { tag: "copy".to_string(), category: "copyright".into(), confidence: 0.7 },
+        ];
+        preds.sort_by(|a, b| {
+            let p_a = tag_category_priority(&a.category);
+            let p_b = tag_category_priority(&b.category);
+            if p_a != p_b {
+                p_a.cmp(&p_b)
+            } else {
+                b.confidence
+                    .partial_cmp(&a.confidence)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            }
+        });
+
+        let cats: Vec<&str> = preds.iter().map(|p| p.category.as_str()).collect();
+        assert_eq!(cats, vec!["character", "copyright", "meta", "user"]);
+    }
+
+    #[test]
+    fn tagger_priority_locks_character_first() {
+        assert_eq!(tag_category_priority("character"), 0);
+        assert_eq!(tag_category_priority("copyright"), 1);
+        assert_eq!(tag_category_priority("meta"), 2);
+        assert_eq!(tag_category_priority("user"), 3);
+        assert_eq!(tag_category_priority("general"), 3);
     }
 }

@@ -13,6 +13,7 @@ pub mod pipeline;
 pub mod preprocess;
 pub mod tagger;
 pub mod thumbnail;
+pub mod util;
 pub mod vector;
 pub mod video;
 

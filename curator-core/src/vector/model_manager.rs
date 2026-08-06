@@ -1,7 +1,7 @@
 use crate::image_decode;
 use crate::ipc::{DevicePreference, EmbeddingModel};
 use crate::onnx::ManagedSession;
-use crate::vector::now_secs;
+use crate::util::now_secs;
 use anyhow::{Context, Error};
 use ndarray::{Array2, Array4};
 use ort::{inputs, value::TensorRef};
@@ -238,20 +238,14 @@ impl ModelManager {
         // 1. Decode image via shared fast decode
         let (rgb_buf, width, height) = image_decode::decode_rgb(image_path)?;
 
-        // 2. Center crop to square
+        // 2. Center-crop + resize to target size via fast_image_resize.
+        //    `ResizeOptions::crop` crops directly from the decoded buffer, avoiding
+        //    the temporary square copy; identical source region and filter as the
+        //    legacy manual crop + resize, and consistent with the batch path
+        //    (image_decode::decode_and_resize_single_image).
         let size = width.min(height);
         let cx = (width - size) / 2;
         let cy = (height - size) / 2;
-        let mut cropped = vec![0u8; (size * size * 3) as usize];
-        for y in 0..size {
-            let src_row = ((cy + y) * width + cx) as usize * 3;
-            let dst_row = (y * size) as usize * 3;
-            let copy_len = (size * 3) as usize;
-            cropped[dst_row..dst_row + copy_len]
-                .copy_from_slice(&rgb_buf[src_row..src_row + copy_len]);
-        }
-
-        // 3. SIMD-accelerated resize to target size
         let active = self.active_model();
         let target_size = match active {
             EmbeddingModel::ClipVitB32 => 224,
@@ -259,9 +253,9 @@ impl ModelManager {
         };
 
         let crop_ref = fast_image_resize::images::ImageRef::new(
-            size,
-            size,
-            &cropped,
+            width,
+            height,
+            &rgb_buf,
             fast_image_resize::PixelType::U8x3,
         )?;
         let mut dst_image = fast_image_resize::images::Image::from_vec_u8(
@@ -271,39 +265,30 @@ impl ModelManager {
             fast_image_resize::PixelType::U8x3,
         )?;
         let mut resizer = fast_image_resize::Resizer::new();
-        let opts = fast_image_resize::ResizeOptions::new().resize_alg(
-            fast_image_resize::ResizeAlg::Convolution(fast_image_resize::FilterType::Bilinear),
-        );
+        let opts = fast_image_resize::ResizeOptions::new()
+            .crop(cx as f64, cy as f64, size as f64, size as f64)
+            .resize_alg(fast_image_resize::ResizeAlg::Convolution(
+                fast_image_resize::FilterType::Bilinear,
+            ));
         resizer.resize(&crop_ref, &mut dst_image, Some(&opts))?;
-        let resized_buf = dst_image.buffer();
 
-        // 4. Construct N-dimensional array in shape [1, 3, target_size, target_size]
-        let mut input_array =
-            Array4::<f32>::zeros((1, 3, target_size as usize, target_size as usize));
-        match active {
-            EmbeddingModel::ClipVitB32 => {
-                let mean = [0.48145466, 0.4578275, 0.40821073];
-                let std = [0.26862954, 0.261_302_6, 0.275_777_1];
-                for c in 0..3 {
-                    for row in 0..224 {
-                        for col in 0..224 {
-                            let val = resized_buf[(row * 224 + col) * 3 + c] as f32 / 255.0;
-                            input_array[[0, c, row, col]] = (val - mean[c]) / std[c];
-                        }
-                    }
-                }
-            }
-            EmbeddingModel::MobileClipS2 => {
-                for c in 0..3 {
-                    for row in 0..256 {
-                        for col in 0..256 {
-                            let val = resized_buf[(row * 256 + col) * 3 + c] as f32 / 255.0;
-                            input_array[[0, c, row, col]] = val;
-                        }
-                    }
-                }
-            }
-        }
+        // 3. Build normalized NCHW tensor. MobileClipS2 uses mean=0/std=1
+        //    (equivalent to a raw /255.0); ClipVitB32 uses the canonical CLIP
+        //    constants. Pad color [0;3] never surfaces - the crop is square and
+        //    fills the tensor exactly.
+        let (mean, std) = match active {
+            EmbeddingModel::ClipVitB32 => (&crate::preprocess::CLIP_MEAN, &crate::preprocess::CLIP_STD),
+            EmbeddingModel::MobileClipS2 => (&[0.0f32; 3], &[1.0f32; 3]),
+        };
+        let input_array = crate::preprocess::build_tensor(
+            dst_image.buffer(),
+            target_size,
+            target_size,
+            target_size,
+            mean,
+            std,
+            &[0u8; 3],
+        );
 
         // 5. Run inference
         let mut embedding = vs_arc.with_session(|session| {

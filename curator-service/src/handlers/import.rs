@@ -1123,7 +1123,7 @@ pub async fn detect_duplicate_folders_logic(
         }
 
         // Sort by image count descending (keep the largest folder first)
-        folder_infos.sort_by(|a, b| b.image_count.cmp(&a.image_count));
+        folder_infos.sort_by_key(|b| std::cmp::Reverse(b.image_count));
 
         if folder_infos.len() >= 2 {
             result.push(curator_core::ipc::DuplicateFolderGroup {
@@ -1134,7 +1134,7 @@ pub async fn detect_duplicate_folders_logic(
     }
 
     // Sort groups by shared count descending
-    result.sort_by(|a, b| b.shared_image_count.cmp(&a.shared_image_count));
+    result.sort_by_key(|b| std::cmp::Reverse(b.shared_image_count));
 
     Ok(result)
 }

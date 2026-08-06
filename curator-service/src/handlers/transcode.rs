@@ -349,7 +349,7 @@ pub async fn start_transcode(
 
             // Calculate total frames and clamp probe window between 15 and 100 frames to allow VBV rate control stabilization
             let total_frames = (duration_secs * fps).round() as usize;
-            let probe_frames = total_frames.min(100).max(15);
+            let probe_frames = total_frames.clamp(15, 100);
 
             // Probe target overshoot using a fast target-bitrate transcode
             let overshoot_factor = probe_bitrate_overshoot(input, ffmpeg_path, raw_video_kbps, fps, target_format, probe_frames);

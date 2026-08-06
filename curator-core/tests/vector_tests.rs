@@ -331,7 +331,7 @@ async fn test_text_similarity_and_padding_behavior() {
     };
     let model_dir = model_dir.as_path();
 
-    let model_manager = ModelManager::new(&model_dir, DevicePreference::Cpu);
+    let model_manager = ModelManager::new(model_dir, DevicePreference::Cpu);
     model_manager
         .init()
         .expect("Failed to initialize CLIP models");
@@ -350,6 +350,69 @@ async fn test_text_similarity_and_padding_behavior() {
         println!("\n=== Text Similarity Test ({:?}) ===", model);
         println!("Similarity('a picture of a cat', 'a cute kitten'): {:.4}", sim_cat_kitten);
         println!("Similarity('a picture of a cat', 'a sports car on a highway'): {:.4}", sim_cat_car);
+    }
+}
+
+/// The single-image path (generate_image_embedding) must produce an embedding
+/// consistent with the batch path (generate_image_embeddings) for the same
+/// input. Gated on model + test image existence (same pattern as the other
+/// model-dependent tests).
+#[tokio::test]
+async fn test_single_vs_batch_embedding_equivalence() {
+    use curator_core::ipc::EmbeddingModel;
+
+    let data_dir_env = std::env::var("CURATOR_DATA_DIR").ok();
+    let default_data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent().unwrap()
+        .join(".curator");
+    let model_dir = match &data_dir_env {
+        Some(p) => std::path::PathBuf::from(p).join("models"),
+        None => default_data_dir.join("models"),
+    };
+    let model_dir = model_dir.as_path();
+
+    let vision_file = model_dir.join("clip-vit-b32").join("vision_model.onnx");
+    if !vision_file.exists() {
+        println!("CLIP model not found, skipping equivalence test");
+        return;
+    }
+
+    let test_image_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent().unwrap()
+        .join("assets")
+        .join("test_images")
+        .join("augh.png");
+    if !test_image_path.exists() {
+        println!("Test image not found, skipping equivalence test");
+        return;
+    }
+
+    for model in [EmbeddingModel::ClipVitB32, EmbeddingModel::MobileClipS2] {
+        let mm = ModelManager::new(model_dir, DevicePreference::Cpu);
+        mm.init().expect("Failed to initialize models");
+        mm.set_active_model(model);
+        mm.init().expect("Failed to init model");
+
+        let single = mm
+            .generate_image_embedding(&test_image_path)
+            .expect("single-path embedding failed");
+        let batch = mm
+            .generate_image_embeddings(&[&test_image_path])
+            .expect("batch-path embeddings failed");
+        let batch = batch.into_iter().next().unwrap().expect("batch item failed");
+
+        assert_eq!(single.len(), batch.len(), "embedding dim mismatch for {:?}", model);
+        let max_delta = single
+            .iter()
+            .zip(&batch)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        assert!(
+            max_delta <= 1e-6,
+            "{:?} single vs batch max delta = {}",
+            model,
+            max_delta
+        );
     }
 }
 

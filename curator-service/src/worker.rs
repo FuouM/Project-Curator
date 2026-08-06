@@ -1,4 +1,3 @@
-use curator_core::concept::vector_to_bytes;
 use curator_core::db::models::Image;
 use curator_core::ipc::EmbeddingModel;
 use curator_core::vector::{ModelManager, VectorIndex};
@@ -301,12 +300,10 @@ impl BackgroundWorker {
                                         sha2::Sha256::digest(bytemuck::cast_slice(&embedding))
                                     );
 
-                                    // Persist the embedding BLOB alongside the ready state so
-                                    // concept prototype rebuilds reuse it instead of re-running
-                                    // full ONNX inference per sample image.
-                                    let vector_blob = vector_to_bytes(&embedding);
-
-                                    // Update SQLite database to set state to ready
+                                    // Update SQLite database to set state to ready.
+                                    // BLOB layout is native-endian (bytemuck cast_slice) and is
+                                    // only ever read back on the same machine via bytes_to_vector
+                                    // (explicit LE) - NOT portable across endianness.
                                     let update_res = sqlx::query(
                                         "UPDATE image_vectors 
                                          SET vector_state = 'ready', vector_id = ?, vector_checksum = ?, vector = ?, created_at = CURRENT_TIMESTAMP
@@ -314,7 +311,7 @@ impl BackgroundWorker {
                                     )
                                     .bind(image.id.to_string())
                                     .bind(checksum)
-                                    .bind(vector_blob)
+                                    .bind(bytemuck::cast_slice(&embedding))
                                     .bind(image.id)
                                     .bind(source_id)
                                     .execute(&mut *tx)

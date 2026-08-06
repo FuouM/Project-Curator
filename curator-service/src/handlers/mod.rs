@@ -1944,16 +1944,13 @@ pub async fn handle_request(
                 Err(e) => return Response::Error { message: format!("Failed to query OCR detections: {:?}", e) },
             };
 
-            let bubble_boxes: Vec<curator_core::ipc::BubbleBoxResult> = match sqlx::query_as(
+            let bubble_boxes: Vec<curator_core::ipc::BubbleBoxResult> = sqlx::query_as(
                 "SELECT x1, y1, x2, y2, confidence FROM image_ocr_bubble_boxes WHERE image_id = ?"
             )
             .bind(image_id)
             .fetch_all(db)
             .await
-            {
-                Ok(res) => res,
-                Err(_) => Vec::new(),
-            };
+            .unwrap_or_default();
 
             Response::OcrDetectionsResult { image_id, detections: results, bubble_boxes }
         }

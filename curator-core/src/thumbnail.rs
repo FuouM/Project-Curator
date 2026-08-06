@@ -101,10 +101,7 @@ impl ThumbnailCache {
         kind: u8,
         data: &[u8],
     ) -> Result<()> {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
+        let now = crate::util::now_secs() as i64;
 
         sqlx::query(
             "INSERT OR REPLACE INTO thumbnails (image_id, width, mtime, kind, data, created_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -238,7 +235,7 @@ pub fn generate_thumbnail(source_path: &Path, target_width: u32) -> Result<Vec<u
             )
             .context("Failed to pre-resize image for thumbnail")?;
 
-        rgb_buf = mid_image.buffer_mut().to_vec();
+        rgb_buf = mid_image.into_vec();
         width = inter_w;
         height = inter_h;
     }

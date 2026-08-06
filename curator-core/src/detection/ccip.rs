@@ -1,5 +1,6 @@
 use crate::ipc::DevicePreference;
 use crate::onnx::ManagedSession;
+use crate::preprocess::{CLIP_MEAN, CLIP_STD};
 use anyhow::{Context, Result};
 use ndarray::{Array2, Array4};
 use ort::{inputs, value::TensorRef};
@@ -10,9 +11,6 @@ use tracing::{debug, info};
 const CCIP_INPUT_SIZE: u32 = 384;
 const CCIP_EMBEDDING_DIM: usize = 768;
 pub const DEFAULT_MATCH_THRESHOLD: f32 = 0.178;
-
-const CLIP_MEAN: [f32; 3] = [0.48145466, 0.4578275, 0.40821073];
-const CLIP_STD: [f32; 3] = [0.26862954, 0.2613026, 0.27577711];
 
 pub struct CCIPModel {
     feat_session: ManagedSession,
@@ -171,44 +169,19 @@ impl CCIPModel {
     }
 
     /// Compute mean difference between a query embedding and reference embeddings
-    /// using the metrics model.
+    /// using the metrics model. Thin wrapper over `compute_mean_differences`.
     pub fn compute_mean_difference(
         &self,
         query: &[f32],
         references: &[Vec<f32>],
     ) -> Result<f32> {
-        let n = 1 + references.len();
-        let mut input_vec = Vec::with_capacity(n * CCIP_EMBEDDING_DIM);
-        input_vec.extend_from_slice(query);
-        for r in references {
-            input_vec.extend_from_slice(r);
+        let diffs = self.compute_mean_differences(query, references)?;
+        if diffs.is_empty() {
+            // Deterministic no-match sentinel, matching compare_embeddings'
+            // early-return convention (guards the 0.0/0.0 NaN case).
+            return Ok(f32::MAX);
         }
-
-        let input_array =
-            Array2::from_shape_vec((n, CCIP_EMBEDDING_DIM), input_vec)
-                .context("Failed to build CCIP metrics input")?;
-
-        let mean_diff = self.metrics_session.with_session(|session| {
-            let outputs = session
-                .run(inputs![TensorRef::from_array_view(&input_array)?])
-                .context("CCIP metrics inference failed")?;
-
-            let output_tensor = outputs
-                .get("output")
-                .context("Failed to get output from CCIP metrics model")?;
-            let (_, data) = output_tensor.try_extract_tensor::<f32>()?;
-
-            // Output is [N, N] pairwise difference matrix
-            // We want the mean of differences between query (row 0) and all references (rows 1..N)
-            let mut total_diff = 0.0f32;
-            for j in 1..n {
-                total_diff += data[j];
-            }
-            let mean_diff = total_diff / (n - 1) as f32;
-            Ok(mean_diff)
-        })?;
-
-        Ok(mean_diff)
+        Ok(diffs.iter().sum::<f32>() / diffs.len() as f32)
     }
 
     pub fn benchmark_once(&self, crop: &image::RgbImage) -> Result<f64> {
@@ -301,22 +274,18 @@ pub(crate) fn preprocess_ccip(crop: &image::RgbImage, target_size: u32) -> Resul
         fast_image_resize::ResizeAlg::Convolution(fast_image_resize::FilterType::Bilinear),
     );
     resizer.resize(&src, &mut dst, Some(&opts))?;
-    let data = dst.buffer();
 
-    let mut tensor = Array4::<f32>::zeros((1, 3, s, s));
-    let slice = tensor.as_slice_mut().unwrap();
-
-    for y in 0..s {
-        for x in 0..s {
-            let si = (y * s + x) * 3;
-            let pix_idx = y * s + x;
-            for c in 0..3usize {
-                let val = data[si + c] as f32 / 255.0;
-                let normalized = (val - CLIP_MEAN[c]) / CLIP_STD[c];
-                slice[c * s * s + pix_idx] = normalized;
-            }
-        }
-    }
+    // Square fit => paste offsets are 0, so build_tensor writes exactly
+    // (pixel/255 - CLIP_MEAN[c]) / CLIP_STD[c] per channel with no padding.
+    let tensor = crate::preprocess::build_tensor(
+        dst.buffer(),
+        target_size,
+        s as u32,
+        s as u32,
+        &CLIP_MEAN,
+        &CLIP_STD,
+        &[0u8; 3],
+    );
 
     Ok(tensor)
 }
