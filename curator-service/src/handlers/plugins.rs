@@ -494,6 +494,78 @@ fn transcode_encoder_args(
     args
 }
 
+/// Tokenize a raw command string into arguments, respecting single and double
+/// quotes. No shell is spawned, so quotes only group tokens that contain
+/// spaces (e.g. filter chains); a backslash escapes a quote inside double
+/// quotes, matching typical shell quoting for ffmpeg filter expressions.
+fn tokenize_args(input: &str) -> Vec<String> {
+    let mut tokens: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' if !in_double => in_single = !in_single,
+            '"' if !in_single => in_double = !in_double,
+            '\\' if in_double => {
+                if let Some(&next) = chars.peek() {
+                    current.push(next);
+                    chars.next();
+                } else {
+                    current.push('\\');
+                }
+            }
+            c if c.is_whitespace() && !in_single && !in_double => {
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+            }
+            c => current.push(c),
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
+
+/// Build the argument list for a fully custom command. `{input}` and
+/// `{output}` placeholders are required and substituted with the real paths;
+/// the guided encoder/audio/quality controls are skipped entirely. Fails fast
+/// when a required placeholder is missing rather than silently appending a
+/// default input/output block.
+fn build_custom_args(
+    custom_args: &str,
+    input_path: &str,
+    output_path: &str,
+) -> Result<Vec<String>, String> {
+    let tokens = tokenize_args(custom_args);
+    let mut expanded: Vec<String> = Vec::with_capacity(tokens.len());
+    let mut has_input = false;
+    let mut has_output = false;
+    for token in tokens {
+        match token.as_str() {
+            "{input}" => {
+                expanded.push(input_path.to_string());
+                has_input = true;
+            }
+            "{output}" => {
+                expanded.push(output_path.to_string());
+                has_output = true;
+            }
+            other => expanded.push(other.to_string()),
+        }
+    }
+    if !has_input {
+        return Err("Custom command must contain the {input} placeholder for the source video".to_string());
+    }
+    if !has_output {
+        return Err("Custom command must contain the {output} placeholder for the output file".to_string());
+    }
+    Ok(expanded)
+}
+
 /// Start an async FFmpeg transcode. Progress is streamed via `-progress
 /// pipe:1` and recorded into `map` under `job_id`; callers poll it with
 /// `get_transcode_progress`. Fails fast when the input file is missing.
@@ -507,6 +579,7 @@ pub async fn start_transcode(
     crf: Option<u32>,
     video_bitrate: Option<u32>,
     preset: Option<String>,
+    custom_args: Option<String>,
     ffmpeg_path: &Path,
     map: &TranscodeProgressMap,
 ) -> anyhow::Result<()> {
@@ -536,30 +609,39 @@ pub async fn start_transcode(
         .arg("error")
         .arg("-progress")
         .arg("pipe:1")
-        .arg("-y")
-        .arg("-i")
-        .arg(input_path)
-        .args(transcode_encoder_args(
-            target_format,
-            vcodec.as_deref(),
-            crf,
-            video_bitrate,
-            preset.as_deref(),
-        ));
-    if let Some(ac) = acodec {
-        if ac == "none" {
-            cmd.arg("-an");
-        } else {
-            cmd.arg("-c:a").arg(ac);
+        .arg("-y");
+    if let Some(ca) = custom_args {
+        if ca.trim().is_empty() {
+            anyhow::bail!("Custom command is empty");
         }
+        let expanded = build_custom_args(&ca, input_path, output_path)
+            .map_err(anyhow::Error::msg)?;
+        cmd.args(expanded);
     } else {
-        cmd.arg("-c:a").arg(match target_format {
-            "webm" => "libopus",
-            _ => "aac",
-        });
+        cmd.arg("-i")
+            .arg(input_path)
+            .args(transcode_encoder_args(
+                target_format,
+                vcodec.as_deref(),
+                crf,
+                video_bitrate,
+                preset.as_deref(),
+            ));
+        if let Some(ac) = acodec {
+            if ac == "none" {
+                cmd.arg("-an");
+            } else {
+                cmd.arg("-c:a").arg(ac);
+            }
+        } else {
+            cmd.arg("-c:a").arg(match target_format {
+                "webm" => "libopus",
+                _ => "aac",
+            });
+        }
+        cmd.arg("-f").arg(target_format).arg(output_path);
     }
-    cmd.arg("-f").arg(target_format).arg(output_path)
-        .stdout(std::process::Stdio::piped())
+    cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
     // Expose the full command line so plugins can log exactly what ran.

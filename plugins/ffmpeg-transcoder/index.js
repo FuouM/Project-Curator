@@ -32,6 +32,8 @@
   var crf = 23;
   var bitrateKbps = 6000;
   var preset = "";
+  var mode = localStorage.getItem("ffmpeg-transcoder-mode") || "guided";
+  var customArgs = localStorage.getItem("ffmpeg-transcoder-custom-args") || "";
   var busy = false;
   var pollTimer = null;
   var verbose = localStorage.getItem("ffmpeg-transcoder-verbose") === "true";
@@ -273,6 +275,21 @@
     }
 
     log("Transcoding " + transcodes.length + " video(s) to " + targetFormat + " ...", "info");
+
+    var isCustom = mode === "custom" && customArgs.trim().length > 0;
+    if (isCustom) {
+      if (customArgs.indexOf("{input}") === -1) {
+        log("Custom command must include the {input} placeholder for the source video.", "error");
+        setBusy(false);
+        return;
+      }
+      if (customArgs.indexOf("{output}") === -1) {
+        log("Custom command must include the {output} placeholder for the output file.", "error");
+        setBusy(false);
+        return;
+      }
+    }
+
     var next = async function (index) {
       if (index >= transcodes.length) {
         log("Done. Total: " + formatDuration(Date.now() - batchStartedAt), "success");
@@ -288,11 +305,12 @@
           input_path: src,
           output_path: tgt,
           target_format: targetFormat,
-          vcodec: vcodec || null,
-          acodec: acodec || null,
-          crf: qualityMode === "crf" && crf > 0 ? crf : null,
-          video_bitrate: qualityMode === "bitrate" && bitrateKbps > 0 ? bitrateKbps : null,
-          preset: preset || null
+          vcodec: isCustom ? null : (vcodec || null),
+          acodec: isCustom ? null : (acodec || null),
+          crf: isCustom ? null : (qualityMode === "crf" && crf > 0 ? crf : null),
+          video_bitrate: isCustom ? null : (qualityMode === "bitrate" && bitrateKbps > 0 ? bitrateKbps : null),
+          preset: isCustom ? null : (preset || null),
+          custom_args: isCustom ? customArgs.trim() : null
         });
         if (resp && resp.Error) {
           log("FAIL " + src + " - " + resp.Error.message, "error");
@@ -356,6 +374,14 @@
       '  <div style="display:flex;flex-direction:column;gap:12px;">' +
 
       '    <div class="form-group">' +
+      '      <label for="transcoder-mode" style="min-width:110px;">Mode:</label>' +
+      '      <select class="input-field" id="transcoder-mode" style="width:130px;height:24px;">' +
+      '        <option value="guided">Guided</option>' +
+      '        <option value="custom">Custom command</option>' +
+      '      </select>' +
+      '    </div>' +
+
+      '    <div class="form-group">' +
       '      <label for="transcoder-output-dir" style="min-width:110px;">Output folder:</label>' +
       '      <div class="input-wrapper" style="flex:1;">' +
       '        <input class="input-field has-clear" id="transcoder-output-dir" placeholder="Where transcoded files should be written..." />' +
@@ -370,13 +396,13 @@
       '        <option value="mp4">MP4</option>' +
       '        <option value="webm">WebM</option>' +
       '      </select>' +
-      '      <label for="transcoder-vcodec" style="min-width:70px;">Video codec:</label>' +
-      '      <select class="input-field" id="transcoder-vcodec" style="width:130px;height:24px;"></select>' +
-      '      <label for="transcoder-acodec" style="min-width:70px;">Audio codec:</label>' +
-      '      <select class="input-field" id="transcoder-acodec" style="width:130px;height:24px;"></select>' +
+      '      <span id="transcoder-vcodec-wrap"><label for="transcoder-vcodec" style="min-width:70px;">Video codec:</label>' +
+      '      <select class="input-field" id="transcoder-vcodec" style="width:130px;height:24px;"></select></span>' +
+      '      <span id="transcoder-acodec-wrap"><label for="transcoder-acodec" style="min-width:70px;">Audio codec:</label>' +
+      '      <select class="input-field" id="transcoder-acodec" style="width:130px;height:24px;"></select></span>' +
       '    </div>' +
 
-      '    <div class="form-group">' +
+      '    <div class="form-group" id="transcoder-quality-row">' +
       '      <label for="transcoder-quality-mode" style="min-width:110px;">Quality:</label>' +
       '      <select class="input-field" id="transcoder-quality-mode" style="width:130px;height:24px;">' +
       '        <option value="crf">CRF</option>' +
@@ -394,6 +420,16 @@
       '      </div>' +
       '      <label for="transcoder-preset" style="min-width:70px;">Preset:</label>' +
       '      <select class="input-field" id="transcoder-preset" style="width:130px;height:24px;"></select>' +
+      '    </div>' +
+
+      '    <div class="group-box" id="transcoder-custom-args-block" style="display:none;">' +
+      '      <div class="group-box-title"><i class="bi bi-terminal-plus"></i> Custom FFmpeg command</div>' +
+      '      <textarea id="transcoder-custom-args" rows="4" spellcheck="false" style="width:100%;box-sizing:border-box;font-family:\'Consolas\',monospace;font-size:11px;"' +
+      ' placeholder="-i {input} -c:v libx264 -crf 18 -preset medium -c:a aac {output}"></textarea>' +
+      '      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;">' +
+      '        <span style="font-size:10px;color:#777;">Use <b>{input}</b> and <b>{output}</b> placeholders for the source and output paths. The output file extension follows the Target format.</span>' +
+      '        <button type="button" class="win-button" id="transcoder-custom-default-btn" style="font-size:10px;padding:1px 8px;flex:none;">Use default template</button>' +
+      '      </div>' +
       '    </div>' +
 
       '    <div id="transcoder-drop-host">' +
@@ -543,6 +579,48 @@
       });
     }
     updateQualityMode();
+
+    var modeSelect = container.querySelector("#transcoder-mode");
+    var vcodecWrap = container.querySelector("#transcoder-vcodec-wrap");
+    var acodecWrap = container.querySelector("#transcoder-acodec-wrap");
+    var qualityRow = container.querySelector("#transcoder-quality-row");
+    var customBlock = container.querySelector("#transcoder-custom-args-block");
+    var customTextarea = container.querySelector("#transcoder-custom-args");
+
+    function updateMode() {
+      mode = modeSelect ? modeSelect.value : "guided";
+      var isCustom = mode === "custom";
+      if (vcodecWrap) vcodecWrap.style.display = isCustom ? "none" : "";
+      if (acodecWrap) acodecWrap.style.display = isCustom ? "none" : "";
+      if (qualityRow) qualityRow.style.display = isCustom ? "none" : "";
+      if (customBlock) customBlock.style.display = isCustom ? "block" : "none";
+    }
+
+    if (modeSelect) {
+      modeSelect.value = mode;
+      modeSelect.addEventListener("change", function () {
+        localStorage.setItem("ffmpeg-transcoder-mode", modeSelect.value);
+        updateMode();
+      });
+    }
+    if (customTextarea) {
+      customTextarea.value = customArgs;
+      customTextarea.addEventListener("input", function () {
+        customArgs = customTextarea.value;
+        localStorage.setItem("ffmpeg-transcoder-custom-args", customArgs);
+      });
+    }
+    var customDefaultBtn = container.querySelector("#transcoder-custom-default-btn");
+    if (customDefaultBtn) {
+      customDefaultBtn.addEventListener("click", function () {
+        var template = "-i {input} -c:v libx264 -crf 18 -preset medium -c:a aac {output}";
+        customArgs = template;
+        if (customTextarea) customTextarea.value = template;
+        localStorage.setItem("ffmpeg-transcoder-custom-args", template);
+        log("Custom command template filled. Edit as needed.", "info");
+      });
+    }
+    updateMode();
 
     setCodecOptions();
 

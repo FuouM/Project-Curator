@@ -180,6 +180,12 @@ pub enum Request {
         video_bitrate: Option<u32>,
         #[serde(default)]
         preset: Option<String>,
+        /// Raw FFmpeg arguments for a fully custom command. `{input}` and
+        /// `{output}` placeholders are substituted with the source and output
+        /// paths. Mutually exclusive with the guided `vcodec`/`acodec`/
+        /// `crf`/`video_bitrate`/`preset` controls.
+        #[serde(default)]
+        custom_args: Option<String>,
     },
     /// Poll the progress of a running transcode job.
     GetTranscodeProgress {

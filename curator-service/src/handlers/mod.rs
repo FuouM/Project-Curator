@@ -544,6 +544,7 @@ pub async fn handle_request(
             crf,
             video_bitrate,
             preset,
+            custom_args,
         } => {
             let explicit = { settings.lock().await.ffmpeg_path.clone() };
             match curator_core::video::resolve_ffmpeg_path(
@@ -561,6 +562,7 @@ pub async fn handle_request(
                         crf,
                         video_bitrate,
                         preset,
+                        custom_args,
                         &ffmpeg,
                         transcode_progress,
                     )
