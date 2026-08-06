@@ -312,17 +312,33 @@
   function setupDropZone() {
     var api = window.__TAURI__;
     if (!api || !api.webview || !api.webview.getCurrentWebview) return;
-    var dropHost = el("transcoder-drop-host");
+    var dropZone = el("transcoder-drop-zone");
     api.webview.getCurrentWebview().onDragDropEvent(function (event) {
       var tabActive = document.getElementById("view-extensions-" + TAB_ID);
       if (!tabActive || !tabActive.classList.contains("active")) return;
       var drop = event.payload;
+
+      // Only highlight when the cursor is actually over the drop zone.
+      var isOverDropZone = function () {
+        if (!dropZone) return false;
+        var pos = drop.position;
+        if (!pos || typeof pos.x !== "number") return false;
+        var cx = pos.x / window.devicePixelRatio;
+        var cy = pos.y / window.devicePixelRatio;
+        var hit = document.elementFromPoint(cx, cy);
+        return !!hit && (dropZone.contains(hit) || dropZone === hit);
+      };
+
       if (drop.type === "enter" || drop.type === "over") {
-        if (dropHost) dropHost.classList.add("toolbox-drop-active");
+        if (isOverDropZone()) {
+          dropZone.classList.add("toolbox-drop-active");
+        } else {
+          dropZone.classList.remove("toolbox-drop-active");
+        }
       } else if (drop.type === "leave") {
-        if (dropHost) dropHost.classList.remove("toolbox-drop-active");
+        dropZone.classList.remove("toolbox-drop-active");
       } else if (drop.type === "drop") {
-        if (dropHost) dropHost.classList.remove("toolbox-drop-active");
+        dropZone.classList.remove("toolbox-drop-active");
         (drop.paths || []).forEach(addToQueue);
       }
     });

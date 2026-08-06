@@ -223,6 +223,10 @@
   border-color: var(--sys-border-focus);
   background: rgba(0, 120, 215, 0.06);
 }
+.toolbox-drop-zone.toolbox-drop-active {
+  border-color: var(--sys-border-focus);
+  background: rgba(0, 120, 215, 0.08);
+}
 .toolbox-drop-active .toolbox-drop-icon {
   border-color: var(--sys-border-focus);
   background: rgba(0, 120, 215, 0.12);
