@@ -1,3 +1,12 @@
+function isBlobInUse(url: string): boolean {
+  if (typeof document === "undefined") return false;
+  const images = document.images;
+  for (let i = 0; i < images.length; i++) {
+    if (images[i].src === url) return true;
+  }
+  return false;
+}
+
 export class LruCache<V> {
   private map = new Map<number, V>();
   private maxSize: number;
@@ -23,8 +32,8 @@ export class LruCache<V> {
       const oldestKey = this.map.keys().next().value;
       if (oldestKey !== undefined) {
         const oldValue = this.map.get(oldestKey);
-        this.revoke(oldValue);
         this.map.delete(oldestKey);
+        this.revoke(oldValue);
       }
     }
   }
@@ -34,11 +43,9 @@ export class LruCache<V> {
   }
 
   delete(key: number): void {
-    const value = this.map.get(key);
-    if (value !== undefined) {
-      this.revoke(value);
-      this.map.delete(key);
-    }
+    const oldValue = this.map.get(key);
+    this.map.delete(key);
+    this.revoke(oldValue);
   }
 
   clear(): void {
@@ -57,8 +64,11 @@ export class LruCache<V> {
   private revoke(value: V | undefined): void {
     if (typeof value === "string" && value.startsWith("blob:")) {
       try {
-        URL.revokeObjectURL(value);
+        if (!isBlobInUse(value)) {
+          URL.revokeObjectURL(value);
+        }
       } catch (_) {}
     }
   }
 }
+

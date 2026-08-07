@@ -20,8 +20,8 @@ let thumbTotal = 0;
 let thumbLoaded = 0;
 let thumbHideTimer: number | null = null;
 
-// --- Thumbnail Cache (LRU, limited to 500 entries) ---
-const thumbCache = new LruCache<string>(500);
+// --- Thumbnail Cache (LRU, limited to 5000 entries) ---
+const thumbCache = new LruCache<string>(5000);
 
 function cacheThumbnail(imageId: number, url: string) {
   thumbCache.set(imageId, url);
@@ -31,8 +31,8 @@ export function invalidateThumbnailCache() {
   thumbCache.clear();
 }
 
-// --- Crop Cache (LRU, limited to 100 entries) ---
-const cropCache = new LruCache<string>(100);
+// --- Crop Cache (LRU, limited to 2000 entries) ---
+const cropCache = new LruCache<string>(2000);
 // Generation guard so stale async crop responses (started before an edit)
 // can never overwrite a freshly invalidated/refetched cache entry.
 const cropRevision = new Map<number, number>();
