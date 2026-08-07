@@ -1,0 +1,12 @@
+{
+  "name": "image-compare",
+  "version": "1.0.0",
+  "description": "Side-by-side and slider (horizontal/vertical) image comparison with synchronized zoom & pan, selection mode support (up to 2), and drag-and-drop.",
+  "author": "Project Curator",
+  "permissions": ["ui:inject"],
+  "components": {
+    "ui": "index.js",
+    "type": "javascript"
+  },
+  "hooks": []
+}

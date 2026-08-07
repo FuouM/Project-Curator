@@ -1,3 +1,4 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { callService } from "./ipc";
 import { getPluginViewKeys, registerPluginView, removePluginView } from "./views/navigation";
 import { AssetContext, ImageDetails, PluginInfo, TagContext } from "./types";
@@ -71,6 +72,7 @@ export interface PluginHostApi {
   registerToolbarButton(id: string, label: string, iconClass: string, fn: (selection: AssetContext[]) => void): void;
   registerContextMenuItem(id: string, label: string, fn: (asset: AssetContext) => void): void;
   callService(method: string, params: object): Promise<any>;
+  convertFileSrc(filePath: string): string;
   getAssetContext(image: ImageDetails): AssetContext;
   getAssetContextFromCard(card: HTMLElement): AssetContext;
   fetchAssetContext(imageId: number): Promise<AssetContext>;
@@ -94,6 +96,9 @@ const pluginHost: PluginHostApi = {
   },
   callService(method, params) {
     return callService({ [method]: params });
+  },
+  convertFileSrc(filePath: string) {
+    return convertFileSrc(filePath);
   },
   getAssetContext,
   getAssetContextFromCard,
