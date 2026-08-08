@@ -151,7 +151,7 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
    * **NEVER** run destructive cleanup commands (`Remove-Item -Force`, `git clean -fd`) on binary runtime files (`.dll`, `.lib`, `.onnx`).
    * Preserve dependencies in isolated backup directories (e.g., `.curator_ort_dlls_backup/`) before performing directory cleanup operations.
 5. **Git Workflows & Commit Guidelines:**
-   * **No Automated Commits:** Do not run `git commit` or `git push` unless explicitly requested by the user.
+   * **No Automated Commits:** **NEVER** run `git commit` or `git push` unless the user explicitly requests it in the *current turn's conversation*. Do not assume a prior commit request applies to subsequent changes, and never preemptively commit new edits.
    * **Verify Diff Before Committing:** When requested to commit, **always** run and inspect `git diff` first to verify the exact changes. This ensures you do not stage unintended modifications or accidentally overwrite the work of other concurrent agents operating outside of your context.
    * **No Wildcard Staging:** Do not run `git add .` or `git add -A`. Explicitly stage target files by path.
    * **Commit Message Format:** Summarize changes with a semantic title (`type: description`), followed by detailed bullet points documenting specific file modifications.

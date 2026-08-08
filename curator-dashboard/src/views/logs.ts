@@ -65,7 +65,7 @@ function processLogLine(line: string): string {
   }
 
   // 4. Highlight log levels
-  content = content.replace(/\b(INFO|WARN|WARNING|ERROR|FATAL|DEBUG|TRACE)\b/gi, (lvl) => {
+  content = content.replace(/\b(INFO|WARN|WARNING|ERROR|FATAL|DEBUG|TRACE)\b/g, (lvl) => {
     let color = "#10b981"; // INFO
     const upper = lvl.toUpperCase();
     if (upper === "WARN" || upper === "WARNING") color = "#fbbf24";
