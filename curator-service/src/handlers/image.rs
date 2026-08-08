@@ -1070,3 +1070,50 @@ pub async fn set_note_logic(
     Ok(())
 }
 
+pub async fn get_storage_stats_logic(
+    db: &SqlitePool,
+) -> Result<curator_core::ipc::StorageStats> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT current_filepath FROM images WHERE deleted_at IS NULL AND is_missing = 0"
+    )
+    .fetch_all(db)
+    .await?;
+
+    let mut ext_map: std::collections::HashMap<String, (u64, u64)> = std::collections::HashMap::new();
+
+    for (path_str,) in rows {
+        let path = std::path::Path::new(&path_str);
+        let ext = path.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        
+        let size = std::fs::metadata(path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        let entry = ext_map.entry(ext).or_insert((0, 0));
+        entry.0 += size;
+        entry.1 += 1;
+    }
+
+    let mut stats = Vec::new();
+    for (ext, (size_bytes, count)) in ext_map {
+        let category = match ext.as_str() {
+            "gif" => "GIFs".to_string(),
+            "mp4" | "webm" | "mkv" | "avi" | "mov" | "m4v" | "3gp" | "flv" | "ts" => "Videos".to_string(),
+            "png" | "jpg" | "jpeg" | "webp" | "bmp" | "tiff" | "ico" => "Images".to_string(),
+            _ => "Other".to_string(),
+        };
+        stats.push(curator_core::ipc::StorageTypeStat {
+            category,
+            extension: ext,
+            size_bytes,
+            count,
+        });
+    }
+
+    Ok(curator_core::ipc::StorageStats { stats })
+}
+
+

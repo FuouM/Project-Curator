@@ -432,6 +432,15 @@ pub async fn handle_request(
             }
         }
 
+        Request::GetStorageStats => {
+            match image::get_storage_stats_logic(db).await {
+                Ok(stats) => Response::StorageStatsResult { stats },
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
         Request::GetThumbnail { image_id, width } => {
             match image::get_thumbnail_logic(image_id, width, thumbnail_cache, db).await {
                 Ok((data, is_missing)) => Response::ThumbnailResult { data, is_missing },

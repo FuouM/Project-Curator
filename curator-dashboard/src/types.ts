@@ -11,6 +11,7 @@ export type RequestPayload =
   | { ListImages: { limit: number; offset: number; only_favorites?: boolean | null } }
   | { SetFavorite: { image_id: number; favorite: boolean } }
   | { SetNote: { image_id: number; note: string | null } }
+  | { GetStorageStats: null }
   | { GetImage: { image_id: number } }
   | { GetThumbnail: { image_id: number; width?: number } }
   | { PurgeMissingThumbnails: null }
@@ -184,6 +185,17 @@ export interface VideoSummary {
   height?: number | null;
 }
 
+export interface StorageTypeStat {
+  category: string;
+  extension: string;
+  size_bytes: number;
+  count: number;
+}
+
+export interface StorageStats {
+  stats: StorageTypeStat[];
+}
+
 export interface CharacterIdentitySummary {
   id: number;
   name: string;
@@ -251,6 +263,7 @@ export type ResponsePayload =
   | { SearchResult: { matches: SearchMatch[] } }
   | { StatusResult: { image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number } }
   | { ImageResult: { image: ImageDetails } }
+  | { StorageStatsResult: { stats: StorageStats } }
   | { ListResult: { images: ImageDetails[]; total_count: number } }
   | { ValidationResult: { name: string; version: string; valid: boolean; error: string | null } }
   | { TagImageResult: { image_id: number; tags_applied: number; skipped: boolean; tags: TagSummary[] } }

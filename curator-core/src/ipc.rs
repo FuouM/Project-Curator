@@ -124,6 +124,7 @@ pub enum Request {
         image_id: i64,
         note: Option<String>,
     },
+    GetStorageStats,
     /// Get thumbnail bytes for an image (from cache or generated on demand).
     GetThumbnail {
         image_id: i64,
@@ -1002,6 +1003,22 @@ pub enum Response {
         started: bool,
         message: String,
     },
+    StorageStatsResult {
+        stats: StorageStats,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageTypeStat {
+    pub category: String, // "Images", "GIFs", "Videos", "Other"
+    pub extension: String,
+    pub size_bytes: u64,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageStats {
+    pub stats: Vec<StorageTypeStat>,
 }
 
 
