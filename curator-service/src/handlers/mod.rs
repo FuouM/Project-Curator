@@ -298,11 +298,12 @@ pub async fn handle_request(
                 s.embedding_model
             };
             match settings::query_status(db, active).await {
-                Ok((images, vectors, pending, preprocessing)) => Response::StatusResult {
+                Ok((images, vectors, pending, preprocessing, ram)) => Response::StatusResult {
                     image_count: images,
                     vector_count: vectors,
                     pending_jobs: pending,
                     preprocessing_jobs: preprocessing,
+                    ram_usage_bytes: ram,
                 },
                 Err(e) => Response::Error {
                     message: e.to_string(),
@@ -846,7 +847,7 @@ pub async fn handle_request(
                 async { settings.lock().await.clone() },
             );
 
-            let (image_count, vector_count, pending_jobs, preprocessing_jobs) = match status_result
+            let (image_count, vector_count, pending_jobs, preprocessing_jobs, _ram) = match status_result
             {
                 Ok(v) => v,
                 Err(e) => {

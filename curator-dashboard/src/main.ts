@@ -182,7 +182,7 @@ function init() {
     if ("DashboardInitResult" in resp) {
       const d = resp.DashboardInitResult;
 
-      updateStatusIndicators({ image_count: d.image_count, vector_count: d.vector_count, pending_jobs: d.pending_jobs, preprocessing_jobs: d.preprocessing_jobs });
+      updateStatusIndicators({ image_count: d.image_count, vector_count: d.vector_count, pending_jobs: d.pending_jobs, preprocessing_jobs: d.preprocessing_jobs, ram_usage_bytes: 0 });
       updateTaggerIndicators({ loaded: d.tagger_loaded, model_path: d.tagger_model_path, total_tags: d.tagger_total_tags });
 
       applySettingsToUI({ SettingsResult: { clip_device: d.clip_device, tagger_device: d.tagger_device, idle_timeout_secs: d.idle_timeout_secs, embedding_model: d.embedding_model, detection_device: d.detection_device, detection_metrics_device: d.detection_metrics_device } });

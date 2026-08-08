@@ -261,7 +261,7 @@ export type ResponsePayload =
   | { PurgeResult: { deleted_count: number } }
   | { ClearThumbnailCacheResult: { deleted_count: number } }
   | { SearchResult: { matches: SearchMatch[] } }
-  | { StatusResult: { image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number } }
+  | { StatusResult: { image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number; ram_usage_bytes: number } }
   | { ImageResult: { image: ImageDetails } }
   | { StorageStatsResult: { stats: StorageStats } }
   | { ListResult: { images: ImageDetails[]; total_count: number } }

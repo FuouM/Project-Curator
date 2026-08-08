@@ -33,7 +33,7 @@ export async function refreshDashboard() {
   }
 }
 
-export function updateStatusIndicators(data: { image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number }) {
+export function updateStatusIndicators(data: { image_count: number; vector_count: number; pending_jobs: number; preprocessing_jobs: number; ram_usage_bytes: number }) {
   const dot = document.getElementById("service-dot");
   const text = document.getElementById("service-status-text");
   if (dot && text) { dot.classList.remove("offline"); text.textContent = "Service Online"; }
@@ -44,6 +44,22 @@ export function updateStatusIndicators(data: { image_count: number; vector_count
   if (imgEl) imgEl.textContent = data.image_count.toString();
   if (vecEl) vecEl.textContent = data.vector_count.toString();
   if (pendEl) pendEl.textContent = (data.pending_jobs + data.preprocessing_jobs).toString();
+
+  // Update RAM status bar
+  const ramEl = document.getElementById("status-ram-text");
+  if (ramEl) {
+    const bytes = data.ram_usage_bytes;
+    let ramText = "";
+    if (bytes === 0) {
+      ramText = "RAM: —";
+    } else {
+      const k = 1024;
+      const sizes = ["B", "KB", "MB", "GB", "TB"];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      ramText = `RAM: ${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+    }
+    ramEl.textContent = ramText;
+  }
 }
 
 export function updateTaggerIndicators(data: { loaded: boolean; model_path: string; total_tags: number }) {

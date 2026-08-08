@@ -622,6 +622,7 @@ pub enum Response {
         vector_count: i64,
         pending_jobs: i64,
         preprocessing_jobs: i64,
+        ram_usage_bytes: i64,
     },
     ImageResult {
         image: ImageDetails,

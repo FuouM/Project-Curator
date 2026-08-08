@@ -27,10 +27,61 @@ pub struct UpdateSettingsParams<'a> {
     pub preferred_tagger: Option<TaggerModel>,
 }
 
+pub fn get_app_ram_usage() -> i64 {
+    use sysinfo::System;
+
+    let sys = System::new_all();
+
+    let current_pid = sysinfo::get_current_pid().ok();
+    let dashboard_name = "curator-dashboard";
+
+    let mut tracked_pids = std::collections::HashSet::new();
+
+    // Add curator-service itself
+    if let Some(pid) = current_pid {
+        tracked_pids.insert(pid);
+    }
+
+    // Add dashboard process(es)
+    for (pid, proc) in sys.processes() {
+        let name = proc.name().to_string_lossy().to_lowercase();
+        if name.contains(dashboard_name) {
+            tracked_pids.insert(*pid);
+        }
+    }
+
+    // Iteratively resolve children/subprocesses
+    let mut added = true;
+    while added {
+        added = false;
+        for (pid, proc) in sys.processes() {
+            if tracked_pids.contains(pid) {
+                continue;
+            }
+            if let Some(parent_pid) = proc.parent() {
+                if tracked_pids.contains(&parent_pid) {
+                    tracked_pids.insert(*pid);
+                    added = true;
+                }
+            }
+        }
+    }
+
+    // Sum RSS memory
+    let mut total_memory_bytes = 0u64;
+    for pid in &tracked_pids {
+        if let Some(proc) = sys.process(*pid) {
+            total_memory_bytes += proc.memory();
+        }
+    }
+
+    total_memory_bytes as i64
+}
+
 pub async fn query_status(
     db: &SqlitePool,
     active: EmbeddingModel,
-) -> Result<(i64, i64, i64, i64)> {
+) -> Result<(i64, i64, i64, i64, i64)> {
     let source_name = match active {
         EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
         EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
@@ -50,7 +101,9 @@ pub async fn query_status(
     .fetch_one(db)
     .await?;
 
-    Ok((row.0, row.1, row.2, row.3))
+    let ram = get_app_ram_usage();
+
+    Ok((row.0, row.1, row.2, row.3, ram))
 }
 
 pub async fn update_settings_logic(
