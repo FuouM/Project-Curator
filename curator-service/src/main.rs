@@ -397,7 +397,12 @@ impl Curator for CuratorServiceImpl {
         let req_payload = request.into_inner();
         let request_str = req_payload.request_json;
 
-        let is_noisy = request_str.contains("GetConversionLogs") || request_str.contains("GetDownloadProgress");
+        let is_noisy = request_str.contains("GetConversionLogs")
+            || request_str.contains("GetDownloadProgress")
+            || request_str.contains("GetStatus")
+            || request_str.contains("GetTaggerStatus")
+            || request_str.contains("ReadPluginFile")
+            || request_str.contains("GetThumbnail");
 
         if !is_noisy {
             info!("Received gRPC Request: {}", request_str);
