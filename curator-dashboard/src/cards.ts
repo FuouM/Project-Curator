@@ -11,6 +11,8 @@ import { findSimilar } from "./views/concepts";
 import { attachAutocomplete } from "./autocomplete";
 import { LruCache } from "./lru-cache";
 import { showErrorAlert } from "./alert";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 
 // --- Thumbnail Queue ---
 const MAX_CONCURRENT = 2;
@@ -755,6 +757,22 @@ function openImageInfoModal(img: ImageDetails) {
     </div>
   </div>`;
 
+  const notesHtml = `
+  <div class="group-box" style="margin-top:8px;">
+    <div class="group-box-title" style="display:flex;justify-content:space-between;align-items:center;width:100%;box-sizing:border-box;">
+      <span><i class="bi bi-pencil-square"></i> Note</span>
+      <div style="display:flex;gap:4px;">
+        <span class="note-tab active" id="note-tab-preview" style="user-select:none;">Preview</span>
+        <span class="note-tab" id="note-tab-edit" style="user-select:none;">Edit</span>
+      </div>
+    </div>
+    <div class="group-box-body" style="padding:6px;">
+      <div id="note-preview-content" class="note-preview" style="min-height:50px;"></div>
+      <textarea id="note-edit-textarea" class="input-field" style="width:100%;height:80px;box-sizing:border-box;display:none;" placeholder="Write a note here... (Markdown supported)"></textarea>
+      <div id="note-save-status" style="font-size:10px;color:#888;margin-top:4px;text-align:right;height:12px;line-height:12px;"></div>
+    </div>
+  </div>`;
+
   body.innerHTML =
     '<table class="curator-table" style="font-size:11px;"><tbody>' +
     '<tr><td style="font-weight:600;width:120px;">Image ID</td><td>' + img.id + '</td></tr>' +
@@ -767,9 +785,108 @@ function openImageInfoModal(img: ImageDetails) {
     '<tr><td style="font-weight:600;">Tags (' + tagsCount + ')</td><td>' + (catBreakdown || "—") + '</td></tr>' +
     '</tbody></table>' +
     '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">' + tagsHtml + '</div>' +
+    notesHtml +
     parsedHtml +
     mediaHtml +
     detectionsHtml;
+
+  // --- Notes Handling ---
+  const previewTab = body.querySelector("#note-tab-preview") as HTMLElement;
+  const editTab = body.querySelector("#note-tab-edit") as HTMLElement;
+  const previewDiv = body.querySelector("#note-preview-content") as HTMLElement;
+  const editArea = body.querySelector("#note-edit-textarea") as HTMLTextAreaElement;
+  const statusDiv = body.querySelector("#note-save-status") as HTMLElement;
+
+  let currentNoteVal = img.note || "";
+
+  const renderNoteHtml = (text: string) => {
+    if (!text.trim()) {
+      previewDiv.innerHTML = '<span style="color:#999;font-style:italic;">No notes yet. Click to add a note...</span>';
+    } else {
+      try {
+        const rawHtml = marked.parse(text) as string;
+        previewDiv.innerHTML = DOMPurify.sanitize(rawHtml);
+      } catch (err) {
+        console.error("Markdown parse error:", err);
+        previewDiv.textContent = text;
+      }
+    }
+  };
+
+  renderNoteHtml(currentNoteVal);
+  editArea.value = currentNoteVal;
+
+  let saveTimeout: number | null = null;
+
+  const saveNote = async () => {
+    const newVal = editArea.value;
+    if (newVal === currentNoteVal && statusDiv.textContent !== "Saving...") return;
+    currentNoteVal = newVal;
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      saveTimeout = null;
+    }
+
+    statusDiv.textContent = "Saving...";
+    statusDiv.style.color = "#0078d7";
+
+    try {
+      const resp = await callService({
+        SetNote: {
+          image_id: img.id,
+          note: newVal.trim() ? newVal : null
+        }
+      });
+      if ("Error" in resp) {
+        throw new Error(resp.Error.message);
+      }
+      statusDiv.textContent = "Saved";
+      statusDiv.style.color = "#28a745";
+      img.note = newVal;
+      renderNoteHtml(newVal);
+      // Optional: refresh gallery elements if note status changes
+      import("./views/gallery").then(m => m.refreshGallery());
+    } catch (err: any) {
+      console.error("Save note failed:", err);
+      statusDiv.textContent = "Save failed";
+      statusDiv.style.color = "#dc3545";
+    }
+  };
+
+  const showEdit = () => {
+    previewTab.classList.remove("active");
+    editTab.classList.add("active");
+    previewDiv.style.display = "none";
+    editArea.style.display = "block";
+    editArea.focus();
+  };
+
+  const showPreview = async () => {
+    previewTab.classList.add("active");
+    editTab.classList.remove("active");
+    editArea.style.display = "none";
+    previewDiv.style.display = "block";
+    if (editArea.value !== currentNoteVal) {
+      await saveNote();
+    }
+  };
+
+  previewTab.addEventListener("click", showPreview);
+  editTab.addEventListener("click", showEdit);
+  previewDiv.addEventListener("click", showEdit);
+
+  editArea.addEventListener("blur", () => {
+    saveNote();
+  });
+
+  editArea.addEventListener("input", () => {
+    statusDiv.textContent = "Unsaved changes...";
+    statusDiv.style.color = "#e0a800";
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = window.setTimeout(() => {
+      saveNote();
+    }, 1000);
+  });
 
   // Plugin metadata renderers (design doc 8.2) — appended below core content.
   try {

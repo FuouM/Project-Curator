@@ -120,6 +120,10 @@ pub enum Request {
         image_id: i64,
         favorite: bool,
     },
+    SetNote {
+        image_id: i64,
+        note: Option<String>,
+    },
     /// Get thumbnail bytes for an image (from cache or generated on demand).
     GetThumbnail {
         image_id: i64,
@@ -1088,6 +1092,8 @@ pub struct ImageDetails {
     /// Video stream & container details (present only for mp4/webm assets).
     #[serde(default)]
     pub video: Option<VideoSummary>,
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 /// Animated media details (present only for animated files, e.g. GIF).

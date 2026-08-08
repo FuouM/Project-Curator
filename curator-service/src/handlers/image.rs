@@ -531,6 +531,7 @@ pub async fn get_image_logic(
         height: img.height,
         animation,
         video,
+        note: img.note,
     })
 }
 
@@ -548,13 +549,13 @@ pub async fn batch_get_images_logic(
     let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
 
     let base_sql = format!(
-        "SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite, i.is_missing, i.width, i.height
+        "SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite, i.is_missing, i.width, i.height, i.note
          FROM images i
          WHERE i.id IN ({}) AND i.deleted_at IS NULL
          ORDER BY i.created_at DESC, i.id DESC",
         placeholders
     );
-    let mut base_q = sqlx::query_as::<_, (i64, String, String, i64, String, bool, bool, Option<i64>, Option<i64>)>(&base_sql);
+    let mut base_q = sqlx::query_as::<_, (i64, String, String, i64, String, bool, bool, Option<i64>, Option<i64>, Option<String>)>(&base_sql);
     for id in ids {
         base_q = base_q.bind(id);
     }
@@ -563,7 +564,7 @@ pub async fn batch_get_images_logic(
     let mut image_order: Vec<i64> = Vec::new();
     let mut image_map: std::collections::HashMap<i64, ImageDetails> =
         std::collections::HashMap::new();
-    for (id, sha256, current_filepath, mtime, created_at, favorite, is_missing, width, height) in base_rows {
+    for (id, sha256, current_filepath, mtime, created_at, favorite, is_missing, width, height, note) in base_rows {
         image_order.push(id);
         image_map.insert(
             id,
@@ -585,6 +586,7 @@ pub async fn batch_get_images_logic(
                 height,
                 animation: None,
                 video: None,
+                note,
             },
         );
     }
@@ -732,7 +734,7 @@ async fn fetch_image_details_batch(
     let sql = format!(
         r#"
         SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite, i.is_missing,
-               i.width, i.height,
+               i.width, i.height, i.note,
                t.name, t.category, it.confidence, s.name as source_name
         FROM images i
         LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0 AND it.source_id = {source_id}
@@ -763,6 +765,7 @@ async fn fetch_image_details_batch(
         is_missing,
         width,
         height,
+        note,
         tag_name,
         tag_category,
         confidence,
@@ -790,6 +793,7 @@ async fn fetch_image_details_batch(
             height,
             animation: None,
             video: None,
+            note,
         });
         if let (Some(name), Some(category)) = (tag_name, tag_category) {
             if source_name.as_deref() != Some("filename_parser") {
@@ -1050,3 +1054,19 @@ pub async fn get_random_image_logic(
     let img = get_image_logic(rand_id, preferred_source, db).await?;
     Ok((img, pos.0))
 }
+
+pub async fn set_note_logic(
+    image_id: i64,
+    note: Option<String>,
+    db: &SqlitePool,
+) -> Result<()> {
+    // If the note is empty/whitespace-only, save it as None (NULL in DB)
+    let cleaned_note = note.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+    sqlx::query("UPDATE images SET note = ? WHERE id = ?")
+        .bind(cleaned_note)
+        .bind(image_id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+

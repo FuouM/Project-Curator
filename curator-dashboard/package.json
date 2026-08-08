@@ -11,10 +11,13 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
-    "bootstrap-icons": "^1.13.1"
+    "bootstrap-icons": "^1.13.1",
+    "dompurify": "^3.4.13",
+    "marked": "^18.0.9"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@types/dompurify": "^3.0.5",
     "typescript": "~5.6.2",
     "vite": "^6.0.3"
   }

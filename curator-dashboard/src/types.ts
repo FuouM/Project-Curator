@@ -10,6 +10,7 @@ export type RequestPayload =
   | { Search: { query_text: string | null; query_image_path: string | null; tag_filter: string | null; filename_filter: string | null; parse_filter: string | null; parse_type: string | null; concept_id: number | null; character_identity_id: number | null; ocr_filter: boolean | null; ocr_text_search: string | null; media_type: string | null; limit: number } }
   | { ListImages: { limit: number; offset: number; only_favorites?: boolean | null } }
   | { SetFavorite: { image_id: number; favorite: boolean } }
+  | { SetNote: { image_id: number; note: string | null } }
   | { GetImage: { image_id: number } }
   | { GetThumbnail: { image_id: number; width?: number } }
   | { PurgeMissingThumbnails: null }
@@ -161,6 +162,7 @@ export interface ImageDetails {
   height?: number | null;
   animation?: AnimationSummary | null;
   video?: VideoSummary | null;
+  note?: string | null;
 }
 
 export interface AnimationSummary {

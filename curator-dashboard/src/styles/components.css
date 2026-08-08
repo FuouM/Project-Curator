@@ -591,3 +591,51 @@
   flex-shrink: 0;
 }
 
+/* Notes area styling */
+textarea.input-field {
+  height: auto;
+  line-height: 1.4;
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+.note-tab {
+  padding: 2px 6px;
+  border: 1px solid #7a7a7a;
+  background: var(--sys-window-bg);
+  color: var(--sys-window-text);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.note-tab.active {
+  background-color: #0078d7;
+  color: #ffffff;
+  border-color: #005499;
+}
+
+.note-preview {
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-y: auto;
+  max-height: 150px;
+  padding: 6px;
+  border: 1px dashed #cccccc;
+  cursor: pointer;
+  background: var(--sys-window-bg);
+  color: var(--sys-window-text);
+}
+
+.note-preview:hover {
+  border-color: #0078d7;
+  background-color: rgba(0, 120, 215, 0.05);
+}
+
+.note-preview p {
+  margin: 0 0 6px 0;
+}
+.note-preview p:last-child {
+  margin-bottom: 0;
+}
+
+

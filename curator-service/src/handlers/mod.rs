@@ -79,6 +79,7 @@ pub(crate) type ImageRow = (
     bool,
     Option<i64>,
     Option<i64>,
+    Option<String>, // note
     Option<String>,
     Option<String>,
     Option<f32>,
@@ -415,6 +416,15 @@ pub async fn handle_request(
 
         Request::SetFavorite { image_id, favorite } => {
             match tags::set_favorite_logic(image_id, favorite, db).await {
+                Ok(_) => Response::Success,
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+        Request::SetNote { image_id, note } => {
+            match image::set_note_logic(image_id, note, db).await {
                 Ok(_) => Response::Success,
                 Err(e) => Response::Error {
                     message: e.to_string(),
