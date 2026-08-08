@@ -724,7 +724,7 @@
     return `
       <div style="height: 100%; width: 100%; padding: 12px; box-sizing: border-box; display: flex; flex-direction: column; background: var(--sys-window-bg, #ffffff);">
         <div class="toolbox-drop-zone" data-slot="${targetSlot}" style="flex: 1; margin-top: 0; cursor: pointer;">
-          <div class="toolbox-drop-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+          <div class="toolbox-drop-icon"><i class="bi bi-images"></i></div>
           <span>Drag & Drop image here to compare</span>
           <span style="font-size: 10px; font-weight: 600; color: var(--sys-border-focus, #0078d7); margin-top: 4px;">Target: ${slotName}</span>
         </div>
