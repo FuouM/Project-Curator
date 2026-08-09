@@ -374,6 +374,40 @@ export function setupSettings() {
         if (ffmpegPathInput) {
           ffmpegPathInput.value = r.resolved_path ?? "";
         }
+
+        // Show "Use portable build" button if a portable exists but isn't the active path
+        const existingPortableBtn = document.getElementById("use-portable-ffmpeg-btn");
+        if (existingPortableBtn) existingPortableBtn.remove();
+
+        const portablePath: string | null = r.portable_path ?? null;
+        const isAlreadyUsingPortable = r.resolved_path && portablePath &&
+          r.resolved_path.toLowerCase() === portablePath.toLowerCase();
+
+        if (portablePath && !isAlreadyUsingPortable) {
+          const portableRow = document.createElement("div");
+          portableRow.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;";
+          portableRow.innerHTML =
+            `<span style="font-size:11px;color:#107c41;"><i class="bi bi-box-seam"></i> Portable build available</span>` +
+            `<code style="font-size:10px;word-break:break-all;">${portablePath}</code>` +
+            `<button class="win-button primary" id="use-portable-ffmpeg-btn"><i class="bi bi-arrow-left-right"></i> Switch to portable</button>`;
+          ffmpegStatusRow.appendChild(portableRow);
+
+          document.getElementById("use-portable-ffmpeg-btn")?.addEventListener("click", async () => {
+            if (!ffmpegSaveStatus) return;
+            setStatusMessage(ffmpegSaveStatus, "Switching to portable build...", "loading");
+            try {
+              const switchResp = await callService({ SetFFmpegPath: { path: portablePath } });
+              if ("Success" in switchResp) {
+                setStatusMessage(ffmpegSaveStatus, "Switched to portable build.", "success");
+                await refreshFfmpegStatus();
+              } else if ("Error" in switchResp) {
+                setStatusMessage(ffmpegSaveStatus, "Failed: " + switchResp.Error.message, "error");
+              }
+            } catch (e: any) {
+              setStatusMessage(ffmpegSaveStatus, "Error: " + (e.message || e), "error");
+            }
+          });
+        }
       }
     } catch (e) {}
   }
@@ -435,20 +469,25 @@ export function setupSettings() {
           ? Math.round((dl.bytes_downloaded / dl.bytes_total) * 100)
           : 0;
         if (ffmpegDlBar) ffmpegDlBar.style.display = "";
-        if (ffmpegDlFill) ffmpegDlFill.style.width = pct + "%";
-        if (ffmpegDlStatus) {
-          setStatusMessage(ffmpegDlStatus, `Downloading... ${pct}% (${dl.bytes_downloaded} / ${dl.bytes_total} bytes)`, "loading");
+        if (dl.status === "extracting") {
+          if (ffmpegDlFill) ffmpegDlFill.style.width = "100%";
+          if (ffmpegDlStatus) setStatusMessage(ffmpegDlStatus, "Extracting... please wait", "loading");
+        } else {
+          if (ffmpegDlFill) ffmpegDlFill.style.width = pct + "%";
+          if (ffmpegDlStatus) {
+            setStatusMessage(ffmpegDlStatus, `Downloading... ${pct}% (${dl.bytes_downloaded} / ${dl.bytes_total} bytes)`, "loading");
+          }
         }
         if (dl.status === "completed") {
           ffmpegDlStopPolling();
           if (ffmpegDlBar) ffmpegDlBar.style.display = "none";
-          setStatusMessage(ffmpegDlStatus, "FFmpeg downloaded and verified.", "success");
+          setStatusMessage(ffmpegDlStatus!, "FFmpeg downloaded and verified.", "success");
           if (ffmpegDlBtn) ffmpegDlBtn.removeAttribute("disabled");
           await refreshFfmpegStatus();
         } else if (dl.status === "failed" || dl.status === "cancelled") {
           ffmpegDlStopPolling();
           if (ffmpegDlBar) ffmpegDlBar.style.display = "none";
-          setStatusMessage(ffmpegDlStatus, dl.error || `FFmpeg download ${dl.status}.`, "error");
+          setStatusMessage(ffmpegDlStatus!, dl.error || `FFmpeg download ${dl.status}.`, "error");
           if (ffmpegDlBtn) ffmpegDlBtn.removeAttribute("disabled");
         }
       } catch (e) {

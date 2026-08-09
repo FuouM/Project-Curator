@@ -138,12 +138,16 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
   * Standard Tags: `#fff3cd` (`user`), `#d1ecf1` (`character`), `#ebdcf9` (`copyright`), `#e2e3e5` (`meta`).
 * **Lazy DOM Rendering:** Display structural skeleton layout outlines immediately upon rendering tabs or complex view components. Defer secondary details queries and crop generation tasks using microtask delays (`setTimeout(..., 50)`) to avoid freezing the UI thread.
 * **Component Sheet Reference:** Inspect the **Component Showcase Sheet view** (`index.html` -> `#view-components`) and `src/components.ts` before creating or modifying UI components.
+* **Layout Stretching & Centering**: Flex-child components like `.toolbox-drop-zone` must specify `align-self: stretch; width: 100%; height: 100%` when nested within centered container layouts (e.g. `align-items: center`), preventing them from collapsing to the width of their inner text.
+* **Pointer Events on Interactive Media**: When rendering media elements with browser controls (such as `<video controls>`), ensure they are not blocked by overlay containers or blanket parent classes; set `pointer-events: auto;` specifically on interactive media elements so seeking and playback work normally.
 
 ---
 
 ## 6. Code Style & Safety Mandates
 
-1. **No Absolute Paths:** **NEVER** write or commit absolute file paths (`C:\...`, `file:///...`). Always use repository-relative paths and portable environment resolution.
+1. **No Absolute Paths:** **NEVER** write or commit absolute file paths (`C:\...`, `file:///...`, `K:\...`). Always use repository-relative paths and portable environment resolution:
+   * **JavaScript/Frontend**: Always use relative paths (`plugins/gif-maker/...` or `.curator/...`) for assets resolved by `convertFileSrc`. Do not write system path fallbacks like `"C:\\Windows\\Temp"` or invoke server-side APIs (like `std.env.temp_dir`) in frontend JS contexts.
+   * **Rust/Backend**: For OS system paths (e.g. system fonts), dynamically query environment variables such as `std::env::var("WINDIR")` instead of hardcoding absolute system paths.
 2. **NO Fallbacks / Feature Removal Policy:** **NEVER** implement silent fallbacks, comment out broken logic, or strip out features (such as `sccache`, test suites, or performance configurations) simply to bypass or dodge an error. When an error or warning occurs, diagnose and fix the root cause properly. Fail fast, preserve required tooling, and expose underlying issues cleanly.
 
 3. **First-Principles Model Verification:** Before modifying inference logic in `curator-core`, create or run standalone programmatic test binaries in `curator-core/src/bin/` (e.g., `test_ort_standalone.rs`) to verify ONNX model initialization and tensor shapes step-by-step.
@@ -160,6 +164,11 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
    * Refactor resource pipelines to fetch required metadata once at logical boundaries. Avoid duplicate process spawning (e.g. running multiple `ffprobe` operations on the same asset).
    * Derive calculations, allocations, and constraints mathematically from format specifications, track counts, and duration metrics.
    * **Self-Adversarial Verification:** Before finalizing any task, the agent must perform an explicit meta-cognitive self-audit. Inspect your own implementation plan and output code for hidden laziness, magic safety numbers, or unresolved assumptions. Force yourself to outline and justify these decisions, and refactor any shortcut into a mathematically sound, first-principles solution.
+7. **Research Before Attempting / No Blind Command Loops:**
+   * **NEVER** attempt more than 2 variations of the same failing command without first stopping to research why it is failing. Repeating the same command with minor flag changes is not debugging — it is noise.
+   * When a command, tool, or library fails in an unexpected or persistent way, **immediately use `search_web`** to determine whether the failure is caused by a version limitation, a known bug, or a fundamental capability gap — before writing any code or running any more commands.
+   * **Version limitations are blockers, not configuration problems.** If a tool version does not support a feature (e.g., FFmpeg < 9.0 cannot decode animated WebPs), no amount of flag tweaking will fix it. Identify the version requirement first, then escalate to updating the tool or choosing an alternative approach.
+   * When a tool needs to be updated to resolve a capability gap, do it — do not loop on workarounds that cannot work.
 
 ### Frontend Design Skill (`/frontend-design`) Integration
 

@@ -374,6 +374,7 @@ async fn main() -> Result<(), Error> {
             vector_count,
             pending_jobs,
             preprocessing_jobs,
+            ..
         } => {
             println!("Curator Database Status:");
             println!("  Images Imported:      {}", image_count);

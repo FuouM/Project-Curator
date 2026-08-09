@@ -10,6 +10,7 @@ pub mod search;
 pub mod settings;
 pub mod tags;
 pub mod transcode;
+pub mod gif;
 
 use curator_core::detection::DetectionPipeline;
 use curator_core::ipc::{EmbeddingModel, ModelPrecision, Request, Response, TaggerBenchmarkInfo};
@@ -115,6 +116,19 @@ pub(crate) async fn resolve_ffmpeg_path(
 ) -> anyhow::Result<std::path::PathBuf> {
     let explicit = { settings.lock().await.ffmpeg_path.clone() };
     curator_core::video::resolve_ffmpeg_path(data_dir, explicit.as_deref().map(Path::new))
+}
+
+fn resolve_relative_path(data_dir: &Path, path_str: &str) -> String {
+    let path = Path::new(path_str);
+    if path.is_relative() {
+        if let Ok(stripped) = path.strip_prefix(".curator") {
+            return data_dir.join(stripped).to_string_lossy().to_string();
+        }
+        if let Some(parent) = data_dir.parent() {
+            return parent.join(path).to_string_lossy().to_string();
+        }
+    }
+    path_str.to_string()
 }
 
 pub async fn handle_request(
@@ -519,6 +533,10 @@ pub async fn handle_request(
                 explicit.as_deref().map(Path::new),
             )
             .ok();
+            let portable = {
+                let p = data_dir.join("bin").join(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" });
+                if p.is_file() { Some(p.to_string_lossy().into_owned()) } else { None }
+            };
             match resolved {
                 Some(p) => {
                     let version =
@@ -527,12 +545,14 @@ pub async fn handle_request(
                         resolved_path: Some(p.to_string_lossy().into_owned()),
                         version: Some(version),
                         available: true,
+                        portable_path: portable,
                     }
                 }
                 None => Response::FFmpegStatusResult {
                     resolved_path: explicit,
                     version: None,
                     available: false,
+                    portable_path: portable,
                 },
             }
         }
@@ -613,6 +633,177 @@ pub async fn handle_request(
         Request::GetTranscodeProgress { job_id } => {
             transcode::get_transcode_progress(&job_id, transcode_progress).await
         }
+
+        Request::CreateGifFromImages {
+            job_id,
+            image_pattern,
+            frame_rate,
+            output_path,
+            width,
+            height,
+            loop_count,
+            target_format,
+        } => {
+            let resolved_output = resolve_relative_path(data_dir, &output_path);
+            let resolved_pattern = resolve_relative_path(data_dir, &image_pattern);
+            match resolve_ffmpeg_path(data_dir, settings).await {
+                Ok(ffmpeg) => {
+                    let res = gif::create_gif_from_images(
+                        job_id,
+                        resolved_pattern,
+                        frame_rate,
+                        resolved_output,
+                        width,
+                        height,
+                        loop_count,
+                        target_format,
+                        &ffmpeg,
+                        transcode_progress,
+                    )
+                    .await;
+                    match res {
+                        Ok(()) => Response::Success,
+                        Err(e) => Response::Error {
+                            message: e.to_string(),
+                        },
+                    }
+                }
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+        Request::ProcessGifEffects {
+            job_id,
+            input_path,
+            output_path,
+            crop,
+            scale,
+            speed_multiplier,
+            reverse,
+            bounce,
+            rotate,
+            brightness,
+            contrast,
+            saturation,
+            grayscale,
+            invert,
+            caption_image_base64,
+            caption_image_height,
+            caption_style,
+            max_colors,
+            dither_type,
+            drop_frames_factor,
+            target_format,
+            loop_count,
+            fps,
+            trim_start,
+            trim_end,
+        } => {
+            let resolved_input = resolve_relative_path(data_dir, &input_path);
+            let resolved_output = resolve_relative_path(data_dir, &output_path);
+            match resolve_ffmpeg_path(data_dir, settings).await {
+                Ok(ffmpeg) => {
+                    let res = gif::process_gif_effects(
+                        job_id,
+                        resolved_input,
+                        resolved_output,
+                        crop,
+                        scale,
+                        speed_multiplier,
+                        reverse,
+                        bounce,
+                        rotate,
+                        brightness,
+                        contrast,
+                        saturation,
+                        grayscale,
+                        invert,
+                        caption_image_base64,
+                        caption_image_height,
+                        caption_style,
+                        max_colors,
+                        dither_type,
+                        drop_frames_factor,
+                        target_format,
+                        loop_count,
+                        fps,
+                        trim_start,
+                        trim_end,
+                        data_dir,
+                        &ffmpeg,
+                        transcode_progress,
+                    )
+                    .await;
+                    match res {
+                        Ok(()) => Response::Success,
+                        Err(e) => Response::Error {
+                            message: e.to_string(),
+                        },
+                    }
+                }
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+        Request::SplitGif {
+            job_id,
+            input_path,
+            output_dir,
+        } => {
+            let resolved_input = resolve_relative_path(data_dir, &input_path);
+            let resolved_output_dir = resolve_relative_path(data_dir, &output_dir);
+            match resolve_ffmpeg_path(data_dir, settings).await {
+                Ok(ffmpeg) => {
+                    let res = gif::split_gif(
+                        job_id,
+                        resolved_input,
+                        resolved_output_dir,
+                        &ffmpeg,
+                        transcode_progress,
+                    )
+                    .await;
+                    match res {
+                        Ok(()) => Response::Success,
+                        Err(e) => Response::Error {
+                            message: e.to_string(),
+                        },
+                    }
+                }
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        Request::GetMediaMetadata { path } => {
+            let resolved_path = resolve_relative_path(data_dir, &path);
+            match resolve_ffmpeg_path(data_dir, settings).await {
+                Ok(ffmpeg) => {
+                    match curator_core::video::read_video_metadata(Path::new(&resolved_path), &ffmpeg) {
+                        Ok(meta) => {
+                            let duration_secs = meta.duration_ms as f64 / 1000.0;
+                            let total_frames = (duration_secs * meta.fps).round() as u32;
+                            Response::MediaMetadataResult {
+                                duration_ms: meta.duration_ms,
+                                fps: meta.fps,
+                                total_frames,
+                            }
+                        }
+                        Err(e) => Response::Error {
+                            message: format!("Failed to read metadata: {}", e),
+                        },
+                    }
+                }
+                Err(e) => Response::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+
+
 
         Request::GetTaggerStatus => {
             let preferred = { settings.lock().await.preferred_tagger };

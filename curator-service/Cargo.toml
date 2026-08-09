@@ -21,3 +21,6 @@ tonic = { workspace = true }
 tokio-util = "0.7"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sysinfo = { version = "0.33.0" }
+image = "0.25"
+base64 = "0.22"
+

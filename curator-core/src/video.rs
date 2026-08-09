@@ -216,6 +216,34 @@ fn probe_with_ffprobe(path: &Path, ffprobe: &Path) -> Result<VideoInfo> {
         .as_deref()
         .or(probe.format.bit_rate.as_deref());
 
+    let mut duration_ms = parse_secs_to_ms(duration_src);
+    let fps = parse_ratio(fps_src);
+
+    if duration_ms == 0 && fps > 0.0 {
+        if let Ok(out) = Command::new(ffprobe)
+            .arg("-v")
+            .arg("error")
+            .arg("-select_streams")
+            .arg("v:0")
+            .arg("-show_entries")
+            .arg("stream=nb_read_frames")
+            .arg("-count_frames")
+            .arg("-print_format")
+            .arg("csv")
+            .arg(path)
+            .output()
+        {
+            if out.status.success() {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                if let Some(val) = stdout.trim().split(',').nth(1) {
+                    if let Ok(frames) = val.trim().parse::<f64>() {
+                        duration_ms = ((frames / fps) * 1000.0).round() as i64;
+                    }
+                }
+            }
+        }
+    }
+
     Ok(VideoInfo {
         format: probe
             .format
@@ -225,8 +253,8 @@ fn probe_with_ffprobe(path: &Path, ffprobe: &Path) -> Result<VideoInfo> {
             .next()
             .unwrap_or("")
             .to_string(),
-        duration_ms: parse_secs_to_ms(duration_src),
-        fps: parse_ratio(fps_src),
+        duration_ms,
+        fps,
         video_codec: vs.codec_name.clone().unwrap_or_else(|| "unknown".into()),
         audio_codec: audio_stream.and_then(|s| s.codec_name.clone()),
         audio_bitrate: audio_stream

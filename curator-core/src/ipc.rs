@@ -246,6 +246,49 @@ pub enum Request {
     BenchmarkPreprocess {
         image_path: String,
     },
+    CreateGifFromImages {
+        job_id: String,
+        image_pattern: String,
+        frame_rate: f32,
+        output_path: String,
+        width: Option<u32>,
+        height: Option<u32>,
+        loop_count: Option<i32>,
+        target_format: String,
+    },
+    ProcessGifEffects {
+        job_id: String,
+        input_path: String,
+        output_path: String,
+        crop: Option<String>,
+        scale: Option<String>,
+        speed_multiplier: Option<f32>,
+        reverse: bool,
+        bounce: bool,
+        rotate: Option<String>,
+        brightness: Option<f32>,
+        contrast: Option<f32>,
+        saturation: Option<f32>,
+        grayscale: bool,
+        invert: bool,
+        caption_image_base64: Option<String>,
+        caption_image_height: Option<u32>,
+        caption_style: Option<String>,
+        max_colors: Option<u32>,
+        dither_type: Option<String>,
+        drop_frames_factor: Option<u32>,
+        target_format: String,
+        loop_count: Option<i32>,
+        fps: Option<u32>,
+        trim_start: Option<f64>,
+        trim_end: Option<f64>,
+    },
+    SplitGif {
+        job_id: String,
+        input_path: String,
+        output_dir: String,
+    },
+
     /// Get current settings (device preferences, etc.).
     GetSettings,
     /// Clear detection crop cache.
@@ -562,6 +605,10 @@ pub enum Request {
         from_tagger: TaggerModel,
         to_tagger: TaggerModel,
     },
+    /// Get metadata for a media file (duration, fps, etc.) via ffprobe.
+    GetMediaMetadata {
+        path: String,
+    },
 }
 
 /// Per-tagger CPU/GPU inference benchmark result. The benchmark runs every
@@ -658,6 +705,8 @@ pub enum Response {
         resolved_path: Option<String>,
         version: Option<String>,
         available: bool,
+        /// Path to the portable build in `.curator/bin/`, if it exists.
+        portable_path: Option<String>,
     },
     /// Live progress of an asynchronous transcode job.
     TranscodeProgressResult {
@@ -1006,6 +1055,11 @@ pub enum Response {
     },
     StorageStatsResult {
         stats: StorageStats,
+    },
+    MediaMetadataResult {
+        duration_ms: i64,
+        fps: f64,
+        total_frames: u32,
     },
 }
 

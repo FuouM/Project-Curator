@@ -208,6 +208,27 @@ async fn select_path(is_directory: bool) -> Result<Option<String>, String> {
     }
 }
 
+#[tauri::command]
+async fn get_file_size(path: String) -> Result<Option<u64>, String> {
+    let p = std::path::Path::new(&path);
+    if p.is_file() {
+        Ok(std::fs::metadata(p).map(|m| m.len()).ok())
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+async fn save_file_dialog(suggested_name: String, filter_name: String, extensions: Vec<String>) -> Result<Option<String>, String> {
+    let ext_refs: Vec<&str> = extensions.iter().map(|s| s.as_str()).collect();
+    let file = rfd::AsyncFileDialog::new()
+        .set_file_name(&suggested_name)
+        .add_filter(&filter_name, &ext_refs)
+        .save_file()
+        .await;
+    Ok(file.map(|f| f.path().to_string_lossy().to_string()))
+}
+
 fn read_last_n_bytes(path: &std::path::Path, max_bytes: usize) -> std::io::Result<String> {
     use std::fs::File;
     use std::io::{Read, Seek, SeekFrom};
@@ -444,6 +465,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             send_to_service,
             select_path,
+            save_file_dialog,
+            get_file_size,
             read_logs,
             read_service_logs,
             clear_logs,

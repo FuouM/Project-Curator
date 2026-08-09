@@ -19,6 +19,7 @@ futures-util = "0.3"
 usearch = "2"
 image = "0.25"
 fast_image_resize = "5"
+ab_glyph = "0.2"
 turbojpeg = "1"
 png = { version = "0.18", features = ["zlib-rs"] }
 ndarray = "0.17"

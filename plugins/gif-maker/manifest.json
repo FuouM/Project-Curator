@@ -1,0 +1,12 @@
+{
+  "name": "gif-maker",
+  "version": "1.0.0",
+  "description": "Port of ezgif: create, crop, resize, optimize, capture, and add iFunny captions to GIFs and videos in a non-destructive editor workspace.",
+  "author": "Project Curator",
+  "permissions": ["ui:inject"],
+  "components": {
+    "ui": "index.js",
+    "type": "javascript"
+  },
+  "hooks": []
+}

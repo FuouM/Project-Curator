@@ -649,6 +649,14 @@ pub async fn download_ffmpeg(
         }
 
         // ── 2. Extract ffmpeg.exe + ffprobe.exe into bin/ ─────────────────
+        // Signal extracting state so the frontend can update its label.
+        {
+            let mut progress = progress_map_clone.lock().await;
+            if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
+                p.status = "extracting".to_string();
+            }
+        }
+
         // zip::ZipArchive holds a non-Send reader, so extraction runs on a
         // blocking thread; the extracted count/error are reported afterwards.
         let extract_res = {
