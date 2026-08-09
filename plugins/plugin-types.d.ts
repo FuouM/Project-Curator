@@ -95,6 +95,19 @@ declare interface Window {
   /** Exposed by curator-dashboard/src/plugin-host.ts before plugins load. */
   PluginHost: PluginHostApi;
 
+  /**
+   * Absolute path to the currently-loading plugin's directory, set by the
+   * Plugin Host immediately before the plugin bundle is injected and deleted
+   * immediately after. Use this to build absolute paths for local binary
+   * assets (fonts, images) that must be passed to `PluginHost.convertFileSrc`.
+   *
+   * @example
+   * var fontUrl = PluginHost.convertFileSrc(
+   *   (window.__curator_plugin_dir__ ?? "") + "\\MyFont.otf"
+   * );
+   */
+  __curator_plugin_dir__?: string;
+
   /** Injected by Tauri v2 WebView2 runtime. Optional — guard before use. */
   __TAURI__?: {
     core?: TauriCore;

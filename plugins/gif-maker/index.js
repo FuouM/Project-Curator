@@ -202,10 +202,14 @@
   `;
   document.head.appendChild(style);
 
-  // Load Roboto Condensed Bold via font face if present
+  // Load Roboto Condensed Bold via font face if present.
+  // window.__curator_plugin_dir__ is set by the Plugin Host to the plugin's
+  // absolute directory immediately before this bundle executes, giving us an
+  // absolute path that convertFileSrc can resolve to http://asset.localhost/.
+  var pluginDir = window.__curator_plugin_dir__ || "";
   var robotoFace = new FontFace(
     "Roboto Condensed Bold",
-    "url(" + PH.convertFileSrc("plugins/gif-maker/Roboto_Condensed_Bold.otf") + ")"
+    "url(" + PH.convertFileSrc(pluginDir + "\\Roboto_Condensed_Bold.otf") + ")"
   );
   robotoFace.load().then(function (loaded) {
     document.fonts.add(loaded);
