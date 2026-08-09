@@ -585,6 +585,12 @@ export function previewMediaFile(filePath: string): void {
   }
 
   const safeUrl = PH.convertFileSrc(absolutePath);
+  console.log("gif-maker path debug:", {
+    workspaceRoot,
+    filePath,
+    absolutePath,
+    safeUrl
+  });
 
   if (isVideo) {
     img.style.display = "none";
@@ -1178,7 +1184,7 @@ export function pollCompilationProgress(jobId: string, description: string, file
       if (bar) bar.style.width = pct + "%";
       if (text) text.textContent = pct + "%";
     },
-    onComplete: (ok) => {
+    onComplete: (ok, lastProgress) => {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       state.activeJobId = null;
 
@@ -1193,7 +1199,7 @@ export function pollCompilationProgress(jobId: string, description: string, file
       if (bar) bar.style.width = "100%";
       if (text) text.textContent = "100%";
 
-      const finalPath = filePath;
+      const finalPath = (lastProgress?.raw?.output_path as string) || filePath;
       if (finalPath.endsWith("_frames") || jobId.startsWith("split_")) {
         logConsole(`Frames generated inside folder ${finalPath}`, "success");
       } else {

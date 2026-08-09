@@ -124,7 +124,7 @@
         raw
       };
       if (onTick(progress), !progress.running) {
-        onComplete(progress.percent >= 100 && !progress.error);
+        onComplete(progress.percent >= 100 && !progress.error, progress);
         return;
       }
       setTimeout(tick, intervalMs);
@@ -455,7 +455,12 @@
     let absolutePath = filePath;
     filePath && !/^[a-zA-Z]:[\\/]/.test(filePath) && !filePath.startsWith("\\\\") && (absolutePath = workspaceRoot + "\\" + filePath);
     let safeUrl = PH3.convertFileSrc(absolutePath);
-    isVideo ? (img.style.display = "none", vid.style.display = "block", vid.src = safeUrl, vid.onloadedmetadata = () => {
+    console.log("gif-maker path debug:", {
+      workspaceRoot,
+      filePath,
+      absolutePath,
+      safeUrl
+    }), isVideo ? (img.style.display = "none", vid.style.display = "block", vid.src = safeUrl, vid.onloadedmetadata = () => {
       state.currentMedia.width = vid.videoWidth, state.currentMedia.height = vid.videoHeight, logConsole(`Loaded video metadata: ${vid.videoWidth}x${vid.videoHeight}`, "success"), PH3.callService("GetMediaMetadata", { path: filePath }).then((resp) => {
         if (resp && resp.MediaMetadataResult) {
           if (state.currentMedia.durationMs = resp.MediaMetadataResult.duration_ms, state.currentMedia.fps = resp.MediaMetadataResult.fps, state.currentMedia.totalFrames = resp.MediaMetadataResult.total_frames, logConsole(
@@ -821,14 +826,15 @@
         let pct = progress.percent;
         bar && (bar.style.width = pct + "%"), text && (text.textContent = pct + "%");
       },
-      onComplete: (ok) => {
+      onComplete: (ok, lastProgress) => {
+        var _a;
         let elapsed = ((Date.now() - startTime) / 1e3).toFixed(1);
         if (state.activeJobId = null, !ok) {
           logConsole(`Job Failed (took ${elapsed}s)`, "error"), bar && (bar.style.width = "0%"), text && (text.textContent = "0%");
           return;
         }
         logConsole(`Compilation completed successfully! (took ${elapsed}s)`, "success"), bar && (bar.style.width = "100%"), text && (text.textContent = "100%");
-        let finalPath = filePath;
+        let finalPath = ((_a = lastProgress == null ? void 0 : lastProgress.raw) == null ? void 0 : _a.output_path) || filePath;
         finalPath.endsWith("_frames") || jobId.startsWith("split_") ? logConsole(`Frames generated inside folder ${finalPath}`, "success") : pushHistoryState(finalPath, description);
       }
     });

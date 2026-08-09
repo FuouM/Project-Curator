@@ -41,8 +41,9 @@ export interface PollOptions {
   /**
    * Called once when the job finishes (either success or failure).
    * `success` is true only if percent reached 100 and no error was reported.
+   * `lastProgress` contains the final status, including backend-resolved output paths.
    */
-  onComplete: (success: boolean) => void;
+  onComplete: (success: boolean, lastProgress?: TranscodeProgress) => void;
   /** Polling interval in milliseconds. Defaults to 500ms. */
   intervalMs?: number;
 }
@@ -98,7 +99,7 @@ export function pollTranscodeProgress({
     onTick(progress);
 
     if (!progress.running) {
-      onComplete(progress.percent >= 100 && !progress.error);
+      onComplete(progress.percent >= 100 && !progress.error, progress);
       return;
     }
 

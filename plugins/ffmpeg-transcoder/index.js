@@ -159,7 +159,7 @@
         raw
       };
       if (onTick(progress), !progress.running) {
-        onComplete(progress.percent >= 100 && !progress.error);
+        onComplete(progress.percent >= 100 && !progress.error, progress);
         return;
       }
       setTimeout(tick, intervalMs);
