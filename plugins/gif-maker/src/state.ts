@@ -67,4 +67,5 @@ export const state: GifMakerState = {
 };
 
 export const workspaceRoot: string = (window as any).__curator_workspace_root__ || "";
+export const pluginDir: string = (window as any).__curator_plugin_dir__ || "";
 

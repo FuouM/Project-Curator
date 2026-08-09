@@ -23,7 +23,7 @@
       resizing: !1,
       needsReset: !0
     }
-  }, workspaceRoot = window.__curator_workspace_root__ || "";
+  }, workspaceRoot = window.__curator_workspace_root__ || "", pluginDir = window.__curator_plugin_dir__ || "";
 
   // lib/log.ts
   var LOG_COLORS = {
@@ -1483,9 +1483,7 @@
     });
   }
   function renderGifMakerTab() {
-    injectStyles();
-    let pluginDir = window.__curator_plugin_dir__ || "";
-    new FontFace(
+    injectStyles(), new FontFace(
       "Roboto Condensed Bold",
       `url(${PH3.convertFileSrc(pluginDir + "\\Roboto_Condensed_Bold.otf")})`
     ).load().then((loaded) => {

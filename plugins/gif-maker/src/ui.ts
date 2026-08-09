@@ -2,7 +2,7 @@
  * UI layout, events, crop logic, and canvas assembly for gif-maker.
  */
 
-import { state, TAB_ID, workspaceRoot } from "./state";
+import { state, TAB_ID, workspaceRoot, pluginDir } from "./state";
 import {
   createLogger,
   formatBytes,
@@ -2220,7 +2220,6 @@ export function renderGifMakerTab(): HTMLElement {
   injectStyles();
 
   // Load Roboto Condensed Bold immediately
-  const pluginDir = (window as any).__curator_plugin_dir__ || "";
   const robotoFace = new FontFace(
     "Roboto Condensed Bold",
     `url(${PH.convertFileSrc(pluginDir + "\\Roboto_Condensed_Bold.otf")})`
