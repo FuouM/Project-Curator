@@ -28,7 +28,7 @@
     busy: !1
   };
 
-  // image-converter/src/ipc.ts
+  // lib/ipc-utils.ts
   var PH = window.PluginHost;
   async function checkFileExists(path) {
     var _a;
@@ -48,22 +48,86 @@
     }
   }
 
-  // image-converter/src/ui.ts
+  // lib/log.ts
+  var LOG_COLORS = {
+    info: "#cccccc",
+    success: "#10b981",
+    error: "#f87171"
+  };
+  function createLogger(elementId) {
+    return function(message, kind = "info") {
+      let box = document.getElementById(elementId);
+      if (!box) return;
+      let line = document.createElement("div");
+      line.style.cssText = `font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:${LOG_COLORS[kind]};white-space:pre-wrap;word-break:break-all;`, line.textContent = message, box.appendChild(line), box.scrollTop = box.scrollHeight;
+    };
+  }
+
+  // lib/navigation.ts
+  function navigateToTab(tabId) {
+    let item = document.querySelector(
+      `.nav-item[data-view="extensions-${tabId}"]`
+    );
+    item && item.click();
+  }
+  function closeInfoModal() {
+    let modal = document.getElementById("image-info-modal");
+    if (!(modal != null && modal.classList.contains("active"))) return;
+    let closeBtn = modal.querySelector(".modal-close");
+    closeBtn ? closeBtn.click() : modal.classList.remove("active");
+  }
+
+  // lib/drop-zone.ts
+  var boundTabs = /* @__PURE__ */ new Set();
+  function setupDropZone(tabId, dropZoneIds, onFiles) {
+    var _a;
+    let api = window.__TAURI__;
+    if (!((_a = api == null ? void 0 : api.webview) != null && _a.getCurrentWebview) || boundTabs.has(tabId)) return;
+    boundTabs.add(tabId);
+    let ids = Array.isArray(dropZoneIds) ? dropZoneIds : [dropZoneIds];
+    api.webview.getCurrentWebview().onDragDropEvent((event) => {
+      var _a2, _b, _c;
+      let tabEl = document.getElementById(`view-extensions-${tabId}`);
+      if (!(tabEl != null && tabEl.classList.contains("active"))) return;
+      let drop = event.payload, getHitZoneId = () => {
+        let pos = drop.position;
+        if (!pos || typeof pos.x != "number") return null;
+        let cx = pos.x / window.devicePixelRatio, cy = pos.y / window.devicePixelRatio, hit = document.elementFromPoint(cx, cy);
+        if (!hit) return null;
+        for (let id of ids) {
+          let zone = document.getElementById(id);
+          if (zone && (zone === hit || zone.contains(hit))) return id;
+        }
+        return null;
+      };
+      if (drop.type === "enter" || drop.type === "over") {
+        let hitId = getHitZoneId();
+        for (let id of ids) {
+          let zone = document.getElementById(id);
+          zone && (id === hitId ? zone.classList.add("toolbox-drop-active") : zone.classList.remove("toolbox-drop-active"));
+        }
+      } else if (drop.type === "leave")
+        for (let id of ids)
+          (_a2 = document.getElementById(id)) == null || _a2.classList.remove("toolbox-drop-active");
+      else if (drop.type === "drop") {
+        let hitId = getHitZoneId();
+        for (let id of ids)
+          (_b = document.getElementById(id)) == null || _b.classList.remove("toolbox-drop-active");
+        let paths = (_c = drop.paths) != null ? _c : [];
+        paths.length > 0 && onFiles(paths, hitId);
+      }
+    });
+  }
+
+  // lib/poll.ts
   var PH2 = window.PluginHost;
+
+  // image-converter/src/ui.ts
+  var PH3 = window.PluginHost;
   function el(id) {
     return document.getElementById(id);
   }
-  function log(message, kind = "info") {
-    var _a;
-    let box = el("converter-log");
-    if (!box) return;
-    let colors = {
-      info: "#cccccc",
-      success: "#10b981",
-      error: "#f87171"
-    }, line = document.createElement("div");
-    line.style.cssText = `font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:${(_a = colors[kind]) != null ? _a : colors.info};white-space:pre-wrap;word-break:break-all;`, line.textContent = message, box.appendChild(line), box.scrollTop = box.scrollHeight;
-  }
+  var log = createLogger("converter-log"), navigateToTab2 = () => navigateToTab(TAB_ID);
   function updateQueueList() {
     let list = el("converter-queue-list");
     if (!list) return;
@@ -119,18 +183,6 @@
     let applies = state.targetExt === "jpg" || state.targetExt === "jpeg" || state.targetExt === "webp";
     wrapper.style.display = applies ? "" : "none", slider.disabled = !applies, note && (note.textContent = state.targetExt === "webp" ? "WebP output is lossless (quality not applied)." : "");
   }
-  function navigateToTab() {
-    let item = document.querySelector(
-      `.nav-item[data-view="extensions-${TAB_ID}"]`
-    );
-    item && item.click();
-  }
-  function closeInfoModal() {
-    let modal = document.getElementById("image-info-modal");
-    if (!(modal != null && modal.classList.contains("active"))) return;
-    let closeBtn = modal.querySelector(".modal-close");
-    closeBtn ? closeBtn.click() : modal.classList.remove("active");
-  }
   async function runConversion() {
     if (state.busy) return;
     if (state.queue.length === 0) {
@@ -156,7 +208,7 @@
     }
     log(`Converting ${conversions.length} file(s) to ${state.targetExt} ...`, "info");
     try {
-      let resp = await PH2.callService("EphemeralConvertImages", {
+      let resp = await PH3.callService("EphemeralConvertImages", {
         conversions,
         quality: state.quality
       });
@@ -172,25 +224,6 @@
     } finally {
       setBusy(!1);
     }
-  }
-  function setupDropZone() {
-    var _a;
-    let api = window.__TAURI__;
-    if (!((_a = api == null ? void 0 : api.webview) != null && _a.getCurrentWebview)) return;
-    let dropZone = el("converter-drop-zone");
-    api.webview.getCurrentWebview().onDragDropEvent((event) => {
-      var _a2;
-      let tabEl = document.getElementById(`view-extensions-${TAB_ID}`);
-      if (!(tabEl != null && tabEl.classList.contains("active"))) return;
-      let drop = event.payload, isOverDropZone = () => {
-        if (!dropZone) return !1;
-        let pos = drop.position;
-        if (!pos || typeof pos.x != "number") return !1;
-        let cx = pos.x / window.devicePixelRatio, cy = pos.y / window.devicePixelRatio, hit = document.elementFromPoint(cx, cy);
-        return !!hit && (dropZone.contains(hit) || dropZone === hit);
-      };
-      drop.type === "enter" || drop.type === "over" ? isOverDropZone() ? dropZone == null || dropZone.classList.add("toolbox-drop-active") : dropZone == null || dropZone.classList.remove("toolbox-drop-active") : drop.type === "leave" ? dropZone == null || dropZone.classList.remove("toolbox-drop-active") : drop.type === "drop" && (dropZone == null || dropZone.classList.remove("toolbox-drop-active"), ((_a2 = drop.paths) != null ? _a2 : []).forEach(addToQueue));
-    });
   }
   function renderTab() {
     var _a, _b, _c;
@@ -217,32 +250,34 @@
     }), outInput && outInput.addEventListener("change", () => {
       state.outputDir = outInput.value.trim();
     }), setTimeout(() => {
-      qualityVisibility(), setupDropZone(), updateQueueList(), updateProgress(0, state.queue.length);
+      qualityVisibility(), setupDropZone(TAB_ID, "converter-drop-zone", (paths) => {
+        paths.forEach(addToQueue);
+      }), updateQueueList(), updateProgress(0, state.queue.length);
     }, 0), container;
   }
 
   // image-converter/src/index.ts
-  var PH3 = window.PluginHost;
-  PH3 ? (PH3.registerTab(TAB_ID, "Image Converter", "bi bi-arrow-repeat", renderTab), PH3.registerMetadataRenderer("image-converter-send", (asset) => {
+  var PH4 = window.PluginHost;
+  PH4 ? (PH4.registerTab(TAB_ID, "Image Converter", "bi bi-arrow-repeat", renderTab), PH4.registerMetadataRenderer("image-converter-send", (asset) => {
     var _a;
     if (!(asset != null && asset.path)) return null;
     let box = document.createElement("div");
     return box.className = "group-box", box.style.cssText = "margin-top:8px;", box.innerHTML = '<div class="group-box-title"><i class="bi bi-arrow-repeat"></i> Image Converter</div><div style="display:flex;align-items:center;gap:8px;padding:2px 0;">  <span style="font-size:11px;color:#555;flex:1;">Queue this image for batch conversion.</span>  <button type="button" class="win-button" id="converter-send-asset">    <i class="bi bi-send"></i> Send to Converter  </button></div>', (_a = box.querySelector("#converter-send-asset")) == null || _a.addEventListener("click", () => {
-      addToQueue(asset.path), log(`Sent to converter: ${asset.path}`, "info"), closeInfoModal(), navigateToTab();
+      addToQueue(asset.path), log(`Sent to converter: ${asset.path}`, "info"), closeInfoModal(), navigateToTab2();
     }), box;
-  }), PH3.registerToolbarButton(
+  }), PH4.registerToolbarButton(
     "image-converter-selection",
     "Convert Selected",
     "bi bi-arrow-repeat",
     (selection) => {
       let paths = (selection != null ? selection : []).map((a) => a.path).filter(Boolean);
-      paths.length !== 0 && (paths.forEach(addToQueue), closeInfoModal(), navigateToTab());
+      paths.length !== 0 && (paths.forEach(addToQueue), closeInfoModal(), navigateToTab2());
     }
-  ), PH3.registerContextMenuItem(
+  ), PH4.registerContextMenuItem(
     "image-converter-ctx",
     "Send to Converter",
     (asset) => {
-      asset != null && asset.path && (addToQueue(asset.path), closeInfoModal(), navigateToTab());
+      asset != null && asset.path && (addToQueue(asset.path), closeInfoModal(), navigateToTab2());
     }
   ), console.log(
     "image-converter: registered tab, renderer, toolbar button, and context menu item."

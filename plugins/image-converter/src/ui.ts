@@ -18,6 +18,12 @@
 
 import { CONVERT_FORMATS, TAB_ID, state } from "./state";
 import { getUniqueOutputPath } from "./ipc";
+import {
+  createLogger,
+  navigateToTab as _navigateToTab,
+  closeInfoModal,
+  setupDropZone as _setupDropZone,
+} from "../../lib";
 
 const PH = window.PluginHost;
 
@@ -30,36 +36,19 @@ function el<T extends HTMLElement = HTMLElement>(id: string): T | null {
 }
 
 // ---------------------------------------------------------------------------
-// Log console
+// Plugin-scoped helpers from shared lib
 // ---------------------------------------------------------------------------
 
-/** Append a line to the embedded diagnostic log box. */
-export function log(
-  message: string,
-  kind: "info" | "success" | "error" = "info"
-): void {
-  const box = el("converter-log");
-  if (!box) return;
+/** Logger bound to this plugin's log console element. */
+export const log = createLogger("converter-log");
 
-  // Colors mirror the app's System Diagnostic Logs console.
-  const colors: Record<string, string> = {
-    info: "#cccccc",
-    success: "#10b981",
-    error: "#f87171",
-  };
+/** Navigate to this plugin's sidebar tab. */
+export const navigateToTab = (): void => _navigateToTab(TAB_ID);
 
-  const line = document.createElement("div");
-  line.style.cssText =
-    `font-family:'Consolas',monospace;font-size:11px;line-height:1.4;` +
-    `color:${colors[kind] ?? colors.info};white-space:pre-wrap;word-break:break-all;`;
-  line.textContent = message;
-  box.appendChild(line);
-  box.scrollTop = box.scrollHeight;
-}
+/** Close info modal — re-exported from lib for use in index.ts. */
+export { closeInfoModal };
 
-// ---------------------------------------------------------------------------
-// Queue management
-// ---------------------------------------------------------------------------
+
 
 /** Re-render the queue list from the current state.queue array. */
 export function updateQueueList(): void {
@@ -189,25 +178,6 @@ export function qualityVisibility(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Navigation helpers
-// ---------------------------------------------------------------------------
-
-export function navigateToTab(): void {
-  const item = document.querySelector<HTMLElement>(
-    `.nav-item[data-view="extensions-${TAB_ID}"]`
-  );
-  if (item) item.click();
-}
-
-export function closeInfoModal(): void {
-  const modal = document.getElementById("image-info-modal");
-  if (!modal?.classList.contains("active")) return;
-  const closeBtn = modal.querySelector<HTMLElement>(".modal-close");
-  if (closeBtn) closeBtn.click();
-  else modal.classList.remove("active");
-}
-
-// ---------------------------------------------------------------------------
 // Conversion orchestration
 // ---------------------------------------------------------------------------
 
@@ -280,53 +250,6 @@ export async function runConversion(): Promise<void> {
   } finally {
     setBusy(false);
   }
-}
-
-// ---------------------------------------------------------------------------
-// Tauri v2 native drag-drop
-// ---------------------------------------------------------------------------
-
-/**
- * Registers the Tauri v2 native window drag-drop listener for the converter
- * drop zone. Must be called after the tab DOM is attached to the document
- * (i.e., inside the renderTab setTimeout callback).
- *
- * Standard HTML5 e.dataTransfer.files is suppressed by WebView2 security
- * policies, so we use the Tauri-native drop event API instead.
- */
-export function setupDropZone(): void {
-  const api = window.__TAURI__;
-  if (!api?.webview?.getCurrentWebview) return;
-
-  const dropZone = el("converter-drop-zone");
-
-  api.webview.getCurrentWebview().onDragDropEvent((event) => {
-    // Ignore events while another plugin tab is active.
-    const tabEl = document.getElementById(`view-extensions-${TAB_ID}`);
-    if (!tabEl?.classList.contains("active")) return;
-
-    const drop = event.payload;
-
-    const isOverDropZone = (): boolean => {
-      if (!dropZone) return false;
-      const pos = drop.position;
-      if (!pos || typeof pos.x !== "number") return false;
-      const cx = pos.x / window.devicePixelRatio;
-      const cy = pos.y / window.devicePixelRatio;
-      const hit = document.elementFromPoint(cx, cy);
-      return !!hit && (dropZone.contains(hit) || dropZone === hit);
-    };
-
-    if (drop.type === "enter" || drop.type === "over") {
-      if (isOverDropZone()) dropZone?.classList.add("toolbox-drop-active");
-      else dropZone?.classList.remove("toolbox-drop-active");
-    } else if (drop.type === "leave") {
-      dropZone?.classList.remove("toolbox-drop-active");
-    } else if (drop.type === "drop") {
-      dropZone?.classList.remove("toolbox-drop-active");
-      (drop.paths ?? []).forEach(addToQueue);
-    }
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -482,13 +405,15 @@ export function renderTab(): HTMLElement {
     });
   }
 
-  // DOM queries inside qualityVisibility, setupDropZone, updateQueueList, and
+  // DOM queries inside qualityVisibility, _setupDropZone, updateQueueList, and
   // updateProgress all target elements that are still detached from the
   // document at this point. Defer until after the Plugin Host appends the
   // container to the view section.
   setTimeout(() => {
     qualityVisibility();
-    setupDropZone();
+    _setupDropZone(TAB_ID, "converter-drop-zone", (paths) => {
+      paths.forEach(addToQueue);
+    });
     updateQueueList();
     updateProgress(0, state.queue.length);
   }, 0);
