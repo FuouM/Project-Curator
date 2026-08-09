@@ -27,18 +27,56 @@ Project Curator Runtime
 
 ## 2. Directory & Workspace Structure
 
-All plugins reside in the `plugins/` directory at the repository root:
+All plugins reside in the `plugins/` directory at the repository root.
+
+### Single-file plugins (legacy / simple)
 
 ```bash
 project-curator/
 └── plugins/
-    ├── ffmpeg-transcoder/   # Official video transcode plugin
-    ├── image-converter/     # Official image format conversion plugin
-    ├── image-compare/       # Official side-by-side & slider compare plugin
     └── <my-plugin-name>/
         ├── manifest.json    # Plugin declaration & permission manifest
-        └── index.js         # Main UI & logic bundle (IIFE)
+        └── index.js         # Hand-authored IIFE (no build step)
 ```
+
+### Multi-file TypeScript plugins (preferred for new work)
+
+Plugins with non-trivial logic should be authored as TypeScript modules under
+a `src/` directory. The build tooling in `plugins/` compiles them into the
+single `index.js` IIFE that the Plugin Host loads.
+
+```bash
+project-curator/
+└── plugins/
+    ├── build.js             # esbuild bundle script: node build.js --plugin <name> | --all
+    ├── watch.js             # Dev watcher:           node watch.js --plugin <name>
+    ├── package.json         # npm manifest + convenience scripts
+    ├── tsconfig.json        # TS config (noEmit — esbuild handles transpilation)
+    ├── plugin-types.d.ts    # Ambient globals: window.PluginHost, window.__TAURI__
+    └── <my-plugin-name>/
+        ├── manifest.json    # unchanged — still points to index.js
+        ├── index.js         # AUTO-GENERATED bundle (kept in git; do not edit)
+        └── src/
+            ├── index.ts     # Entry point: imports modules, calls PH.register*()
+            ├── state.ts     # Shared mutable state object
+            ├── ipc.ts       # Pure IPC helpers (no DOM)
+            └── ui.ts        # All DOM rendering & event logic
+```
+
+### Build commands
+
+```powershell
+cd plugins
+npm install                          # first time only — installs esbuild
+
+npm run build:image-converter        # build one plugin
+npm run watch:image-converter        # rebuild on every src/ save (dev mode)
+npm run build                        # rebuild all multi-file plugins at once
+```
+
+Plugins with no `src/index.ts` are silently skipped by the build scripts, so
+existing single-file plugins (`ffmpeg-transcoder`, `image-compare`, `gif-maker`)
+continue to work without any changes.
 
 ---
 

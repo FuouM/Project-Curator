@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    // Target matches esbuild's target — no down-compilation needed.
+    "target": "ES2017",
+    // ESNext modules so esbuild can tree-shake import/export statements.
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Strict mode catches real bugs early.
+    "strict": true,
+    // tsc is type-check only; esbuild handles transpilation.
+    "noEmit": true,
+    "lib": ["ES2017", "DOM"],
+    // No implicit any; explicit return types encouraged.
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    // Plugin source files share one ambient declaration file.
+    "types": []
+  },
+  "include": [
+    "plugin-types.d.ts",
+    "*/src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
