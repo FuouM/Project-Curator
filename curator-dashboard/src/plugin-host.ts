@@ -126,17 +126,18 @@ window.PluginHost = pluginHost;
 
 /** Execute a plugin JS bundle in global scope. Throws propagate to the caller's
  *  try/catch (inline script execution is synchronous). */
-function executePluginBundle(code: string, pluginName: string, pluginDir: string): void {
-  // Expose the plugin's absolute directory before the bundle runs so plugins
-  // can construct absolute paths for local binary assets (fonts, images, etc.)
-  // via PluginHost.convertFileSrc(window.__curator_plugin_dir__ + "\\asset.otf").
+function executePluginBundle(code: string, pluginName: string, pluginDir: string, workspaceRoot: string): void {
+  // Expose absolute directories before the bundle runs so plugins
+  // can construct absolute paths for local binary assets and temporary files.
   (window as any).__curator_plugin_dir__ = pluginDir;
+  (window as any).__curator_workspace_root__ = workspaceRoot;
   const script = document.createElement("script");
   script.textContent = code;
   script.setAttribute("data-plugin", pluginName);
   document.head.appendChild(script);
   document.head.removeChild(script);
   delete (window as any).__curator_plugin_dir__;
+  delete (window as any).__curator_workspace_root__;
 }
 
 function clearRegistry() {
@@ -183,8 +184,11 @@ export async function initPlugins() {
       // Derive the plugin's absolute directory from its manifest path.
       // manifest_path is e.g. "K:\...\plugins\gif-maker\manifest.json"
       const pluginDir = p.manifest_path
-        .replace(/[\\/][^\\/]+$/, ""); // strip filename, keep dir
-      executePluginBundle(fileResp.PluginFileResult.content, p.name, pluginDir);
+        .replace(/[\\/][^\\/]+$/, ""); // strip manifest.json
+      const workspaceRoot = pluginDir
+        .replace(/[\\/][^\\/]+$/, "")  // strip plugin directory name
+        .replace(/[\\/][^\\/]+$/, ""); // strip "plugins"
+      executePluginBundle(fileResp.PluginFileResult.content, p.name, pluginDir, workspaceRoot);
       console.log(`Plugin "${p.name}" bundle loaded and executed.`);
     } catch (e) {
       console.error(`Plugin "${p.name}": bundle load failed, skipping (core UI untouched):`, e);

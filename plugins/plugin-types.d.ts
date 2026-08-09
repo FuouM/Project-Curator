@@ -108,6 +108,14 @@ declare interface Window {
    */
   __curator_plugin_dir__?: string;
 
+  /**
+   * Absolute path to the workspace root directory, set by the Plugin Host
+   * immediately before the plugin bundle is injected and deleted immediately
+   * after. Use this to resolve absolute paths for temporary files (e.g.
+   * inside `.curator/temp_gif/`) before passing to `PluginHost.convertFileSrc`.
+   */
+  __curator_workspace_root__?: string;
+
   /** Injected by Tauri v2 WebView2 runtime. Optional — guard before use. */
   __TAURI__?: {
     core?: TauriCore;
