@@ -64,6 +64,15 @@
     };
   }
 
+  // lib/format.ts
+  function formatBytes(bytes, fallback = "", decimals = 2) {
+    var _a;
+    if (bytes == null || isNaN(bytes) || bytes < 0) return fallback;
+    if (bytes === 0) return "0 B";
+    let units = ["B", "KB", "MB", "GB", "TB"], i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(decimals)} ${(_a = units[i]) != null ? _a : "B"}`;
+  }
+
   // lib/navigation.ts
   function navigateToTab(tabId) {
     let item = document.querySelector(
@@ -288,11 +297,12 @@
         log("FAIL " + src + " - " + msg, "error"), next(index + 1);
         return;
       }
-      let commandLogged = !1, startedAt = Date.now();
+      let commandLogged = !1, startedAt = Date.now(), lastProgress = null;
       pollTranscodeProgress({
         jobId,
         onTick: (progress) => {
           var _a;
+          lastProgress = progress;
           let pct = progress.percent, fill = el("transcoder-progress-fill"), text = el("transcoder-progress-text");
           fill && (fill.style.width = pct + "%");
           let base = src.split(/[\\/]/).pop();
@@ -307,7 +317,16 @@
             log("FAIL " + src + " - transcode job failed or ended early. (" + formatDuration(Date.now() - startedAt) + ")", "error"), setBusy(!1), updateProgress(0, state.queue.length), next(index + 1);
             return;
           }
-          log("OK " + src + "  ->  " + tgt + "  (" + formatDuration(Date.now() - startedAt) + ")", "success"), setBusy(!1), updateProgress(0, state.queue.length), next(index + 1);
+          let sizeInfo = "";
+          if (lastProgress && lastProgress.raw) {
+            let raw = lastProgress.raw, inputSize = raw.input_size_bytes, outputSize = raw.output_size_bytes;
+            if (inputSize != null && outputSize !== void 0 && outputSize !== null) {
+              let breakdown = "", outVideo = raw.output_video_size_bytes, outAudio = raw.output_audio_size_bytes;
+              outVideo != null && outAudio !== void 0 && outAudio !== null && (breakdown = " (Video: " + formatBytes(outVideo) + ", Audio: " + formatBytes(outAudio) + ")"), sizeInfo = " [" + formatBytes(inputSize) + " -> " + formatBytes(outputSize) + breakdown + "]";
+            }
+          }
+          let msg = "OK " + src + sizeInfo + "  ->  " + tgt + "  (" + formatDuration(Date.now() - startedAt) + ")";
+          log(msg, "success"), console.log("ffmpeg-transcoder: " + msg), setBusy(!1), updateProgress(0, state.queue.length), next(index + 1);
         }
       });
     };

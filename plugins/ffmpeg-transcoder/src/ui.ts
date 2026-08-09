@@ -202,10 +202,12 @@ export async function runTranscode(): Promise<void> {
 
     let commandLogged = false;
     const startedAt = Date.now();
+    let lastProgress: any = null;
 
     pollTranscodeProgress({
       jobId,
       onTick: (progress) => {
+        lastProgress = progress;
         const pct = progress.percent;
         const fill = el("transcoder-progress-fill");
         const text = el("transcoder-progress-text");
@@ -228,9 +230,26 @@ export async function runTranscode(): Promise<void> {
           void next(index + 1);
           return;
         }
-        // Success case, read final progress values from some source or mock size metrics if needed
-        // Here we just print success. If we need to print size budget detail we can extract from raw
-        log("OK " + src + "  ->  " + tgt + "  (" + formatDuration(Date.now() - startedAt) + ")", "success");
+
+        let sizeInfo = "";
+        if (lastProgress && lastProgress.raw) {
+          const raw = lastProgress.raw;
+          const inputSize = raw.input_size_bytes;
+          const outputSize = raw.output_size_bytes;
+          if (inputSize !== undefined && inputSize !== null && outputSize !== undefined && outputSize !== null) {
+            let breakdown = "";
+            const outVideo = raw.output_video_size_bytes;
+            const outAudio = raw.output_audio_size_bytes;
+            if (outVideo !== undefined && outVideo !== null && outAudio !== undefined && outAudio !== null) {
+              breakdown = " (Video: " + formatBytes(outVideo) + ", Audio: " + formatBytes(outAudio) + ")";
+            }
+            sizeInfo = " [" + formatBytes(inputSize) + " -> " + formatBytes(outputSize) + breakdown + "]";
+          }
+        }
+
+        const msg = "OK " + src + sizeInfo + "  ->  " + tgt + "  (" + formatDuration(Date.now() - startedAt) + ")";
+        log(msg, "success");
+        console.log("ffmpeg-transcoder: " + msg);
         setBusy(false);
         updateProgress(0, state.queue.length);
         void next(index + 1);
