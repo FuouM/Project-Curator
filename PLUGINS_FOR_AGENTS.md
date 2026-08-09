@@ -9,7 +9,7 @@
 
 Project Curator uses a modular, decoupled plugin system. The application consists of a **Rust Core Engine** coupled with a **Tauri v2 Desktop Frontend** (Vite + TypeScript).
 
-```
+```bash
 Project Curator Runtime
 ├── Desktop Frontend (Tauri v2 WebView2)
 │   └── PluginHost API (window.PluginHost)
@@ -19,6 +19,7 @@ Project Curator Runtime
 ```
 
 ### Key Architectural Constraints
+
 * **Isolated Script Execution**: Plugins are authored as zero-dependency ES5/ES6 JavaScript IIFEs (`index.js`). They are read via IPC (`ReadPluginFile`) and executed in global webview scope via script tags.
 * **No Direct File Mutations**: Source media files must **never** be overwritten or mutated. Generated or converted artifacts are exported to specified output folders.
 * **Core API Gateway**: All interactions with the library, SQLite database, ONNX inference engine, and asset file conversion occur via `window.PluginHost`.
@@ -102,6 +103,7 @@ Every plugin **must** include a valid `manifest.json` file in its root directory
 ```
 
 ### Field Specifications
+
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `name` | `string` | **Yes** | Unique kebab-case identifier matching the directory name (e.g. `image-compare`). |
@@ -155,6 +157,7 @@ export interface PluginHostApi {
 ### API Capabilities Breakdown
 
 #### 1. Sidebar Navigation Tab Registration (`registerTab`)
+
 Registers a dedicated full-view extension tab in the application sidebar.
 
 ```javascript
@@ -171,6 +174,7 @@ PluginHost.registerTab(
 ```
 
 #### 2. Local Asset Path Conversion (`convertFileSrc`)
+
 Converts absolute Windows disk paths (`C:\...` or `K:\...`) into browser-safe asset protocol URLs (`http://asset.localhost/...`). **ALWAYS** use this function before assigning local file paths to `<img>` or `<video>` `src` attributes.
 
 ```javascript
@@ -179,6 +183,7 @@ var safeUrl = PluginHost.convertFileSrc("K:\\Pictures\\sample.png");
 ```
 
 #### 3. IPC Core Service Requests (`callService`)
+
 Executes asynchronous commands against the Rust backend engine over Named Pipes.
 
 ```javascript
@@ -191,6 +196,7 @@ PluginHost.callService("GetImage", { image_id: 42 }).then(function(response) {
 ```
 
 #### 4. Selection Context Queries (`getSelectionAssetContexts`)
+
 Fetches detailed metadata for all assets currently selected in the main gallery/search grid.
 
 ```javascript
@@ -202,6 +208,7 @@ PluginHost.getSelectionAssetContexts().then(function(selection) {
 ```
 
 #### 5. Image Info Modal Section Injector (`registerMetadataRenderer`)
+
 Injects a custom section inside the detail modal when inspecting an asset.
 
 ```javascript
@@ -215,6 +222,7 @@ PluginHost.registerMetadataRenderer("my-modal-section", function(asset) {
 ```
 
 #### 6. Grid Toolbar & Context Menu Actions
+
 Adds global action buttons to grid toolbars and right-click context menus.
 
 ```javascript
@@ -246,12 +254,14 @@ All plugin interfaces **must strictly adhere to Section 5 of `AGENTS.md`**.
 3. **Native Control Classes**:
    * Buttons: `.win-button`, `.win-button.primary`, `.win-button.danger`.
    * Group Boxes: Native fieldset grouping containers with titles:
+
      ```html
      <div class="group-box">
        <div class="group-box-title">Section Title</div>
        <!-- Content -->
      </div>
      ```
+
    * Tag Pills: Standard rank taxonomy classes: `.tag-pill.custom-concept` (Custom Concept), `.tag-pill.tag-character` (Character), `.tag-pill.tag-copyright` (Copyright), `.tag-pill.tag-meta` (Meta).
 4. **App Drop Zones**:
    * Use native `.toolbox-drop-zone`, `.toolbox-drop-icon`, and `.toolbox-drop-active` classes directly from `layout.css`.
@@ -314,6 +324,7 @@ function setupNativeTauriDropZone(canvasArea, onFilesDropped) {
 To guarantee sub-10ms UI responsiveness, high-frequency interaction tools (such as image comparison sliders, croppers, or interactive canvas tools) must observe strict performance practices:
 
 ### 1. Zero DOM Rebuild Interaction Loops
+
 Never recreate or replace DOM nodes during active mouse drag or wheel zoom events. Cache DOM references upon initial view creation and mutate properties inside a single `requestAnimationFrame` loop.
 
 ```javascript
@@ -330,6 +341,7 @@ function scheduleUpdate() {
 ```
 
 ### 2. Smooth Layer Clipping (No Image Decoder Texture Flicker)
+
 In WebKit/Chromium, applying dynamic `clip-path` mutations directly to an `<img>` element with `object-fit: contain` forces hardware decoder texture re-allocation, causing visible flickering and aspect-ratio glitching.
 
 **Rule**: Wrap `<img>` tags inside a plain DOM `<div>` wrapper, and apply `clip-path` mutations **only** to the plain `<div>` wrapper.
@@ -344,6 +356,7 @@ In WebKit/Chromium, applying dynamic `clip-path` mutations directly to an `<img>
 ```
 
 ### 3. Screen-Space Overlay Positioning
+
 Interactive UI handles, badges, or overlays should **never** be nested inside scaled/transformed image DOM containers. Position them in top-level viewport screen coordinates using forward matrix transformation equations:
 
 $$\text{center} = \frac{\text{viewportWidth}}{2}$$
@@ -357,6 +370,7 @@ $$\text{screenX} = (\text{localX} - \text{center}) \times \text{zoom} + \text{ce
 Inspecting official core plugins (`image-converter`, `ffmpeg-transcoder`, and `image-compare`) reveals key patterns every AI agent must adopt:
 
 ### Pattern 1: Non-Destructive File Collision Resolution
+
 Both `image-converter` and `ffmpeg-transcoder` process output files without overwriting existing files or corrupting library source assets.
 
 ```javascript
@@ -384,6 +398,7 @@ async function getUniqueOutputPath(sourcePath, outputDir, targetExt) {
 ```
 
 ### Pattern 2: Native Folder Picker Dialog Invocation
+
 Plugins can trigger Tauri's native OS directory selection modal directly without web input hacks:
 
 ```javascript
@@ -397,6 +412,7 @@ if (window.__TAURI__ && window.__TAURI__.core) {
 ```
 
 ### Pattern 3: Asynchronous Long-Running Task Polling (`GetTranscodeProgress`)
+
 For heavy CPU/GPU operations (video transcode, model export, batch processing), spawn the task via IPC, get a `job_id`, and poll progress using `setTimeout` recursion:
 
 ```javascript
@@ -418,6 +434,7 @@ function pollTaskProgress(jobId, doneCallback) {
 ```
 
 ### Pattern 4: Fast Queue Deduplication & Filename Disambiguation
+
 Maintain an array (`queue = []`) alongside a hash set (`inQueue = {}`) for $O(1)$ deduplication. If multiple queued files share identical filenames (e.g., `image.png`), display `parent_folder/image.png` in the list to prevent user ambiguity:
 
 ```javascript
@@ -435,6 +452,7 @@ if (basenames[base] > 1) {
 ```
 
 ### Pattern 5: Embedded Diagnostic Terminal Log Box
+
 Implement a WinForms dark diagnostic log console (`#1e1e1e` background, `'Consolas', monospace` font) that mirrors system logs (`#10b981` success, `#f87171` error, `#cccccc` info) and auto-scrolls on new log output:
 
 ```javascript
@@ -451,6 +469,7 @@ function appendLog(message, kind) {
 ```
 
 ### Pattern 6: Deferred Mounting Initializer (`setTimeout(fn, 0)`)
+
 In `renderTab()`, because the DOM node is detached while the factory function constructs it, `document.getElementById(...)` queries inside component setup subroutines will return `null`.
 
 **Fix**: Wrap post-mount initialization inside `setTimeout(..., 0)` so it runs immediately after the Plugin Host appends the tab container to `document.body`:
@@ -471,6 +490,7 @@ function renderTab() {
 ```
 
 ### Pattern 7: Seamless Cross-Tab Navigation & Modal Closure
+
 When triggering plugin actions from right-click context menus or modal action buttons, close the open modal and switch active view tab automatically:
 
 ```javascript
@@ -490,6 +510,7 @@ function navigateToPluginTab(tabId) {
 ```
 
 ### Pattern 8: Settings Persistence via Browser `localStorage`
+
 Persist user preferences (such as quality modes, custom CLI arguments, or verbose toggles) across app reloads using `localStorage`:
 
 ```javascript
@@ -572,13 +593,13 @@ Below is a complete, self-contained template for creating a new plugin:
 
 When authoring or modifying a plugin, verify the following points:
 
-- [ ] `manifest.json` specifies `"ui:inject"` under `permissions` and points to `"index.js"`.
-- [ ] Script bundle is wrapped in a self-executing IIFE `(function () { ... })();`.
-- [ ] Local asset file paths are converted using `PluginHost.convertFileSrc(path)` before assignment to `src`.
-- [ ] Interface strictly uses WinForms Desktop Control controls (`.group-box`, `.win-button`, `.toolbox-drop-zone`).
-- [ ] No emojis are present; official Bootstrap Icon markup `<i class="bi bi-..."></i>` is used throughout.
-- [ ] Drag-and-drop handles Tauri v2 native drops via `window.__TAURI__.webview.getCurrentWebview().onDragDropEvent`.
-- [ ] High-frequency interactions (zooming, panning, sliding) run via `requestAnimationFrame` with zero DOM reconstruction.
-- [ ] Long-running background jobs use non-destructive collision resolution (`getUniqueOutputPath`) and async status polling.
-- [ ] Post-mount DOM initializers run inside `setTimeout(fn, 0)`.
-- [ ] Frontend build test passes (`cd curator-dashboard; npm run build` exits with code 0).
+* [ ] `manifest.json` specifies `"ui:inject"` under `permissions` and points to `"index.js"`.
+* [ ] Script bundle is wrapped in a self-executing IIFE `(function () { ... })();`.
+* [ ] Local asset file paths are converted using `PluginHost.convertFileSrc(path)` before assignment to `src`.
+* [ ] Interface strictly uses WinForms Desktop Control controls (`.group-box`, `.win-button`, `.toolbox-drop-zone`).
+* [ ] No emojis are present; official Bootstrap Icon markup `<i class="bi bi-..."></i>` is used throughout.
+* [ ] Drag-and-drop handles Tauri v2 native drops via `window.__TAURI__.webview.getCurrentWebview().onDragDropEvent`.
+* [ ] High-frequency interactions (zooming, panning, sliding) run via `requestAnimationFrame` with zero DOM reconstruction.
+* [ ] Long-running background jobs use non-destructive collision resolution (`getUniqueOutputPath`) and async status polling.
+* [ ] Post-mount DOM initializers run inside `setTimeout(fn, 0)`.
+* [ ] Frontend build test passes (`cd curator-dashboard; npm run build` exits with code 0).

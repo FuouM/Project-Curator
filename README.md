@@ -1,130 +1,248 @@
 # Project Curator
 
-A high-performance, local-first asset curation engine engineered for multi-million image archives, unified source aggregation, and multi-modal semantic discovery.
+A high-performance, **local-first** asset curation engine for large image and video archives — semantic search, auto-tagging, OCR, character identification, and an extensible plugin system, all running entirely on local hardware.
 
 ![Project Curator Gallery Preview](assets/project_curator_gallery.png)
 
 ## Overview
 
-Modern digital asset management software frequently degrades at multi-million asset scales or fragments collections across isolated tools, download managers, and custom directory structures. **Project Curator** operates as a centralized hub designed to aggregate local storage hierarchies, specialized database networks (such as Hydrus), and automated download pipelines into a single, high-throughput indexing and retrieval engine.
+Project Curator is a local-first digital asset management (DAM) engine. Unlike cloud or hybrid solutions, all inference, indexing, and metadata storage happen on the user's machine — image data, tags, and AI model weights never leave the local environment.
 
-Built with Rust and Tauri, the system prioritizes computational performance, data integrity, and local execution:
+The system is built around a **single-writer background service**: the `curator-service` daemon owns the SQLite database and the vector index, runs all ONNX model inference, and exposes a gRPC API over a local Named Pipe (Windows) or Unix Domain Socket (macOS/Linux). The desktop GUI, headless CLI, and plugins are all clients of that one service — they never touch storage directly.
 
-* **Multi-Million Asset Scale:** Engineered to maintain sub-millisecond query performance across massive photo archives, art collections, and visual research libraries while consuming minimal system memory.
-* **Unified Source Aggregator:** Ingests and synchronizes metadata across arbitrary folder/filename hierarchies, download manager outputs, and external database systems without requiring data migration.
-* **Non-Destructive Local Indexing:** Reads, analyzes, and caches vectors and metadata in isolation. Original files, folder structures, and embedded sidecars are never modified or moved.
-* **Deterministic Local Inference:** All feature extraction, vector generation, OCR, and automated tag predictions execute entirely on local hardware via DirectML and CPU runtimes. No data ever leaves the local environment.
+**Non-destructive by design:** original files, folder layouts, and embedded sidecars are never modified, moved, or renamed. Everything is read, analyzed, and cached in isolation.
 
 ---
 
-## Multi-Modal Search Engine
+## Feature Overview
 
-Project Curator combines structured relational querying with deep learning inference, allowing users to locate assets using a wide range of complementary search modalities:
+### Multi-Modal Search
 
+| Modality | Description |
+| --- | --- |
+| **Semantic (CLIP)** | Natural-language query mapped into a 512-d visual feature space. Embedding models: **CLIP ViT-B/32** (default) or **MobileCLIP S2**. |
+| **Danbooru-style auto-tagging** | Two selectable multi-label taggers: **Camie Tagger v2** (default) and **WD EVA02 Tagger 2026 Canary** (optional; safetensors weights converted to ONNX in-app). Namespaced tag categories, tag blacklisting, confidence thresholds. |
+| **Reverse image search** | Query by image path — find visual lookalikes, composition variants, and near-duplicates via stored embeddings. |
+| **OCR text search** | PP-OCRv6 text detection/recognition with full-text search over in-image text. Optional textline orientation classifier and **manga speech-bubble detection** (quantized int8 YOLO). |
+| **Filename regex parsing** | Token-block builder compiles user rules into regex to extract artist names, dates, custom IDs, etc. Live test, batch preview, and batch apply modes. |
+| **Custom concepts** | Train personalized concept vectors from sample images (e.g., an art style or niche subject) for similarity matching, with clean auto-tag removal. |
+| **Character identification** | YOLO anime person detection + CCIP feature/metric embeddings. Assign detections to named character identities, auto-identify across the library, and search by character. |
+
+### Media Support
+
+- **Images:** PNG, JPEG, WebP, animated GIF, BMP, TIFF, QOI, TGA, PNM, HDR, ICO, EXR, AVIF.
+- **Animated GIFs:** per-frame metadata, animation timing, and loop count; a full create/crop/resize/effect/caption editor ships as the GIF Maker plugin.
+- **Videos:** MP4 and WebM probed via **FFmpeg** (dimensions, duration, fps, codecs, bitrate) with WebP frame previews. A background **transcoding service** converts between formats and codecs with live progress reporting. FFmpeg is auto-detected, or a portable build can be downloaded into the data directory.
+- Thumbnails and detection-crop thumbnails are generated on demand and cached in a dedicated SQLite cache.
+
+### Extensible Plugin System
+
+- Plugins are self-contained TypeScript bundles (`index.js`) declared by a `manifest.json` (name, version, permissions) and loaded by the dashboard's plugin host.
+- Built with **esbuild** from a TypeScript workspace that ships a shared `lib/` (logging, IPC utilities, drop-zone handling, progress polling).
+- Bundled plugins: **Image Converter**, **FFmpeg Transcoder**, **Image Compare**, and **GIF Maker**.
+
+### Toolbox (Ephemeral Processing)
+
+Run one-off operations on arbitrary files **without touching the library**: auto-tag, OCR, character detection, or batch image conversion against any path.
+
+### Model Management
+
+- Curated `model_manifest.json` catalog of ONNX models (embedding, tagging, detection, OCR) fetched from Hugging Face.
+- Download manager with live progress and cancellation; optional **int8/fp16 quantization**; in-app **safetensors → ONNX conversion** for WD EVA02; portable **FFmpeg** download.
+- Per-pipeline device preference (`auto` / `cpu` / `gpu`) and model precision, plus CPU-vs-GPU benchmarks for every model.
+
+---
+
+## System Architecture
+
+```txt
+┌────────────────────────────────────────────────────────────────────────┐
+│  Clients                                                               │
+│  ┌────────────────────┐  ┌───────────────┐  ┌────────────────────────┐ │
+│  │  curator-dashboard │  │ curator-cli   │  │ Plugins (bundled JS,   │ │
+│  │  Tauri v2 + Vite   │  │ headless CLI  │  │ injected UI panels)    │ │
+│  └─────────┬──────────┘  └──────┬────────┘  └────────────┬───────────┘ │
+└────────────┼────────────────────┼────────────────────────┼─────────────┘
+             │        gRPC over Named Pipe / Unix Domain Socket          
+             └────────────────────┼────────────────────────┘
+┌─────────────────────────────────▼──────────────────────────────────────┐
+│  curator-service  (single-writer background daemon)                    │
+│  ├── SQLite metadata store   (sqlx + versioned migrations)             │
+│  ├── USearch vector index    (in-memory dynamic index, 512-d)          │
+│  ├── ONNX Runtime inference  (DirectML / CoreML / CUDA / ROCm / CPU)   │
+│  │     ├── CLIP & MobileCLIP embeddings                                │
+│  │     ├── Camie & WD EVA02 taggers                                    │
+│  │     ├── YOLO person detection + CCIP character ID                   │
+│  │     └── PP-OCRv6 text detection/recognition + bubble detector       │
+│  ├── Background worker       (vector indexing job queue)               │
+│  └── Thumbnail / crop cache  (SQLite)                                  │
+└────────────────────────────────────────────────────────────────────────┘
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            PROJECT CURATOR SEARCH                           │
-├─────────────────┬──────────────────┬──────────────────┬─────────────────────┤
-│  CLIP Semantic  │ Danbooru Tagging │ Visual Similarity│    OCR Text Search  │
-│ (Natural Lang)  │ (Auto-Tagger V2) │ (Reverse Search) │  (Embedded Text)    │
-├─────────────────┴──────────────────┴──────────────────┴─────────────────────┤
-│     Filename Regex Parsing      │   [Experimental] Custom Trained Concepts  │
-└─────────────────────────────────┴───────────────────────────────────────────┘
+
+**Core IPC bus:** all client-to-service traffic is gRPC (tonic/prost) over a local transport — Windows Named Pipe `\\.\pipe\curator_ipc` on Windows, `~/.curator/curator.sock` Unix Domain Socket elsewhere. Requests are serialized into a single JSON `Request`/`Response` envelope; a per-install **service key** authenticates clients.
+
+**Storage philosophy:** relational metadata (images, tags, sources, character detections, OCR results) lives in SQLite; dense 512-d embeddings live in an isolated in-memory USearch vector index. Original files are never mutated.
+
+---
+
+## Repository Layout
+
+```bash
+project-curator/
+├── curator-core/        # Core Rust engine: SQLite + migrations, USearch index,
+│   │                    #   ONNX pipelines, media decoding, detection, OCR
+│   ├── src/ipc/         # gRPC client/server transport (Named Pipe / UDS)
+│   ├── src/bin/         # Standalone test & benchmark binaries
+│   └── migrations/      # Versioned SQL migrations (20, schema → media metadata)
+├── curator-service/     # Background daemon: single-writer, task queue, gRPC server,
+│   │                    #   model download/quantize/convert, FFmpeg transcode jobs
+│   └── src/handlers/    # One handler module per IPC request domain
+├── curator-cli/         # Headless CLI client for scripting & agent integration
+├── curator-dashboard/   # Tauri v2 + Vite + TypeScript desktop UI
+│   ├── src-tauri/       # Tauri Rust backend glue (workspace member)
+│   └── src/views/       # One TS view module per tab
+├── plugins/             # TypeScript plugin workspace (esbuild bundles + shared lib/)
+├── docs/                # Design document, image-processing & ML porting guides
+├── scripts/             # Model conversion / quantization helpers (Python venv)
+└── .curator/            # Local runtime state: models, vector index, SQLite DB
 ```
 
-1. **Semantic Vector Search (CLIP):** Natural language queries mapped to high-dimensional visual feature spaces, enabling retrieval based on mood, visual composition, subject matter, or abstract concepts.
-2. **Danbooru-Style Tag Taxonomy:** Automatic classification using vision transformers trained on Danbooru tag distributions, supporting namespace categories, exact boolean logic, and negative constraints.
-3. **Visual & Semantic Reverse Image Search** Vector-based visual matching using stored image embeddings. Input images can be queried to instantly locate compositional variations, structural duplicates, and conceptually or semantically related assets across the archive.
-4. **Optical Character Recognition (OCR):** In-image text extraction and indexing, allowing full-text search against signage, embedded document text, typography, or overlaid text within images.
-5. **Custom Filename Regex Parsing:** User-defined regular expression rules to dynamically extract metadata, artist names, dates, or custom IDs from complex filename conventions upon ingestion.
-6. **Experimental Concept Training:** Local support for user-trained visual concept vectors, enabling personalized similarity matching for distinct artistic styles or niche subjects.
+The dashboard exposes these tabs: Dashboard, Gallery, Favorites, Tag Statistics, Folders, Import, Search, Concepts, Characters, Filename Parser, Toolbox, Plugins, Logs, Benchmark, Settings, and Models.
 
 ---
 
-## System Architecture & Interoperability
+## Requirements
 
-The architecture decouples heavy database operations and model inference from the user interface to guarantee responsiveness during massive indexing tasks.
+- Windows 10+ (primary target; GPU acceleration via DirectML)
+- PowerShell 5.1+
+- Rust stable — or use the isolated workspace toolchain (see below)
+- Node.js + npm (dashboard frontend)
+- SSD recommended for the database and vector index
 
+> **GPU acceleration:** `onnxruntime.dll` + `DirectML.dll` are required for GPU inference on Windows; CPU fallback is fully supported. macOS/Linux targets are scaffolded (CoreML / CUDA+ROCm providers, UDS transport), but Windows is the actively tested platform.
+
+---
+
+## Build & Setup
+
+Project Curator is currently built from source; a portable, self-contained release is planned.
+
+### 1. Clone
+
+```powershell
+git clone https://github.com/FuouM/Project-Curator
+cd Project-Curator
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                 Desktop User Interface (Tauri v2 GUI)                   │
-└────────────────────────────────────┬────────────────────────────────────┘
-                                     │ IPC Named Pipe
-                                     │ (\\.\pipe\curator_ipc)
-┌────────────────────────────────────▼────────────────────────────────────┐
-│                    Background Curator Service Engine                    │
-├───────────────────┬─────────────────────────────────┬───────────────────┤
-│  SQLite Metadata  │ DirectML Vector Inference Engine│   LLM Agent CLI   │
-└───────────────────┴─────────────────────────────────┴───────────────────┘
+
+### 2. Initialize the local Rust toolchain (optional, recommended)
+
+Isolates Rust tooling inside the workspace and enables `sccache` incremental caching:
+
+```powershell
+.\setup_env.ps1
+. .\env.ps1
 ```
 
-* **Graphical User Interface:** Built with Tauri v2 and Vite for desktop usage, managing background tasks and search workflows natively.
-* **Agentic CLI Interface:** A headless command-line interface exposes full search, indexing, and tagging functionality for integration with local LLM agents and automated scripts.
-* **Decoupled Service Engine:** A background service executes heavy IO, ONNX Runtime (DirectML/CPU) model evaluation, and SQLite database synchronization. Communication occurs over local Named Pipes (`\\.\pipe\curator_ipc`).
+### 3. Fetch ONNX Runtime (DirectML) and DirectML binaries
+
+```powershell
+.\download_ort.ps1
+```
+
+### 4. Install dashboard dependencies
+
+```powershell
+cd curator-dashboard
+npm install
+cd ..
+```
+
+### 5. Launch development mode
+
+Compiles `curator-service`, then starts the Tauri desktop GUI:
+
+```powershell
+.\dev.ps1
+```
+
+### 6. Initialize models
+
+Open **Settings → Models** and download the required models from the manifest. At minimum you need an **embedding model** (`CLIP ViT-B/32`) and a **tagger** (`Camie Tagger v2`). Detection, OCR, and the optional WD EVA02 tagger can be added later.
 
 ---
 
-## Ingestion & Hub Integration
+## CLI Usage
 
-Project Curator acts as a unified aggregation layer across fragmented workflows:
+The headless client talks to a running `curator-service` over IPC:
 
-* **Hydrus Network Import:** Ingests and maps existing Hydrus database stores and tag relationships directly into the Curator unified index.
-* **Folder & Filename Parsing:** Accommodates arbitrary file directory depth and custom file-naming schemas without imposing rigid directory structures.
-* **Download Manager Ingestion:** Monitors and indexes incoming visual assets from automated download managers and web harvesters in real time.
+```powershell
+# Status & health
+cargo run -p curator-cli -- status
+cargo run -p curator-cli -- ping
+
+# Import an image or a whole folder
+cargo run -p curator-cli -- import "D:\Pictures\Anime\My Library"
+
+# Search: semantic, reverse-image, or exact tag
+cargo run -p curator-cli -- search "a quiet library at night"
+cargo run -p curator-cli -- search --image "query.png"
+cargo run -p curator-cli -- search --tag "1girl"
+
+# Tags & auto-tagging
+cargo run -p curator-cli -- tag add 42 "original" --category character
+cargo run -p curator-cli -- tag-auto 42 --threshold 0.5
+cargo run -p curator-cli -- tag-auto-batch --threshold 0.5
+cargo run -p curator-cli -- tag-backfill --from camie --to wd-eva02
+
+# Tagger & model diagnostics
+cargo run -p curator-cli -- tagger-status
+cargo run -p curator-cli -- benchmark --model clip-vit-b-32
+
+# Plugin validation
+cargo run -p curator-cli -- validate-plugin plugins\image-converter\manifest.json
+```
 
 ---
 
-## Performance & System Requirements
+## Development
 
-Designed for low resource overhead on modern Windows systems, maintaining efficiency even when indexing libraries containing millions of entries.
+```powershell
+. .\env.ps1
 
-Currently only support Windows 10 via DirectML. SSD is recommended for database & vector index.
+# Tests
+cargo test -p curator-core
+cargo test -p curator-service
 
-*Note: While GPU execution via DirectML yields significantly faster inference speeds, CPU fallback execution is fully supported.*
+# Lint
+cargo clippy --all-targets
+
+# Build a specific crate
+cargo build --manifest-path curator-core/Cargo.toml
+cargo build --manifest-path curator-service/Cargo.toml
+```
+
+> **Note:** `cargo build` on `curator-service` fails with an access-denied error while `curator-service.exe` is running. Kill it first:
+>
+> ```powershell
+> Get-Process curator-service -ErrorAction SilentlyContinue | Stop-Process -Force
+> ```
+
+### Building Plugins
+
+```powershell
+cd plugins
+npm install
+npm run build                                   # build all plugins
+node build.js --plugin image-converter          # build a single plugin
+npx tsc --project tsconfig.json                 # type-check the workspace
+```
 
 ---
 
-## Build & Setup Guide
+## Documentation
 
-Currently, Project Curator is built from source. Automated environment scripts handle the dependency installation and compilation pipeline. *(A portable, self-contained ZIP executable release is planned).*
-
-### Prerequisites
-
-* Windows 10
-* PowerShell 5.1 or higher
-
-### Installation Steps
-
-1. **Clone the Repository:**
-
-   ```powershell
-   git clone https://github.com/FuouM/Project-Curator
-   cd Project-Curator
-   ```
-
-2. **Initialize Local Environment (Optional):**
-   To isolate Rust tooling within the workspace directory:
-
-   ```powershell
-   .\setup_env.ps1
-   . .\env.ps1
-   ```
-
-3. **Fetch ONNX Runtime (DirectML):**
-   Download required local inference DLLs:
-
-   ```powershell
-   .\download_ort.ps1
-   ```
-
-4. **Launch Development Mode:**
-   Compile the background service and start the desktop GUI:
-
-   ```powershell
-   .\dev.ps1
-   ```
-
-5. **Model Initialization:**
-   * Open the Project Curator GUI.
-   * Navigate to **System Diagnostics** → **Models**.
-   * Download the required local CLIP text/vision and Danbooru auto-tagger models.
+- `docs/curator_design_document.md` — architecture & design spec
+- `docs/IMAGE_PROCESSING_FOR_AGENTS.md` — image decode/preprocess pipeline guide
+- `docs/porting_ml_inference_guide.md` — ML inference porting guide
+- `PLUGINS_FOR_AGENTS.md` — plugin development constraints for AI agents
+- `AGENTS.md` — repository-wide architecture & safety mandates

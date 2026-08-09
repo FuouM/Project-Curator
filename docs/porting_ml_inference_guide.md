@@ -7,13 +7,42 @@ the patterns, pitfalls, and debugging workflow for porting Python ML inference
 > All lessons here were learned the hard way during the PaddleOCR port in
 > `curator-core/src/detection/ocr.rs`. Read the code alongside this guide.
 
+- [Porting ML Inference Pipelines to Rust: A Field Guide](#porting-ml-inference-pipelines-to-rust-a-field-guide)
+  - [1. The Porting Mental Model](#1-the-porting-mental-model)
+  - [2. Start with Python — Validate Before Porting](#2-start-with-python--validate-before-porting)
+  - [3. Reading the Reference Source](#3-reading-the-reference-source)
+    - [Detection normalization (BGR order!)](#detection-normalization-bgr-order)
+    - [Recognition normalization (symmetric, channel-agnostic)](#recognition-normalization-symmetric-channel-agnostic)
+  - [4. The `ort` Crate in Rust](#4-the-ort-crate-in-rust)
+    - [Creating a session](#creating-a-session)
+    - [Running inference](#running-inference)
+    - [Extracting output](#extracting-output)
+    - [Tensor layout](#tensor-layout)
+  - [5. Critical Pitfalls (Learned the Hard Way)](#5-critical-pitfalls-learned-the-hard-way)
+    - [5.1 Perspective transform direction](#51-perspective-transform-direction)
+    - [5.3 CTC confidence: raw max vs softmax](#53-ctc-confidence-raw-max-vs-softmax)
+    - [5.4 Channel order (BGR vs RGB)](#54-channel-order-bgr-vs-rgb)
+    - [5.5 Detection resize: longest side to 960, multiple of 32](#55-detection-resize-longest-side-to-960-multiple-of-32)
+    - [5.6 Dynamic model width for recognition (NO hard cap)](#56-dynamic-model-width-for-recognition-no-hard-cap)
+    - [5.7 Detection thresholds: reference defaults vs inference.yml](#57-detection-thresholds-reference-defaults-vs-inferenceyml)
+    - [5.8 Box ordering and merging](#58-box-ordering-and-merging)
+    - [5.9 Angle classifier (180° rotation)](#59-angle-classifier-180-rotation)
+  - [6. Debugging Workflow](#6-debugging-workflow)
+    - [Step 1: Verify preprocessing stats match Python](#step-1-verify-preprocessing-stats-match-python)
+    - [Step 2: Verify detection output has signal](#step-2-verify-detection-output-has-signal)
+    - [Step 3: Inspect recognition argmax](#step-3-inspect-recognition-argmax)
+    - [Step 4: Use the Python diagnostic script](#step-4-use-the-python-diagnostic-script)
+  - [7. Model File Layout](#7-model-file-layout)
+  - [8. Testing Infrastructure](#8-testing-infrastructure)
+  - [9. Checklist for Porting a New Model](#9-checklist-for-porting-a-new-model)
+
 ---
 
 ## 1. The Porting Mental Model
 
 A Python inference pipeline is a chain of pure transformations:
 
-```
+```txt
 raw image → preprocess → model input tensor → ONNX model → raw output tensor → postprocess → result
 ```
 
@@ -50,6 +79,7 @@ print("outputs:", [(o.name, o.shape, o.type) for o in sess.get_outputs()])
 ```
 
 **Key things to learn from this step:**
+
 - Exact input/output tensor **names** (e.g. `"x"`, `"fetch_name_0"`)
 - Whether width/height are **dynamic** dims — critical for recognition models
 - What the model actually outputs (logits? log-softmax? softmax probabilities?)
@@ -72,6 +102,7 @@ Cross-reference them against the Python source in `reference/PaddleOCR/ppocr/`:
 | `CTCLabelDecode` | Argmax per timestep, remove blanks (index 0) and consecutive duplicates |
 
 ### Detection normalization (BGR order!)
+
 ```python
 mean = [0.485, 0.456, 0.406]   # applied to BGR channels
 std  = [0.229, 0.224, 0.225]
@@ -79,6 +110,7 @@ pixel_norm = (pixel_bgr / 255.0 - mean) / std
 ```
 
 ### Recognition normalization (symmetric, channel-agnostic)
+
 ```python
 pixel_norm = (pixel / 255.0 - 0.5) / 0.5  # range [-1, 1]
 ```
@@ -90,6 +122,7 @@ pixel_norm = (pixel / 255.0 - 0.5) / 0.5  # range [-1, 1]
 This project uses `ort` (ONNX Runtime Rust bindings). Key patterns:
 
 ### Creating a session
+
 ```rust
 use ort::{Session, GraphOptimizationLevel};
 
@@ -99,6 +132,7 @@ let session = Session::builder()?
 ```
 
 ### Running inference
+
 ```rust
 use ort::inputs;
 use ndarray::Array4;
@@ -112,6 +146,7 @@ let outputs = session.run(inputs![TensorRef::from_array_view(&tensor)?])?;
 For multi-input models, use named inputs: `inputs!["x" => tensor]`.
 
 ### Extracting output
+
 ```rust
 let out = outputs.get("fetch_name_0")
     .or_else(|| outputs.get("output_0"))
@@ -123,10 +158,13 @@ let (shape, data) = out.try_extract_tensor::<f32>()?;
 ```
 
 ### Tensor layout
+
 For a tensor of shape `[N, C, H, W]`, the element at `[n, c, h, w]` is at:
-```
+
+```python
 data[n*(C*H*W) + c*(H*W) + h*W + w]
 ```
+
 This matches numpy's default C order.
 
 ---
@@ -337,22 +375,27 @@ When model outputs are wrong but no errors are thrown, add temporary
 `eprintln!` instrumentation at each stage. **Remove all before committing.**
 
 ### Step 1: Verify preprocessing stats match Python
+
 ```rust
 let min = tensor.iter().cloned().fold(f32::INFINITY, f32::min);
 let max = tensor.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
 eprintln!("input tensor: shape={:?}, min={:.3}, max={:.3}", tensor.shape(), min, max);
 ```
+
 Compare: Python's `print(f"min={inp.min():.3f}, max={inp.max():.3f}")`.
 
 ### Step 2: Verify detection output has signal
+
 ```rust
 let above = pred_data.iter().filter(|&&v| v > 0.2).count();
 eprintln!("det output max={:.4}, pixels>0.2={}", pred_data.iter().cloned().fold(f32::NEG_INFINITY, f32::max), above);
 ```
+
 If `max ≈ 0` or `above = 0`: preprocessing is wrong.
 If `above > 10000`: detection is working, problem is in postprocessing.
 
 ### Step 3: Inspect recognition argmax
+
 ```rust
 let argmax_10: Vec<usize> = (0..seq_len.min(10)).map(|t| {
     let off = t * num_classes;
@@ -362,6 +405,7 @@ let argmax_10: Vec<usize> = (0..seq_len.min(10)).map(|t| {
 }).collect();
 eprintln!("argmax[:10] = {:?}", argmax_10);
 ```
+
 If all zeros → crop content is wrong (pitfall 5.1 — warp direction).
 If non-zero but text="" → dict lookup is failing (pitfall 5.2 or 5.3).
 
@@ -375,6 +419,7 @@ python diagnose_ocr.py
 ```
 
 Always add this at the top to handle CJK characters in the terminal:
+
 ```python
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 ```
@@ -383,7 +428,7 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 ## 7. Model File Layout
 
-```
+```bash
 .curator/models/PP-OCRv6_medium_det_onnx/
     inference.onnx    ← text detection model (DB-based segmentation)
     inference.yml     ← preprocessing config (thresholds, resize params)
