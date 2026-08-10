@@ -5,6 +5,7 @@ test_images
 .curator/
 .curator_test/
 .rust/
+.deprecated
 reference
 
 onnxruntime.dll
