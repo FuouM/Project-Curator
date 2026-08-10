@@ -1,8 +1,9 @@
+use anyhow::Result;
 use curator_core::image::{
     codecs::{avif::AvifEncoder, bmp::BmpEncoder, gif::GifEncoder, hdr::HdrEncoder, ico::IcoEncoder, jpeg::JpegEncoder, openexr::OpenExrEncoder, png::PngEncoder, pnm::PnmEncoder, qoi::QoiEncoder, tga::TgaEncoder, tiff::TiffEncoder, webp::WebPEncoder},
     DynamicImage, ExtendedColorType, GenericImageView, ImageEncoder,
 };
-use curator_core::ipc::{ConvertedFileInfo, Response};
+use curator_core::ipc::ConvertedFileInfo;
 use std::fs;
 use std::io::{Cursor, Write};
 use std::path::Path;
@@ -18,12 +19,12 @@ const ENCODE_FORMATS: &[&str] = &[
 pub async fn convert_images(
     conversions: Vec<(String, String)>,
     quality: u8,
-) -> Response {
+) -> Result<Vec<ConvertedFileInfo>> {
     let mut converted = Vec::with_capacity(conversions.len());
     for (source, target) in conversions {
         converted.push(convert_one(&source, &target, quality).await);
     }
-    Response::ConvertImagesResult { converted }
+    Ok(converted)
 }
 
 async fn convert_one(source: &str, target: &str, quality: u8) -> ConvertedFileInfo {

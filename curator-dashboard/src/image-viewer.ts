@@ -2,9 +2,67 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { maskPath } from "./components";
 import { logJS } from "./utils";
 import { getImageClickAction } from "./state";
-import { callService } from "./ipc";
+import { typedCall } from "./ipc";
 import { buildVerticalSpans, estimateLabelWidth, fitLabelInBox, getOcrTextSettings, isVerticalBox, placeLabelAvoidingOverlap, type PlacedLabel } from "./ocr-text";
 import { showErrorAlert } from "./alert";
+import {
+  CharacterDetectionsResultSchema,
+  CharacterIdentitiesListSchema,
+  ImageIdRequestSchema as CharacterImageIdRequestSchema,
+} from "./gen/characters_pb";
+import {
+  ImageIdRequestSchema as OcrImageIdRequestSchema,
+  OcrDetectionsResultSchema,
+} from "./gen/ocr_pb";
+import type {
+  CharacterIdentity as PCharacterIdentity,
+  OcrResult as POcrResult,
+  StoredDetection as PStoredDetection,
+} from "./gen/common_pb";
+import type { CharacterDetection, CharacterIdentity, OcrResult } from "./types";
+
+// --- Proto → legacy converters (these modules consume legacy snake_case shapes) ---
+
+function ocrResultFromProto(p: POcrResult): OcrResult {
+  return {
+    id: Number(p.id),
+    image_id: Number(p.imageId),
+    text: p.text,
+    confidence: p.confidence,
+    x0: p.x0,
+    y0: p.y0,
+    x1: p.x1,
+    y1: p.y1,
+    x2: p.x2,
+    y2: p.y2,
+    x3: p.x3,
+    y3: p.y3,
+    is_from_bubble: p.isFromBubble,
+  };
+}
+
+function storedDetectionFromProto(p: PStoredDetection): CharacterDetection {
+  return {
+    id: Number(p.id),
+    image_id: Number(p.imageId),
+    x0: p.x0,
+    y0: p.y0,
+    x1: p.x1,
+    y1: p.y1,
+    confidence: p.confidence,
+    has_embedding: p.hasEmbedding,
+    identity_id: p.identityId === undefined ? null : Number(p.identityId),
+  };
+}
+
+function characterIdentityFromProto(p: PCharacterIdentity): CharacterIdentity {
+  return {
+    id: Number(p.id),
+    name: p.name,
+    detection_count: Number(p.detectionCount),
+    created_at: p.createdAt,
+  };
+}
 
 let currentViewerPath: string | null = null;
 let currentViewerImageId: number | null = null;
@@ -105,20 +163,20 @@ async function toggleOcr() {
 
   try {
     // 1. Get existing OCR detections
-    let resp = await callService({ GetOcrDetections: { image_id: currentViewerImageId } });
-    let detections = ("OcrDetectionsResult" in resp) ? resp.OcrDetectionsResult.detections : [];
-    let bubbleBoxes = ("OcrDetectionsResult" in resp) ? (resp.OcrDetectionsResult as any).bubble_boxes ?? [] : [];
+    let resp = await typedCall("OcrService.GetOcrDetections", OcrImageIdRequestSchema, { imageId: BigInt(currentViewerImageId) }, OcrDetectionsResultSchema);
+    let detections = resp.detections.map(ocrResultFromProto);
+    let bubbleBoxes = resp.bubbleBoxes;
 
     // 2. If none exist in database, run OCR process on-demand
     if (detections.length === 0) {
       const waitBtn = document.getElementById("image-viewer-toggle-ocr");
       if (waitBtn) waitBtn.textContent = "OCR Processing...";
-      resp = await callService({ RunOcr: { image_id: currentViewerImageId } });
+      resp = await typedCall("OcrService.RunOcr", OcrImageIdRequestSchema, { imageId: BigInt(currentViewerImageId) }, OcrDetectionsResultSchema);
       if (waitBtn) waitBtn.innerHTML = '<i class="bi bi-fonts"></i> OCR Text';
-      detections = ("OcrDetectionsResult" in resp) ? resp.OcrDetectionsResult.detections : [];
-      bubbleBoxes = ("OcrDetectionsResult" in resp) ? (resp.OcrDetectionsResult as any).bubble_boxes ?? [] : [];
+      detections = resp.detections.map(ocrResultFromProto);
+      bubbleBoxes = resp.bubbleBoxes;
       // Update card OCR text directly
-      const ocrText = detections.map((d: any) => d.text).join("\n");
+      const ocrText = detections.map((d) => d.text).join("\n");
       import("./cards").then(m => m.refreshCardOcr(currentViewerImageId!, ocrText));
     }
 
@@ -309,14 +367,13 @@ async function toggleDetections() {
 
   // Load detections
   try {
-    const resp = await callService({ GetCharacterDetections: { image_id: currentViewerImageId } });
-    if (!("CharacterDetectionsResult" in resp)) return;
-    const detections = resp.CharacterDetectionsResult.detections;
+    const resp = await typedCall("CharactersService.GetCharacterDetections", CharacterImageIdRequestSchema, { imageId: BigInt(currentViewerImageId) }, CharacterDetectionsResultSchema);
+    const detections = resp.detections.map(storedDetectionFromProto);
     if (detections.length === 0) return;
 
     // Load identities for labels
-    const idResp = await callService({ ListCharacterIdentities: null });
-    const identities: any[] = "CharacterIdentitiesList" in idResp ? idResp.CharacterIdentitiesList.identities : [];
+    const idResp = await typedCall("CharactersService.ListCharacterIdentities", null, null, CharacterIdentitiesListSchema);
+    const identities = idResp.identities.map(characterIdentityFromProto);
 
     // Wait for image to get natural dimensions
     const img = document.getElementById("image-viewer-img") as HTMLImageElement;
@@ -420,8 +477,8 @@ export function setupImageViewer() {
     const btn = document.getElementById("image-viewer-rerun-ocr");
     try {
       if (btn) btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Running...';
-      const resp = await callService({ RunOcr: { image_id: currentViewerImageId } });
-      const detections = ("OcrDetectionsResult" in resp) ? resp.OcrDetectionsResult.detections : [];
+      const resp = await typedCall("OcrService.RunOcr", OcrImageIdRequestSchema, { imageId: BigInt(currentViewerImageId) }, OcrDetectionsResultSchema);
+      const detections = resp.detections.map(ocrResultFromProto);
       // Re-fetch from DB so the viewer shows stored data
       ocrVisible = false;
       if (detections.length > 0) {
@@ -433,7 +490,7 @@ export function setupImageViewer() {
         updateOcrButton(false);
       }
       // Update card OCR text directly
-      const ocrText = detections.map((d: any) => d.text).join("\n");
+      const ocrText = detections.map((d) => d.text).join("\n");
       import("./cards").then(m => m.refreshCardOcr(currentViewerImageId!, ocrText));
     } catch (err) {
       console.error("Re-run OCR failed:", err);

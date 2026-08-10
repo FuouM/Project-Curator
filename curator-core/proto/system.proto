@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package curator.system;
+
+import "google/protobuf/empty.proto";
+import "common.proto";
+
+service SystemService {
+  rpc Ping (google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc GetStatus (google.protobuf.Empty) returns (StatusResult);
+  rpc GetDashboardInit (google.protobuf.Empty) returns (DashboardInitResult);
+  rpc GetRandomImage (google.protobuf.Empty) returns (RandomImageResult);
+  rpc GetSettings (google.protobuf.Empty) returns (SettingsResult);
+  rpc UpdateSettings (UpdateSettingsRequest) returns (SettingsResult);
+  rpc ReindexVectors (google.protobuf.Empty) returns (ReindexVectorsResult);
+  rpc ReindexFailedVectors (google.protobuf.Empty) returns (ReindexFailedVectorsResult);
+}
+
+message SettingsResult {
+  curator.common.DevicePreference clip_device = 1;
+  curator.common.DevicePreference tagger_device = 2;
+  curator.common.DevicePreference tagger_wd_device = 3;
+  uint64 idle_timeout_secs = 4;
+  curator.common.EmbeddingModel embedding_model = 5;
+  curator.common.DevicePreference detection_device = 6;
+  curator.common.DevicePreference detection_metrics_device = 7;
+  curator.common.DevicePreference ocr_device = 8;
+  map<string, curator.common.ModelPrecision> model_precisions = 9;
+  curator.common.TaggerModel preferred_tagger = 10;
+  repeated curator.common.TaggerStatusInfo taggers = 11;
+}
+
+message UpdateSettingsRequest {
+  optional curator.common.DevicePreference clip_device = 1;
+  optional curator.common.DevicePreference tagger_device = 2;
+  optional curator.common.DevicePreference tagger_wd_device = 3;
+  optional uint64 idle_timeout_secs = 4;
+  optional curator.common.EmbeddingModel embedding_model = 5;
+  optional curator.common.DevicePreference detection_device = 6;
+  optional curator.common.DevicePreference detection_metrics_device = 7;
+  optional curator.common.DevicePreference ocr_device = 8;
+  map<string, curator.common.ModelPrecision> model_precisions = 9;
+  optional curator.common.TaggerModel preferred_tagger = 10;
+}
+
+message ReindexVectorsResult {
+  bool started = 1;
+}
+
+message ReindexFailedVectorsResult {
+  int64 requeued = 1;
+}
+
+message StatusResult {
+  int64 image_count = 1;
+  int64 vector_count = 2;
+  int64 pending_jobs = 3;
+  int64 preprocessing_jobs = 4;
+  int64 ram_usage_bytes = 5;
+}
+
+message RandomImageResult {
+  curator.common.ImageDetails image = 1;
+  int64 index = 2;
+}
+
+message DashboardInitResult {
+  int64 image_count = 1;
+  int64 vector_count = 2;
+  int64 pending_jobs = 3;
+  int64 preprocessing_jobs = 4;
+  bool tagger_loaded = 5;
+  string tagger_model_path = 6;
+  uint32 tagger_total_tags = 7;
+  curator.common.DevicePreference clip_device = 8;
+  curator.common.DevicePreference tagger_device = 9;
+  curator.common.DevicePreference tagger_wd_device = 10;
+  uint64 idle_timeout_secs = 11;
+  curator.common.EmbeddingModel embedding_model = 12;
+  curator.common.DevicePreference detection_device = 13;
+  curator.common.DevicePreference detection_metrics_device = 14;
+  curator.common.DevicePreference ocr_device = 15;
+  map<string, curator.common.ModelPrecision> model_precisions = 16;
+  curator.common.TaggerModel preferred_tagger = 17;
+  repeated curator.common.TaggerStatusInfo taggers = 18;
+  repeated curator.common.ImageDetails featured_images = 19;
+  repeated curator.common.ImageDetails latest_images = 20;
+}

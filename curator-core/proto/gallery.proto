@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package curator.gallery;
+
+import "google/protobuf/empty.proto";
+import "common.proto";
+
+service GalleryService {
+  rpc GetImage (GetImageRequest) returns (ImageResult);
+  rpc ListImages (ListImagesRequest) returns (ListResult);
+  rpc SetFavorite (SetFavoriteRequest) returns (google.protobuf.Empty);
+  rpc SetNote (SetNoteRequest) returns (google.protobuf.Empty);
+  rpc GetThumbnail (GetThumbnailRequest) returns (ThumbnailResult);
+  rpc PurgeMissingThumbnails (google.protobuf.Empty) returns (PurgeResult);
+  rpc ClearThumbnailCache (google.protobuf.Empty) returns (ClearThumbnailCacheResult);
+}
+
+message GetImageRequest {
+  int64 image_id = 1;
+}
+
+message ImageResult {
+  curator.common.ImageDetails image = 1;
+}
+
+message ListImagesRequest {
+  uint32 limit = 1;
+  uint32 offset = 2;
+  optional bool only_favorites = 3;
+}
+
+message ListResult {
+  repeated curator.common.ImageDetails images = 1;
+  int64 total_count = 2;
+}
+
+message SetFavoriteRequest {
+  int64 image_id = 1;
+  bool favorite = 2;
+}
+
+message SetNoteRequest {
+  int64 image_id = 1;
+  optional string note = 2;
+}
+
+message GetThumbnailRequest {
+  int64 image_id = 1;
+  uint32 width = 2;
+}
+
+message ThumbnailResult {
+  optional bytes data = 1;
+  bool is_missing = 2;
+}
+
+message PurgeResult {
+  int64 deleted_count = 1;
+}
+
+message ClearThumbnailCacheResult {
+  int64 deleted_count = 1;
+}

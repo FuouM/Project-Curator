@@ -1,8 +1,11 @@
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
 import { initPlugins } from "../plugin-host";
 import { PluginInfo } from "../types";
 import { SafeHtml, html } from "../components";
 import { showErrorAlert } from "../alert";
+import { pluginInfoFromProto } from "../proto-adapters";
+import { EmptySchema } from "@bufbuild/protobuf/wkt";
+import { PluginsListResultSchema, SetPluginEnabledRequestSchema, ValidatePluginRequestSchema, ValidationResultSchema } from "../gen/plugins_pb";
 
 export function renderPluginsHubHtml(): SafeHtml {
   return html`
@@ -89,12 +92,8 @@ export async function setupPluginsHub() {
 
   let plugins: PluginInfo[] = [];
   try {
-    const resp = await callService({ ListPlugins: null });
-    if ("PluginsListResult" in resp) {
-      plugins = resp.PluginsListResult.plugins;
-    } else if ("Error" in resp) {
-      showErrorAlert("Failed to list plugins:\n" + resp.Error.message);
-    }
+    const resp = await typedCall("PluginsService.ListPlugins", null, null, PluginsListResultSchema);
+    plugins = resp.plugins.map(pluginInfoFromProto);
   } catch (e: any) {
     listEl.innerHTML = `<p style="color:#ef4444;font-size:11px;">Failed to list plugins: ${e.message || e}</p>`;
     return;
@@ -121,12 +120,7 @@ export async function setupPluginsHub() {
       const name = row?.dataset.pluginName || "";
       if (!name) return;
       try {
-        const resp = await callService({ SetPluginEnabled: { plugin_name: name, enabled: cb.checked } });
-        if (!("Success" in resp)) {
-          showErrorAlert("Failed to update plugin state: " + (("Error" in resp) ? resp.Error.message : "unknown"));
-          cb.checked = !cb.checked;
-          return;
-        }
+        await typedCall("PluginsService.SetPluginEnabled", SetPluginEnabledRequestSchema, { pluginName: name, enabled: cb.checked }, EmptySchema);
         await initPlugins();
         rerenderHub();
       } catch (e: any) {
@@ -150,17 +144,11 @@ export async function setupPluginsHub() {
       resultEl.textContent = "Validating...";
 
       try {
-        const resp = await callService({ ValidatePlugin: { manifest_path: plugin.manifest_path } });
-        if ("ValidationResult" in resp) {
-          const r = resp.ValidationResult;
-          resultEl.style.color = r.valid ? "#107c41" : "#a80000";
-          resultEl.innerHTML = r.valid
-            ? `<i class="bi bi-check-circle"></i> Valid: ${r.name} v${r.version}`
-            : `<i class="bi bi-x-circle"></i> Invalid: ${r.error || "unknown error"}`;
-        } else if ("Error" in resp) {
-          resultEl.style.color = "#a80000";
-          resultEl.textContent = "Validation failed: " + resp.Error.message;
-        }
+        const r = await typedCall("PluginsService.ValidatePlugin", ValidatePluginRequestSchema, { manifestPath: plugin.manifest_path }, ValidationResultSchema);
+        resultEl.style.color = r.valid ? "#107c41" : "#a80000";
+        resultEl.innerHTML = r.valid
+          ? `<i class="bi bi-check-circle"></i> Valid: ${r.name} v${r.version}`
+          : `<i class="bi bi-x-circle"></i> Invalid: ${r.error || "unknown error"}`;
       } catch (e: any) {
         resultEl.style.color = "#a80000";
         resultEl.textContent = "Validation failed: " + (e.message || e);
@@ -182,7 +170,7 @@ export async function setupPluginsHub() {
 async function setAllPluginsEnabled(plugins: PluginInfo[], enabled: boolean, rerender: () => void) {
   for (const p of plugins) {
     try {
-      await callService({ SetPluginEnabled: { plugin_name: p.name, enabled } });
+      await typedCall("PluginsService.SetPluginEnabled", SetPluginEnabledRequestSchema, { pluginName: p.name, enabled }, EmptySchema);
     } catch (e: any) {
       console.error(`Failed to ${enabled ? "enable" : "disable"} ${p.name}:`, e);
     }

@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package curator.tags;
+
+import "google/protobuf/empty.proto";
+import "common.proto";
+
+service TagsService {
+  rpc AddTag (AddTagRequest) returns (google.protobuf.Empty);
+  rpc RemoveTag (RemoveTagRequest) returns (google.protobuf.Empty);
+  rpc UnblacklistTag (UnblacklistTagRequest) returns (google.protobuf.Empty);
+  rpc GetTagStatistics (google.protobuf.Empty) returns (curator.common.TagStatisticsResult);
+  rpc BackfillTagSource (BackfillTagSourceRequest) returns (curator.common.BatchTagResult);
+}
+
+message AddTagRequest {
+  int64 image_id = 1;
+  string tag = 2;
+  string category = 3;
+}
+
+message RemoveTagRequest {
+  int64 image_id = 1;
+  string tag = 2;
+}
+
+message UnblacklistTagRequest {
+  int64 image_id = 1;
+  string tag = 2;
+}
+
+message BackfillTagSourceRequest {
+  curator.common.TaggerModel from_tagger = 1;
+  curator.common.TaggerModel to_tagger = 2;
+}

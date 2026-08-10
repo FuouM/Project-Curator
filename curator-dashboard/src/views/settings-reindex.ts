@@ -1,4 +1,5 @@
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
+import { StatusResultSchema } from "../gen/system_pb";
 import { invalidateThumbnailCache } from "../cards";
 
 let reindexPollInterval: number | null = null;
@@ -58,15 +59,15 @@ export function startReindexPolling() {
   if (reindexPollInterval) return;
   const check = async () => {
     try {
-      const resp = await callService({ GetStatus: null });
-      if ("StatusResult" in resp) {
-        const { vector_count, pending_jobs, preprocessing_jobs } = resp.StatusResult;
-        updateReindexProgress(vector_count, pending_jobs, preprocessing_jobs);
-        if (pending_jobs === 0 && preprocessing_jobs === 0) {
-          if (reindexPollInterval) {
-            clearInterval(reindexPollInterval);
-            reindexPollInterval = null;
-          }
+      const resp = await typedCall("SystemService.GetStatus", null, null, StatusResultSchema);
+      const vectorCount = Number(resp.vectorCount);
+      const pendingJobs = Number(resp.pendingJobs);
+      const preprocessingJobs = Number(resp.preprocessingJobs);
+      updateReindexProgress(vectorCount, pendingJobs, preprocessingJobs);
+      if (pendingJobs === 0 && preprocessingJobs === 0) {
+        if (reindexPollInterval) {
+          clearInterval(reindexPollInterval);
+          reindexPollInterval = null;
         }
       }
     } catch (e) {

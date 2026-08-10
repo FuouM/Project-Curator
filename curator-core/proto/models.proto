@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package curator.models;
+
+import "google/protobuf/empty.proto";
+import "common.proto";
+
+service ModelsService {
+  rpc GetModelStatus (google.protobuf.Empty) returns (ModelStatusResult);
+  rpc DownloadModel (ModelIdRequest) returns (stream DownloadStatusUpdate);
+  rpc CancelDownload (ModelIdRequest) returns (ModelActionResult);
+  rpc RemoveModel (ModelIdRequest) returns (ModelActionResult);
+  rpc GetDownloadProgress (google.protobuf.Empty) returns (DownloadProgressResult);
+  rpc QuantizeModel (QuantizeModelRequest) returns (ModelActionResult);
+  rpc ConvertModel (ModelIdRequest) returns (stream ConversionStatusUpdate);
+  rpc GetConversionLogs (ModelIdRequest) returns (ConversionLogsResult);
+  rpc DownloadFFmpeg (google.protobuf.Empty) returns (stream DownloadStatusUpdate);
+  rpc GetFFmpegStatus (google.protobuf.Empty) returns (FFmpegStatusResult);
+  rpc SetFFmpegPath (SetFFmpegPathRequest) returns (google.protobuf.Empty);
+  rpc GetMediaMetadata (GetMediaMetadataRequest) returns (MediaMetadataResult);
+}
+
+message ModelIdRequest {
+  string model_id = 1;
+}
+
+message ModelActionResult {
+  bool success = 1;
+  string message = 2;
+}
+
+message ModelStatusResult {
+  repeated curator.common.ModelStatusInfo models = 1;
+}
+
+message DownloadProgressResult {
+  repeated curator.common.DownloadProgress downloads = 1;
+}
+
+message QuantizeModelRequest {
+  string model_id = 1;
+  string format = 2;
+}
+
+message ConversionLogsResult {
+  string logs = 1;
+  bool is_running = 2;
+}
+
+message FFmpegStatusResult {
+  optional string resolved_path = 1;
+  optional string version = 2;
+  bool available = 3;
+  // Path to the portable build in `.curator/bin/`, if it exists.
+  optional string portable_path = 4;
+}
+
+message SetFFmpegPathRequest {
+  // Unset reverts to auto-detect.
+  optional string path = 1;
+}
+
+message GetMediaMetadataRequest {
+  string path = 1;
+}
+
+message MediaMetadataResult {
+  int64 duration_ms = 1;
+  double fps = 2;
+  uint32 total_frames = 3;
+}
+
+// Streaming progress of a model download / FFmpeg download. The stream yields
+// snapshots while the download is active and a final terminal update.
+message DownloadStatusUpdate {
+  // Progress of the download.
+  curator.common.DownloadProgress progress = 1;
+  // True when this is the final terminal update for the download.
+  bool complete = 2;
+}
+
+// Streaming progress of a Safetensors -> ONNX conversion. The stream yields
+// periodic log snapshots while the conversion is running.
+message ConversionStatusUpdate {
+  // Latest console logs of the conversion process.
+  string logs = 1;
+  bool complete = 2;
+}

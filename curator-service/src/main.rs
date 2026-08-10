@@ -3,7 +3,7 @@ use clap::Parser;
 use curator_core::constants::resolve_data_dir;
 use curator_core::db::init_db;
 use curator_core::detection::{CCIPModel, DetectionPipeline, YoloDetector};
-use curator_core::ipc::{Request, Response, TaggerModel};
+use curator_core::ipc::TaggerModel;
 use curator_core::tagger::TaggerManager;
 use curator_core::thumbnail::ThumbnailCache;
 use curator_core::vector::{ModelManager, VectorIndex};
@@ -15,13 +15,29 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use curator_core::grpc::curator_server::{Curator, CuratorServer};
-use curator_core::grpc::{CuratorRequest, CuratorResponse};
-use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
+use curator_core::grpc::{
+    benchmarks::benchmarks_service_server::BenchmarksServiceServer,
+    characters::characters_service_server::CharactersServiceServer,
+    concepts::concepts_service_server::ConceptsServiceServer,
+    folders::folders_service_server::FoldersServiceServer,
+    gallery::gallery_service_server::GalleryServiceServer,
+    import::import_service_server::ImportServiceServer,
+    models::models_service_server::ModelsServiceServer,
+    ocr::ocr_service_server::OcrServiceServer,
+    parser::filename_parser_service_server::FilenameParserServiceServer,
+    plugins::plugins_service_server::PluginsServiceServer,
+    search::search_service_server::SearchServiceServer,
+    system::system_service_server::SystemServiceServer,
+    tagging::tagging_service_server::TaggingServiceServer,
+    tags::tags_service_server::TagsServiceServer,
+    tools::tools_service_server::ToolsServiceServer,
+};
+
 
 
 mod auth;
 mod handlers;
+mod server;
 mod worker;
 
 use auth::load_or_create_service_key;
@@ -42,6 +58,13 @@ struct ClientContext {
     cancel_tokens: handlers::models::CancelTokens,
     benchmark_progress: handlers::BenchmarkProgressMap,
     transcode_progress: handlers::transcode::TranscodeProgressMap,
+    /// Serializes folder scan/import write bursts. gRPC handles every RPC in
+    /// its own tokio task, but SQLite permits a single writer, so concurrent
+    /// bulk scan/import operations would otherwise collide and fail with
+    /// `database is locked`. The legacy single-pipe IPC model serialized all
+    /// requests implicitly; this mutex restores that guarantee for the
+    /// write-heavy request family only.
+    import_lock: tokio::sync::Mutex<()>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -356,96 +379,72 @@ async fn main() -> Result<(), Error> {
     let transcode_progress: handlers::transcode::TranscodeProgressMap =
         Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
 
-    let service_impl = CuratorServiceImpl {
-        ctx: Arc::new(ClientContext {
-            db,
-            model_manager,
-            vector_index,
-            taggers,
-            detection,
-            ocr,
-            service_key: Arc::new(service_key),
-            data_dir: Arc::new(data_dir),
-            settings: settings_arc,
-            thumbnail_cache,
-            download_progress,
-            cancel_tokens,
-            benchmark_progress,
-            transcode_progress,
-        }),
-    };
+    let ctx = Arc::new(ClientContext {
+        db,
+        model_manager,
+        vector_index,
+        taggers,
+        detection,
+        ocr,
+        service_key: Arc::new(service_key),
+        data_dir: Arc::new(data_dir),
+        settings: settings_arc,
+        thumbnail_cache,
+        download_progress,
+        cancel_tokens,
+        benchmark_progress,
+        transcode_progress,
+        import_lock: tokio::sync::Mutex::new(()),
+    });
 
     info!("Starting Tonic gRPC Service...");
-    tonic::transport::Server::builder()
-        .add_service(CuratorServer::new(service_impl))
-        .serve_with_incoming(incoming)
-        .await?;
+    let server = tonic::transport::Server::builder()
+        .add_service(SystemServiceServer::new(server::system::SystemServiceImpl::new(
+            ctx.clone(),
+        )))
+        .add_service(ImportServiceServer::new(server::import::ImportServiceImpl::new(
+            ctx.clone(),
+        )))
+        .add_service(GalleryServiceServer::new(server::gallery::GalleryServiceImpl::new(
+            ctx.clone(),
+        )))
+        .add_service(SearchServiceServer::new(server::search::SearchServiceImpl::new(
+            ctx.clone(),
+        )))
+        .add_service(TagsServiceServer::new(server::tags::TagsServiceImpl::new(
+            ctx.clone(),
+        )))
+        .add_service(TaggingServiceServer::new(
+            server::tagging::TaggingServiceImpl::new(ctx.clone()),
+        ))
+        .add_service(CharactersServiceServer::new(
+            server::characters::CharactersServiceImpl::new(ctx.clone()),
+        ))
+        .add_service(OcrServiceServer::new(server::ocr::OcrServiceImpl::new(ctx.clone())))
+        .add_service(ConceptsServiceServer::new(
+            server::concepts::ConceptsServiceImpl::new(ctx.clone()),
+        ))
+        .add_service(ModelsServiceServer::new(
+            server::models::ModelsServiceImpl::new(ctx.clone()),
+        ))
+        .add_service(ToolsServiceServer::new(server::tools::ToolsServiceImpl::new(
+            ctx.clone(),
+        )))
+        .add_service(FoldersServiceServer::new(
+            server::folders::FoldersServiceImpl::new(ctx.clone()),
+        ))
+        .add_service(BenchmarksServiceServer::new(
+            server::benchmarks::BenchmarksServiceImpl::new(ctx.clone()),
+        ))
+        .add_service(PluginsServiceServer::new(
+            server::plugins::PluginsServiceImpl::new(ctx.clone()),
+        ))
+        .add_service(FilenameParserServiceServer::new(
+            server::parser::FilenameParserServiceImpl::new(ctx.clone()),
+        ))
+        .serve_with_incoming(incoming);
+    server.await?;
 
     Ok(())
-}
-
-pub struct CuratorServiceImpl {
-    ctx: Arc<ClientContext>,
-}
-
-#[tonic::async_trait]
-impl Curator for CuratorServiceImpl {
-    async fn call(
-        &self,
-        request: TonicRequest<CuratorRequest>,
-    ) -> Result<TonicResponse<CuratorResponse>, Status> {
-        let req_payload = request.into_inner();
-        let request_str = req_payload.request_json;
-
-        let is_noisy = request_str.contains("GetConversionLogs")
-            || request_str.contains("GetDownloadProgress")
-            || request_str.contains("GetStatus")
-            || request_str.contains("GetTaggerStatus")
-            || request_str.contains("ReadPluginFile")
-            || request_str.contains("GetThumbnail");
-
-        if !is_noisy {
-            info!("Received gRPC Request: {}", request_str);
-        } else {
-            tracing::debug!("Received gRPC Request: {}", request_str);
-        }
-
-        let request_parsed: Request = match serde_json::from_str(&request_str) {
-            Ok(r) => r,
-            Err(e) => {
-                let err_resp = Response::Error {
-                    message: format!("Failed to parse request JSON: {:?}", e),
-                };
-                let resp_json = serde_json::to_string(&err_resp).map_err(|e| Status::internal(e.to_string()))?;
-                return Ok(TonicResponse::new(CuratorResponse { response_json: resp_json }));
-            }
-        };
-        
-        let response = handlers::handle_request(
-            request_parsed,
-            &self.ctx.db,
-            &self.ctx.model_manager,
-            &self.ctx.vector_index,
-            &self.ctx.taggers,
-            &self.ctx.detection,
-            &self.ctx.ocr,
-            &self.ctx.data_dir,
-            &self.ctx.settings,
-            &self.ctx.thumbnail_cache,
-            &self.ctx.download_progress,
-            &self.ctx.cancel_tokens,
-            &self.ctx.benchmark_progress,
-            &self.ctx.transcode_progress,
-        )
-        .await;
-
-        let response_json = serde_json::to_string(&response).map_err(|e| Status::internal(e.to_string()))?;
-        if !is_noisy {
-            info!("Sending gRPC Response: {}", response_json);
-        } else {
-            tracing::debug!("Sending gRPC Response: {}", response_json);
-        }
-        Ok(TonicResponse::new(CuratorResponse { response_json }))
-    }
 }
 

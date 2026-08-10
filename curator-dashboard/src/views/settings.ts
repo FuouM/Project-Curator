@@ -1,6 +1,11 @@
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
 import { invoke } from "@tauri-apps/api/core";
+import { EmptySchema } from "@bufbuild/protobuf/wkt";
 import { SafeHtml, html, maskPath } from "../components";
+import { SettingsResultSchema, UpdateSettingsRequestSchema, ReindexVectorsResultSchema, ReindexFailedVectorsResultSchema, StatusResultSchema } from "../gen/system_pb";
+import { DevicePreference, EmbeddingModel, TaggerModel } from "../gen/common_pb";
+import { FFmpegStatusResultSchema, SetFFmpegPathRequestSchema, DownloadProgressResultSchema, DownloadStatusUpdateSchema } from "../gen/models_pb";
+import { StorageStatsResultSchema } from "../gen/folders_pb";
 import { setStatusMessage } from "../utils";
 import { getImageClickAction, setImageClickAction, getTagCopyReplaceUnderscores, setTagCopyReplaceUnderscores } from "../state";
 import { applySettingsToUI, refreshTaggerStatus } from "./dashboard";
@@ -9,6 +14,17 @@ import { updateReindexProgress, startReindexPolling } from "./settings-reindex";
 import { setupMaintenanceButtons } from "./settings-maintenance";
 import { buildOcrLabelSvg, getOcrTextSettings } from "../ocr-text";
 
+function deviceToEnum(v: string): DevicePreference {
+  return v === "cpu" ? DevicePreference.CPU : v === "gpu" ? DevicePreference.GPU : DevicePreference.AUTO;
+}
+
+function embeddingToEnum(v: string): EmbeddingModel {
+  return v === "mobileclip-s2" ? EmbeddingModel.MOBILECLIP_S2 : EmbeddingModel.CLIP_VIT_B_32;
+}
+
+function taggerToEnum(v: string): TaggerModel {
+  return v === "wd-eva02" ? TaggerModel.WD_EVA02 : TaggerModel.CAMIE;
+}
 
 export function setupSettings() {
   const clipSelect = document.getElementById("settings-clip-device") as HTMLSelectElement;
@@ -250,13 +266,13 @@ export function setupSettings() {
   // Check reindex status on load
   (async () => {
     try {
-      const statusResp = await callService({ GetStatus: null });
-      if ("StatusResult" in statusResp) {
-        const { vector_count, pending_jobs, preprocessing_jobs } = statusResp.StatusResult;
-        updateReindexProgress(vector_count, pending_jobs, preprocessing_jobs);
-        if (pending_jobs > 0 || preprocessing_jobs > 0) {
-          startReindexPolling();
-        }
+      const statusResp = await typedCall("SystemService.GetStatus", null, null, StatusResultSchema);
+      const vectorCount = Number(statusResp.vectorCount);
+      const pendingJobs = Number(statusResp.pendingJobs);
+      const preprocessingJobs = Number(statusResp.preprocessingJobs);
+      updateReindexProgress(vectorCount, pendingJobs, preprocessingJobs);
+      if (pendingJobs > 0 || preprocessingJobs > 0) {
+        startReindexPolling();
       }
     } catch (e) {}
   })();
@@ -268,31 +284,26 @@ export function setupSettings() {
     setStatusMessage(statusMsg, "Saving...", "loading");
 
     try {
-      const resp = await callService({
-        UpdateSettings: {
-          clip_device: clipSelect.value,
-          tagger_device: taggerSelect.value,
-          tagger_wd_device: taggerWdSelect ? taggerWdSelect.value : null,
-          idle_timeout_secs: parseInt(idleSelect.value, 10),
-          embedding_model: embeddingSelect ? embeddingSelect.value : null,
-          detection_device: detDeviceSelect ? detDeviceSelect.value : null,
-          detection_metrics_device: detMetricsSelect ? detMetricsSelect.value : null,
-          ocr_device: ocrDeviceSelect ? ocrDeviceSelect.value : null,
-          model_precisions: null,
-          preferred_tagger: preferredTaggerSelect ? (preferredTaggerSelect.value as any) : null,
-        }
-      });
+      const updateReq = {
+        clipDevice: clipSelect ? deviceToEnum(clipSelect.value) : undefined,
+        taggerDevice: taggerSelect ? deviceToEnum(taggerSelect.value) : undefined,
+        taggerWdDevice: taggerWdSelect ? deviceToEnum(taggerWdSelect.value) : undefined,
+        idleTimeoutSecs: idleSelect ? BigInt(parseInt(idleSelect.value, 10)) : undefined,
+        embeddingModel: embeddingSelect ? embeddingToEnum(embeddingSelect.value) : undefined,
+        detectionDevice: detDeviceSelect ? deviceToEnum(detDeviceSelect.value) : undefined,
+        detectionMetricsDevice: detMetricsSelect ? deviceToEnum(detMetricsSelect.value) : undefined,
+        ocrDevice: ocrDeviceSelect ? deviceToEnum(ocrDeviceSelect.value) : undefined,
+        preferredTagger: preferredTaggerSelect ? taggerToEnum(preferredTaggerSelect.value) : undefined,
+      };
 
-      if ("SettingsResult" in resp) {
-        setStatusMessage(statusMsg, "Settings saved and applied successfully. If model was changed, reindexing has started.", "success");
-        if (embeddingSelect) {
-          updateBenchmarkModelHeader(embeddingSelect.value);
-        }
-        startReindexPolling();
-        refreshTaggerStatus();
-      } else if ("Error" in resp) {
-        setStatusMessage(statusMsg, "Failed: " + resp.Error.message, "error");
+      await typedCall("SystemService.UpdateSettings", UpdateSettingsRequestSchema, updateReq, SettingsResultSchema);
+
+      setStatusMessage(statusMsg, "Settings saved and applied successfully. If model was changed, reindexing has started.", "success");
+      if (embeddingSelect) {
+        updateBenchmarkModelHeader(embeddingSelect.value);
       }
+      startReindexPolling();
+      refreshTaggerStatus();
     } catch (e: any) {
       setStatusMessage(statusMsg, "Error: " + (e.message || e), "error");
     }
@@ -306,13 +317,9 @@ export function setupSettings() {
     }
     setStatusMessage(statusMsg, "Reindexing all images...", "loading");
     try {
-      const resp = await callService({ ReindexVectors: null });
-      if ("Success" in resp) {
-        setStatusMessage(statusMsg, "Reindexing triggered successfully. The background worker is rebuilding the index.", "success");
-        startReindexPolling();
-      } else if ("Error" in resp) {
-        setStatusMessage(statusMsg, "Reindex failed: " + resp.Error.message, "error");
-      }
+      await typedCall("SystemService.ReindexVectors", null, null, ReindexVectorsResultSchema);
+      setStatusMessage(statusMsg, "Reindexing triggered successfully. The background worker is rebuilding the index.", "success");
+      startReindexPolling();
     } catch (e: any) {
       setStatusMessage(statusMsg, "Error: " + (e.message || e), "error");
     }
@@ -325,14 +332,10 @@ export function setupSettings() {
     setStatusMessage(statusMsg, "Retrying failed vectors...", "loading");
     reindexFailedBtn.setAttribute("disabled", "true");
     try {
-      const resp = await callService({ ReindexFailedVectors: null });
-      if ("ReindexFailedResult" in resp) {
-        const count = resp.ReindexFailedResult.requeued;
-        setStatusMessage(statusMsg, `Done! ${count} image(s) queued for re-vectorization.`, "success");
-        if (count > 0) startReindexPolling();
-      } else if ("Error" in resp) {
-        setStatusMessage(statusMsg, "Failed: " + resp.Error.message, "error");
-      }
+      const resp = await typedCall("SystemService.ReindexFailedVectors", null, null, ReindexFailedVectorsResultSchema);
+      const count = Number(resp.requeued);
+      setStatusMessage(statusMsg, `Done! ${count} image(s) queued for re-vectorization.`, "success");
+      if (count > 0) startReindexPolling();
     } catch (e: any) {
       setStatusMessage(statusMsg, "Error: " + (e.message || e), "error");
     }
@@ -343,7 +346,7 @@ export function setupSettings() {
   const settingsNav = document.querySelector('.nav-item[data-view="settings"]');
   settingsNav?.addEventListener("click", async () => {
     try {
-      const resp = await callService({ GetSettings: null });
+      const resp = await typedCall("SystemService.GetSettings", null, null, SettingsResultSchema);
       applySettingsToUI(resp);
     } catch (e) {}
     refreshTaggerStatus();
@@ -358,56 +361,50 @@ export function setupSettings() {
   async function refreshFfmpegStatus() {
     if (!ffmpegStatusRow) return;
     try {
-      const resp = await callService({ GetFFmpegStatus: null });
-      if ("FFmpegStatusResult" in resp) {
-        const r = resp.FFmpegStatusResult;
-        if (r.available) {
-          ffmpegStatusRow.innerHTML =
-            `<span style="color: #107c41;"><i class="bi bi-check-circle-fill"></i> Available</span>` +
-            `<code style="font-size: 10px; word-break: break-all;">${r.resolved_path ?? ""}</code>` +
-            (r.version ? `<span style="color: #666;">${r.version}</span>` : "");
-        } else {
-          ffmpegStatusRow.innerHTML =
-            `<span style="color: #a4262c;"><i class="bi bi-exclamation-circle-fill"></i> Not found</span>` +
-            `<span style="color: #666;">Video import/transcoding requires FFmpeg. Place <code>ffmpeg.exe</code> in the data <code>bin</code> folder or set a path below.</span>`;
-        }
-        if (ffmpegPathInput) {
-          ffmpegPathInput.value = r.resolved_path ?? "";
-        }
+      const resp = await typedCall("ModelsService.GetFFmpegStatus", null, null, FFmpegStatusResultSchema);
+      const r = resp;
+      if (r.available) {
+        ffmpegStatusRow.innerHTML =
+          `<span style="color: #107c41;"><i class="bi bi-check-circle-fill"></i> Available</span>` +
+          `<code style="font-size: 10px; word-break: break-all;">${r.resolvedPath ?? ""}</code>` +
+          (r.version ? `<span style="color: #666;">${r.version}</span>` : "");
+      } else {
+        ffmpegStatusRow.innerHTML =
+          `<span style="color: #a4262c;"><i class="bi bi-exclamation-circle-fill"></i> Not found</span>` +
+          `<span style="color: #666;">Video import/transcoding requires FFmpeg. Place <code>ffmpeg.exe</code> in the data <code>bin</code> folder or set a path below.</span>`;
+      }
+      if (ffmpegPathInput) {
+        ffmpegPathInput.value = r.resolvedPath ?? "";
+      }
 
-        // Show "Use portable build" button if a portable exists but isn't the active path
-        const existingPortableBtn = document.getElementById("use-portable-ffmpeg-btn");
-        if (existingPortableBtn) existingPortableBtn.remove();
+      // Show "Use portable build" button if a portable exists but isn't the active path
+      const existingPortableBtn = document.getElementById("use-portable-ffmpeg-btn");
+      if (existingPortableBtn) existingPortableBtn.remove();
 
-        const portablePath: string | null = r.portable_path ?? null;
-        const isAlreadyUsingPortable = r.resolved_path && portablePath &&
-          r.resolved_path.toLowerCase() === portablePath.toLowerCase();
+      const portablePath: string | null = r.portablePath ?? null;
+      const isAlreadyUsingPortable = r.resolvedPath && portablePath &&
+        r.resolvedPath.toLowerCase() === portablePath.toLowerCase();
 
-        if (portablePath && !isAlreadyUsingPortable) {
-          const portableRow = document.createElement("div");
-          portableRow.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;";
-          portableRow.innerHTML =
-            `<span style="font-size:11px;color:#107c41;"><i class="bi bi-box-seam"></i> Portable build available</span>` +
-            `<code style="font-size:10px;word-break:break-all;">${portablePath}</code>` +
-            `<button class="win-button primary" id="use-portable-ffmpeg-btn"><i class="bi bi-arrow-left-right"></i> Switch to portable</button>`;
-          ffmpegStatusRow.appendChild(portableRow);
+      if (portablePath && !isAlreadyUsingPortable) {
+        const portableRow = document.createElement("div");
+        portableRow.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;";
+        portableRow.innerHTML =
+          `<span style="font-size:11px;color:#107c41;"><i class="bi bi-box-seam"></i> Portable build available</span>` +
+          `<code style="font-size:10px;word-break:break-all;">${portablePath}</code>` +
+          `<button class="win-button primary" id="use-portable-ffmpeg-btn"><i class="bi bi-arrow-left-right"></i> Switch to portable</button>`;
+        ffmpegStatusRow.appendChild(portableRow);
 
-          document.getElementById("use-portable-ffmpeg-btn")?.addEventListener("click", async () => {
-            if (!ffmpegSaveStatus) return;
-            setStatusMessage(ffmpegSaveStatus, "Switching to portable build...", "loading");
-            try {
-              const switchResp = await callService({ SetFFmpegPath: { path: portablePath } });
-              if ("Success" in switchResp) {
-                setStatusMessage(ffmpegSaveStatus, "Switched to portable build.", "success");
-                await refreshFfmpegStatus();
-              } else if ("Error" in switchResp) {
-                setStatusMessage(ffmpegSaveStatus, "Failed: " + switchResp.Error.message, "error");
-              }
-            } catch (e: any) {
-              setStatusMessage(ffmpegSaveStatus, "Error: " + (e.message || e), "error");
-            }
-          });
-        }
+        document.getElementById("use-portable-ffmpeg-btn")?.addEventListener("click", async () => {
+          if (!ffmpegSaveStatus) return;
+          setStatusMessage(ffmpegSaveStatus, "Switching to portable build...", "loading");
+          try {
+            await typedCall("ModelsService.SetFFmpegPath", SetFFmpegPathRequestSchema, { path: portablePath }, EmptySchema);
+            setStatusMessage(ffmpegSaveStatus, "Switched to portable build.", "success");
+            await refreshFfmpegStatus();
+          } catch (e: any) {
+            setStatusMessage(ffmpegSaveStatus, "Error: " + (e.message || e), "error");
+          }
+        });
       }
     } catch (e) {}
   }
@@ -428,13 +425,9 @@ export function setupSettings() {
     const value = ffmpegPathInput ? ffmpegPathInput.value.trim() : "";
     setStatusMessage(ffmpegSaveStatus, "Saving...", "loading");
     try {
-      const resp = await callService({ SetFFmpegPath: { path: value || null } });
-      if ("Success" in resp) {
-        setStatusMessage(ffmpegSaveStatus, "FFmpeg path saved.", "success");
-        await refreshFfmpegStatus();
-      } else if ("Error" in resp) {
-        setStatusMessage(ffmpegSaveStatus, "Failed: " + resp.Error.message, "error");
-      }
+      await typedCall("ModelsService.SetFFmpegPath", SetFFmpegPathRequestSchema, { path: value || undefined }, EmptySchema);
+      setStatusMessage(ffmpegSaveStatus, "FFmpeg path saved.", "success");
+      await refreshFfmpegStatus();
     } catch (e: any) {
       setStatusMessage(ffmpegSaveStatus, "Error: " + (e.message || e), "error");
     }
@@ -461,12 +454,13 @@ export function setupSettings() {
     ffmpegDlStopPolling();
     ffmpegDlTimer = window.setInterval(async () => {
       try {
-        const resp = await callService({ GetDownloadProgress: null });
-        if (!("DownloadProgressResult" in resp)) return;
-        const dl = resp.DownloadProgressResult.downloads.find((d: any) => d.model_id === "ffmpeg-portable");
+        const resp = await typedCall("ModelsService.GetDownloadProgress", null, null, DownloadProgressResultSchema);
+        const dl = resp.downloads.find(d => d.modelId === "ffmpeg-portable");
         if (!dl) return;
-        const pct = dl.bytes_total > 0
-          ? Math.round((dl.bytes_downloaded / dl.bytes_total) * 100)
+        const bytesTotal = Number(dl.bytesTotal);
+        const bytesDownloaded = Number(dl.bytesDownloaded);
+        const pct = bytesTotal > 0
+          ? Math.round((bytesDownloaded / bytesTotal) * 100)
           : 0;
         if (ffmpegDlBar) ffmpegDlBar.style.display = "";
         if (dl.status === "extracting") {
@@ -475,7 +469,7 @@ export function setupSettings() {
         } else {
           if (ffmpegDlFill) ffmpegDlFill.style.width = pct + "%";
           if (ffmpegDlStatus) {
-            setStatusMessage(ffmpegDlStatus, `Downloading... ${pct}% (${dl.bytes_downloaded} / ${dl.bytes_total} bytes)`, "loading");
+            setStatusMessage(ffmpegDlStatus, `Downloading... ${pct}% (${bytesDownloaded} / ${bytesTotal} bytes)`, "loading");
           }
         }
         if (dl.status === "completed") {
@@ -501,20 +495,17 @@ export function setupSettings() {
     setStatusMessage(ffmpegDlStatus, "Starting download...", "loading");
     ffmpegDlBtn.setAttribute("disabled", "true");
     try {
-      const resp = await callService({ DownloadFFmpeg: null });
-      if ("FFmpegDownloadResult" in resp) {
-        const r = resp.FFmpegDownloadResult;
-        if (r.started) {
-          setStatusMessage(ffmpegDlStatus, "Download started.", "loading");
-          ffmpegDlStartPolling();
-        } else {
-          setStatusMessage(ffmpegDlStatus, r.message, r.message.includes("already") ? "success" : "error");
-          ffmpegDlBtn.removeAttribute("disabled");
-          if (!r.message.includes("already")) await refreshFfmpegStatus();
-        }
-      } else if ("Error" in resp) {
-        setStatusMessage(ffmpegDlStatus, "Failed: " + resp.Error.message, "error");
+      const resp = await typedCall("ModelsService.DownloadFFmpeg", null, null, DownloadStatusUpdateSchema);
+      const prog = resp.progress;
+      if (prog && prog.status === "downloading" && !resp.complete) {
+        setStatusMessage(ffmpegDlStatus, "Download started.", "loading");
+        ffmpegDlStartPolling();
+      } else {
+        const message = prog?.error || `FFmpeg download did not start.`;
+        const already = message.includes("already");
+        setStatusMessage(ffmpegDlStatus, message, already ? "success" : "error");
         ffmpegDlBtn.removeAttribute("disabled");
+        if (!already) await refreshFfmpegStatus();
       }
     } catch (e: any) {
       setStatusMessage(ffmpegDlStatus, "Error: " + (e.message || e), "error");
@@ -921,13 +912,13 @@ async function initStorageStats() {
   container.innerHTML = '<div style="font-size:11px;color:#888;"><i class="bi bi-hourglass-split"></i> Loading storage stats...</div>';
 
   try {
-    const resp = await callService({ GetStorageStats: null });
-    if (!("StorageStatsResult" in resp)) {
+    const resp = await typedCall("FoldersService.GetStorageStats", null, null, StorageStatsResultSchema);
+    if (!resp.stats) {
       container.innerHTML = '<div style="font-size:11px;color:#dc3545;">Failed to load storage statistics.</div>';
       return;
     }
 
-    const stats = resp.StorageStatsResult.stats.stats;
+    const stats = resp.stats.stats;
 
     // Helper: format bytes to human readable
     const formatBytes = (bytes: number): string => {
@@ -939,8 +930,8 @@ async function initStorageStats() {
     };
 
     // Calculate totals
-    const totalBytes = stats.reduce((acc: number, s: any) => acc + s.size_bytes, 0);
-    const totalCount = stats.reduce((acc: number, s: any) => acc + s.count, 0);
+    const totalBytes = stats.reduce((acc: number, s: any) => acc + Number(s.sizeBytes), 0);
+    const totalCount = stats.reduce((acc: number, s: any) => acc + Number(s.count), 0);
     if (totalDisplay) {
       totalDisplay.textContent = `Total Storage: ${formatBytes(totalBytes)} (${totalCount} file(s))`;
     }
@@ -957,12 +948,12 @@ async function initStorageStats() {
     for (const stat of stats) {
       const cat = stat.category;
       if (categoriesMap[cat]) {
-        categoriesMap[cat].size += stat.size_bytes;
-        categoriesMap[cat].count += stat.count;
+        categoriesMap[cat].size += Number(stat.sizeBytes);
+        categoriesMap[cat].count += Number(stat.count);
         categoriesMap[cat].exts.push(stat.extension);
       } else {
-        categoriesMap["Other"].size += stat.size_bytes;
-        categoriesMap["Other"].count += stat.count;
+        categoriesMap["Other"].size += Number(stat.sizeBytes);
+        categoriesMap["Other"].count += Number(stat.count);
         categoriesMap["Other"].exts.push(stat.extension);
       }
     }

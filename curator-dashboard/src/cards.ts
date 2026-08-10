@@ -1,10 +1,10 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { renderTagPill, maskPath, SafeHtml, html } from "./components";
-import { CardImageData, ImageDetails, SearchMatch, TagSummary, ParsedMetadata } from "./types";
+import { CardImageData, ImageDetails, SearchMatch, TagSummary, ParsedMetadata, CharacterDetection, CharacterIdentity } from "./types";
 import { imageBytesToPngBlob } from "./utils";
 import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId, formatCopiedTags } from "./state";
 import { openImageViewer } from "./image-viewer";
-import { callService } from "./ipc";
+import { typedCall } from "./ipc";
 import { refreshCharacters } from "./views/characters";
 import { openTagModal } from "./views/tags";
 import { findSimilar } from "./views/concepts";
@@ -13,6 +13,33 @@ import { LruCache } from "./lru-cache";
 import { showErrorAlert } from "./alert";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { EmptySchema } from "@bufbuild/protobuf/wkt";
+import {
+  GetImageRequestSchema,
+  ImageResultSchema,
+  SetFavoriteRequestSchema,
+  SetNoteRequestSchema,
+} from "./gen/gallery_pb";
+import {
+  AssignCharacterIdentityRequestSchema,
+  CharacterDetectionsResultSchema,
+  CharacterIdentitiesListSchema,
+  CreateCharacterIdentityRequestSchema,
+  DeleteDetectionRequestSchema,
+  DetectionCropResultSchema,
+  DetectionCropsResultSchema,
+  GetDetectionCropRequestSchema,
+  GetDetectionCropsRequestSchema,
+  IdentifyDetectionRequestSchema,
+  IdentifyDetectionResultSchema,
+  ImageIdRequestSchema,
+} from "./gen/characters_pb";
+import {
+  CharacterIdentity as PCharacterIdentity,
+  DetectionResultSchema,
+  StoredDetection as PStoredDetection,
+} from "./gen/common_pb";
+import { imageDetailsFromProto } from "./proto-adapters";
 
 // --- Thumbnail Queue ---
 const MAX_CONCURRENT = 2;
@@ -619,21 +646,19 @@ function handleStarClick(card: HTMLElement, imageId: number) {
   if (!starBtn) return;
   const newFav = !starBtn.classList.contains("favorite");
 
-  callService({ SetFavorite: { image_id: imageId, favorite: newFav } }).then((resp) => {
-    if ("Success" in resp) {
-      document.querySelectorAll(`[data-image-id="${imageId}"] .star-btn`).forEach(btn => {
-        if (newFav) {
-          btn.classList.add("favorite");
-          btn.querySelector("i")?.setAttribute("class", "bi bi-star-fill");
-        } else {
-          btn.classList.remove("favorite");
-          btn.querySelector("i")?.setAttribute("class", "bi bi-star");
-        }
-      });
-      const activeNav = document.querySelector(".nav-item.active");
-      if (activeNav && activeNav.getAttribute("data-view") === "favorites" && !newFav) {
-        import("./views/gallery").then(m => m.refreshFavorites());
+  typedCall("GalleryService.SetFavorite", SetFavoriteRequestSchema, { imageId: BigInt(imageId), favorite: newFav }, EmptySchema).then(() => {
+    document.querySelectorAll(`[data-image-id="${imageId}"] .star-btn`).forEach(btn => {
+      if (newFav) {
+        btn.classList.add("favorite");
+        btn.querySelector("i")?.setAttribute("class", "bi bi-star-fill");
+      } else {
+        btn.classList.remove("favorite");
+        btn.querySelector("i")?.setAttribute("class", "bi bi-star");
       }
+    });
+    const activeNav = document.querySelector(".nav-item.active");
+    if (activeNav && activeNav.getAttribute("data-view") === "favorites" && !newFav) {
+      import("./views/gallery").then(m => m.refreshFavorites());
     }
   }).catch(() => {});
 }
@@ -659,9 +684,9 @@ function handleCopyClick(card: HTMLElement, _imageId: number) {
 }
 
 function handleInfoClick(imageId: number) {
-  callService({ GetImage: { image_id: imageId } }).then((resp) => {
-    if ("ImageResult" in resp) {
-      openImageInfoModal(resp.ImageResult.image);
+  typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(imageId) }, ImageResultSchema).then((resp) => {
+    if (resp.image) {
+      openImageInfoModal(imageDetailsFromProto(resp.image));
     }
   }).catch(() => {});
 }
@@ -831,15 +856,10 @@ function openImageInfoModal(img: ImageDetails) {
     statusDiv.style.color = "#0078d7";
 
     try {
-      const resp = await callService({
-        SetNote: {
-          image_id: img.id,
-          note: newVal.trim() ? newVal : null
-        }
-      });
-      if ("Error" in resp) {
-        throw new Error(resp.Error.message);
-      }
+      await typedCall("GalleryService.SetNote", SetNoteRequestSchema, {
+        imageId: BigInt(img.id),
+        note: newVal.trim() ? newVal : undefined,
+      }, EmptySchema);
       statusDiv.textContent = "Saved";
       statusDiv.style.color = "#28a745";
       img.note = newVal;
@@ -923,7 +943,7 @@ function openImageInfoModal(img: ImageDetails) {
       const loading = body.querySelector("#detections-loading") as HTMLElement;
       if (loading) loading.style.display = "block";
       try {
-        await callService({ DetectCharacters: { image_id: img.id } });
+        await typedCall("CharactersService.DetectCharacters", ImageIdRequestSchema, { imageId: BigInt(img.id) }, DetectionResultSchema);
         await loadDetectionsForImage(img.id);
         await refreshCharacters();
         import("./views/gallery").then(m => m.refreshGallery());
@@ -965,6 +985,29 @@ function openImageInfoModal(img: ImageDetails) {
   modal.addEventListener("click", (e) => { if (e.target === modal) onClose(); }, { once: true });
 }
 
+function storedDetectionFromProto(p: PStoredDetection): CharacterDetection {
+  return {
+    id: Number(p.id),
+    image_id: Number(p.imageId),
+    x0: p.x0,
+    y0: p.y0,
+    x1: p.x1,
+    y1: p.y1,
+    confidence: p.confidence,
+    has_embedding: p.hasEmbedding,
+    identity_id: p.identityId === undefined ? null : Number(p.identityId),
+  };
+}
+
+function characterIdentityFromProto(p: PCharacterIdentity): CharacterIdentity {
+  return {
+    id: Number(p.id),
+    name: p.name,
+    detection_count: Number(p.detectionCount),
+    created_at: p.createdAt,
+  };
+}
+
 async function loadDetectionsForImage(imageId: number) {
   const loading = document.getElementById("detections-loading");
   const empty = document.getElementById("detections-empty");
@@ -976,26 +1019,24 @@ async function loadDetectionsForImage(imageId: number) {
   list.innerHTML = "";
 
   try {
-    const resp = await callService({ GetCharacterDetections: { image_id: imageId } });
-    if ("CharacterDetectionsResult" in resp) {
-      const detections = resp.CharacterDetectionsResult.detections;
-      if (loading) loading.style.display = "none";
+    const resp = await typedCall("CharactersService.GetCharacterDetections", ImageIdRequestSchema, { imageId: BigInt(imageId) }, CharacterDetectionsResultSchema);
+    const detections = resp.detections.map(storedDetectionFromProto);
+    if (loading) loading.style.display = "none";
 
-      if (detections.length === 0) {
-        if (empty) empty.style.display = "block";
-        return;
-      }
+    if (detections.length === 0) {
+      if (empty) empty.style.display = "block";
+      return;
+    }
 
-      const idResp = await callService({ ListCharacterIdentities: null });
-      const identities: any[] = "CharacterIdentitiesList" in idResp ? idResp.CharacterIdentitiesList.identities : [];
-      identities.sort(compareIdentitiesPlaceholderLast);
+    const idResp = await typedCall("CharactersService.ListCharacterIdentities", null, null, CharacterIdentitiesListSchema);
+    const identities: CharacterIdentity[] = idResp.identities.map(characterIdentityFromProto);
+    identities.sort(compareIdentitiesPlaceholderLast);
 
-      await preloadDetectionCrops(detections);
+    await preloadDetectionCrops(detections);
 
-      for (const det of detections) {
-        const detEl = renderDetectionRow(det, identities, imageId);
-        list.appendChild(detEl);
-      }
+    for (const det of detections) {
+      const detEl = renderDetectionRow(det, identities, imageId);
+      list.appendChild(detEl);
     }
   } catch (e) {
     console.error("Failed to load detections:", e);
@@ -1007,26 +1048,25 @@ async function loadDetectionsForImage(imageId: number) {
   }
 }
 
-async function preloadDetectionCrops(detections: any[]) {
+async function preloadDetectionCrops(detections: CharacterDetection[]) {
   const uncached = detections.filter((d) => !cropCache.has(d.id));
   if (uncached.length === 0) return;
   const ids = uncached.map((d) => d.id);
   const revs = new Map<number, number>(uncached.map((d) => [d.id, cropRevision.get(d.id) || 0]));
   try {
-    const resp = await callService({ GetDetectionCrops: { detection_ids: ids, max_size: 96 } });
-    if ("DetectionCropsResult" in resp) {
-      for (const entry of resp.DetectionCropsResult.crops) {
-        if ((cropRevision.get(entry.detection_id) || 0) !== revs.get(entry.detection_id)) continue;
-        const blob = new Blob([new Uint8Array(entry.crop_webp_bytes)], { type: "image/webp" });
-        cacheCrop(entry.detection_id, URL.createObjectURL(blob));
-      }
+    const resp = await typedCall("CharactersService.GetDetectionCrops", GetDetectionCropsRequestSchema, { detectionIds: ids.map((id) => BigInt(id)), maxSize: 96 }, DetectionCropsResultSchema);
+    for (const entry of resp.crops) {
+      const detectionId = Number(entry.detectionId);
+      if ((cropRevision.get(detectionId) || 0) !== revs.get(detectionId)) continue;
+      const blob = new Blob([entry.cropWebpBytes], { type: "image/webp" });
+      cacheCrop(detectionId, URL.createObjectURL(blob));
     }
   } catch {
     // individual rows fall back to their own lazy load
   }
 }
 
-function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLElement {
+function renderDetectionRow(det: CharacterDetection, identities: CharacterIdentity[], imageId: number): HTMLElement {
   const detEl = document.createElement("div");
   detEl.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid var(--sys-border-light,#d0d0d0);border-radius:2px;background:var(--sys-window-bg,#fff);font-size:11px;";
 
@@ -1041,16 +1081,13 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
     cropThumb.innerHTML = `<img src="${cachedCropUrl}" style="width:100%;height:100%;object-fit:cover;" />`;
   } else {
     const revAtStart = cropRevision.get(det.id) || 0;
-    callService({ GetDetectionCrop: { detection_id: det.id, max_size: 96 } }).then((cropResp: any) => {
-      if ("DetectionCropResult" in cropResp) {
-        if ((cropRevision.get(det.id) || 0) !== revAtStart) return;
-        const bytes = new Uint8Array(cropResp.DetectionCropResult.crop_webp_bytes);
-        const blob = new Blob([bytes], { type: "image/webp" });
-        const url = URL.createObjectURL(blob);
-        cacheCrop(det.id, url);
-        cropThumb.classList.remove("skeleton-pulse");
-        cropThumb.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" />`;
-      }
+    typedCall("CharactersService.GetDetectionCrop", GetDetectionCropRequestSchema, { detectionId: BigInt(det.id), maxSize: 96 }, DetectionCropResultSchema).then((cropResp) => {
+      if ((cropRevision.get(det.id) || 0) !== revAtStart) return;
+      const blob = new Blob([cropResp.cropWebpBytes], { type: "image/webp" });
+      const url = URL.createObjectURL(blob);
+      cacheCrop(det.id, url);
+      cropThumb.classList.remove("skeleton-pulse");
+      cropThumb.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" />`;
     }).catch(() => {
       cropThumb.classList.remove("skeleton-pulse");
     });
@@ -1086,7 +1123,7 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
     const name = targetName.trim();
     if (!name) {
       if (det.identity_id !== null) {
-        await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: null } });
+        await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: undefined }, EmptySchema);
         await loadDetectionsForImage(imageId);
         await refreshCharacters();
         import("./views/gallery").then(m => m.refreshGallery());
@@ -1101,12 +1138,12 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
 
     const existing = identities.find(i => i.name.toLowerCase() === name.toLowerCase());
     if (existing) {
-      await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: existing.id } });
+      await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: BigInt(existing.id) }, EmptySchema);
     } else {
-      const createResp = await callService({ CreateCharacterIdentity: { name } });
-      if (createResp && "CharacterIdentitiesList" in createResp) {
-        const newId = createResp.CharacterIdentitiesList.identities[0].id;
-        await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: newId } });
+      const createResp = await typedCall("CharactersService.CreateCharacterIdentity", CreateCharacterIdentityRequestSchema, { name }, CharacterIdentitiesListSchema);
+      const newId = createResp.identities[0]?.id;
+      if (newId !== undefined) {
+        await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: newId }, EmptySchema);
       }
     }
     await loadDetectionsForImage(imageId);
@@ -1169,15 +1206,11 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
     matchBtn.disabled = true;
     matchBtn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
     try {
-      const resp = await callService({ IdentifyDetection: { detection_id: det.id } });
-      if ("IdentifyDetectionResult" in resp) {
-        loadDetectionsForImage(imageId);
-        refreshCharacters();
-        import("./views/gallery").then(m => m.refreshGallery());
-        import("./views/dashboard").then(m => m.refreshDashboard());
-      } else if ("Error" in resp) {
-        showErrorAlert("Failed to match:\n" + resp.Error.message);
-      }
+      await typedCall("CharactersService.IdentifyDetection", IdentifyDetectionRequestSchema, { detectionId: BigInt(det.id) }, IdentifyDetectionResultSchema);
+      loadDetectionsForImage(imageId);
+      refreshCharacters();
+      import("./views/gallery").then(m => m.refreshGallery());
+      import("./views/dashboard").then(m => m.refreshDashboard());
     } catch (e: any) {
       showErrorAlert("Error trying to match identity:\n" + (e.message || e));
     } finally {
@@ -1187,9 +1220,9 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
   });
 
   actionsEl.querySelector(".edit-bbox-btn")?.addEventListener("click", () => {
-    callService({ GetImage: { image_id: imageId } }).then((imgResp: any) => {
-      if ("ImageResult" in imgResp) {
-        const fp = imgResp.ImageResult.image.current_filepath;
+    typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(imageId) }, ImageResultSchema).then((imgResp) => {
+      if (imgResp.image) {
+        const fp = imgResp.image.currentFilepath;
         import("./bbox-editor").then(m => {
           m.openBBoxEditor(det.id, imageId, fp, det.x0, det.y0, det.x1, det.y1, async () => {
             invalidateCropCache(det.id);
@@ -1205,7 +1238,7 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
 
   actionsEl.querySelector(".delete-det-btn")?.addEventListener("click", async () => {
     if (!confirm("Are you sure you want to delete this detection? This will remove it from the system.")) return;
-    await callService({ DeleteDetection: { detection_id: det.id } });
+    await typedCall("CharactersService.DeleteDetection", DeleteDetectionRequestSchema, { detectionId: BigInt(det.id) }, EmptySchema);
     loadDetectionsForImage(imageId);
     refreshCharacters();
     import("./views/gallery").then(m => m.refreshGallery());
@@ -1216,7 +1249,7 @@ function renderDetectionRow(det: any, identities: any[], imageId: number): HTMLE
   select?.addEventListener("change", async () => {
     const val = select.value;
     const identityId = val ? parseInt(val, 10) : null;
-    await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: identityId } });
+    await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: identityId !== null ? BigInt(identityId) : undefined }, EmptySchema);
     await loadDetectionsForImage(imageId);
     await refreshCharacters();
     import("./views/gallery").then(m => m.refreshGallery());

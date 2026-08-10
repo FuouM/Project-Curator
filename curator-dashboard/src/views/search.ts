@@ -1,25 +1,27 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
 import { maskPath, SafeHtml, html } from "../components";
 import { renderSearchResults } from "../cards";
 import { setupInputClearButtons } from "./concepts";
 import { setupSelectionToolbar } from "../selection-toolbar";
 import { attachAutocomplete } from "../autocomplete";
 import { showErrorAlert } from "../alert";
+import { searchMatchFromProto } from "../proto-adapters";
+import { SearchRequestSchema, SearchResultSchema } from "../gen/search_pb";
+import { TagStatisticsResultSchema } from "../gen/common_pb";
+import { ConceptListResultSchema } from "../gen/concepts_pb";
 
 export async function loadSearchConceptsDropdown() {
   const select = document.getElementById("search-concept-select") as HTMLSelectElement;
   if (!select) return;
 
   try {
-    const resp = await callService({ ListConcepts: null });
-    if ("ConceptListResult" in resp) {
-      const concepts = resp.ConceptListResult.concepts;
-      const optionsHtml = `<option value="">-- All Concepts --</option>` + concepts.map((c: any) =>
-        `<option value="${c.id}">${c.name} (${c.sample_count} samples)</option>`
-      ).join("");
-      select.innerHTML = optionsHtml;
-    }
+    const resp = await typedCall("ConceptsService.ListConcepts", null, null, ConceptListResultSchema);
+    const concepts = resp.concepts;
+    const optionsHtml = `<option value="">-- All Concepts --</option>` + concepts.map((c) =>
+      `<option value="${c.id}">${c.name} (${c.sampleCount} samples)</option>`
+    ).join("");
+    select.innerHTML = optionsHtml;
   } catch (_) {}
 }
 
@@ -152,16 +154,27 @@ export function setupSearch() {
       const mediaTypeSelect = document.getElementById("search-media-type-select") as HTMLSelectElement;
       const mediaType = mediaTypeSelect && mediaTypeSelect.value ? mediaTypeSelect.value : null;
 
-      const resp = await callService({
-        Search: { query_text: query, query_image_path: imagePath, tag_filter: tag, filename_filter: filenameFilter, parse_filter: parseFilter, parse_type: parseType, concept_id: conceptIdVal, character_identity_id: null, ocr_filter: ocrFilter, ocr_text_search: ocrTextSearch, media_type: mediaType, limit: 50 }
-      });
+      const resp = await typedCall(
+        "SearchService.Search",
+        SearchRequestSchema,
+        {
+          queryText: query ?? undefined,
+          queryImagePath: imagePath ?? undefined,
+          tagFilter: tag ?? undefined,
+          filenameFilter: filenameFilter ?? undefined,
+          parseFilter: parseFilter ?? undefined,
+          parseType: parseType ?? undefined,
+          conceptId: conceptIdVal !== null ? BigInt(conceptIdVal) : undefined,
+          characterIdentityId: undefined,
+          ocrFilter: ocrFilter ?? undefined,
+          ocrTextSearch: ocrTextSearch ?? undefined,
+          mediaType: mediaType ?? undefined,
+          limit: 50,
+        },
+        SearchResultSchema
+      );
 
-      if ("SearchResult" in resp) {
-        renderSearchResults(resp.SearchResult.matches);
-      } else if ("Error" in resp) {
-        if (grid) grid.innerHTML = `<p style="color: #ef4444; padding: 10px;">Search failed: ${resp.Error.message}</p>`;
-        showErrorAlert("Search failed:\n" + resp.Error.message);
-      }
+      renderSearchResults(resp.matches.map(searchMatchFromProto));
     } catch (e: any) {
       if (grid) grid.innerHTML = `<p style="color: #ef4444; padding: 10px;">IPC Search failed: ${e.message || e}</p>`;
       showErrorAlert("IPC Search failed:\n" + e);
@@ -176,12 +189,10 @@ let allTags: { tag: string; count: number }[] = [];
 
 async function loadAllTags() {
   try {
-    const resp = await callService({ GetTagStatistics: null });
-    if ("TagStatisticsResult" in resp) {
-      allTags = resp.TagStatisticsResult.tags
-        .map((t: any) => ({ tag: t.tag, count: t.count }))
-        .sort((a: any, b: any) => b.count - a.count);
-    }
+    const resp = await typedCall("TagsService.GetTagStatistics", null, null, TagStatisticsResultSchema);
+    allTags = resp.tags
+      .map((t) => ({ tag: t.tag, count: Number(t.count) }))
+      .sort((a, b) => b.count - a.count);
   } catch (_) {}
 }
 

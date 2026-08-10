@@ -1146,6 +1146,7 @@ dependencies = [
  "ort",
  "png 0.18.1",
  "prost",
+ "prost-types",
  "regex",
  "serde",
  "serde_json",
@@ -1172,6 +1173,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "curator-core",
+ "prost",
  "rfd",
  "serde",
  "serde_json",
@@ -1199,6 +1201,7 @@ dependencies = [
  "sqlx",
  "sysinfo",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "tonic",
  "tracing",
@@ -6229,6 +6232,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

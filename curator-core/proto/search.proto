@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package curator.search;
+
+import "common.proto";
+
+service SearchService {
+  rpc Search (SearchRequest) returns (SearchResult);
+  rpc GetCharacterSuggestions (GetCharacterSuggestionsRequest) returns (curator.common.TagStatisticsResult);
+}
+
+message SearchRequest {
+  optional string query_text = 1;
+  optional string query_image_path = 2;
+  optional string tag_filter = 3;
+  optional string filename_filter = 4;
+  optional string parse_filter = 5;
+  optional string parse_type = 6;
+  optional int64 concept_id = 7;
+  optional int64 character_identity_id = 8;
+  optional bool ocr_filter = 9;
+  optional string ocr_text_search = 10;
+  // Restrict results to a media kind: "image", "video", or unset for all.
+  optional string media_type = 11;
+  uint32 limit = 12;
+}
+
+message SearchResult {
+  repeated curator.common.SearchMatch matches = 1;
+}
+
+message GetCharacterSuggestionsRequest {
+  optional string query = 1;
+}

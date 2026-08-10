@@ -1,8 +1,10 @@
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
 import { SafeHtml, html } from "../components";
 import { galleryPage, favoritesPage, isSelectMode, selectedImageIds } from "../state";
 import { getImagesPerPage, setGalleryTotalCount, setFavoritesTotalCount, galleryTotalCount, favoritesTotalCount } from "../state";
 import { renderImages } from "../cards";
+import { imageDetailsFromProto } from "../proto-adapters";
+import { ListImagesRequestSchema, ListResultSchema } from "../gen/gallery_pb";
 
 export function refreshGallery() { return refreshPaginatedImages(galleryPage, "gallery", "gallery", {}); }
 export function refreshFavorites() { return refreshPaginatedImages(favoritesPage, "favorites", "favorites", { only_favorites: true }); }
@@ -15,35 +17,38 @@ export async function refreshPaginatedImages(
 ) {
   const perPage = getImagesPerPage();
   try {
-    const resp = await callService({ ListImages: { limit: perPage, offset: page * perPage, ...listOpts } });
-    if ("ListResult" in resp) {
-      const { images, total_count } = resp.ListResult;
-      const gridId = idPrefix + "-grid";
-      renderImages(images, gridId);
+    const resp = await typedCall(
+      "GalleryService.ListImages",
+      ListImagesRequestSchema,
+      { limit: perPage, offset: page * perPage, onlyFavorites: listOpts.only_favorites },
+      ListResultSchema
+    );
+    const { images, totalCount } = resp;
+    const gridId = idPrefix + "-grid";
+    renderImages(images.map(imageDetailsFromProto), gridId);
 
-      if (listOpts.only_favorites) {
-        setFavoritesTotalCount(total_count);
-      } else {
-        setGalleryTotalCount(total_count);
-      }
+    if (listOpts.only_favorites) {
+      setFavoritesTotalCount(Number(totalCount));
+    } else {
+      setGalleryTotalCount(Number(totalCount));
+    }
 
-      const totalCount = listOpts.only_favorites ? favoritesTotalCount : galleryTotalCount;
-      const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
+    const totalCountNum = listOpts.only_favorites ? favoritesTotalCount : galleryTotalCount;
+    const totalPages = Math.max(1, Math.ceil(totalCountNum / perPage));
 
-      const indicator = document.getElementById(`${idPrefix}-page-indicator`);
-      if (indicator) indicator.textContent = `Page ${page + 1} of ${totalPages} (${totalCount} images)`;
+    const indicator = document.getElementById(`${idPrefix}-page-indicator`);
+    if (indicator) indicator.textContent = `Page ${page + 1} of ${totalPages} (${totalCountNum} images)`;
 
-      const prevBtn = document.getElementById(`${idPrefix}-prev-btn`) as HTMLButtonElement;
-      if (prevBtn) prevBtn.disabled = page === 0;
+    const prevBtn = document.getElementById(`${idPrefix}-prev-btn`) as HTMLButtonElement;
+    if (prevBtn) prevBtn.disabled = page === 0;
 
-      const nextBtn = document.getElementById(`${idPrefix}-next-btn`) as HTMLButtonElement;
-      if (nextBtn) nextBtn.disabled = page >= totalPages - 1;
+    const nextBtn = document.getElementById(`${idPrefix}-next-btn`) as HTMLButtonElement;
+    if (nextBtn) nextBtn.disabled = page >= totalPages - 1;
 
-      const jumpInput = document.getElementById(`${idPrefix}-page-jump`) as HTMLInputElement;
-      if (jumpInput) {
-        jumpInput.max = totalPages.toString();
-        jumpInput.placeholder = `1-${totalPages}`;
-      }
+    const jumpInput = document.getElementById(`${idPrefix}-page-jump`) as HTMLInputElement;
+    if (jumpInput) {
+      jumpInput.max = totalPages.toString();
+      jumpInput.placeholder = `1-${totalPages}`;
     }
   } catch (e) {
     console.error(`Failed to refresh ${idPrefix}: `, e);

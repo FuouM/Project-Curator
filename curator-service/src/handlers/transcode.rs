@@ -1,10 +1,40 @@
 use anyhow::Context;
-use curator_core::ipc::Response;
+use anyhow::Result;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::{error, info};
+
+use crate::AppSettings;
+
+/// Resolved metadata of a media file, surfaced by `GetMediaMetadata`.
+#[derive(Debug, Clone)]
+pub struct MediaMetadata {
+    pub duration_ms: i64,
+    pub fps: f64,
+    pub total_frames: u32,
+}
+
+/// Read video metadata (duration, fps, derived frame count) via the resolved
+/// FFmpeg/ffprobe. Fails fast when FFmpeg is missing or the file is invalid.
+pub async fn get_media_metadata(
+    data_dir: &Path,
+    settings: &Arc<tokio::sync::Mutex<AppSettings>>,
+    path: &str,
+) -> Result<MediaMetadata> {
+    let resolved_path = crate::handlers::resolve_relative_path(data_dir, path);
+    let ffmpeg = crate::handlers::resolve_ffmpeg_path(data_dir, settings).await?;
+    let meta = curator_core::video::read_video_metadata(Path::new(&resolved_path), &ffmpeg)
+        .map_err(|e| anyhow::anyhow!("Failed to read metadata: {}", e))?;
+    let duration_secs = meta.duration_ms as f64 / 1000.0;
+    let total_frames = (duration_secs * meta.fps).round() as u32;
+    Ok(MediaMetadata {
+        duration_ms: meta.duration_ms,
+        fps: meta.fps,
+        total_frames,
+    })
+}
 
 /// Shared state for active FFmpeg transcode jobs, keyed by `job_id`. Progress
 /// is written by the spawned ffmpeg task and polled via `GetTranscodeProgress`
@@ -544,27 +574,13 @@ pub async fn start_transcode(
     Ok(())
 }
 
-/// Poll the current state of a transcode job.
-pub async fn get_transcode_progress(job_id: &str, map: &TranscodeProgressMap) -> Response {
+/// Poll the current state of a transcode job. Unknown job ids return a
+/// not-running state whose `error` field explains the miss.
+pub async fn get_transcode_progress(job_id: &str, map: &TranscodeProgressMap) -> TranscodeJobState {
     let guard = map.lock().await;
     match guard.get(job_id) {
-        Some(state) => Response::TranscodeProgressResult {
-            job_id: job_id.to_string(),
-            running: state.running,
-            percent: state.percent,
-            fps: state.fps,
-            x_speed: state.x_speed,
-            out_time_ms: state.out_time_ms,
-            output_path: state.output_path.clone(),
-            error: state.error.clone(),
-            command: state.command.clone(),
-            input_size_bytes: state.input_size_bytes,
-            output_size_bytes: state.output_size_bytes,
-            output_video_size_bytes: state.output_video_size_bytes,
-            output_audio_size_bytes: state.output_audio_size_bytes,
-        },
-        None => Response::TranscodeProgressResult {
-            job_id: job_id.to_string(),
+        Some(state) => state.clone(),
+        None => TranscodeJobState {
             running: false,
             percent: 0.0,
             fps: 0.0,

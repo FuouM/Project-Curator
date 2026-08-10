@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package curator.parser;
+
+import "common.proto";
+
+service FilenameParserService {
+  rpc TestFilenamePattern (TestFilenamePatternRequest) returns (TestFilenamePatternResult);
+  rpc CompileTokenBlocks (CompileTokenBlocksRequest) returns (CompileTokenBlocksResult);
+  rpc PreviewBatchFilenameParsing (PreviewBatchFilenameParsingRequest) returns (PreviewBatchFilenameParsingResult);
+  rpc RunBatchFilenameParsing (RunBatchFilenameParsingRequest) returns (RunBatchFilenameParsingResult);
+}
+
+message TestFilenamePatternRequest {
+  string filename = 1;
+  string pattern_or_type = 2;
+  string rule_type = 3;
+  repeated curator.common.TokenBlock token_config = 4;
+}
+
+message TestFilenamePatternResult {
+  optional curator.common.ParsedMetadata result = 1;
+}
+
+message CompileTokenBlocksRequest {
+  repeated curator.common.TokenBlock token_config = 1;
+}
+
+message CompileTokenBlocksResult {
+  string regex = 1;
+}
+
+message PreviewBatchFilenameParsingRequest {
+  uint32 limit = 1;
+  string pattern_or_type = 2;
+  string rule_type = 3;
+  repeated curator.common.TokenBlock token_config = 4;
+  optional string output_match_type = 5;
+}
+
+message PreviewBatchFilenameParsingResult {
+  repeated curator.common.BatchPreviewItem items = 1;
+}
+
+message RunBatchFilenameParsingRequest {
+  string pattern_or_type = 1;
+  string rule_type = 2;
+  repeated curator.common.TokenBlock token_config = 3;
+  optional string output_match_type = 4;
+}
+
+message RunBatchFilenameParsingResult {
+  uint32 total_processed = 1;
+  uint32 matched_count = 2;
+  uint32 tags_created = 3;
+}

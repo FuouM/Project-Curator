@@ -512,6 +512,12 @@ export interface TagContext {
   confidence: number | null;
 }
 
+export interface TaggerStatusInfo {
+  loaded: boolean;
+  model_path: string;
+  total_tags: number;
+}
+
 export interface AssetContext {
   asset_id: number;
   path: string;

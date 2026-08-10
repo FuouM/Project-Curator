@@ -1,0 +1,149 @@
+syntax = "proto3";
+
+package curator.characters;
+
+import "google/protobuf/empty.proto";
+import "common.proto";
+
+service CharactersService {
+  rpc DetectCharacters (ImageIdRequest) returns (curator.common.DetectionResult);
+  rpc DetectCharactersBatch (ImageIdsRequest) returns (DetectionBatchResult);
+  rpc GetCharacterDetections (ImageIdRequest) returns (CharacterDetectionsResult);
+  rpc GetCharacterDetectionsBatch (ImageIdsRequest) returns (DetectionBatchResult);
+  rpc GetDetectionCrop (GetDetectionCropRequest) returns (DetectionCropResult);
+  rpc GetDetectionCrops (GetDetectionCropsRequest) returns (DetectionCropsResult);
+  rpc AssignCharacterIdentity (AssignCharacterIdentityRequest) returns (google.protobuf.Empty);
+  rpc CreateCharacterIdentity (CreateCharacterIdentityRequest) returns (CharacterIdentitiesList);
+  rpc RenameCharacterIdentity (RenameCharacterIdentityRequest) returns (google.protobuf.Empty);
+  rpc DeleteCharacterIdentity (DeleteCharacterIdentityRequest) returns (google.protobuf.Empty);
+  rpc ListCharacterIdentities (google.protobuf.Empty) returns (CharacterIdentitiesList);
+  rpc ReidentifyAllDetections (google.protobuf.Empty) returns (curator.common.ReidentifyResult);
+  rpc SearchByCharacter (SearchByCharacterRequest) returns (CharacterSearchResult);
+  rpc SearchByCharacterBatch (SearchByCharacterBatchRequest) returns (CharacterSearchBatchResult);
+  rpc ListUnassignedDetections (google.protobuf.Empty) returns (UnassignedDetectionsList);
+  rpc DeleteDetection (DeleteDetectionRequest) returns (google.protobuf.Empty);
+  rpc UpdateDetectionBoundingBox (UpdateDetectionBoundingBoxRequest) returns (google.protobuf.Empty);
+  rpc AddDetection (AddDetectionRequest) returns (AddDetectionResult);
+  rpc IdentifyDetection (IdentifyDetectionRequest) returns (IdentifyDetectionResult);
+  rpc EphemeralDetectCharacters (EphemeralDetectCharactersRequest) returns (EphemeralDetectionResult);
+  rpc ClearCropCache (google.protobuf.Empty) returns (google.protobuf.Empty);
+}
+
+message ImageIdRequest {
+  int64 image_id = 1;
+}
+
+message ImageIdsRequest {
+  repeated int64 image_ids = 1;
+}
+
+message DetectionBatchResult {
+  repeated curator.common.DetectionResult results = 1;
+}
+
+message CharacterDetectionsResult {
+  int64 image_id = 1;
+  repeated curator.common.StoredDetection detections = 2;
+}
+
+message GetDetectionCropRequest {
+  int64 detection_id = 1;
+  optional uint32 max_size = 2;
+}
+
+message DetectionCropResult {
+  bytes crop_webp_bytes = 1;
+}
+
+message GetDetectionCropsRequest {
+  repeated int64 detection_ids = 1;
+  optional uint32 max_size = 2;
+}
+
+message DetectionCropsResult {
+  repeated curator.common.DetectionCropEntry crops = 1;
+}
+
+message AssignCharacterIdentityRequest {
+  int64 detection_id = 1;
+  // Unset unassigns the detection.
+  optional int64 identity_id = 2;
+}
+
+message CreateCharacterIdentityRequest {
+  optional string name = 1;
+}
+
+message RenameCharacterIdentityRequest {
+  int64 identity_id = 1;
+  string name = 2;
+}
+
+message DeleteCharacterIdentityRequest {
+  int64 identity_id = 1;
+}
+
+message SearchByCharacterRequest {
+  int64 identity_id = 1;
+}
+
+message CharacterSearchResult {
+  repeated int64 image_ids = 1;
+}
+
+message SearchByCharacterBatchRequest {
+  repeated int64 identity_ids = 1;
+}
+
+message CharacterSearchBatchResult {
+  repeated curator.common.CharacterSearchEntry results = 1;
+}
+
+message UnassignedDetectionsList {
+  repeated curator.common.StoredDetection detections = 1;
+}
+
+message DeleteDetectionRequest {
+  int64 detection_id = 1;
+}
+
+message UpdateDetectionBoundingBoxRequest {
+  int64 detection_id = 1;
+  int32 x0 = 2;
+  int32 y0 = 3;
+  int32 x1 = 4;
+  int32 y1 = 5;
+}
+
+message AddDetectionRequest {
+  int64 image_id = 1;
+  int32 x0 = 2;
+  int32 y0 = 3;
+  int32 x1 = 4;
+  int32 y1 = 5;
+}
+
+message AddDetectionResult {
+  curator.common.StoredDetection detection = 1;
+}
+
+message IdentifyDetectionRequest {
+  int64 detection_id = 1;
+}
+
+message IdentifyDetectionResult {
+  optional int64 identity_id = 1;
+}
+
+message EphemeralDetectCharactersRequest {
+  string path = 1;
+}
+
+message EphemeralDetectionResult {
+  string path = 1;
+  repeated curator.common.StoredDetection detections = 2;
+}
+
+message CharacterIdentitiesList {
+  repeated curator.common.CharacterIdentity identities = 1;
+}

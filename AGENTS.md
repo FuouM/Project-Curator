@@ -10,16 +10,18 @@ The repository is structured as a Rust Cargo workspace coupled with a Tauri v2 d
 
 ```bash
 project-curator/
-├── curator-core/       # Core Rust engine: PNG decoding, CLIP embeddings, vector indexing, SQLite
+├── curator-core/       # Core Rust engine: PNG decoding, CLIP embeddings, vector indexing, SQLite, proto files
+│   └── proto/          # Domain Protobuf specifications (15 services: system, search, gallery, etc.)
 ├── curator-service/    # Background daemon: task queues, ONNX model pipeline, Named Pipe server
-├── curator-cli/        # Scriptable CLI: headless indexing, batch query, agentic execution
+│   └── src/server/     # Domain gRPC service implementations (SystemServiceClient, SearchServiceClient, etc.)
+├── curator-cli/        # Scriptable CLI: headless indexing, batch query, agentic execution over gRPC
 ├── curator-dashboard/  # Native-looking desktop UI (Tauri v2 + Vite + TypeScript)
-│   ├── src-tauri/      # Rust backend glue for Tauri app (workspace member)
-│   └── src/            # TypeScript frontend UI components, rendering, and IPC
+│   ├── src-tauri/      # Rust backend glue & typed binary IPC bridge (send_to_service_typed)
+│   └── src/            # TypeScript UI components, RPC clients (callSearch, callGallery), and gen/ stubs
 └── .curator/           # Local runtime state: cached models, vector indexes, SQLite database
 ```
 
-* **Core IPC Bus:** High-throughput, asynchronous communication between components occurs via local Windows Named Pipes (`\\.\pipe\curator_ipc`).
+* **Core IPC Bus:** Strongly-typed gRPC services (Tonic in Rust, `@bufbuild/protobuf` in TS) over Windows Named Pipe (`\\.\pipe\curator_ipc`) for service calls, and Tauri `invoke("send_to_service_typed")` for raw Protobuf binary bytes (`.toBinary()` / `.fromBinary()`) between frontend and daemon.
 * **Storage Philosophy:** Relational metadata resides in SQLite; dense vector embeddings reside in an isolated dynamic vector index. Original source files are never mutated.
 
 ---
@@ -40,12 +42,13 @@ Always execute commands within the project's isolated environment:
 # 2. Fetch DirectML ONNX Runtime binary (Microsoft.ML.OnnxRuntime.DirectML v1.24.4)
 .\download_ort.ps1
 
-# 3. Launch full development server (stops background service, builds, and starts Tauri GUI)
+# 3. Launch full development server (stops background service, generates protobuf types, builds, and starts Tauri GUI)
 .\dev.ps1
 ```
 
-* **Python Environment**:
-  Use `scripts/venv` (If already set up) or ask the User for an environment.
+* **Protobuf Code Generation**:
+  * **Rust**: `curator-core/build.rs` compiles `curator-core/proto/*.proto` automatically during `cargo build` / `cargo check`.
+  * **TypeScript**: `npm run build:proto` (runs `npx buf generate`) emits TS stubs to `curator-dashboard/src/gen/`. Triggered automatically by `dev.ps1` and `npm run dev`.
 
 ---
 
@@ -93,10 +96,15 @@ Get-Process curator-service -ErrorAction SilentlyContinue | Stop-Process -Force
 * Sequence input IDs **must be padded with zeros (`0`)** up to the maximum sequence length of **77**.
 * **Do NOT** repeat `EOS` tokens across padded slots; doing so corrupts positional embeddings and transformer pooling outputs.
 
-### 4. IPC Latency & Serialization
+### 4. IPC Latency & Protobuf Architecture
 
+* **Typed Protobuf Binary Transport**: Do NOT use legacy untyped `Request`/`Response` JSON strings or `callService`. All frontend-backend communication uses domain-specific call functions (`callSystem`, `callSearch`, `callGallery`, `callImport`, `callTags`, etc. in `src/ipc.ts`) that serialize Protobuf messages to raw binary bytes (`.toBinary()`) sent through Tauri's `send_to_service_typed` IPC command.
+* **Adding New RPCs / Types**:
+  1. Add/modify the message or RPC definition in `curator-core/proto/<domain>.proto`.
+  2. Implement the gRPC trait handler in `curator-service/src/server/<domain>.rs`.
+  3. Re-run `dev.ps1` (or `cargo check` + `npm run build:proto` in `curator-dashboard`).
+  4. Import generated TS classes from `./gen/<domain>_pb` and use domain helper `call<Domain>`.
 * **Indexed Pattern Search:** Autocomplete components must perform dynamic `LIKE` queries on keypress rather than pre-fetching large data arrays over IPC. Keep response payloads small to guarantee sub-10ms response times.
-* **Payload Serialization:** Structure IPC parameters explicitly using key-object shapes (e.g., `{ RequestCommand: { arg: val } }`) to prevent serialization normalization failures.
 
 ---
 

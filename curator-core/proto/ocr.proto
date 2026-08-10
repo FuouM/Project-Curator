@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package curator.ocr;
+
+import "common.proto";
+
+service OcrService {
+  rpc RunOcr (ImageIdRequest) returns (OcrDetectionsResult);
+  rpc GetOcrDetections (ImageIdRequest) returns (OcrDetectionsResult);
+  rpc EphemeralRunOcr (EphemeralRunOcrRequest) returns (EphemeralOcrResult);
+}
+
+message ImageIdRequest {
+  int64 image_id = 1;
+}
+
+message OcrDetectionsResult {
+  int64 image_id = 1;
+  repeated curator.common.OcrResult detections = 2;
+  repeated curator.common.BubbleBoxResult bubble_boxes = 3;
+}
+
+message EphemeralRunOcrRequest {
+  string path = 1;
+}
+
+message EphemeralOcrResult {
+  string path = 1;
+  repeated curator.common.EphemeralOcrDetection detections = 2;
+  repeated curator.common.BubbleBoxResult bubble_boxes = 3;
+}

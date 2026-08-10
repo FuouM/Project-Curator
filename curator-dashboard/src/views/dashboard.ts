@@ -1,25 +1,26 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
 import { maskPath, SafeHtml, html } from "../components";
 import { renderImages, attachCardEventHandlers, renderParsedMetadataHtml, renderCardTagsContainerHtml } from "../cards";
 import { findSimilar } from "./concepts";
+import { imageDetailsFromProto, taggerStatusInfoFromProto } from "../proto-adapters";
 import { ImageDetails } from "../types";
+import { StatusResultSchema, DashboardInitResultSchema, type StatusResult } from "../gen/system_pb";
+import { TaggerStatusResultSchema, type TaggerStatusResult } from "../gen/tagging_pb";
+import { DevicePreference, EmbeddingModel, TaggerModel } from "../gen/common_pb";
+import { ListResultSchema, ListImagesRequestSchema } from "../gen/gallery_pb";
 
 let featuredCardCleanup: (() => void) | null = null;
 
 export async function refreshDashboard() {
   try {
     const [statusResp, taggerResp] = await Promise.all([
-      callService({ GetStatus: null }),
-      callService({ GetTaggerStatus: null }),
+      typedCall("SystemService.GetStatus", null, null, StatusResultSchema),
+      typedCall("TaggingService.GetTaggerStatus", null, null, TaggerStatusResultSchema),
     ]);
-    if ("StatusResult" in statusResp) {
-      applyStatusUpdate(statusResp);
-    } else {
-      throw new Error("Could not reach service");
-    }
+    applyStatusUpdate(statusResp);
     applyTaggerUpdate(taggerResp);
-    await loadDashboardImages(statusResp.StatusResult.image_count);
+    await loadDashboardImages(Number(statusResp.imageCount));
   } catch (e: any) {
     console.error("Failed to refresh dashboard: ", e);
     const featuredContainer = document.getElementById("featured-day-content");
@@ -76,26 +77,27 @@ export function updateTaggerIndicators(data: { loaded: boolean; model_path: stri
   }
 }
 
-export function applyStatusUpdate(resp: any) {
-  if ("StatusResult" in resp) {
-    updateStatusIndicators(resp.StatusResult);
-  } else if ("Error" in resp) {
-    console.log("Status poll returned Error: " + resp.Error.message);
-    const dot = document.getElementById("service-dot");
-    const text = document.getElementById("service-status-text");
-    if (dot && text) { dot.classList.add("offline"); text.textContent = "Service Error"; }
-  }
+export function applyStatusUpdate(resp: StatusResult) {
+  updateStatusIndicators({
+    image_count: Number(resp.imageCount),
+    vector_count: Number(resp.vectorCount),
+    pending_jobs: Number(resp.pendingJobs),
+    preprocessing_jobs: Number(resp.preprocessingJobs),
+    ram_usage_bytes: Number(resp.ramUsageBytes),
+  });
 }
 
-export function applyTaggerUpdate(resp: any) {
-  if ("TaggerStatusResult" in resp) {
-    updateTaggerIndicators(resp.TaggerStatusResult);
+export function applyTaggerUpdate(resp: TaggerStatusResult) {
+  const preferredKey = taggerToString(resp.preferredTagger);
+  const info = resp.taggers.find(t => t.key === preferredKey) ?? resp.taggers[0];
+  if (info) {
+    updateTaggerIndicators(taggerStatusInfoFromProto(info));
   }
 }
 
 export async function refreshTaggerStatus() {
   try {
-    const resp = await callService({ GetTaggerStatus: null });
+    const resp = await typedCall("TaggingService.GetTaggerStatus", null, null, TaggerStatusResultSchema);
     applyTaggerUpdate(resp);
   } catch (e: any) {
     console.log("refreshTaggerStatus exception: " + (e.message || e));
@@ -105,7 +107,7 @@ export async function refreshTaggerStatus() {
 export function startStatusPolling() {
   async function check() {
     try {
-      const statusResp = await callService({ GetStatus: null });
+      const statusResp = await typedCall("SystemService.GetStatus", null, null, StatusResultSchema);
       applyStatusUpdate(statusResp);
     } catch (e: any) {
       console.log("startStatusPolling exception: " + (e.message || e));
@@ -134,16 +136,14 @@ async function loadDashboardImages(image_count: number) {
   }
 
   const [featuredResp, latestResp] = await Promise.all([
-    callService({ GetDashboardInit: null }),
-    callService({ ListImages: { limit: 8, offset: 0 } }),
+    typedCall("SystemService.GetDashboardInit", null, null, DashboardInitResultSchema),
+    typedCall("GalleryService.ListImages", ListImagesRequestSchema, { limit: 8, offset: 0 }, ListResultSchema),
   ]);
 
-  if ("DashboardInitResult" in featuredResp && featuredResp.DashboardInitResult.featured_images.length > 0) {
-    renderFeaturedDay(featuredResp.DashboardInitResult.featured_images[0]);
+  if (featuredResp.featuredImages.length > 0) {
+    renderFeaturedDay(imageDetailsFromProto(featuredResp.featuredImages[0]));
   }
-  if ("ListResult" in latestResp) {
-    renderImages(latestResp.ListResult.images, "latest-imports-grid");
-  }
+  renderImages(latestResp.images.map(imageDetailsFromProto), "latest-imports-grid");
 }
 
 export function renderFeaturedDay(featured: ImageDetails) {
@@ -229,9 +229,31 @@ export function renderFeaturedDay(featured: ImageDetails) {
   });
 }
 
-export function applySettingsToUI(resp: any) {
-  if (!("SettingsResult" in resp)) return;
-  const s = resp.SettingsResult;
+function deviceToString(d: DevicePreference): string {
+  return d === DevicePreference.CPU ? "cpu" : d === DevicePreference.GPU ? "gpu" : "auto";
+}
+
+function embeddingToString(m: EmbeddingModel): string {
+  return m === EmbeddingModel.MOBILECLIP_S2 ? "mobileclip-s2" : "clip-vit-b-32";
+}
+
+function taggerToString(t: TaggerModel): string {
+  return t === TaggerModel.CAMIE ? "camie" : "wd-eva02";
+}
+
+export interface SettingsUISnapshot {
+  clipDevice: DevicePreference;
+  taggerDevice: DevicePreference;
+  taggerWdDevice: DevicePreference;
+  preferredTagger: TaggerModel;
+  idleTimeoutSecs: bigint;
+  embeddingModel: EmbeddingModel;
+  detectionDevice: DevicePreference;
+  detectionMetricsDevice: DevicePreference;
+  ocrDevice: DevicePreference;
+}
+
+export function applySettingsToUI(s: SettingsUISnapshot) {
   const clipSelect = document.getElementById("settings-clip-device") as HTMLSelectElement;
   const taggerSelect = document.getElementById("settings-tagger-device") as HTMLSelectElement;
   const taggerWdSelect = document.getElementById("settings-tagger-wd-device") as HTMLSelectElement;
@@ -241,18 +263,18 @@ export function applySettingsToUI(resp: any) {
   const detDeviceSelect = document.getElementById("settings-detection-device") as HTMLSelectElement;
   const detMetricsSelect = document.getElementById("settings-detection-metrics-device") as HTMLSelectElement;
   const ocrDeviceSelect = document.getElementById("settings-ocr-device") as HTMLSelectElement;
-  if (clipSelect) clipSelect.value = s.clip_device;
-  if (taggerSelect) taggerSelect.value = s.tagger_device;
-  if (taggerWdSelect) taggerWdSelect.value = s.tagger_wd_device;
-  if (preferredTaggerSelect) preferredTaggerSelect.value = s.preferred_tagger;
-  if (idleSelect) idleSelect.value = s.idle_timeout_secs.toString();
+  if (clipSelect) clipSelect.value = deviceToString(s.clipDevice);
+  if (taggerSelect) taggerSelect.value = deviceToString(s.taggerDevice);
+  if (taggerWdSelect) taggerWdSelect.value = deviceToString(s.taggerWdDevice);
+  if (preferredTaggerSelect) preferredTaggerSelect.value = taggerToString(s.preferredTagger);
+  if (idleSelect) idleSelect.value = s.idleTimeoutSecs.toString();
   if (embeddingSelect) {
-    embeddingSelect.value = s.embedding_model;
-    import("./benchmark").then(m => m.updateBenchmarkModelHeader(s.embedding_model));
+    embeddingSelect.value = embeddingToString(s.embeddingModel);
+    import("./benchmark").then(m => m.updateBenchmarkModelHeader(embeddingToString(s.embeddingModel)));
   }
-  if (detDeviceSelect) detDeviceSelect.value = s.detection_device;
-  if (detMetricsSelect) detMetricsSelect.value = s.detection_metrics_device;
-  if (ocrDeviceSelect) ocrDeviceSelect.value = s.ocr_device;
+  if (detDeviceSelect) detDeviceSelect.value = deviceToString(s.detectionDevice);
+  if (detMetricsSelect) detMetricsSelect.value = deviceToString(s.detectionMetricsDevice);
+  if (ocrDeviceSelect) ocrDeviceSelect.value = deviceToString(s.ocrDevice);
 }
 
 // ---------------------------------------------------------------------------

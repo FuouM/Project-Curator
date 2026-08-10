@@ -1,6 +1,8 @@
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
 import { SafeHtml, html } from "../components";
 import { switchToSearchWithTag } from "./search";
+import { tagStatFromProto } from "../proto-adapters";
+import { TagStatisticsResultSchema } from "../gen/common_pb";
 
 const MAX_TAGS_PER_CATEGORY = 300;
 const categories = ["character", "copyright", "meta", "user"];
@@ -105,13 +107,8 @@ export async function refreshTagStats() {
   container.innerHTML = '<p style="color: #666; font-style: italic;">Loading tag statistics...</p>';
 
   try {
-    const resp = await callService({ GetTagStatistics: null });
-    if (!("TagStatisticsResult" in resp)) {
-      container.innerHTML = '<p style="color: #a80000;">Failed to load tag statistics.</p>';
-      return;
-    }
-
-    const tags = resp.TagStatisticsResult.tags;
+    const resp = await typedCall("TagsService.GetTagStatistics", null, null, TagStatisticsResultSchema);
+    const tags = resp.tags.map(tagStatFromProto);
     if (tags.length === 0) {
       container.innerHTML = '<p style="color: #999; font-style: italic;">No tags found.</p>';
       return;
