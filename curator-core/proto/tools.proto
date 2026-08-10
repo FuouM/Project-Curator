@@ -1,0 +1,177 @@
+syntax = "proto3";
+
+package curator.tools;
+
+import "google/protobuf/empty.proto";
+import "common.proto";
+
+service ToolsService {
+  rpc EphemeralConvertImages (EphemeralConvertImagesRequest) returns (ConvertImagesResult);
+  rpc PathExists (PathExistsRequest) returns (PathExistsResult);
+  rpc TranscodeVideo (TranscodeVideoRequest) returns (google.protobuf.Empty);
+  rpc GetTranscodeProgress (GetTranscodeProgressRequest) returns (TranscodeProgressResult);
+  rpc CreateGifFromImages (CreateGifFromImagesRequest) returns (google.protobuf.Empty);
+  rpc ProcessGifEffects (ProcessGifEffectsRequest) returns (google.protobuf.Empty);
+  rpc SplitGif (SplitGifRequest) returns (google.protobuf.Empty);
+  rpc GetBenchmarkImages (GetBenchmarkImagesRequest) returns (BenchmarkImagesResult);
+  rpc BenchmarkSingleImage (BenchmarkSingleImageRequest) returns (SingleImageBenchmarkResult);
+  rpc RunImageProcessingBenchmark (RunImageProcessingBenchmarkRequest) returns (stream ImageProcessingBenchmarkProgress);
+  rpc GetImageProcessingBenchmarkProgress (google.protobuf.Empty) returns (ImageProcessingBenchmarkProgress);
+}
+
+// Explicit (source_path, target_path) mapping for ephemeral conversion.
+message PathPair {
+  string source_path = 1;
+  string target_path = 2;
+}
+
+message EphemeralConvertImagesRequest {
+  repeated PathPair conversions = 1;
+  uint32 quality = 2;
+}
+
+message ConvertImagesResult {
+  repeated curator.common.ConvertedFileInfo converted = 1;
+}
+
+message PathExistsRequest {
+  string path = 1;
+}
+
+message PathExistsResult {
+  bool exists = 1;
+}
+
+message TranscodeVideoRequest {
+  string job_id = 1;
+  string input_path = 2;
+  string output_path = 3;
+  string target_format = 4;
+  optional string vcodec = 5;
+  optional string acodec = 6;
+  // Constant Rate Factor (mutually exclusive with `video_bitrate`).
+  optional uint32 crf = 7;
+  // Average video bitrate in kbps (mutually exclusive with `crf`).
+  optional uint32 video_bitrate = 8;
+  optional string preset = 9;
+  // Target size budget in MB.
+  optional double target_size_mb = 10;
+  // Audio bitrate in kbps.
+  optional uint32 audio_bitrate = 11;
+  // Mixdown/Channels option (e.g. mono, stereo, 5.1).
+  optional string mixdown = 12;
+  // Sample rate in Hz.
+  optional uint32 sample_rate = 13;
+  // Raw FFmpeg arguments for a fully custom command. `{input}` and
+  // `{output}` placeholders are substituted with the source and output
+  // paths. Mutually exclusive with the guided controls.
+  optional string custom_args = 14;
+}
+
+message GetTranscodeProgressRequest {
+  string job_id = 1;
+}
+
+message TranscodeProgressResult {
+  string job_id = 1;
+  bool running = 2;
+  float percent = 3;
+  float fps = 4;
+  float x_speed = 5;
+  int64 out_time_ms = 6;
+  optional string output_path = 7;
+  optional string error = 8;
+  // Full FFmpeg command line that was spawned, for verbose plugin logs.
+  optional string command = 9;
+  optional uint64 input_size_bytes = 10;
+  optional uint64 output_size_bytes = 11;
+  optional uint64 output_video_size_bytes = 12;
+  optional uint64 output_audio_size_bytes = 13;
+}
+
+message CreateGifFromImagesRequest {
+  string job_id = 1;
+  string image_pattern = 2;
+  float frame_rate = 3;
+  string output_path = 4;
+  optional uint32 width = 5;
+  optional uint32 height = 6;
+  optional int32 loop_count = 7;
+  string target_format = 8;
+}
+
+message ProcessGifEffectsRequest {
+  string job_id = 1;
+  string input_path = 2;
+  string output_path = 3;
+  optional string crop = 4;
+  optional string scale = 5;
+  optional float speed_multiplier = 6;
+  bool reverse = 7;
+  bool bounce = 8;
+  optional string rotate = 9;
+  optional float brightness = 10;
+  optional float contrast = 11;
+  optional float saturation = 12;
+  bool grayscale = 13;
+  bool invert = 14;
+  optional string caption_image_base64 = 15;
+  optional uint32 caption_image_height = 16;
+  optional string caption_style = 17;
+  optional uint32 max_colors = 18;
+  optional string dither_type = 19;
+  optional uint32 drop_frames_factor = 20;
+  string target_format = 21;
+  optional int32 loop_count = 22;
+  optional uint32 fps = 23;
+  optional double trim_start = 24;
+  optional double trim_end = 25;
+}
+
+message SplitGifRequest {
+  string job_id = 1;
+  string input_path = 2;
+  string output_dir = 3;
+}
+
+message GetBenchmarkImagesRequest {
+  uint32 limit = 1;
+}
+
+message BenchmarkImagesResult {
+  repeated string filepaths = 1;
+}
+
+message BenchmarkSingleImageRequest {
+  string filepath = 1;
+}
+
+message SingleImageBenchmarkResult {
+  double decode_time_ms = 1;
+  double thumbnail_time_ms = 2;
+  double clip_preprocess_time_ms = 3;
+  double tagger_preprocess_time_ms = 4;
+  double yolo_preprocess_time_ms = 5;
+  double ccip_extract_preprocess_time_ms = 6;
+  double ocr_det_preprocess_time_ms = 7;
+  double ocr_rec_preprocess_time_ms = 8;
+}
+
+message RunImageProcessingBenchmarkRequest {
+  repeated string filepaths = 1;
+}
+
+// Live progress of the running background image processing benchmark.
+message ImageProcessingBenchmarkProgress {
+  bool running = 1;
+  uint32 processed = 2;
+  uint32 total = 3;
+  double decode_time_ms = 4;
+  double thumbnail_time_ms = 5;
+  double clip_preprocess_time_ms = 6;
+  double tagger_preprocess_time_ms = 7;
+  double yolo_preprocess_time_ms = 8;
+  double ccip_extract_preprocess_time_ms = 9;
+  double ocr_det_preprocess_time_ms = 10;
+  double ocr_rec_preprocess_time_ms = 11;
+}

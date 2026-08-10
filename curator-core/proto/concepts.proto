@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package curator.concepts;
+
+import "google/protobuf/empty.proto";
+import "common.proto";
+
+service ConceptsService {
+  rpc CreateConcept (CreateConceptRequest) returns (ConceptResult);
+  rpc ListConcepts (google.protobuf.Empty) returns (ConceptListResult);
+  rpc UpdateConcept (UpdateConceptRequest) returns (ConceptResult);
+  rpc DeleteConcept (DeleteConceptRequest) returns (google.protobuf.Empty);
+  rpc AddConceptSamples (AddConceptSamplesRequest) returns (ConceptResult);
+  rpc RemoveConceptSample (RemoveConceptSampleRequest) returns (ConceptResult);
+  rpc RescanConcept (RescanConceptRequest) returns (ConceptRescannedResult);
+  rpc GetConceptSamples (RescanConceptRequest) returns (ConceptSamplesResult);
+  rpc CleanAutoConceptTags (CleanAutoConceptTagsRequest) returns (AutoConceptTagsCleanedResult);
+}
+
+message CreateConceptRequest {
+  string name = 1;
+  string category = 2;
+  float threshold = 3;
+  repeated int64 sample_image_ids = 4;
+}
+
+message UpdateConceptRequest {
+  int64 id = 1;
+  optional float threshold = 2;
+  optional string category = 3;
+}
+
+message DeleteConceptRequest {
+  int64 id = 1;
+}
+
+message AddConceptSamplesRequest {
+  int64 concept_id = 1;
+  repeated int64 image_ids = 2;
+}
+
+message RemoveConceptSampleRequest {
+  int64 concept_id = 1;
+  int64 image_id = 2;
+}
+
+message RescanConceptRequest {
+  int64 concept_id = 1;
+}
+
+message ConceptRescannedResult {
+  int64 concept_id = 1;
+  uint32 tagged_count = 2;
+}
+
+message ConceptSamplesResult {
+  int64 concept_id = 1;
+  repeated curator.common.ImageDetails samples = 2;
+}
+
+message CleanAutoConceptTagsRequest {
+  // Unset cleans auto-concept tags for every concept.
+  optional int64 concept_id = 1;
+}
+
+message AutoConceptTagsCleanedResult {
+  uint64 cleaned_count = 1;
+}
+
+message ConceptListResult {
+  repeated curator.common.CustomConcept concepts = 1;
+}
+
+message ConceptResult {
+  curator.common.CustomConcept concept = 1;
+}

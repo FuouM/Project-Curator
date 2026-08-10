@@ -1,8 +1,13 @@
-import { callService } from "../ipc";
-import { logJS } from "../utils";
+import { typedCall } from "../ipc";
+import { logJS, safeStringify } from "../utils";
 import { maskPath } from "../components";
 import { getTagPillHtml, renderCardTagsContainerHtml } from "../cards";
 import { showErrorAlert } from "../alert";
+import { EmptySchema } from "@bufbuild/protobuf/wkt";
+import { imageDetailsFromProto, tagSummaryFromProto } from "../proto-adapters";
+import { GetImageRequestSchema, ImageResultSchema } from "../gen/gallery_pb";
+import { AddTagRequestSchema, RemoveTagRequestSchema, UnblacklistTagRequestSchema } from "../gen/tags_pb";
+import { TagImageRequestSchema, TagImageResultSchema } from "../gen/tagging_pb";
 
 export async function openTagModal(imgId: number, path: string) {
   const modal = document.getElementById("add-tag-modal");
@@ -32,37 +37,33 @@ export async function refreshModalTags(imgId: number) {
 
   try {
     logJS(`refreshModalTags calling GetImage for image_id=${imgId}...`);
-    const resp = await callService({ GetImage: { image_id: imgId } });
-    logJS(`refreshModalTags GetImage response for image ${imgId}: ` + JSON.stringify(resp));
+    const resp = await typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(imgId) }, ImageResultSchema);
+    logJS(`refreshModalTags GetImage response for image ${imgId}: ` + safeStringify(resp));
 
-    if ("ImageResult" in resp) {
-      const img = resp.ImageResult.image;
-      if (!img.tags || img.tags.length === 0) {
-        container.innerHTML = '<span style="color: #999; font-style: italic; font-size: 11px;">No tags assigned yet</span>';
-      } else {
-        container.innerHTML = img.tags
-          .map((tag: any) => getTagPillHtml(tag, true, imgId))
-          .join("");
-      }
-
-      const blacklistGroup = document.getElementById("modal-blacklisted-group");
-      const blacklistContainer = document.getElementById("modal-blacklisted-tag-list");
-      if (blacklistGroup && blacklistContainer) {
-        if (img.blacklisted_tags && img.blacklisted_tags.length > 0) {
-          blacklistGroup.style.display = "block";
-          blacklistContainer.innerHTML = img.blacklisted_tags
-            .map((t: any) => `<span class="tag-pill tag-meta" style="background-color: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444;" title="Blacklisted negative sample — AI auto-tagging will skip this tag"><i class="bi bi-slash-circle"></i> ${t.tag.replace(/_/g, '_\u200B')} <i class="bi bi-arrow-counterclockwise" style="cursor: pointer; margin-left: 4px;" title="Restore (Un-blacklist)" data-action="unblacklist-tag" data-image-id="${imgId}" data-tag-name="${t.tag.replace(/'/g, "\\'")}"></i></span>`)
-            .join("");
-        } else {
-          blacklistGroup.style.display = "none";
-          blacklistContainer.innerHTML = "";
-        }
-      }
-
-      logJS(`refreshModalTags rendered ${img.tags ? img.tags.length : 0} active tags and ${img.blacklisted_tags ? img.blacklisted_tags.length : 0} blacklisted tags`);
-    } else if ("Error" in resp) {
-      container.innerHTML = `<span style="color: #ef4444; font-size: 11px;">Error: ${resp.Error.message}</span>`;
+    const img = resp.image;
+    if (!img || img.tags.length === 0) {
+      container.innerHTML = '<span style="color: #999; font-style: italic; font-size: 11px;">No tags assigned yet</span>';
+    } else {
+      container.innerHTML = img.tags
+        .map((tag) => getTagPillHtml(tagSummaryFromProto(tag), true, imgId))
+        .join("");
     }
+
+    const blacklistGroup = document.getElementById("modal-blacklisted-group");
+    const blacklistContainer = document.getElementById("modal-blacklisted-tag-list");
+    if (blacklistGroup && blacklistContainer) {
+      if (img && img.blacklistedTags.length > 0) {
+        blacklistGroup.style.display = "block";
+        blacklistContainer.innerHTML = img.blacklistedTags
+          .map((t) => `<span class="tag-pill tag-meta" style="background-color: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444;" title="Blacklisted negative sample — AI auto-tagging will skip this tag"><i class="bi bi-slash-circle"></i> ${t.tag.replace(/_/g, '_\u200B')} <i class="bi bi-arrow-counterclockwise" style="cursor: pointer; margin-left: 4px;" title="Restore (Un-blacklist)" data-action="unblacklist-tag" data-image-id="${imgId}" data-tag-name="${t.tag.replace(/'/g, "\\'")}"></i></span>`)
+            .join("");
+      } else {
+        blacklistGroup.style.display = "none";
+        blacklistContainer.innerHTML = "";
+      }
+    }
+
+    logJS(`refreshModalTags rendered ${img ? img.tags.length : 0} active tags and ${img ? img.blacklistedTags.length : 0} blacklisted tags`);
   } catch (e: any) {
     logJS("refreshModalTags exception: " + (e.message || e));
     container.innerHTML = `<span style="color: #ef4444; font-size: 11px;">IPC Error: ${e.message || e}</span>`;
@@ -71,9 +72,9 @@ export async function refreshModalTags(imgId: number) {
 
 export async function refreshCardTags(imgId: number) {
   try {
-    const resp = await callService({ GetImage: { image_id: imgId } });
-    if (!("ImageResult" in resp)) return;
-    const img = resp.ImageResult.image;
+    const resp = await typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(imgId) }, ImageResultSchema);
+    if (!resp.image) return;
+    const img = imageDetailsFromProto(resp.image);
     const containerHtml = renderCardTagsContainerHtml(img);
     document.querySelectorAll(`[data-image-id="${imgId}"] .card-tags-container`).forEach((el) => {
       el.innerHTML = containerHtml;
@@ -115,24 +116,22 @@ export async function handleModalAutoTag() {
 
   try {
     logJS(`handleModalAutoTag calling TagImage for imageId=${imageId}, threshold=${threshold}`);
-    const resp = await callService({ TagImage: { image_id: imageId, threshold, force: true } });
-    logJS(`handleModalAutoTag TagImage response: ` + JSON.stringify(resp));
+    const resp = await typedCall(
+      "TaggingService.TagImage",
+      TagImageRequestSchema,
+      { imageId: BigInt(imageId), threshold, force: true },
+      TagImageResultSchema
+    );
+    logJS(`handleModalAutoTag TagImage response: ` + safeStringify(resp));
 
-    if ("TagImageResult" in resp) {
-      const { tags_applied } = resp.TagImageResult;
-      statusArea.textContent = `Applied ${tags_applied} tags successfully!`;
-      statusArea.style.color = "#10b981";
-      autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> AUTO TAG';
-      autoTagBtn.style.backgroundColor = "";
+    const { tagsApplied } = resp;
+    statusArea.textContent = `Applied ${tagsApplied} tags successfully!`;
+    statusArea.style.color = "#10b981";
+    autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> AUTO TAG';
+    autoTagBtn.style.backgroundColor = "";
 
-      await refreshModalTags(imageId);
-      await refreshCardTags(imageId);
-    } else if ("Error" in resp) {
-      statusArea.textContent = `Failed: ${resp.Error.message}`;
-      statusArea.style.color = "#ef4444";
-      autoTagBtn.innerHTML = '<i class="bi bi-stars"></i> AUTO TAG';
-      autoTagBtn.style.backgroundColor = "";
-    }
+    await refreshModalTags(imageId);
+    await refreshCardTags(imageId);
   } catch (e: any) {
     statusArea.textContent = `Error: ${e.message || e}`;
     statusArea.style.color = "#ef4444";
@@ -146,13 +145,9 @@ export async function handleModalAutoTag() {
 async function removeTag(imgId: number, tagName: string) {
   if (!confirm(`Are you sure you want to remove the tag "${tagName}"?`)) return;
   try {
-    const resp = await callService({ RemoveTag: { image_id: imgId, tag: tagName } });
-    if ("Success" in resp) {
-      await refreshModalTags(imgId);
-      await refreshCardTags(imgId);
-    } else if ("Error" in resp) {
-      showErrorAlert("Failed to remove tag:\n" + resp.Error.message);
-    }
+    await typedCall("TagsService.RemoveTag", RemoveTagRequestSchema, { imageId: BigInt(imgId), tag: tagName }, EmptySchema);
+    await refreshModalTags(imgId);
+    await refreshCardTags(imgId);
   } catch (e: any) {
     showErrorAlert("Error calling tag removal:\n" + (e.message || e));
   }
@@ -174,18 +169,11 @@ export function setupTags() {
     const tagName = tagNameInput.value.trim();
 
     try {
-      const resp = await callService({
-        AddTag: { image_id: imgId, tag: tagName, category: "user" }
-      });
-
-      if ("Success" in resp) {
-        tagNameInput.value = "";
-        tagNameInput.dispatchEvent(new Event('change', { bubbles: true }));
-        await refreshModalTags(imgId);
-        await refreshCardTags(imgId);
-      } else if ("Error" in resp) {
-        showErrorAlert("Failed to add tag:\n" + resp.Error.message);
-      }
+      await typedCall("TagsService.AddTag", AddTagRequestSchema, { imageId: BigInt(imgId), tag: tagName, category: "user" }, EmptySchema);
+      tagNameInput.value = "";
+      tagNameInput.dispatchEvent(new Event('change', { bubbles: true }));
+      await refreshModalTags(imgId);
+      await refreshCardTags(imgId);
     } catch (e) {
       showErrorAlert("IPC Tag failed:\n" + e);
     }
@@ -219,13 +207,9 @@ export function setupTags() {
       const tagName = actionEl.dataset.tagName || "";
       if (imgId && tagName) {
         try {
-          const resp = await callService({ UnblacklistTag: { image_id: imgId, tag: tagName } });
-          if ("Success" in resp) {
-            await refreshModalTags(imgId);
-            await refreshCardTags(imgId);
-          } else if ("Error" in resp) {
-            showErrorAlert("Failed to un-blacklist tag:\n" + resp.Error.message);
-          }
+          await typedCall("TagsService.UnblacklistTag", UnblacklistTagRequestSchema, { imageId: BigInt(imgId), tag: tagName }, EmptySchema);
+          await refreshModalTags(imgId);
+          await refreshCardTags(imgId);
         } catch (e: any) {
           showErrorAlert("Error un-blacklisting tag:\n" + (e.message || e));
         }

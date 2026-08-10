@@ -1,0 +1,397 @@
+syntax = "proto3";
+
+package curator.common;
+
+// ── Enums ────────────────────────────────────────────────────────────────
+
+// Device selection for ONNX model inference.
+enum DevicePreference {
+  DEVICE_PREFERENCE_UNSPECIFIED = 0;
+  // Try GPU first, fall back to CPU if unavailable.
+  DEVICE_PREFERENCE_AUTO = 1;
+  // Force CPU-only execution.
+  DEVICE_PREFERENCE_CPU = 2;
+  // Force GPU execution (fails if no GPU provider available).
+  DEVICE_PREFERENCE_GPU = 3;
+}
+
+// Model precision/format variant preference.
+enum ModelPrecision {
+  MODEL_PRECISION_UNSPECIFIED = 0;
+  MODEL_PRECISION_ORIGINAL = 1;
+  MODEL_PRECISION_INT8 = 2;
+}
+
+// Supported embedding models.
+enum EmbeddingModel {
+  EMBEDDING_MODEL_UNSPECIFIED = 0;
+  EMBEDDING_MODEL_CLIP_VIT_B_32 = 1;
+  EMBEDDING_MODEL_MOBILECLIP_S2 = 2;
+}
+
+// A tagger model selectable at runtime. `camie` is the default.
+enum TaggerModel {
+  TAGGER_MODEL_UNSPECIFIED = 0;
+  TAGGER_MODEL_CAMIE = 1;
+  TAGGER_MODEL_WD_EVA02 = 2;
+}
+
+// ── Shared Value Types ───────────────────────────────────────────────────
+
+// A single predicted or user tag.
+message TagSummary {
+  string tag = 1;
+  string category = 2;
+  float confidence = 3;
+  optional string source_name = 4;
+  bool is_blacklisted = 5;
+}
+
+// Parsed metadata extracted from a filename.
+message ParsedMetadata {
+  string match_type = 1;
+  string raw_matched = 2;
+  optional string artist = 3;
+  optional string pixiv_id = 4;
+  optional string twitter_id = 5;
+  optional string timestamp_4chan = 6;
+  optional string datetime_iso = 7;
+  repeated string extracted_tags = 8;
+  bool partial = 9;
+}
+
+// A token block in a filename parsing rule.
+message TokenBlock {
+  string token_type = 1;
+  optional string value = 2;
+  optional string label = 3;
+  bool enabled = 4;
+  optional string optional_prefix = 5;
+}
+
+// Preview of batch filename parsing on a single library image.
+message BatchPreviewItem {
+  int64 image_id = 1;
+  string filename = 2;
+  string filepath = 3;
+  optional ParsedMetadata match_result = 4;
+}
+
+// Lightweight character identity reference for card display.
+message CharacterIdentitySummary {
+  int64 id = 1;
+  string name = 2;
+}
+
+// Animated media details (present only for animated files, e.g. GIF).
+message AnimationSummary {
+  string format = 1;
+  int64 frame_count = 2;
+  // Raw sum of per-frame delays in milliseconds.
+  int64 duration_ms = 3;
+  // Netscape loop count: unset = no loop extension, 0 = infinite.
+  optional int64 loop_count = 4;
+  bool is_animated = 5;
+}
+
+// Video stream & container details for mp4/webm assets.
+message VideoSummary {
+  string format = 1;
+  int64 duration_ms = 2;
+  double fps = 3;
+  string video_codec = 4;
+  optional string audio_codec = 5;
+  optional int64 bitrate = 6;
+  optional int64 width = 7;
+  optional int64 height = 8;
+}
+
+// Full image record surfaced to clients.
+message ImageDetails {
+  int64 id = 1;
+  string sha256 = 2;
+  string current_filepath = 3;
+  int64 mtime = 4;
+  string created_at = 5;
+  repeated TagSummary tags = 6;
+  repeated TagSummary blacklisted_tags = 7;
+  string vector_state = 8;
+  bool favorite = 9;
+  optional ParsedMetadata parsed_metadata = 10;
+  bool is_missing = 11;
+  repeated CharacterIdentitySummary character_identities = 12;
+  optional string ocr_text = 13;
+  optional int64 width = 14;
+  optional int64 height = 15;
+  optional AnimationSummary animation = 16;
+  optional VideoSummary video = 17;
+  optional string note = 18;
+}
+
+// A search result match.
+message SearchMatch {
+  int64 id = 1;
+  string filepath = 2;
+  float score = 3;
+  repeated TagSummary tags = 4;
+  string match_type = 5;
+  optional uint32 hamming_distance = 6;
+  optional ParsedMetadata parsed_metadata = 7;
+  optional string ocr_text = 8;
+  repeated CharacterIdentitySummary character_identities = 9;
+  optional AnimationSummary animation = 10;
+  optional VideoSummary video = 11;
+  bool favorite = 12;
+  bool is_missing = 13;
+}
+
+// Serialized status snapshot for one tagger engine.
+message TaggerStatusInfo {
+  string key = 1;
+  string name = 2;
+  string source_name = 3;
+  bool loaded = 4;
+  string model_path = 5;
+  uint32 total_tags = 6;
+  float default_threshold = 7;
+  uint32 input_size = 8;
+}
+
+// Per-tagger CPU/GPU inference benchmark result.
+message TaggerBenchmarkInfo {
+  string key = 1;
+  string name = 2;
+  uint32 input_size = 3;
+  optional double cpu_time_ms = 4;
+  optional double gpu_time_ms = 5;
+  optional string gpu_error = 6;
+}
+
+// Storage accounting per file category/extension.
+message StorageTypeStat {
+  string category = 1;
+  string extension = 2;
+  uint64 size_bytes = 3;
+  uint64 count = 4;
+}
+
+message StorageStats {
+  repeated StorageTypeStat stats = 1;
+}
+
+// Aggregate tag statistic grouped by category.
+message TagStat {
+  string tag = 1;
+  string category = 2;
+  int64 count = 3;
+}
+
+// Aggregate tag statistics result.
+message TagStatisticsResult {
+  repeated TagStat tags = 1;
+}
+
+// Batch auto-tag / backfill outcome counts.
+message BatchTagResult {
+  uint32 processed = 1;
+  uint32 failed = 2;
+  uint32 skipped = 3;
+}
+
+// Metadata describing a discovered plugin (parsed from `manifest.json`).
+message PluginInfo {
+  string name = 1;
+  string version = 2;
+  string description = 3;
+  repeated string permissions = 4;
+  // `components.ui` relative path, when present.
+  optional string ui = 5;
+  repeated string hooks = 6;
+  // True when the manifest parsed successfully.
+  bool loaded = 7;
+  // From `AppSettings.enabled_plugins`, default `true` when absent.
+  bool enabled = 8;
+  // Path to the plugin's `manifest.json` (for `ValidatePlugin`).
+  string manifest_path = 9;
+}
+
+// Per-file result of an ephemeral conversion.
+message ConvertedFileInfo {
+  string source_path = 1;
+  string output_path = 2;
+  optional string error = 3;
+}
+
+// Folder details with statistics for the Imported Folders tab.
+message FolderDetails {
+  int64 id = 1;
+  string path = 2;
+  string name = 3;
+  string imported_at = 4;
+  int64 image_count = 5;
+  int64 video_count = 6;
+  int64 vector_ready = 7;
+  int64 vector_pending = 8;
+  int64 missing_image_count = 9;
+  int64 missing_video_count = 10;
+  bool is_missing = 11;
+}
+
+// Info about a folder in a duplicate group.
+message DuplicateFolderInfo {
+  int64 id = 1;
+  string path = 2;
+  string name = 3;
+  int64 image_count = 4;
+  // Images in this folder that overlap with other folders in the group.
+  int64 overlap_count = 5;
+}
+
+// A group of folders that share images (potential duplicates).
+message DuplicateFolderGroup {
+  // Folders sorted by image count (largest first).
+  repeated DuplicateFolderInfo folders = 1;
+  int64 shared_image_count = 2;
+}
+
+// A single file in a model manifest entry.
+message ManifestFileInfo {
+  string url = 1;
+  string dest = 2;
+  string sha256 = 3;
+}
+
+// Status of a single model from the manifest.
+message ModelStatusInfo {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string category = 4;
+  bool optional = 5;
+  string url = 6;
+  repeated ManifestFileInfo files = 7;
+  // Relative paths of files that exist on disk.
+  repeated string downloaded_files = 8;
+  uint64 total_size = 9;
+  uint64 downloaded_size = 10;
+  // "downloaded" | "partial" | "not_downloaded"
+  string status = 11;
+  // Quantized variants present on disk (e.g. ["fp16", "int8"]).
+  repeated string quantized_variants = 12;
+  repeated string quantizable = 13;
+  repeated string required_by = 14;
+}
+
+// Progress of an active download.
+message DownloadProgress {
+  string model_id = 1;
+  // "downloading" | "quantizing" | "completed" | "failed" | "cancelled"
+  string status = 2;
+  uint32 files_total = 3;
+  uint32 files_completed = 4;
+  uint64 bytes_total = 5;
+  uint64 bytes_downloaded = 6;
+  // Rolling average download speed (bytes/sec).
+  uint64 bytes_per_second = 7;
+  // Total elapsed time in seconds.
+  double elapsed_secs = 8;
+  optional string error = 9;
+}
+
+// A custom concept definition.
+message CustomConcept {
+  int64 id = 1;
+  string name = 2;
+  string category = 3;
+  float threshold = 4;
+  uint32 sample_count = 5;
+  string created_at = 6;
+  string updated_at = 7;
+}
+
+// A stored person detection.
+message StoredDetection {
+  int64 id = 1;
+  int64 image_id = 2;
+  int32 x0 = 3;
+  int32 y0 = 4;
+  int32 x1 = 5;
+  int32 y1 = 6;
+  float confidence = 7;
+  bool has_embedding = 8;
+  optional int64 identity_id = 9;
+}
+
+// A single image's detection results.
+message DetectionResult {
+  int64 image_id = 1;
+  repeated StoredDetection detections = 2;
+}
+
+// An on-the-fly detection crop thumbnail.
+message DetectionCropEntry {
+  int64 detection_id = 1;
+  bytes crop_webp_bytes = 2;
+}
+
+// Images containing a specific character identity.
+message CharacterSearchEntry {
+  int64 identity_id = 1;
+  repeated int64 image_ids = 2;
+}
+
+// A character identity with its detection count.
+message CharacterIdentity {
+  int64 id = 1;
+  string name = 2;
+  int64 detection_count = 3;
+  string created_at = 4;
+}
+
+// Outcome of re-identifying all detections.
+message ReidentifyResult {
+  int64 total_detections = 1;
+  int64 matched = 2;
+  int64 unmatched = 3;
+}
+
+// Stored OCR detection representation.
+message OcrResult {
+  int64 id = 1;
+  int64 image_id = 2;
+  string text = 3;
+  float confidence = 4;
+  int32 x0 = 5;
+  int32 y0 = 6;
+  int32 x1 = 7;
+  int32 y1 = 8;
+  int32 x2 = 9;
+  int32 y2 = 10;
+  int32 x3 = 11;
+  int32 y3 = 12;
+  bool is_from_bubble = 13;
+}
+
+// YOLO bubble detection bounding box for overlay display.
+message BubbleBoxResult {
+  float x1 = 1;
+  float y1 = 2;
+  float x2 = 3;
+  float y2 = 4;
+  float confidence = 5;
+}
+
+// Ephemeral OCR detection (no DB id/image_id) returned by the Toolbox.
+message EphemeralOcrDetection {
+  string text = 1;
+  float confidence = 2;
+  int32 x0 = 3;
+  int32 y0 = 4;
+  int32 x1 = 5;
+  int32 y1 = 6;
+  int32 x2 = 7;
+  int32 y2 = 8;
+  int32 x3 = 9;
+  int32 y3 = 10;
+  bool is_from_bubble = 11;
+}

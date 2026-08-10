@@ -1,4 +1,7 @@
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
+import { folderDetailsFromProto } from "../proto-adapters";
+import { ImportImageRequestSchema, ImportResultSchema, ImportedFoldersResultSchema } from "../gen/import_pb";
+import { StatusResultSchema } from "../gen/system_pb";
 import { SafeHtml, html } from "../components";
 import { setStatusMessage } from "../utils";
 import { setupBrowseButton } from "../cards";
@@ -38,19 +41,14 @@ export function setupImport() {
     if (pendingCount) pendingCount.textContent = "Queuing jobs...";
 
     try {
-      const resp = await callService({ ImportImage: { path: importInput.value } });
-      if ("ImportResult" in resp) {
-        const { imported_count, folder_id } = resp.ImportResult;
-        if (folder_id && imported_count) {
-          setStatusMessage(importMsg, `Started import! Processing ${imported_count} image(s)...`, "loading");
-          startImportProgressPolling(folder_id, imported_count);
-        }
-        importInput.value = "";
-        importInput.dispatchEvent(new Event('change', { bubbles: true }));
-      } else if ("Error" in resp) {
-        setStatusMessage(importMsg, `Error: ${resp.Error.message}`, "error");
-        if (panel) panel.style.display = "none";
+      const resp = await typedCall("ImportService.ImportImage", ImportImageRequestSchema, { path: importInput.value }, ImportResultSchema);
+      const { importedCount, folderId } = resp;
+      if (folderId && importedCount) {
+        setStatusMessage(importMsg, `Started import! Processing ${importedCount} image(s)...`, "loading");
+        startImportProgressPolling(Number(folderId), importedCount);
       }
+      importInput.value = "";
+      importInput.dispatchEvent(new Event('change', { bubbles: true }));
     } catch (e) {
       setStatusMessage(importMsg, `IPC Error: ${e}`, "error");
       if (panel) panel.style.display = "none";
@@ -79,38 +77,32 @@ function startImportProgressPolling(targetFolderId: number, expectedBatchCount: 
 
   importProgressTimer = setInterval(async () => {
     try {
-      const foldersResp = await callService({ GetImportedFolders: null });
-      const statusResp = await callService({ GetStatus: null });
+      const foldersResp = await typedCall("ImportService.GetImportedFolders", null, null, ImportedFoldersResultSchema);
+      const statusResp = await typedCall("SystemService.GetStatus", null, null, StatusResultSchema);
 
-      let pendingWorkerJobs = 0;
-      if ("StatusResult" in statusResp) {
-        pendingWorkerJobs = statusResp.StatusResult.pending_jobs + statusResp.StatusResult.preprocessing_jobs;
-      }
+      const pendingWorkerJobs = Number(statusResp.pendingJobs) + Number(statusResp.preprocessingJobs);
+      const folder = foldersResp.folders.map(folderDetailsFromProto).find((f) => f.id === targetFolderId);
+      if (folder) {
+        const total = folder.image_count || expectedBatchCount;
+        const ready = folder.vector_ready;
 
-      if ("ImportedFoldersResult" in foldersResp) {
-        const folder = foldersResp.ImportedFoldersResult.folders.find((f: any) => f.id === targetFolderId);
-        if (folder) {
-          const total = folder.image_count || expectedBatchCount;
-          const ready = folder.vector_ready;
+        if (indexedCount) indexedCount.textContent = `Indexed Vectors: ${ready} / Total Images: ${total}`;
+        if (pendingCount) pendingCount.textContent = `Pending Jobs: ${pendingWorkerJobs}`;
 
-          if (indexedCount) indexedCount.textContent = `Indexed Vectors: ${ready} / Total Images: ${total}`;
-          if (pendingCount) pendingCount.textContent = `Pending Jobs: ${pendingWorkerJobs}`;
+        if (total > 0) {
+          const pct = Math.min(100, Math.round((ready / total) * 100));
+          bar.style.width = `${pct}%`;
+          percent.textContent = `${pct}%`;
 
-          if (total > 0) {
-            const pct = Math.min(100, Math.round((ready / total) * 100));
-            bar.style.width = `${pct}%`;
-            percent.textContent = `${pct}%`;
-
-            if (ready >= total && pendingWorkerJobs === 0) {
-              bar.style.width = "100%";
-              percent.textContent = "100%";
-              if (title) title.textContent = "✓ Import & Vector Indexing Complete!";
-              if (statusMsg) setStatusMessage(statusMsg, `Successfully imported and indexed all ${total} images!`, "success");
-              clearInterval(importProgressTimer);
-              importProgressTimer = null;
-              refreshDashboard();
-              refreshGallery();
-            }
+          if (ready >= total && pendingWorkerJobs === 0) {
+            bar.style.width = "100%";
+            percent.textContent = "100%";
+            if (title) title.textContent = "✓ Import & Vector Indexing Complete!";
+            if (statusMsg) setStatusMessage(statusMsg, `Successfully imported and indexed all ${total} images!`, "success");
+            clearInterval(importProgressTimer);
+            importProgressTimer = null;
+            refreshDashboard();
+            refreshGallery();
           }
         }
       }

@@ -1,7 +1,19 @@
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
 import { ModelStatusInfo, DownloadProgress } from "../types";
 import { SafeHtml, html } from "../components";
 import { showErrorAlert, showInfoAlert } from "../alert";
+import {
+  ModelStatusResultSchema,
+  DownloadProgressResultSchema,
+  ModelIdRequestSchema,
+  ModelActionResultSchema,
+  QuantizeModelRequestSchema,
+  ConversionLogsResultSchema,
+  DownloadStatusUpdateSchema,
+  ConversionStatusUpdateSchema,
+} from "../gen/models_pb";
+import { SettingsResultSchema, UpdateSettingsRequestSchema } from "../gen/system_pb";
+import { ModelPrecision, ModelStatusInfo as PModelStatusInfo, DownloadProgress as PDownloadProgress } from "../gen/common_pb";
 
 let pollInterval: number | null = null;
 let activeConversionModelId: string | null = null;
@@ -13,6 +25,48 @@ let activeConversionPollInterval: any = null;
 (window as any).removeModel = removeModel;
 (window as any).quantizeModel = quantizeModel;
 (window as any).convertModel = convertModel;
+
+function modelStatusInfoFromProto(p: PModelStatusInfo): ModelStatusInfo {
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    category: p.category,
+    optional: p.optional,
+    url: p.url,
+    files: p.files.map((f) => ({ url: f.url, dest: f.dest, sha256: f.sha256 })),
+    downloaded_files: p.downloadedFiles,
+    total_size: Number(p.totalSize),
+    downloaded_size: Number(p.downloadedSize),
+    status: p.status as ModelStatusInfo["status"],
+    quantized_variants: p.quantizedVariants,
+    quantizable: p.quantizable,
+    required_by: p.requiredBy,
+  };
+}
+
+function downloadProgressFromProto(p: PDownloadProgress): DownloadProgress {
+  return {
+    model_id: p.modelId,
+    status: p.status as DownloadProgress["status"],
+    files_total: p.filesTotal,
+    files_completed: p.filesCompleted,
+    bytes_total: Number(p.bytesTotal),
+    bytes_downloaded: Number(p.bytesDownloaded),
+    bytes_per_second: Number(p.bytesPerSecond),
+    elapsed_secs: p.elapsedSecs,
+    error: p.error ?? null,
+  };
+}
+
+function modelPrecisionsFromProto(map: { [key: string]: ModelPrecision } | undefined): Record<string, "original" | "int8"> {
+  const out: Record<string, "original" | "int8"> = {};
+  if (!map) return out;
+  for (const [k, v] of Object.entries(map)) {
+    out[k] = v === ModelPrecision.INT8 ? "int8" : "original";
+  }
+  return out;
+}
 
 export function renderModelsHtml(): SafeHtml {
   return html`
@@ -35,23 +89,18 @@ export async function refreshModelStatus() {
   container.innerHTML = `<div style="padding: 8px; text-align: center;"><i class="bi bi-arrow-repeat spin"></i> Loading models status...</div>`;
 
   try {
-    const resp = await callService({ GetModelStatus: null });
-    if ("ModelStatusResult" in resp) {
-      let modelPrecisions: Record<string, "original" | "int8"> = {};
-      try {
-        const settingsResp = await callService({ GetSettings: null });
-        if ("SettingsResult" in settingsResp) {
-          modelPrecisions = settingsResp.SettingsResult.model_precisions || {};
-        }
-      } catch (se) {}
-      renderModelsList(resp.ModelStatusResult.models, modelPrecisions);
-      
-      const progResp = await callService({ GetDownloadProgress: null });
-      if ("DownloadProgressResult" in progResp && progResp.DownloadProgressResult.downloads.length > 0) {
-        startModelDownloadPolling();
-      }
-    } else if ("Error" in resp) {
-      container.innerHTML = `<div style="color: #a80000; padding: 8px;">Error loading models: ${resp.Error.message}</div>`;
+    const resp = await typedCall("ModelsService.GetModelStatus", null, null, ModelStatusResultSchema);
+
+    let modelPrecisions: Record<string, "original" | "int8"> = {};
+    try {
+      const settingsResp = await typedCall("SystemService.GetSettings", null, null, SettingsResultSchema);
+      modelPrecisions = modelPrecisionsFromProto(settingsResp.modelPrecisions);
+    } catch (se) {}
+    renderModelsList(resp.models.map(modelStatusInfoFromProto), modelPrecisions);
+
+    const progResp = await typedCall("ModelsService.GetDownloadProgress", null, null, DownloadProgressResultSchema);
+    if (progResp.downloads.length > 0) {
+      startModelDownloadPolling();
     }
   } catch (e: any) {
     container.innerHTML = `<div style="color: #a80000; padding: 8px;">Error: ${e.message || e}</div>`;
@@ -102,10 +151,10 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
 
       const filesCount = m.files.length;
       const downloadedFilesCount = m.downloaded_files.length;
-      
-      const sizeStr = m.total_size > 0 
+
+      const sizeStr = m.total_size > 0
         ? ` (${formatBytes(m.downloaded_size)} / ${formatBytes(m.total_size)})`
-        : m.downloaded_size > 0 
+        : m.downloaded_size > 0
           ? ` (${formatBytes(m.downloaded_size)})`
           : "";
 
@@ -155,11 +204,11 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
         actionsHtml += `</span>`;
       }
 
-      const reqLabel = m.required_by.length > 0 
-        ? `<div style="font-size: 10px; color: #666; margin-top: 2px;">Required by: ${m.required_by.join(", ")}</div>` 
+      const reqLabel = m.required_by.length > 0
+        ? `<div style="font-size: 10px; color: #666; margin-top: 2px;">Required by: ${m.required_by.join(", ")}</div>`
         : "";
 
-      const optLabel = m.optional 
+      const optLabel = m.optional
         ? `<span style="font-size: 9px; padding: 1px 4px; border: 1px solid #b8daff; background: #cce5ff; color: #004085; margin-left: 6px; font-weight: normal; vertical-align: middle;">Optional</span>`
         : "";
 
@@ -210,16 +259,14 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
 
 export function startModelDownloadPolling() {
   if (pollInterval) return;
-  
+
   const check = async () => {
     try {
-      const result = await callService({ GetDownloadProgress: null });
-      if ("DownloadProgressResult" in result) {
-        updateProgressBars(result.DownloadProgressResult.downloads);
-        if (result.DownloadProgressResult.downloads.length === 0) {
-          stopModelDownloadPolling();
-          refreshModelStatus();
-        }
+      const result = await typedCall("ModelsService.GetDownloadProgress", null, null, DownloadProgressResultSchema);
+      updateProgressBars(result.downloads.map(downloadProgressFromProto));
+      if (result.downloads.length === 0) {
+        stopModelDownloadPolling();
+        refreshModelStatus();
       }
     } catch (e) {
       console.error("Error polling model downloads:", e);
@@ -244,7 +291,7 @@ function updateProgressBars(downloads: DownloadProgress[]) {
     if (!el) continue;
 
     el.style.display = "flex";
-    
+
     if (actionsEl) {
       actionsEl.style.display = "none";
     }
@@ -275,18 +322,19 @@ function updateProgressBars(downloads: DownloadProgress[]) {
 
 async function downloadModel(modelId: string) {
   try {
-    const resp = await callService({ DownloadModel: { model_id: modelId } });
-    if ("ModelActionResult" in resp) {
-      if (resp.ModelActionResult.success) {
-        startModelDownloadPolling();
-        const el = document.getElementById(`progress-${modelId}`);
-        if (el) {
-          el.style.display = "flex";
-          el.innerHTML = `<div style="font-size: 11px; font-weight: bold;"><i class="bi bi-arrow-repeat spin"></i> Starting download...</div>`;
-        }
-      } else {
-        showErrorAlert("Failed to start download:\n" + resp.ModelActionResult.message);
+    const resp = await typedCall("ModelsService.DownloadModel", ModelIdRequestSchema, { modelId }, DownloadStatusUpdateSchema);
+    const prog = resp.progress;
+    if (prog && prog.status === "downloading" && !resp.complete) {
+      startModelDownloadPolling();
+      const el = document.getElementById(`progress-${modelId}`);
+      if (el) {
+        el.style.display = "flex";
+        el.innerHTML = `<div style="font-size: 11px; font-weight: bold;"><i class="bi bi-arrow-repeat spin"></i> Starting download...</div>`;
       }
+    } else if (prog && (prog.status === "completed" || resp.complete)) {
+      refreshModelStatus();
+    } else {
+      showErrorAlert("Failed to start download:\n" + (prog?.error || "Model download did not start."));
     }
   } catch (e: any) {
     showErrorAlert("Error:\n" + (e.message || e));
@@ -295,13 +343,11 @@ async function downloadModel(modelId: string) {
 
 async function cancelDownload(modelId: string) {
   try {
-    const resp = await callService({ CancelDownload: { model_id: modelId } });
-    if ("ModelActionResult" in resp) {
-      if (resp.ModelActionResult.success) {
-        refreshModelStatus();
-      } else {
-        showErrorAlert("Failed to cancel download:\n" + resp.ModelActionResult.message);
-      }
+    const resp = await typedCall("ModelsService.CancelDownload", ModelIdRequestSchema, { modelId }, ModelActionResultSchema);
+    if (resp.success) {
+      refreshModelStatus();
+    } else {
+      showErrorAlert("Failed to cancel download:\n" + resp.message);
     }
   } catch (e: any) {
     showErrorAlert("Error:\n" + (e.message || e));
@@ -314,11 +360,9 @@ async function removeModel(modelId: string) {
   }
 
   try {
-    const resp = await callService({ RemoveModel: { model_id: modelId } });
-    if ("ModelActionResult" in resp) {
-      showInfoAlert(resp.ModelActionResult.message);
-      refreshModelStatus();
-    }
+    const resp = await typedCall("ModelsService.RemoveModel", ModelIdRequestSchema, { modelId }, ModelActionResultSchema);
+    showInfoAlert(resp.message);
+    refreshModelStatus();
   } catch (e: any) {
     showErrorAlert("Error:\n" + (e.message || e));
   }
@@ -362,40 +406,33 @@ function resumeConversionPolling(modelId: string) {
     const logStatus = document.getElementById(`conversion-status-${modelId}`);
 
     try {
-      const logResp = await callService({ GetConversionLogs: { model_id: modelId } });
-      if ("ConversionLogsResult" in logResp) {
-        const { logs, is_running } = logResp.ConversionLogsResult;
-        
-        if (logText) {
-          logText.textContent = logs;
-          logText.scrollTop = logText.scrollHeight;
-        }
-        if (logContainer) {
-          logContainer.style.display = "block";
-        }
-        if (logStatus) {
-          logStatus.textContent = is_running ? "Converting..." : "Completed";
-        }
-        if (btn) {
-          btn.disabled = true;
-          btn.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> Converting...`;
-        }
+      const logResp = await typedCall("ModelsService.GetConversionLogs", ModelIdRequestSchema, { modelId }, ConversionLogsResultSchema);
+      const { logs, isRunning } = logResp;
 
-        if (!is_running) {
-          clearInterval(activeConversionPollInterval);
-          activeConversionPollInterval = null;
-          activeConversionModelId = null;
-          if (logStatus) logStatus.textContent = "Completed";
-          if (btn) {
-            btn.style.display = "none";
-          }
-          refreshModelStatus();
-        }
-      } else {
+      if (logText) {
+        logText.textContent = logs;
+        logText.scrollTop = logText.scrollHeight;
+      }
+      if (logContainer) {
+        logContainer.style.display = "block";
+      }
+      if (logStatus) {
+        logStatus.textContent = isRunning ? "Converting..." : "Completed";
+      }
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> Converting...`;
+      }
+
+      if (!isRunning) {
         clearInterval(activeConversionPollInterval);
         activeConversionPollInterval = null;
-        if (logStatus) logStatus.textContent = "Error reading logs";
-        if (btn) btn.disabled = false;
+        activeConversionModelId = null;
+        if (logStatus) logStatus.textContent = "Completed";
+        if (btn) {
+          btn.style.display = "none";
+        }
+        refreshModelStatus();
       }
     } catch (err: any) {
       clearInterval(activeConversionPollInterval);
@@ -422,20 +459,9 @@ async function convertModel(modelId: string) {
   if (logStatus) logStatus.textContent = "Converting...";
 
   try {
-    const resp = await callService({ ConvertModel: { model_id: modelId } });
-    if ("ModelActionResult" in resp && resp.ModelActionResult.success) {
-      activeConversionModelId = modelId;
-      resumeConversionPolling(modelId);
-    } else {
-      const msg = "ModelActionResult" in resp ? resp.ModelActionResult.message : "Failed to initiate conversion.";
-      if (logStatus) logStatus.textContent = "Failed to start";
-      if (logText) logText.textContent += `\nError: ${msg}`;
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = `<i class="bi bi-gear-fill"></i> Convert to ONNX`;
-      }
-      showErrorAlert("Error", msg);
-    }
+    await typedCall("ModelsService.ConvertModel", ModelIdRequestSchema, { modelId }, ConversionStatusUpdateSchema);
+    activeConversionModelId = modelId;
+    resumeConversionPolling(modelId);
   } catch (e: any) {
     if (logStatus) logStatus.textContent = "Error";
     if (logText) logText.textContent += `\nError: ${e.message || e}`;
@@ -455,11 +481,9 @@ async function quantizeModel(modelId: string, format: string) {
   }
 
   try {
-    const resp = await callService({ QuantizeModel: { model_id: modelId, format } });
-    if ("ModelActionResult" in resp) {
-      showInfoAlert(resp.ModelActionResult.message);
-      refreshModelStatus();
-    }
+    const resp = await typedCall("ModelsService.QuantizeModel", QuantizeModelRequestSchema, { modelId, format }, ModelActionResultSchema);
+    showInfoAlert(resp.message);
+    refreshModelStatus();
   } catch (e: any) {
     showErrorAlert("Quantization failed:\n" + (e.message || e));
     refreshModelStatus();
@@ -468,33 +492,25 @@ async function quantizeModel(modelId: string, format: string) {
 
 (window as any).updateModelPrecision = async (modelId: string, precision: string) => {
   try {
-    const settingsResp = await callService({ GetSettings: null });
-    if (!("SettingsResult" in settingsResp)) return;
-    const s = settingsResp.SettingsResult;
-    
-    const precs = s.model_precisions || {};
-    precs[modelId] = precision;
-    
-    const saveResp = await callService({
-      UpdateSettings: {
-        clip_device: s.clip_device,
-        tagger_device: s.tagger_device,
-        tagger_wd_device: s.tagger_wd_device,
-        idle_timeout_secs: s.idle_timeout_secs,
-        embedding_model: s.embedding_model,
-        detection_device: s.detection_device,
-        detection_metrics_device: s.detection_metrics_device,
-        ocr_device: s.ocr_device,
-        model_precisions: precs,
-        preferred_tagger: s.preferred_tagger,
-      }
-    });
-    
-    if ("SettingsResult" in saveResp) {
-      refreshModelStatus();
-    } else if ("Error" in saveResp) {
-      showErrorAlert("Failed to update precision:\n" + saveResp.Error.message);
-    }
+    const settingsResp = await typedCall("SystemService.GetSettings", null, null, SettingsResultSchema);
+
+    const precs: { [key: string]: ModelPrecision } = { ...settingsResp.modelPrecisions };
+    precs[modelId] = precision === "int8" ? ModelPrecision.INT8 : ModelPrecision.ORIGINAL;
+
+    await typedCall("SystemService.UpdateSettings", UpdateSettingsRequestSchema, {
+      clipDevice: settingsResp.clipDevice,
+      taggerDevice: settingsResp.taggerDevice,
+      taggerWdDevice: settingsResp.taggerWdDevice,
+      idleTimeoutSecs: settingsResp.idleTimeoutSecs,
+      embeddingModel: settingsResp.embeddingModel,
+      detectionDevice: settingsResp.detectionDevice,
+      detectionMetricsDevice: settingsResp.detectionMetricsDevice,
+      ocrDevice: settingsResp.ocrDevice,
+      modelPrecisions: precs,
+      preferredTagger: settingsResp.preferredTagger,
+    }, SettingsResultSchema);
+
+    refreshModelStatus();
   } catch (e: any) {
     showErrorAlert("Error:\n" + (e.message || e));
   }

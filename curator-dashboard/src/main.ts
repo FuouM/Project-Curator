@@ -11,7 +11,9 @@ import { setupConcepts } from "./views/concepts";
 import { setupFilenameParserView } from "./views/filename-parser";
 import { setupNavigation, navigateToView } from "./views/navigation";
 import { setupToolbox, renderToolboxHtml } from "./views/toolbox";
-import { callService } from "./ipc";
+import { typedCall } from "./ipc";
+import { imageDetailsFromProto } from "./proto-adapters";
+import { DashboardInitResultSchema, RandomImageResultSchema } from "./gen/system_pb";
 import { updateStatusIndicators, updateTaggerIndicators, applySettingsToUI, startStatusPolling, renderFeaturedDay, renderDashboardHtml } from "./views/dashboard";
 import { renderGalleryHtml, renderFavoritesHtml } from "./views/gallery";
 import { renderTagstatsHtml } from "./views/tagstats";
@@ -178,18 +180,24 @@ function init() {
 
 
   // Phase 1: Fast data (status + tagger + settings)
-  callService({ GetDashboardInit: null }).then((resp) => {
-    if ("DashboardInitResult" in resp) {
-      const d = resp.DashboardInitResult;
+  typedCall("SystemService.GetDashboardInit", null, null, DashboardInitResultSchema).then((d) => {
+    updateStatusIndicators({ image_count: Number(d.imageCount), vector_count: Number(d.vectorCount), pending_jobs: Number(d.pendingJobs), preprocessing_jobs: Number(d.preprocessingJobs), ram_usage_bytes: 0 });
+    updateTaggerIndicators({ loaded: d.taggerLoaded, model_path: d.taggerModelPath, total_tags: d.taggerTotalTags });
 
-      updateStatusIndicators({ image_count: d.image_count, vector_count: d.vector_count, pending_jobs: d.pending_jobs, preprocessing_jobs: d.preprocessing_jobs, ram_usage_bytes: 0 });
-      updateTaggerIndicators({ loaded: d.tagger_loaded, model_path: d.tagger_model_path, total_tags: d.tagger_total_tags });
+    applySettingsToUI({
+      clipDevice: d.clipDevice,
+      taggerDevice: d.taggerDevice,
+      taggerWdDevice: d.taggerWdDevice,
+      idleTimeoutSecs: d.idleTimeoutSecs,
+      embeddingModel: d.embeddingModel,
+      detectionDevice: d.detectionDevice,
+      detectionMetricsDevice: d.detectionMetricsDevice,
+      ocrDevice: d.ocrDevice,
+      preferredTagger: d.preferredTagger,
+    });
 
-      applySettingsToUI({ SettingsResult: { clip_device: d.clip_device, tagger_device: d.tagger_device, idle_timeout_secs: d.idle_timeout_secs, embedding_model: d.embedding_model, detection_device: d.detection_device, detection_metrics_device: d.detection_metrics_device } });
-
-      if (d.featured_images.length > 0) renderFeaturedDay(d.featured_images[0]);
-      renderImages(d.latest_images, "latest-imports-grid");
-    }
+    if (d.featuredImages.length > 0) renderFeaturedDay(imageDetailsFromProto(d.featuredImages[0]));
+    renderImages(d.latestImages.map(imageDetailsFromProto), "latest-imports-grid");
   }).catch(() => {});
 
   startStatusPolling();
@@ -200,12 +208,12 @@ function init() {
 
 async function handleFeelingLucky() {
   try {
-    const resp = await callService({ GetRandomImage: null });
-    if (!("RandomImageResult" in resp)) return;
+    const resp = await typedCall("SystemService.GetRandomImage", null, null, RandomImageResultSchema);
+    if (!resp.image) return;
 
-    const { image, index } = resp.RandomImageResult;
+    const image = imageDetailsFromProto(resp.image);
     const perPage = getImagesPerPage();
-    const page = Math.floor(index / perPage);
+    const page = Math.floor(Number(resp.index) / perPage);
 
     setLuckyHighlightId(image.id);
     setGalleryPage(page);

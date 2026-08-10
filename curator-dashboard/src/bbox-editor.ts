@@ -1,6 +1,12 @@
-import { callService } from "./ipc";
+import { typedCall } from "./ipc";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { showErrorAlert } from "./alert";
+import { EmptySchema } from "@bufbuild/protobuf/wkt";
+import {
+  AddDetectionRequestSchema,
+  AddDetectionResultSchema,
+  UpdateDetectionBoundingBoxRequestSchema,
+} from "./gen/characters_pb";
 
 let currentDetId: number | null = null;
 let currentImageId: number | null = null;
@@ -298,41 +304,27 @@ function setupBBoxEvents() {
 
         if (currentDetId === null) {
           if (currentImageId === null) return;
-          const resp = await callService({
-            AddDetection: {
-              image_id: currentImageId,
-              x0,
-              y0,
-              x1,
-              y1,
-            },
-          });
-
-          if ("AddDetectionResult" in resp || "Success" in resp) {
-            const cb = onSaveCallback;
-            closeBBoxEditor();
-            if (cb) cb();
-          } else if ("Error" in resp) {
-            showErrorAlert("Failed to add bounding box:\n" + resp.Error.message);
-          }
+          await typedCall("CharactersService.AddDetection", AddDetectionRequestSchema, {
+            imageId: BigInt(currentImageId),
+            x0,
+            y0,
+            x1,
+            y1,
+          }, AddDetectionResultSchema);
+          const cb = onSaveCallback;
+          closeBBoxEditor();
+          if (cb) cb();
         } else {
-          const resp = await callService({
-            UpdateDetectionBoundingBox: {
-              detection_id: currentDetId,
-              x0,
-              y0,
-              x1,
-              y1,
-            },
-          });
-
-          if ("Success" in resp) {
-            const cb = onSaveCallback;
-            closeBBoxEditor();
-            if (cb) cb();
-          } else if ("Error" in resp) {
-            showErrorAlert("Failed to save bounding box:\n" + resp.Error.message);
-          }
+          await typedCall("CharactersService.UpdateDetectionBoundingBox", UpdateDetectionBoundingBoxRequestSchema, {
+            detectionId: BigInt(currentDetId),
+            x0,
+            y0,
+            x1,
+            y1,
+          }, EmptySchema);
+          const cb = onSaveCallback;
+          closeBBoxEditor();
+          if (cb) cb();
         }
       } catch (e: any) {
         showErrorAlert("Error saving bounding box:\n" + (e.message || e));

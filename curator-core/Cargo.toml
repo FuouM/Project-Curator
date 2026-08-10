@@ -28,6 +28,7 @@ ureq = { workspace = true }
 tokenizers = { version = "0.21", default-features = false, features = ["fancy-regex"] }
 tonic = { workspace = true }
 prost = "0.13"
+prost-types = "0.13"
 tokio-stream = "0.1"
 async-stream = "0.3"
 dirs = "6"

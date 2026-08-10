@@ -1,7 +1,22 @@
 use anyhow::{Context, Error};
 use clap::{Parser, Subcommand};
 use curator_core::constants::resolve_data_dir;
-use curator_core::ipc::{EmbeddingModel, ImageDetails, Request, Response, TaggerModel};
+use curator_core::grpc::benchmarks::benchmarks_service_client::BenchmarksServiceClient;
+use curator_core::grpc::benchmarks::RunBenchmarkRequest;
+use curator_core::grpc::common::{EmbeddingModel, ImageDetails, SearchMatch, TaggerModel};
+use curator_core::grpc::gallery::gallery_service_client::GalleryServiceClient;
+use curator_core::grpc::gallery::{GetImageRequest, ListImagesRequest};
+use curator_core::grpc::import::import_service_client::ImportServiceClient;
+use curator_core::grpc::import::ImportImageRequest;
+use curator_core::grpc::plugins::plugins_service_client::PluginsServiceClient;
+use curator_core::grpc::plugins::ValidatePluginRequest;
+use curator_core::grpc::search::search_service_client::SearchServiceClient;
+use curator_core::grpc::search::SearchRequest;
+use curator_core::grpc::system::system_service_client::SystemServiceClient;
+use curator_core::grpc::tagging::tagging_service_client::TaggingServiceClient;
+use curator_core::grpc::tagging::{TagImageBatchRequest, TagImageRequest};
+use curator_core::grpc::tags::tags_service_client::TagsServiceClient;
+use curator_core::grpc::tags::{AddTagRequest, BackfillTagSourceRequest, RemoveTagRequest};
 use std::fs;
 use std::path::PathBuf;
 
@@ -19,6 +34,13 @@ fn parse_tagger(value: &str) -> TaggerModel {
     }
 }
 
+fn tagger_name(value: i32) -> &'static str {
+    match value {
+        x if x == TaggerModel::Camie as i32 => "camie",
+        x if x == TaggerModel::WdEva02 as i32 => "wd-eva02",
+        _ => "unknown",
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Command line client for Project Curator", long_about = None)]
@@ -165,294 +187,189 @@ async fn main() -> Result<(), Error> {
         .trim()
         .to_string();
 
+    // 2. Connect to the Curator gRPC Service over the shared IPC channel.
+    //    Each command uses the domain-specific typed client for its RPC.
+    let channel = curator_core::ipc::grpc_helper::connect_ipc()
+        .await
+        .context("Failed to connect to Curator Service. Is the service running?")?;
 
-    // 2. Map CLI command to IPC Request
-    let request = match cli.command {
-        Commands::Ping => Request::Ping,
-        Commands::Status => Request::GetStatus,
-        Commands::Import { path } => Request::ImportImage { path },
-        Commands::Tag { action } => match action {
-            TagCommands::Add {
-                image_id,
-                tag,
-                category,
-            } => Request::AddTag {
-                image_id,
-                tag,
-                category,
-            },
-            TagCommands::Remove { image_id, tag } => Request::RemoveTag { image_id, tag },
-        },
+    match cli.command {
+        Commands::Ping => {
+            let mut client = SystemServiceClient::new(channel);
+            client
+                .ping(())
+                .await
+                .context("gRPC Ping request failed")?;
+            println!("Pong! Curator Service is alive and healthy.");
+        }
+
+        Commands::Status => {
+            let mut client = SystemServiceClient::new(channel);
+            let resp = client
+                .get_status(())
+                .await
+                .context("gRPC GetStatus request failed")?
+                .into_inner();
+            println!("Curator Database Status:");
+            println!("  Images Imported:      {}", resp.image_count);
+            println!("  Vectors Indexed:      {}", resp.vector_count);
+            println!("  Pending Job Queue:    {}", resp.pending_jobs);
+            println!("  Preprocessing Queue:  {}", resp.preprocessing_jobs);
+            println!("  RAM Usage:            {} bytes", resp.ram_usage_bytes);
+        }
+
+        Commands::Import { path } => {
+            let mut client = ImportServiceClient::new(channel);
+            let resp = client
+                .import_image(ImportImageRequest { path })
+                .await
+                .context("gRPC ImportImage request failed")?
+                .into_inner();
+            println!(
+                "Successfully imported image/folder ({} item(s)):",
+                resp.imported_count
+            );
+            println!("  First Image ID: {}", resp.image_id);
+            println!("  SHA256:         {}", resp.sha256);
+            println!("  (Background job scheduled for vector embedding generation)");
+        }
+
+        Commands::Tag { action } => {
+            let mut client = TagsServiceClient::new(channel);
+            match action {
+                TagCommands::Add {
+                    image_id,
+                    tag,
+                    category,
+                } => {
+                    client
+                        .add_tag(AddTagRequest {
+                            image_id,
+                            tag,
+                            category,
+                        })
+                        .await
+                        .context("gRPC AddTag request failed")?;
+                    println!("Operation completed successfully.");
+                }
+                TagCommands::Remove { image_id, tag } => {
+                    client
+                        .remove_tag(RemoveTagRequest { image_id, tag })
+                        .await
+                        .context("gRPC RemoveTag request failed")?;
+                    println!("Operation completed successfully.");
+                }
+            }
+        }
+
         Commands::Search {
             query,
             image,
             tag,
             limit,
-        } => Request::Search {
-            query_text: query,
-            query_image_path: image,
-            tag_filter: tag,
-            parse_filter: None,
-            parse_type: None,
-            concept_id: None,
-            character_identity_id: None,
-            filename_filter: None,
-            ocr_filter: None,
-            ocr_text_search: None,
-            media_type: None,
-            limit,
-        },
-        Commands::List { limit, offset } => Request::ListImages {
-            limit,
-            offset,
-            only_favorites: None,
-        },
-        Commands::Show { image_id } => Request::GetImage { image_id },
-        Commands::ValidatePlugin { manifest_path } => Request::ValidatePlugin { manifest_path },
+        } => {
+            let mut client = SearchServiceClient::new(channel);
+            let resp = client
+                .search(SearchRequest {
+                    query_text: query,
+                    query_image_path: image,
+                    tag_filter: tag,
+                    filename_filter: None,
+                    parse_filter: None,
+                    parse_type: None,
+                    concept_id: None,
+                    character_identity_id: None,
+                    ocr_filter: None,
+                    ocr_text_search: None,
+                    media_type: None,
+                    limit: limit as u32,
+                })
+                .await
+                .context("gRPC Search request failed")?
+                .into_inner();
+            print_search_matches(&resp.matches);
+        }
+
+        Commands::List { limit, offset } => {
+            let mut client = GalleryServiceClient::new(channel);
+            let resp = client
+                .list_images(ListImagesRequest {
+                    limit: limit as u32,
+                    offset: offset as u32,
+                    only_favorites: None,
+                })
+                .await
+                .context("gRPC ListImages request failed")?
+                .into_inner();
+            if resp.images.is_empty() {
+                println!("No images imported yet.");
+            } else {
+                println!("Imported Images (showing {} latest):", resp.images.len());
+                for img in &resp.images {
+                    print_image_details(img);
+                }
+            }
+        }
+
+        Commands::Show { image_id } => {
+            let mut client = GalleryServiceClient::new(channel);
+            let resp = client
+                .get_image(GetImageRequest { image_id })
+                .await
+                .context("gRPC GetImage request failed")?
+                .into_inner();
+            if let Some(image) = resp.image {
+                print_image_details(&image);
+            } else {
+                println!("Image {} not found.", image_id);
+            }
+        }
+
+        Commands::ValidatePlugin { manifest_path } => {
+            let mut client = PluginsServiceClient::new(channel);
+            let resp = client
+                .validate_plugin(ValidatePluginRequest { manifest_path })
+                .await
+                .context("gRPC ValidatePlugin request failed")?
+                .into_inner();
+            if resp.valid {
+                println!("Plugin manifest is VALID!");
+                println!("  Name:    {}", resp.name);
+                println!("  Version: {}", resp.version);
+            } else {
+                println!("Plugin manifest is INVALID!");
+                println!("  Error: {}", resp.error.unwrap_or_default());
+            }
+        }
+
         Commands::TagAuto {
             image_id,
             threshold,
             force,
             tagger,
-        } => Request::TagImage {
-            image_id,
-            threshold,
-            force: Some(force),
-            tagger: tagger.as_deref().map(parse_tagger),
-        },
-        Commands::TagAutoBatch {
-            threshold,
-            force,
-            tagger,
-            image_ids,
         } => {
-            if image_ids.is_empty() {
-                // Fetch all image IDs from the service first if no IDs provided.
-                eprintln!(
-                    "No image IDs provided; batch will tag ALL images. \
-                     This may take a long time. Use Ctrl+C to cancel, \
-                     or pass specific IDs: tag-auto-batch <id1> <id2> ..."
-                );
-                Request::TagImageBatch {
-                    image_ids: vec![],
+            let mut client = TaggingServiceClient::new(channel);
+            let resp = client
+                .tag_image(TagImageRequest {
+                    image_id,
                     threshold,
                     force: Some(force),
-                    tagger: tagger.as_deref().map(parse_tagger),
-                }
-            } else {
-                Request::TagImageBatch {
-                    image_ids,
-                    threshold,
-                    force: Some(force),
-                    tagger: tagger.as_deref().map(parse_tagger),
-                }
-            }
-        }
-        Commands::TagBackfill { from, to } => Request::BackfillTagSource {
-            from_tagger: parse_tagger(&from),
-            to_tagger: parse_tagger(&to),
-        },
-        Commands::TaggerStatus => Request::GetTaggerStatus,
-        Commands::Benchmark { model } => {
-            let emb_model = match model.as_str() {
-                "mobileclip-s2" | "mobileclip_s2" => EmbeddingModel::MobileClipS2,
-                _ => EmbeddingModel::ClipVitB32,
-            };
-            Request::RunBenchmark {
-                embedding_model: emb_model,
-                run_tagger: None,
-            }
-        }
-    };
-
-    // 3. Connect to Curator gRPC Service
-    let channel = curator_core::ipc::grpc_helper::connect_ipc().await
-        .context("Failed to connect to Curator Service. Is the service running?")?;
-    let mut client = curator_core::grpc::curator_client::CuratorClient::new(channel);
-
-    // 4. Send Request and Get Response
-    let request_str = serde_json::to_string(&request)?;
-    let grpc_req = curator_core::grpc::CuratorRequest {
-        request_json: request_str,
-    };
-    let grpc_resp = client.call(grpc_req).await
-        .context("gRPC request to Curator Service failed")?;
-    let response_str = grpc_resp.into_inner().response_json;
-
-    let response: Response = serde_json::from_str(&response_str).context(
-        "Failed to parse response JSON from service.",
-    )?;
-
-
-    // 7. Format and Print Response
-    match response {
-        Response::Pong => println!("Pong! Curator Service is alive and healthy."),
-        Response::Success => println!("Operation completed successfully."),
-        Response::Error { message } => println!("Error: {}", message),
-        Response::BenchmarkResult {
-            clip_cpu_time_ms,
-            clip_gpu_time_ms,
-            clip_gpu_error,
-            tagger_cpu_time_ms,
-            tagger_gpu_time_ms,
-            tagger_gpu_error,
-            has_gpu,
-            taggers,
-        } => {
-            println!("Benchmark Results:");
-            println!("GPU Support: {}", if has_gpu { "Yes" } else { "No" });
-            println!("\nCLIP Vision Model (224x224):");
-            println!("  CPU: {:.2} ms/image", clip_cpu_time_ms);
-            if let Some(gpu) = clip_gpu_time_ms {
-                println!(
-                    "  GPU: {:.2} ms/image ({:.2}x speedup)",
-                    gpu,
-                    clip_cpu_time_ms / gpu
-                );
-            } else {
-                println!("  GPU: N/A");
-            }
-            if let Some(err) = clip_gpu_error {
-                println!("  GPU Load Error: {}", err);
-            }
-
-            let mut printed_any_tagger = false;
-            for t in &taggers {
-                printed_any_tagger = true;
-                println!("\n{} ({}x{}):", t.name, t.input_size, t.input_size);
-                if let Some(cpu) = t.cpu_time_ms {
-                    println!("  CPU: {:.2} ms/image", cpu);
-                    if let Some(gpu) = t.gpu_time_ms {
-                        println!("  GPU: {:.2} ms/image ({:.2}x speedup)", gpu, cpu / gpu);
-                    } else {
-                        println!("  GPU: N/A");
-                    }
-                } else {
-                    println!("  CPU: N/A");
-                    println!("  GPU: N/A");
-                }
-                if let Some(err) = &t.gpu_error {
-                    println!("  Tagger Error: {}", err);
-                }
-            }
-            if !printed_any_tagger {
-                let label = if tagger_cpu_time_ms.is_some() {
-                    "Tagger"
-                } else {
-                    "Camie Tagger v2"
-                };
-                println!("\n{} (512x512):", label);
-                if let Some(cpu) = tagger_cpu_time_ms {
-                    println!("  CPU: {:.2} ms/image", cpu);
-                    if let Some(gpu) = tagger_gpu_time_ms {
-                        println!("  GPU: {:.2} ms/image ({:.2}x speedup)", gpu, cpu / gpu);
-                    } else {
-                        println!("  GPU: N/A");
-                    }
-                } else {
-                    println!("  CPU: N/A");
-                    println!("  GPU: N/A");
-                }
-                if let Some(err) = tagger_gpu_error {
-                    println!("  Tagger Error: {}", err);
-                }
-            }
-        }
-        Response::ImportResult {
-            image_id,
-            sha256,
-            imported_count,
-            ..
-        } => {
-            println!("Successfully imported image/folder ({} item(s)):", imported_count);
-            println!("  First Image ID: {}", image_id);
-            println!("  SHA256:         {}", sha256);
-            println!("  (Background job scheduled for vector embedding generation)");
-        }
-        Response::StatusResult {
-            image_count,
-            vector_count,
-            pending_jobs,
-            preprocessing_jobs,
-            ..
-        } => {
-            println!("Curator Database Status:");
-            println!("  Images Imported:      {}", image_count);
-            println!("  Vectors Indexed:      {}", vector_count);
-            println!("  Pending Job Queue:    {}", pending_jobs);
-            println!("  Preprocessing Queue:  {}", preprocessing_jobs);
-        }
-        Response::SearchResult { matches } => {
-            if matches.is_empty() {
-                println!("No matching images found.");
-            } else {
-                println!("Search Results ({} matches):", matches.len());
-                for (idx, m) in matches.iter().enumerate() {
-                    let info_str = if let Some(dist) = m.hamming_distance {
-                        format!(
-                            "Match Type: {}, Hamming: {}, Score: {:.4}",
-                            m.match_type, dist, m.score
-                        )
-                    } else {
-                        format!("Match Type: {}, Score: {:.4}", m.match_type, m.score)
-                    };
-                    println!("{}. [ID: {}] {} ({})", idx + 1, m.id, m.filepath, info_str);
-                    if !m.tags.is_empty() {
-                        let tag_strs: Vec<String> = m
-                            .tags
-                            .iter()
-                            .map(|t| format!("{}({})", t.tag, t.category))
-                            .collect();
-                        println!("    Tags: {}", tag_strs.join(", "));
-                    }
-                }
-            }
-        }
-        Response::ListResult { images, .. } => {
-            if images.is_empty() {
-                println!("No images imported yet.");
-            } else {
-                println!("Imported Images (showing {} latest):", images.len());
-                for img in images {
-                    print_image_details(&img);
-                }
-            }
-        }
-        Response::ImageResult { image } => {
-            print_image_details(&image);
-        }
-        Response::ValidationResult {
-            name,
-            version,
-            valid,
-            error,
-        } => {
-            if valid {
-                println!("Plugin manifest is VALID!");
-                println!("  Name:    {}", name);
-                println!("  Version: {}", version);
-            } else {
-                println!("Plugin manifest is INVALID!");
-                println!("  Error: {}", error.unwrap_or_default());
-            }
-        }
-        Response::TagImageResult {
-            image_id,
-            tags_applied,
-            skipped,
-            tags,
-        } => {
-            if skipped {
+                    tagger: tagger.as_deref().map(|t| parse_tagger(t) as i32),
+                })
+                .await
+                .context("gRPC TagImage request failed")?
+                .into_inner();
+            if resp.skipped {
                 println!(
                     "Image {} already has AI tags — skipped (use --force to re-tag).",
-                    image_id
+                    resp.image_id
                 );
             } else {
                 println!(
                     "Auto-tagged image {} — {} tags applied:",
-                    image_id, tags_applied
+                    resp.image_id, resp.tags_applied
                 );
-                for t in &tags {
+                for t in &resp.tags {
                     println!(
                         "  [{:<12}] {:<40} ({:.2}%)",
                         t.category,
@@ -462,22 +379,62 @@ async fn main() -> Result<(), Error> {
                 }
             }
         }
-        Response::BatchTagResult {
-            processed,
-            failed,
-            skipped,
+
+        Commands::TagAutoBatch {
+            threshold,
+            force,
+            tagger,
+            image_ids,
         } => {
+            if image_ids.is_empty() {
+                eprintln!(
+                    "No image IDs provided; batch will tag ALL images. \
+                     This may take a long time. Use Ctrl+C to cancel, \
+                     or pass specific IDs: tag-auto-batch <id1> <id2> ..."
+                );
+            }
+            let mut client = TaggingServiceClient::new(channel);
+            let resp = client
+                .tag_image_batch(TagImageBatchRequest {
+                    image_ids,
+                    threshold,
+                    force: Some(force),
+                    tagger: tagger.as_deref().map(|t| parse_tagger(t) as i32),
+                })
+                .await
+                .context("gRPC TagImageBatch request failed")?
+                .into_inner();
             println!("Batch auto-tag complete:");
-            println!("  Tagged:  {}", processed);
-            println!("  Skipped: {} (already had AI tags)", skipped);
-            println!("  Failed:  {}", failed);
+            println!("  Tagged:  {}", resp.processed);
+            println!("  Skipped: {} (already had AI tags)", resp.skipped);
+            println!("  Failed:  {}", resp.failed);
         }
-        Response::TaggerStatusResult {
-            preferred_tagger,
-            taggers,
-        } => {
-            println!("Preferred tagger: {:?}", preferred_tagger);
-            for t in &taggers {
+
+        Commands::TagBackfill { from, to } => {
+            let mut client = TagsServiceClient::new(channel);
+            let resp = client
+                .backfill_tag_source(BackfillTagSourceRequest {
+                    from_tagger: parse_tagger(&from) as i32,
+                    to_tagger: parse_tagger(&to) as i32,
+                })
+                .await
+                .context("gRPC BackfillTagSource request failed")?
+                .into_inner();
+            println!("Tag backfill complete:");
+            println!("  Tagged:  {}", resp.processed);
+            println!("  Skipped: {} (already had AI tags)", resp.skipped);
+            println!("  Failed:  {}", resp.failed);
+        }
+
+        Commands::TaggerStatus => {
+            let mut client = TaggingServiceClient::new(channel);
+            let resp = client
+                .get_tagger_status(())
+                .await
+                .context("gRPC GetTaggerStatus request failed")?
+                .into_inner();
+            println!("Preferred tagger: {}", tagger_name(resp.preferred_tagger));
+            for t in &resp.taggers {
                 println!("Tagger: {} ({})", t.name, t.key);
                 println!(
                     "  Loaded:     {}",
@@ -493,52 +450,108 @@ async fn main() -> Result<(), Error> {
                 println!("  Input size: {}x{}", t.input_size, t.input_size);
             }
         }
-        Response::SettingsResult {
-            clip_device,
-            tagger_device,
-            tagger_wd_device,
-            idle_timeout_secs,
-            embedding_model,
-            detection_device,
-            detection_metrics_device,
-            ocr_device,
-            model_precisions,
-            preferred_tagger,
-            taggers,
-        } => {
-            println!("Settings:");
-            println!("  CLIP device:              {:?}", clip_device);
-            println!("  Tagger device:            {:?}", tagger_device);
-            println!("  Tagger WD device:         {:?}", tagger_wd_device);
-            println!("  Idle timeout:             {}s", idle_timeout_secs);
-            println!("  Embedding model:          {:?}", embedding_model);
-            println!("  Detection device:         {:?}", detection_device);
-            println!("  Detection metrics device: {:?}", detection_metrics_device);
-            println!("  OCR device:               {:?}", ocr_device);
-            println!("  Model precisions:         {:?}", model_precisions);
-            println!("  Preferred tagger:         {:?}", preferred_tagger);
-            for t in taggers {
-                println!(
-                    "  Tagger [{}] loaded={} tags={}",
-                    t.key, t.loaded, t.total_tags
-                );
-            }
-        }
-        Response::PreprocessBenchmarkResult { report } => {
-            println!("{}", report);
-        }
-        Response::TagStatisticsResult { .. } => {
-            println!("Tag statistics retrieved.");
-        }
-        Response::DashboardInitResult { .. } => {
-            println!("Dashboard init result received.");
-        }
-        other => {
-            println!("Received response: {:?}", other);
+
+        Commands::Benchmark { model } => {
+            let emb_model = match model.as_str() {
+                "mobileclip-s2" | "mobileclip_s2" => EmbeddingModel::MobileclipS2,
+                _ => EmbeddingModel::ClipVitB32,
+            };
+            let mut client = BenchmarksServiceClient::new(channel);
+            let resp = client
+                .run_benchmark(RunBenchmarkRequest {
+                    embedding_model: emb_model as i32,
+                    run_tagger: None,
+                })
+                .await
+                .context("gRPC RunBenchmark request failed")?
+                .into_inner();
+            print_benchmark_result(&resp);
         }
     }
 
     Ok(())
+}
+
+fn print_search_matches(matches: &[SearchMatch]) {
+    if matches.is_empty() {
+        println!("No matching images found.");
+        return;
+    }
+    println!("Search Results ({} matches):", matches.len());
+    for (idx, m) in matches.iter().enumerate() {
+        let info_str = if let Some(dist) = m.hamming_distance {
+            format!(
+                "Match Type: {}, Hamming: {}, Score: {:.4}",
+                m.match_type, dist, m.score
+            )
+        } else {
+            format!("Match Type: {}, Score: {:.4}", m.match_type, m.score)
+        };
+        println!("{}. [ID: {}] {} ({})", idx + 1, m.id, m.filepath, info_str);
+        if !m.tags.is_empty() {
+            let tag_strs: Vec<String> = m
+                .tags
+                .iter()
+                .map(|t| format!("{}({})", t.tag, t.category))
+                .collect();
+            println!("    Tags: {}", tag_strs.join(", "));
+        }
+    }
+}
+
+fn print_benchmark_result(r: &curator_core::grpc::benchmarks::BenchmarkResult) {
+    println!("Benchmark Results:");
+    println!("GPU Support: {}", if r.has_gpu { "Yes" } else { "No" });
+    println!("\nCLIP Vision Model:");
+    println!("  CPU: {:.2} ms/image", r.clip_cpu_time_ms);
+    if let Some(gpu) = r.clip_gpu_time_ms {
+        println!(
+            "  GPU: {:.2} ms/image ({:.2}x speedup)",
+            gpu,
+            r.clip_cpu_time_ms / gpu
+        );
+    } else {
+        println!("  GPU: N/A");
+    }
+    if let Some(err) = &r.clip_gpu_error {
+        println!("  GPU Load Error: {}", err);
+    }
+
+    let mut printed_any_tagger = false;
+    for t in &r.taggers {
+        printed_any_tagger = true;
+        println!("\n{} ({}x{}):", t.name, t.input_size, t.input_size);
+        if let Some(cpu) = t.cpu_time_ms {
+            println!("  CPU: {:.2} ms/image", cpu);
+            if let Some(gpu) = t.gpu_time_ms {
+                println!("  GPU: {:.2} ms/image ({:.2}x speedup)", gpu, cpu / gpu);
+            } else {
+                println!("  GPU: N/A");
+            }
+        } else {
+            println!("  CPU: N/A");
+            println!("  GPU: N/A");
+        }
+        if let Some(err) = &t.gpu_error {
+            println!("  Tagger Error: {}", err);
+        }
+    }
+    if !printed_any_tagger {
+        if let Some(cpu) = r.tagger_cpu_time_ms {
+            println!("\nTagger (512x512):");
+            println!("  CPU: {:.2} ms/image", cpu);
+            if let Some(gpu) = r.tagger_gpu_time_ms {
+                println!("  GPU: {:.2} ms/image ({:.2}x speedup)", gpu, cpu / gpu);
+            } else {
+                println!("  GPU: N/A");
+            }
+        } else {
+            println!("\nTagger: N/A");
+        }
+        if let Some(err) = &r.tagger_gpu_error {
+            println!("  Tagger Error: {}", err);
+        }
+    }
 }
 
 fn print_image_details(img: &ImageDetails) {

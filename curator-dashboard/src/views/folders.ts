@@ -1,10 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
 import { logJS, escapeHtml, formatDate } from "../utils";
 import { maskPath, SafeHtml, html } from "../components";
+import { folderDetailsFromProto, duplicateFolderInfoFromProto } from "../proto-adapters";
+import { RescanFolderRequestSchema, RescanFolderResultSchema, IndexFolderRequestSchema, IndexFolderResultSchema, ImportedFoldersResultSchema } from "../gen/import_pb";
+import { UpdateFolderPathRequestSchema, UpdateFolderPathResultSchema, DeleteFolderRequestSchema, DeleteFolderResultSchema, DuplicateFoldersResultSchema, MergeFoldersRequestSchema, MergeFoldersResultSchema } from "../gen/folders_pb";
+import type { DuplicateFolderGroup as PDuplicateFolderGroup } from "../gen/common_pb";
 import type { DuplicateFolderGroup, FolderDetails } from "../types";
 
 let duplicateGroups: DuplicateFolderGroup[] = [];
+
+function duplicateFolderGroupFromProto(g: PDuplicateFolderGroup): DuplicateFolderGroup {
+  return {
+    folders: g.folders.map(duplicateFolderInfoFromProto),
+    shared_image_count: Number(g.sharedImageCount),
+  };
+}
 
 function folderRowHtml(folder: FolderDetails): string {
   const totalVectors = folder.vector_ready + folder.vector_pending;
@@ -87,17 +98,14 @@ function bindFolderActions(container: HTMLElement) {
       btn.disabled = true;
       btn.innerHTML = `<i class="bi bi-arrow-repeat"></i> Scanning...`;
       try {
-        const resp = await callService({ RescanFolder: { folder_id: folderId } });
-        if ("RescanFolderResult" in resp) {
-          const { imported, found } = resp.RescanFolderResult;
-          const msg = imported > 0
-            ? `Rescan imported ${imported} new media file(s) (${found} supported files found).`
-            : `Folder is up to date (${found} supported files found, nothing new).`;
-          logJS(msg);
-          refreshFolders();
-        } else if ("Error" in resp) {
-          logJS("Rescan failed: " + resp.Error.message);
-        }
+        const resp = await typedCall("ImportService.RescanFolder", RescanFolderRequestSchema, { folderId: BigInt(folderId) }, RescanFolderResultSchema);
+        const imported = Number(resp.imported);
+        const found = Number(resp.found);
+        const msg = imported > 0
+          ? `Rescan imported ${imported} new media file(s) (${found} supported files found).`
+          : `Folder is up to date (${found} supported files found, nothing new).`;
+        logJS(msg);
+        refreshFolders();
       } catch (err: any) {
         logJS("Rescan error: " + (err?.message || String(err)));
       }
@@ -116,17 +124,13 @@ function bindFolderActions(container: HTMLElement) {
       btn.disabled = true;
       btn.innerHTML = `<i class="bi bi-cpu"></i> Queueing...`;
       try {
-        const resp = await callService({ IndexFolder: { folder_id: folderId } });
-        if ("IndexFolderResult" in resp) {
-          const queued = resp.IndexFolderResult.queued;
-          const msg = queued > 0
-            ? `Queued ${queued} media file(s) for vector indexing.`
-            : "All media in this folder already has a vector.";
-          logJS(msg);
-          refreshFolders();
-        } else if ("Error" in resp) {
-          logJS("Index failed: " + resp.Error.message);
-        }
+        const resp = await typedCall("ImportService.IndexFolder", IndexFolderRequestSchema, { folderId: BigInt(folderId) }, IndexFolderResultSchema);
+        const queued = Number(resp.queued);
+        const msg = queued > 0
+          ? `Queued ${queued} media file(s) for vector indexing.`
+          : "All media in this folder already has a vector.";
+        logJS(msg);
+        refreshFolders();
       } catch (err: any) {
         logJS("Index error: " + (err?.message || String(err)));
       }
@@ -144,12 +148,10 @@ function bindFolderActions(container: HTMLElement) {
       try {
         const selected: string | null = await invoke("select_path", { isDirectory: true });
         if (selected) {
-          const updateResp = await callService({ UpdateFolderPath: { id: folderId, new_path: selected } });
-          if ("UpdateFolderPathResult" in updateResp && updateResp.UpdateFolderPathResult.success) {
+          const updateResp = await typedCall("FoldersService.UpdateFolderPath", UpdateFolderPathRequestSchema, { id: BigInt(folderId), newPath: selected }, UpdateFolderPathResultSchema);
+          if (updateResp.success) {
             logJS("Folder path updated successfully");
             refreshFolders();
-          } else if ("Error" in updateResp) {
-            logJS("Failed to update folder path: " + updateResp.Error.message);
           }
         }
       } catch (err: any) {
@@ -167,12 +169,10 @@ function bindFolderActions(container: HTMLElement) {
       if (!confirm("Remove this folder record? Images will not be deleted.")) return;
 
       try {
-        const deleteResp = await callService({ DeleteFolder: { id: folderId } });
-        if ("DeleteFolderResult" in deleteResp && deleteResp.DeleteFolderResult.success) {
+        const deleteResp = await typedCall("FoldersService.DeleteFolder", DeleteFolderRequestSchema, { id: BigInt(folderId) }, DeleteFolderResultSchema);
+        if (deleteResp.success) {
           logJS("Folder record removed");
           refreshFolders();
-        } else if ("Error" in deleteResp) {
-          logJS("Failed to remove folder: " + deleteResp.Error.message);
         }
       } catch (err: any) {
         logJS("Failed to remove folder: " + (err?.message || String(err)));
@@ -193,13 +193,8 @@ export async function refreshFolders() {
   }
 
   try {
-    const resp = await callService({ GetImportedFolders: null });
-    if (!("ImportedFoldersResult" in resp)) {
-      container.innerHTML = '<p style="color: #a80000;">Failed to load folders.</p>';
-      return;
-    }
-
-    const folders = resp.ImportedFoldersResult.folders;
+    const resp = await typedCall("ImportService.GetImportedFolders", null, null, ImportedFoldersResultSchema);
+    const folders = resp.folders.map(folderDetailsFromProto);
     if (folders.length === 0) {
       container.innerHTML = '<p style="color: #999; font-style: italic;">No folders imported yet. Use Import Images to add folders.</p>';
       return;
@@ -252,13 +247,8 @@ async function handleReconcileClick() {
   panel.innerHTML = '<p style="color: #666; font-style: italic;">Scanning for duplicate folders...</p>';
 
   try {
-    const resp = await callService({ DetectDuplicateFolders: null });
-    if (!("DuplicateFoldersResult" in resp)) {
-      panel.innerHTML = '<p style="color: #a80000;">Failed to detect duplicates.</p>';
-      return;
-    }
-
-    duplicateGroups = resp.DuplicateFoldersResult.groups;
+    const resp = await typedCall("FoldersService.DetectDuplicateFolders", null, null, DuplicateFoldersResultSchema);
+    duplicateGroups = resp.groups.map(duplicateFolderGroupFromProto);
 
     if (duplicateGroups.length === 0) {
       panel.innerHTML = `
@@ -326,11 +316,9 @@ async function handleReconcileClick() {
         let moved = 0;
         for (const mergeId of mergeIds) {
           try {
-            const mergeResp = await callService({ MergeFolders: { keep_folder_id: keepId, merge_folder_id: mergeId } });
-            if ("MergeFoldersResult" in mergeResp && mergeResp.MergeFoldersResult.success) {
-              moved += mergeResp.MergeFoldersResult.images_moved;
-            } else if ("Error" in mergeResp) {
-              logJS("Merge failed: " + mergeResp.Error.message);
+            const mergeResp = await typedCall("FoldersService.MergeFolders", MergeFoldersRequestSchema, { keepFolderId: BigInt(keepId), mergeFolderId: BigInt(mergeId) }, MergeFoldersResultSchema);
+            if (mergeResp.success) {
+              moved += Number(mergeResp.imagesMoved);
             }
           } catch (err: any) {
             logJS("Merge error: " + (err?.message || String(err)));

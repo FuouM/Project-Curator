@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
+use anyhow::Result;
 use curator_core::ipc::{
-    DownloadProgress, ManifestFileInfo, ModelStatusInfo, Response,
+    DownloadProgress, ManifestFileInfo, ModelStatusInfo,
 };
 use sha2::{Sha256, Digest};
 use tokio::sync::Mutex;
@@ -15,16 +17,41 @@ pub type DownloadProgressMap = Arc<Mutex<HashMap<String, DownloadProgress>>>;
 /// Cancellation tokens for active downloads.
 pub type CancelTokens = Arc<Mutex<HashMap<String, tokio_util::sync::CancellationToken>>>;
 
+/// Outcome of a model action (download, remove, quantize, convert). `success`
+/// is `false` when the action was rejected for a recoverable reason (e.g. the
+/// model is already downloading); hard failures are `Err` from the caller.
+#[derive(Debug, Clone)]
+pub struct ModelActionOutcome {
+    pub success: bool,
+    pub message: String,
+}
+
+/// Outcome of starting the portable FFmpeg download. `started` is `false` when
+/// FFmpeg is already installed/verifying, so the UI can report why nothing new
+/// began.
+#[derive(Debug, Clone)]
+pub struct FFmpegDownloadOutcome {
+    pub started: bool,
+    pub message: String,
+}
+
+/// Logs and live status of the ONNX model conversion process.
+#[derive(Debug, Clone)]
+pub struct ConversionLogs {
+    pub logs: String,
+    pub is_running: bool,
+}
+
 /// Read the model manifest from disk.
-fn read_manifest(data_dir: &Path) -> Result<Vec<ModelManifestEntry>, String> {
+fn read_manifest(data_dir: &Path) -> Result<Vec<ModelManifestEntry>> {
     let manifest_path = data_dir.join("model_manifest.json");
     if !manifest_path.exists() {
-        return Err(format!("Model manifest not found at {:?}", manifest_path));
+        anyhow::bail!("Model manifest not found at {:?}", manifest_path);
     }
     let content = std::fs::read_to_string(&manifest_path)
-        .map_err(|e| format!("Failed to read manifest: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to read manifest: {}", e))?;
     let manifest: ModelManifest =
-        serde_json::from_str(&content).map_err(|e| format!("Failed to parse manifest: {}", e))?;
+        serde_json::from_str(&content).map_err(|e| anyhow::anyhow!("Failed to parse manifest: {}", e))?;
     Ok(manifest.models)
 }
 
@@ -61,14 +88,9 @@ struct ManifestFileEntry {
 pub async fn get_model_status(
     model_dir: &Path,
     progress_map: &DownloadProgressMap,
-) -> Response {
+) -> Result<Vec<ModelStatusInfo>> {
     let data_dir = model_dir.parent().unwrap_or(model_dir);
-    let entries = match read_manifest(data_dir) {
-        Ok(e) => e,
-        Err(e) => {
-            return Response::Error { message: e };
-        }
-    };
+    let entries = read_manifest(data_dir)?;
 
     let _progress = progress_map.lock().await;
     let mut models = Vec::new();
@@ -157,7 +179,7 @@ pub async fn get_model_status(
         });
     }
 
-    Response::ModelStatusResult { models }
+    Ok(models)
 }
 
 /// Start downloading a model.
@@ -166,22 +188,17 @@ pub async fn download_model(
     model_id: &str,
     progress_map: &DownloadProgressMap,
     cancel_tokens: &CancelTokens,
-) -> Response {
+) -> Result<ModelActionOutcome> {
     let data_dir = model_dir.parent().unwrap_or(model_dir);
-    let entries = match read_manifest(data_dir) {
-        Ok(e) => e,
-        Err(e) => {
-            return Response::Error { message: e };
-        }
-    };
+    let entries = read_manifest(data_dir)?;
 
     let entry = match entries.iter().find(|e| e.id == model_id) {
         Some(e) => e,
         None => {
-            return Response::ModelActionResult {
+            return Ok(ModelActionOutcome {
                 success: false,
                 message: format!("Model '{}' not found in manifest", model_id),
-            };
+            });
         }
     };
 
@@ -190,10 +207,10 @@ pub async fn download_model(
         let progress = progress_map.lock().await;
         if let Some(p) = progress.get(model_id) {
             if p.status == "downloading" {
-                return Response::ModelActionResult {
+                return Ok(ModelActionOutcome {
                     success: false,
                     message: format!("Model '{}' is already being downloaded", model_id),
-                };
+                });
             }
         }
     }
@@ -457,14 +474,13 @@ pub async fn download_model(
         info!("Model '{}' download completed", model_id_owned);
     });
 
-    Response::ModelActionResult {
+    Ok(ModelActionOutcome {
         success: true,
         message: format!("Download started for model '{}'", model_id),
-    }
+    })
 }
 
-const FFMPEG_DOWNLOAD_ID: &str = "ffmpeg-portable";
-/// Portable Windows FFmpeg essentials build (ffmpeg.exe + ffprobe.exe + a few
+const FFMPEG_DOWNLOAD_ID: &str = "ffmpeg-portable";/// Portable Windows FFmpeg essentials build (ffmpeg.exe + ffprobe.exe + a few
 /// DLLs). Pinned to the `release` branch so the URL never depends on a version
 /// string; integrity is verified by executing `ffmpeg -version` after unpack.
 const FFMPEG_DOWNLOAD_URL: &str = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
@@ -478,13 +494,13 @@ pub async fn download_ffmpeg(
     data_dir: &Path,
     progress_map: &DownloadProgressMap,
     cancel_tokens: &CancelTokens,
-) -> Response {
+) -> Result<FFmpegDownloadOutcome> {
     let bin_dir = data_dir.join("bin");
     if let Err(e) = std::fs::create_dir_all(&bin_dir) {
-        return Response::FFmpegDownloadResult {
+        return Ok(FFmpegDownloadOutcome {
             started: false,
             message: format!("Failed to create bin directory: {}", e),
-        };
+        });
     }
 
     // Already downloading?
@@ -492,10 +508,10 @@ pub async fn download_ffmpeg(
         let progress = progress_map.lock().await;
         if let Some(p) = progress.get(FFMPEG_DOWNLOAD_ID) {
             if p.status == "downloading" {
-                return Response::FFmpegDownloadResult {
+                return Ok(FFmpegDownloadOutcome {
                     started: false,
                     message: "FFmpeg download already in progress".to_string(),
-                };
+                });
             }
         }
     }
@@ -505,10 +521,10 @@ pub async fn download_ffmpeg(
     if ffmpeg_exe.exists() {
         let ok = probe_ffmpeg_binary(&ffmpeg_exe);
         if ok {
-            return Response::FFmpegDownloadResult {
+            return Ok(FFmpegDownloadOutcome {
                 started: false,
                 message: "FFmpeg is already installed and verified".to_string(),
-            };
+            });
         }
     }
 
@@ -726,10 +742,10 @@ pub async fn download_ffmpeg(
         }
     });
 
-    Response::FFmpegDownloadResult {
+    Ok(FFmpegDownloadOutcome {
         started: true,
         message: format!("FFmpeg download started from {}", FFMPEG_DOWNLOAD_URL),
-    }
+    })
 }
 
 /// Run `ffmpeg -version` and return whether it exited successfully.
@@ -784,7 +800,7 @@ pub async fn cancel_download(
     model_id: &str,
     progress_map: &DownloadProgressMap,
     cancel_tokens: &CancelTokens,
-) -> Response {
+) -> Result<ModelActionOutcome> {
     let tokens = cancel_tokens.lock().await;
     if let Some(token) = tokens.get(model_id) {
         token.cancel();
@@ -794,36 +810,31 @@ pub async fn cancel_download(
     if let Some(p) = progress.get_mut(model_id) {
         if p.status == "downloading" {
             p.status = "cancelled".to_string();
-            return Response::ModelActionResult {
+            return Ok(ModelActionOutcome {
                 success: true,
                 message: format!("Download cancelled for model '{}'", model_id),
-            };
+            });
         }
     }
 
-    Response::ModelActionResult {
+    Ok(ModelActionOutcome {
         success: false,
         message: format!("No active download for model '{}'", model_id),
-    }
+    })
 }
 
 /// Remove model files from disk.
-pub async fn remove_model(model_dir: &Path, model_id: &str) -> Response {
+pub async fn remove_model(model_dir: &Path, model_id: &str) -> Result<ModelActionOutcome> {
     let data_dir = model_dir.parent().unwrap_or(model_dir);
-    let entries = match read_manifest(data_dir) {
-        Ok(e) => e,
-        Err(e) => {
-            return Response::Error { message: e };
-        }
-    };
+    let entries = read_manifest(data_dir)?;
 
     let entry = match entries.iter().find(|e| e.id == model_id) {
         Some(e) => e,
         None => {
-            return Response::ModelActionResult {
+            return Ok(ModelActionOutcome {
                 success: false,
                 message: format!("Model '{}' not found in manifest", model_id),
-            };
+            });
         }
     };
 
@@ -858,14 +869,14 @@ pub async fn remove_model(model_dir: &Path, model_id: &str) -> Response {
         }
     }
 
-    Response::ModelActionResult {
+    Ok(ModelActionOutcome {
         success: true,
         message: format!("Removed {} files for model '{}'", removed, model_id),
-    }
+    })
 }
 
 /// Get progress for all active downloads.
-pub async fn get_download_progress(progress_map: &DownloadProgressMap) -> Response {
+pub async fn get_download_progress(progress_map: &DownloadProgressMap) -> Result<Vec<DownloadProgress>> {
     let progress = progress_map.lock().await;
     let downloads: Vec<DownloadProgress> = progress
         .values()
@@ -873,44 +884,43 @@ pub async fn get_download_progress(progress_map: &DownloadProgressMap) -> Respon
         .cloned()
         .collect();
 
-    Response::DownloadProgressResult { downloads }
+    Ok(downloads)
 }
 
 /// Quantize a downloaded model.
-pub async fn quantize_model(model_dir: &Path, model_id: &str, format: &str) -> Response {
+pub async fn quantize_model(
+    model_dir: &Path,
+    model_id: &str,
+    format: &str,
+) -> Result<ModelActionOutcome> {
     if format != "fp16" && format != "int8" {
-        return Response::ModelActionResult {
+        return Ok(ModelActionOutcome {
             success: false,
             message: format!("Unsupported quantization format: {}", format),
-        };
+        });
     }
 
     let data_dir = model_dir.parent().unwrap_or(model_dir);
-    let entries = match read_manifest(data_dir) {
-        Ok(e) => e,
-        Err(e) => {
-            return Response::Error { message: e };
-        }
-    };
+    let entries = read_manifest(data_dir)?;
 
     let entry = match entries.iter().find(|e| e.id == model_id) {
         Some(e) => e,
         None => {
-            return Response::ModelActionResult {
+            return Ok(ModelActionOutcome {
                 success: false,
                 message: format!("Model '{}' not found in manifest", model_id),
-            };
+            });
         }
     };
 
     if entry.quantizable.is_empty() || !entry.quantizable.contains(&format.to_string()) {
-        return Response::ModelActionResult {
+        return Ok(ModelActionOutcome {
             success: false,
             message: format!(
                 "Model '{}' does not support quantization to {}",
                 model_id, format
             ),
-        };
+        });
     }
 
     // Find Python venv and quantization script
@@ -940,13 +950,13 @@ pub async fn quantize_model(model_dir: &Path, model_id: &str, format: &str) -> R
     let script = project_root.join("scripts/quantize-models.py");
 
     if !venv_python.exists() || !script.exists() {
-        return Response::ModelActionResult {
+        return Ok(ModelActionOutcome {
             success: false,
             message: format!(
                 "Quantization environment not set up. Run scripts/setup-python-env.ps1 first. (Checked: {:?} and {:?})",
                 venv_python, script
             ),
-        };
+        });
     }
 
     let mut quantized_count = 0;
@@ -978,34 +988,31 @@ pub async fn quantize_model(model_dir: &Path, model_id: &str, format: &str) -> R
             Ok(out) => {
                 let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
                 let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-                return Response::ModelActionResult {
+                return Ok(ModelActionOutcome {
                     success: false,
                     message: format!(
                         "Quantization failed for {}: exit code {:?}.\nStderr: {}\nStdout: {}",
                         file.dest, out.status.code(), stderr.trim(), stdout.trim()
                     ),
-                };
+                });
             }
             Err(e) => {
-                return Response::ModelActionResult {
+                return Ok(ModelActionOutcome {
                     success: false,
                     message: format!("Failed to run quantization command for {}: {}", file.dest, e),
-                };
+                });
             }
         }
     }
 
-    Response::ModelActionResult {
+    Ok(ModelActionOutcome {
         success: true,
         message: format!(
             "Quantized {} files to {} for model '{}'",
             quantized_count, format, model_id
         ),
-    }
+    })
 }
-
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::OnceLock;
 
 pub static CONVERSION_RUNNING: AtomicBool = AtomicBool::new(false);
 pub static CONVERSION_LOGS: OnceLock<std::sync::Mutex<String>> = OnceLock::new();
@@ -1015,16 +1022,16 @@ pub static CONVERSION_LOGS: OnceLock<std::sync::Mutex<String>> = OnceLock::new()
 /// Mirrors `quantize_model`: discovers scripts/venv and runs
 /// `convert_to_onnx.py --skip-download` (the manifest already downloaded the
 /// source files into the model dir). Fails fast with captured output on error.
-pub async fn convert_model(model_dir: &Path, model_id: &str) -> Response {
+pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActionOutcome> {
     // Only the WD tagger is Safetensors-distributed and needs conversion.
     if model_id != "wd-eva02-tagger-2026-canary" {
-        return Response::ModelActionResult {
+        return Ok(ModelActionOutcome {
             success: false,
             message: format!(
                 "Model '{}' does not require conversion (only wd-eva02-tagger-2026-canary does)",
                 model_id
             ),
-        };
+        });
     }
 
     let model_out = model_dir.join("wd-eva02-tagger-2026-canary");
@@ -1032,13 +1039,13 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Response {
         .iter()
         .all(|f| model_out.join(f).exists());
     if !source_files_ok {
-        return Response::ModelActionResult {
+        return Ok(ModelActionOutcome {
             success: false,
             message: format!(
                 "Source files for '{}' not fully downloaded into {:?}. Download the model first.",
                 model_id, model_out
             ),
-        };
+        });
     }
 
     let mut project_root = std::env::current_dir().unwrap_or_else(|_| {
@@ -1067,20 +1074,20 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Response {
     let script = project_root.join("scripts/convert_to_onnx.py");
 
     if !venv_python.exists() || !script.exists() {
-        return Response::ModelActionResult {
+        return Ok(ModelActionOutcome {
             success: false,
             message: format!(
                 "Conversion environment not set up. Run scripts/setup-python-env.ps1 first. (Checked: {:?} and {:?})",
                 venv_python, script
             ),
-        };
+        });
     }
 
     if CONVERSION_RUNNING.load(Ordering::SeqCst) {
-        return Response::ModelActionResult {
+        return Ok(ModelActionOutcome {
             success: false,
             message: "Another conversion process is already running.".to_string(),
-        };
+        });
     }
 
     let out_dir_abs = model_out.to_path_buf();
@@ -1158,17 +1165,17 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Response {
         }
     }
 
-    Response::ModelActionResult {
+    Ok(ModelActionOutcome {
         success: true,
         message: "Conversion started in background.".to_string(),
-    }
+    })
 }
 
-pub async fn get_conversion_logs(_model_dir: &Path, _model_id: &str) -> Response {
+pub async fn get_conversion_logs(_model_dir: &Path, _model_id: &str) -> Result<ConversionLogs> {
     let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
     let logs = logs_m.lock().unwrap().clone();
-    Response::ConversionLogsResult {
+    Ok(ConversionLogs {
         logs,
         is_running: CONVERSION_RUNNING.load(Ordering::SeqCst),
-    }
+    })
 }

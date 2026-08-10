@@ -28,3 +28,4 @@ chrono = { workspace = true }
 rfd = "0.15"
 sqlx = { workspace = true }
 tonic = { workspace = true }
+prost = { workspace = true }

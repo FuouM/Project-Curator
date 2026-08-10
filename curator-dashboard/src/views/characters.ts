@@ -1,10 +1,38 @@
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
 import { SafeHtml, html } from "../components";
-import { CharacterIdentity, CharacterDetection } from "../types";
+import { CharacterIdentity, CharacterDetection, CustomConcept } from "../types";
 import { getCachedCrop, setCachedCrop } from "../cards";
 import { openImageViewer } from "../image-viewer";
 import { attachAutocomplete } from "../autocomplete";
 import { showErrorAlert, showInfoAlert } from "../alert";
+import { EmptySchema } from "@bufbuild/protobuf/wkt";
+import {
+  ImageIdsRequestSchema,
+  DetectionBatchResultSchema,
+  DetectionCropsResultSchema,
+  GetDetectionCropsRequestSchema,
+  AssignCharacterIdentityRequestSchema,
+  CreateCharacterIdentityRequestSchema,
+  RenameCharacterIdentityRequestSchema,
+  DeleteCharacterIdentityRequestSchema,
+  CharacterIdentitiesListSchema,
+  SearchByCharacterRequestSchema,
+  CharacterSearchResultSchema,
+  SearchByCharacterBatchRequestSchema,
+  CharacterSearchBatchResultSchema,
+  UnassignedDetectionsListSchema,
+  DeleteDetectionRequestSchema,
+} from "../gen/characters_pb";
+import {
+  CharacterIdentity as PCharacterIdentity,
+  CustomConcept as PCustomConcept,
+  StoredDetection,
+  TagStatisticsResultSchema,
+  ReidentifyResultSchema,
+} from "../gen/common_pb";
+import { GetCharacterSuggestionsRequestSchema } from "../gen/search_pb";
+import { GetImageRequestSchema, ImageResultSchema } from "../gen/gallery_pb";
+import { ConceptListResultSchema } from "../gen/concepts_pb";
 
 interface SuggestionItem {
   name: string;
@@ -12,7 +40,40 @@ interface SuggestionItem {
   source: "tag" | "identity" | "concept";
 }
 
+function characterIdentityFromProto(p: PCharacterIdentity): CharacterIdentity {
+  return {
+    id: Number(p.id),
+    name: p.name,
+    detection_count: Number(p.detectionCount),
+    created_at: p.createdAt,
+  };
+}
 
+function customConceptFromProto(p: PCustomConcept): CustomConcept {
+  return {
+    id: Number(p.id),
+    name: p.name,
+    category: p.category,
+    threshold: p.threshold,
+    sample_count: p.sampleCount,
+    created_at: p.createdAt,
+    updated_at: p.updatedAt,
+  };
+}
+
+function storedDetectionFromProto(p: StoredDetection): CharacterDetection {
+  return {
+    id: Number(p.id),
+    image_id: Number(p.imageId),
+    x0: p.x0,
+    y0: p.y0,
+    x1: p.x1,
+    y1: p.y1,
+    confidence: p.confidence,
+    has_embedding: p.hasEmbedding,
+    identity_id: p.identityId === undefined ? null : Number(p.identityId),
+  };
+}
 
 function isPlaceholderName(name: string): boolean {
   return /^Character \d+$/i.test(name.trim());
@@ -42,7 +103,7 @@ function compareIdentities(a: { name: string }, b: { name: string }): number {
 const IDENTITY_CONCEPT_CACHE_TTL = 30000;
 let identityConceptCache: {
   identities: CharacterIdentity[];
-  concepts: any[];
+  concepts: CustomConcept[];
   ts: number;
 } | null = null;
 
@@ -52,37 +113,33 @@ export async function getSuggestions(query: string): Promise<SuggestionItem[]> {
   const q = query.toLowerCase();
 
   try {
-    const tagResp = await callService({ GetCharacterSuggestions: { query: query } }).catch(
+    const tagResp = await typedCall("SearchService.GetCharacterSuggestions", GetCharacterSuggestionsRequestSchema, { query }, TagStatisticsResultSchema).catch(
       () => null
     );
 
     let identities: CharacterIdentity[] = [];
-    let concepts: any[] = [];
+    let concepts: CustomConcept[] = [];
     if (identityConceptCache && Date.now() - identityConceptCache.ts < IDENTITY_CONCEPT_CACHE_TTL) {
       identities = identityConceptCache.identities;
       concepts = identityConceptCache.concepts;
     } else {
       const [idResp, conceptResp] = await Promise.all([
-        callService({ ListCharacterIdentities: null }).catch(() => null),
-        callService({ ListConcepts: null }).catch(() => null)
+        typedCall("CharactersService.ListCharacterIdentities", null, null, CharacterIdentitiesListSchema).catch(() => null),
+        typedCall("ConceptsService.ListConcepts", null, null, ConceptListResultSchema).catch(() => null)
       ]);
-      identities = (idResp && "CharacterIdentitiesList" in idResp)
-        ? idResp.CharacterIdentitiesList.identities
-        : [];
-      concepts = (conceptResp && "ConceptListResult" in conceptResp)
-        ? conceptResp.ConceptListResult.concepts
-        : [];
+      identities = idResp ? idResp.identities.map(characterIdentityFromProto) : [];
+      concepts = conceptResp ? conceptResp.concepts.map(customConceptFromProto) : [];
       identityConceptCache = { identities, concepts, ts: Date.now() };
     }
 
-    if (tagResp && "TagStatisticsResult" in tagResp) {
-      const tags = tagResp.TagStatisticsResult.tags;
+    if (tagResp) {
+      const tags = tagResp.tags;
       const len = tags.length;
       for (let i = 0; i < len; i++) {
         const t = tags[i];
         if (!seen.has(t.tag)) {
           seen.add(t.tag);
-          items.push({ name: t.tag, count: t.count, source: "tag" });
+          items.push({ name: t.tag, count: Number(t.count), source: "tag" });
         }
       }
     }
@@ -175,22 +232,18 @@ async function flushCropQueue() {
   const ids = batch.map(([id]) => id);
 
   try {
-    const resp = await callService({ GetDetectionCrops: { detection_ids: ids, max_size: 96 } });
-    if ("DetectionCropsResult" in resp) {
-      const byId = new Map<number, number[]>(resp.DetectionCropsResult.crops.map((c: any) => [c.detection_id, c.crop_webp_bytes]));
-      for (const [id, els] of batch) {
-        const bytes = byId.get(id);
-        if (!bytes) {
-          for (const el of els) el.classList.remove("skeleton-pulse");
-          continue;
-        }
-        const blob = new Blob([new Uint8Array(bytes)], { type: "image/webp" });
-        const url = URL.createObjectURL(blob);
-        setCachedCrop(id, url);
-        for (const el of els) setCropImage(el, url);
+    const resp = await typedCall("CharactersService.GetDetectionCrops", GetDetectionCropsRequestSchema, { detectionIds: ids.map((id) => BigInt(id)), maxSize: 96 }, DetectionCropsResultSchema);
+    const byId = new Map<number, Uint8Array>(resp.crops.map((c) => [Number(c.detectionId), c.cropWebpBytes]));
+    for (const [id, els] of batch) {
+      const bytes = byId.get(id);
+      if (!bytes) {
+        for (const el of els) el.classList.remove("skeleton-pulse");
+        continue;
       }
-    } else {
-      for (const [, els] of batch) for (const el of els) el.classList.remove("skeleton-pulse");
+      const blob = new Blob([bytes], { type: "image/webp" });
+      const url = URL.createObjectURL(blob);
+      setCachedCrop(id, url);
+      for (const el of els) setCropImage(el, url);
     }
   } catch {
     for (const [, els] of batch) for (const el of els) el.classList.remove("skeleton-pulse");
@@ -211,7 +264,7 @@ export function setupCharactersView() {
   document.getElementById("create-identity-btn")?.addEventListener("click", async () => {
     const name = prompt("Character name (leave empty for auto-naming):");
     try {
-      await callService({ CreateCharacterIdentity: { name: name || null } });
+      await typedCall("CharactersService.CreateCharacterIdentity", CreateCharacterIdentityRequestSchema, { name: name || undefined }, CharacterIdentitiesListSchema);
       await refreshCharacters();
     } catch (e: any) {
       console.error("Failed to create identity:", e);
@@ -229,11 +282,8 @@ export function setupCharactersView() {
       btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Reidentifying...';
     }
     try {
-      const resp = await callService({ ReidentifyAllDetections: null });
-      if ("ReidentifyResult" in resp) {
-        const r = resp.ReidentifyResult;
-        showInfoAlert(`Re-identification complete: ${r.matched} matched, ${r.unmatched} unmatched out of ${r.total_detections} total.`);
-      }
+      const resp = await typedCall("CharactersService.ReidentifyAllDetections", null, null, ReidentifyResultSchema);
+      showInfoAlert(`Re-identification complete: ${Number(resp.matched)} matched, ${Number(resp.unmatched)} unmatched out of ${Number(resp.totalDetections)} total.`);
       await refreshCharacters();
     } catch (e: any) {
       console.error("Re-identification failed:", e);
@@ -268,14 +318,12 @@ export async function refreshCharacters(focusedIdentityId?: number) {
 
   try {
     const [identitiesResp, unassignedResp] = await Promise.all([
-      callService({ ListCharacterIdentities: null }),
-      callService({ ListUnassignedDetections: null }),
+      typedCall("CharactersService.ListCharacterIdentities", null, null, CharacterIdentitiesListSchema),
+      typedCall("CharactersService.ListUnassignedDetections", null, null, UnassignedDetectionsListSchema),
     ]);
 
-    const identities: CharacterIdentity[] =
-      "CharacterIdentitiesList" in identitiesResp ? identitiesResp.CharacterIdentitiesList.identities : [];
-    const unassigned: CharacterDetection[] =
-      "UnassignedDetectionsList" in unassignedResp ? unassignedResp.UnassignedDetectionsList.detections : [];
+    const identities: CharacterIdentity[] = identitiesResp.identities.map(characterIdentityFromProto);
+    const unassigned: CharacterDetection[] = unassignedResp.detections.map(storedDetectionFromProto);
 
     // Sort identities alphabetically, keeping placeholders at the bottom
     identities.sort(compareIdentities);
@@ -287,11 +335,9 @@ export async function refreshCharacters(focusedIdentityId?: number) {
       .filter((i: CharacterIdentity) => !isPlaceholderName(i.name) && i.detection_count > 0)
       .map((i: CharacterIdentity) => i.id);
     if (realIdentityIds.length > 0) {
-      const searchResp = await callService({ SearchByCharacterBatch: { identity_ids: realIdentityIds } });
-      if ("CharacterSearchBatchResult" in searchResp) {
-        for (const entry of searchResp.CharacterSearchBatchResult.results) {
-          identityImageIds.set(entry.identity_id, entry.image_ids);
-        }
+      const searchResp = await typedCall("CharactersService.SearchByCharacterBatch", SearchByCharacterBatchRequestSchema, { identityIds: realIdentityIds.map((id) => BigInt(id)) }, CharacterSearchBatchResultSchema);
+      for (const entry of searchResp.results) {
+        identityImageIds.set(Number(entry.identityId), entry.imageIds.map((id) => Number(id)));
       }
     }
 
@@ -365,7 +411,7 @@ export async function refreshCharacters(focusedIdentityId?: number) {
       const nameInput = card.querySelector(".identity-name-input") as HTMLInputElement;
       attachIdentityAutocomplete(nameInput, dropdownId, async (newName) => {
         if (newName !== identity.name) {
-          await callService({ RenameCharacterIdentity: { identity_id: identity.id, name: newName } });
+          await typedCall("CharactersService.RenameCharacterIdentity", RenameCharacterIdentityRequestSchema, { identityId: BigInt(identity.id), name: newName }, EmptySchema);
           await refreshCharacters(identity.id);
         }
       });
@@ -386,11 +432,9 @@ export async function refreshCharacters(focusedIdentityId?: number) {
       // Find All
       card.querySelector(".find-all-btn")?.addEventListener("click", async () => {
         try {
-          const searchResp = await callService({ SearchByCharacter: { identity_id: identity.id } });
-          if ("CharacterSearchResult" in searchResp) {
-            const imageIds = searchResp.CharacterSearchResult.image_ids;
-            showInfoAlert(`Found ${imageIds.length} images containing "${identity.name}".`);
-          }
+          const searchResp = await typedCall("CharactersService.SearchByCharacter", SearchByCharacterRequestSchema, { identityId: BigInt(identity.id) }, CharacterSearchResultSchema);
+          const imageIds = searchResp.imageIds;
+          showInfoAlert(`Found ${imageIds.length} images containing "${identity.name}".`);
         } catch (e: any) {
           console.error("Search by character failed:", e);
         }
@@ -400,7 +444,7 @@ export async function refreshCharacters(focusedIdentityId?: number) {
       card.querySelector(".delete-identity-btn")?.addEventListener("click", async () => {
         if (!confirm(`Delete identity "${identity.name}"? Detections will become unassigned.`)) return;
         try {
-          await callService({ DeleteCharacterIdentity: { identity_id: identity.id } });
+          await typedCall("CharactersService.DeleteCharacterIdentity", DeleteCharacterIdentityRequestSchema, { identityId: BigInt(identity.id) }, EmptySchema);
           await refreshCharacters();
         } catch (e: any) {
           console.error("Delete identity failed:", e);
@@ -434,20 +478,19 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number, pr
     if (preFetchedImageIds) {
       imageIds = preFetchedImageIds;
     } else {
-      const resp = await callService({ SearchByCharacter: { identity_id: identityId } });
-      if (!("CharacterSearchResult" in resp)) return;
-      imageIds = resp.CharacterSearchResult.image_ids;
+      const resp = await typedCall("CharactersService.SearchByCharacter", SearchByCharacterRequestSchema, { identityId: BigInt(identityId) }, CharacterSearchResultSchema);
+      imageIds = resp.imageIds.map((id) => Number(id));
     }
     if (imageIds.length === 0) return;
 
     // Execute fetches in parallel to keep database operations real-time
     const candidateImageIds = imageIds.slice(0, 100);
-    const batchResp = await callService({ GetCharacterDetectionsBatch: { image_ids: candidateImageIds } });
+    const batchResp = await typedCall("CharactersService.GetCharacterDetectionsBatch", ImageIdsRequestSchema, { imageIds: candidateImageIds.map((id) => BigInt(id)) }, DetectionBatchResultSchema);
     const matchingDets: CharacterDetection[] = [];
-    if ("DetectionBatchResult" in batchResp) {
-      for (const item of batchResp.DetectionBatchResult.results) {
-        for (const d of item.detections) {
-          if (d.identity_id === identityId) matchingDets.push(d);
+    for (const item of batchResp.results) {
+      for (const d of item.detections) {
+        if (d.identityId !== undefined && Number(d.identityId) === identityId) {
+          matchingDets.push(storedDetectionFromProto(d));
         }
       }
     }
@@ -473,7 +516,7 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number, pr
             : "Are you sure you want to unassign this sample from this character identity?";
           if (!confirm(confirmMsg)) return;
           try {
-            await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: null } });
+            await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: undefined }, EmptySchema);
             await refreshCharacters();
           } catch (err: any) {
             showErrorAlert("Failed to unassign sample:\n" + err.message);
@@ -490,9 +533,9 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number, pr
         openImgBtn.addEventListener("click", async (e) => {
           e.stopPropagation();
           try {
-            const imgResp = await callService({ GetImage: { image_id: det.image_id } });
-            if ("ImageResult" in imgResp) {
-              const fp = imgResp.ImageResult.image.current_filepath;
+            const imgResp = await typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(det.image_id) }, ImageResultSchema);
+            if (imgResp.image) {
+              const fp = imgResp.image.currentFilepath;
               openImageViewer(fp, det.image_id);
             }
           } catch (err: any) {
@@ -510,9 +553,9 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number, pr
         editBtn.addEventListener("click", async (e) => {
           e.stopPropagation();
           try {
-            const imgResp = await callService({ GetImage: { image_id: det.image_id } });
-            if ("ImageResult" in imgResp) {
-              const fp = imgResp.ImageResult.image.current_filepath;
+            const imgResp = await typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(det.image_id) }, ImageResultSchema);
+            if (imgResp.image) {
+              const fp = imgResp.image.currentFilepath;
               import("../bbox-editor").then(m => {
                 m.openBBoxEditor(det.id, det.image_id, fp, det.x0, det.y0, det.x1, det.y1, () => {
                   import("../cards").then(cards => cards.invalidateCropCache(det.id));
@@ -577,7 +620,7 @@ function renderUnassignedDetection(
   deleteBtn.style.cssText = "font-size:10px;padding:2px 6px;";
   deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
   deleteBtn.addEventListener("click", async () => {
-    await callService({ DeleteDetection: { detection_id: det.id } });
+    await typedCall("CharactersService.DeleteDetection", DeleteDetectionRequestSchema, { detectionId: BigInt(det.id) }, EmptySchema);
     await refreshCharacters();
   });
 
@@ -589,12 +632,12 @@ function renderUnassignedDetection(
     if (!name) return;
     const existing = identities.find(i => i.name.toLowerCase() === name.toLowerCase());
     if (existing) {
-      await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: existing.id } });
+      await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: BigInt(existing.id) }, EmptySchema);
     } else {
-      const createResp = await callService({ CreateCharacterIdentity: { name } });
-      if (createResp && "CharacterIdentitiesList" in createResp) {
-        const newId = createResp.CharacterIdentitiesList.identities[0].id;
-        await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: newId } });
+      const createResp = await typedCall("CharactersService.CreateCharacterIdentity", CreateCharacterIdentityRequestSchema, { name }, CharacterIdentitiesListSchema);
+      if (createResp.identities.length > 0) {
+        const newId = createResp.identities[0].id;
+        await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: BigInt(newId) }, EmptySchema);
       }
     }
     await refreshCharacters();
@@ -636,7 +679,7 @@ function renderUnassignedDetection(
   select?.addEventListener("change", async () => {
     const val = select.value;
     const identityId = val ? parseInt(val, 10) : null;
-    await callService({ AssignCharacterIdentity: { detection_id: det.id, identity_id: identityId } });
+    await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: identityId !== null ? BigInt(identityId) : undefined }, EmptySchema);
     await refreshCharacters();
   });
 

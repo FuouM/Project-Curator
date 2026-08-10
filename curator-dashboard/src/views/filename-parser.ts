@@ -1,8 +1,29 @@
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
 import { SafeHtml, html } from "../components";
 import { TokenBlock, ParsedMetadata, BatchPreviewItem } from "../types";
 import { escapeHtml } from "../utils";
 import { showWarningAlert } from "../alert";
+import { parsedMetadataFromProto, batchPreviewItemFromProto } from "../proto-adapters";
+import {
+  TestFilenamePatternRequestSchema,
+  TestFilenamePatternResultSchema,
+  CompileTokenBlocksRequestSchema,
+  CompileTokenBlocksResultSchema,
+  PreviewBatchFilenameParsingRequestSchema,
+  PreviewBatchFilenameParsingResultSchema,
+  RunBatchFilenameParsingRequestSchema,
+  RunBatchFilenameParsingResultSchema,
+} from "../gen/parser_pb";
+
+function tokenBlockToProto(b: TokenBlock) {
+  return {
+    tokenType: b.token_type,
+    value: b.value,
+    label: b.label,
+    enabled: b.enabled !== false,
+    optionalPrefix: b.optional_prefix,
+  };
+}
 
 let currentTokenBlocks: TokenBlock[] = [
   { token_type: "artist" },
@@ -373,10 +394,8 @@ function renderTokenBlocks() {
       // Update compiled regex preview without re-rendering
       const regexPreview = document.getElementById("fn-compiled-regex-preview");
       if (regexPreview && currentTokenBlocks.length > 0) {
-        callService({ CompileTokenBlocks: { token_config: currentTokenBlocks } }).then(res => {
-          if ("CompileTokenBlocksResult" in res && regexPreview) {
-            regexPreview.textContent = res.CompileTokenBlocksResult.regex;
-          }
+        typedCall("FilenameParserService.CompileTokenBlocks", CompileTokenBlocksRequestSchema, { tokenConfig: currentTokenBlocks.map(tokenBlockToProto) }, CompileTokenBlocksResultSchema).then(res => {
+          if (regexPreview) regexPreview.textContent = res.regex;
         }).catch(() => {});
       }
       runSandboxTest();
@@ -415,10 +434,8 @@ function renderTokenBlocks() {
     if (currentTokenBlocks.length === 0) {
       regexPreview.textContent = "";
     } else {
-      callService({ CompileTokenBlocks: { token_config: currentTokenBlocks } }).then(res => {
-        if ("CompileTokenBlocksResult" in res && regexPreview) {
-          regexPreview.textContent = res.CompileTokenBlocksResult.regex;
-        }
+      typedCall("FilenameParserService.CompileTokenBlocks", CompileTokenBlocksRequestSchema, { tokenConfig: currentTokenBlocks.map(tokenBlockToProto) }, CompileTokenBlocksResultSchema).then(res => {
+        if (regexPreview) regexPreview.textContent = res.regex;
       }).catch(() => {
         if (regexPreview) regexPreview.textContent = "compile error";
       });
@@ -445,21 +462,15 @@ export async function runSandboxTest() {
   }
 
   try {
-    const res = await callService({
-      TestFilenamePattern: {
-        filename,
-        pattern_or_type: patternOrType,
-        rule_type: ruleType,
-        token_config: tokenConfig,
-      },
-    });
+    const res = await typedCall("FilenameParserService.TestFilenamePattern", TestFilenamePatternRequestSchema, {
+      filename,
+      patternOrType: patternOrType,
+      ruleType: ruleType,
+      tokenConfig: tokenConfig ? tokenConfig.map(tokenBlockToProto) : [],
+    }, TestFilenamePatternResultSchema);
 
-    if (res && "TestFilenamePatternResult" in res) {
-      const match: ParsedMetadata | null = res.TestFilenamePatternResult.result;
-      renderSandboxResult(match, filename);
-    } else {
-      resultContainer.innerHTML = `<div style="color: #721c24; font-size: 11px;">Error executing test.</div>`;
-    }
+    const match: ParsedMetadata | null = res.result ? parsedMetadataFromProto(res.result) : null;
+    renderSandboxResult(match, filename);
   } catch (err) {
     resultContainer.innerHTML = `<div style="color: #721c24; font-size: 11px;">Test failed: ${err}</div>`;
   }
@@ -542,21 +553,15 @@ export async function refreshBatchPreview() {
   }
 
   try {
-    const res = await callService({
-      PreviewBatchFilenameParsing: {
-        limit,
-        pattern_or_type: patternOrType,
-        rule_type: ruleType,
-        token_config: tokenConfig,
-        output_match_type: outputMatchType,
-      },
-    });
-    if (res && "PreviewBatchFilenameParsingResult" in res) {
-      const items: BatchPreviewItem[] = res.PreviewBatchFilenameParsingResult.items;
-      renderBatchTable(items);
-    } else {
-      container.innerHTML = `<div style="padding: 16px; text-align: center; color: #721c24; font-size: 11px;">Failed to load batch preview.</div>`;
-    }
+    const res = await typedCall("FilenameParserService.PreviewBatchFilenameParsing", PreviewBatchFilenameParsingRequestSchema, {
+      limit,
+      patternOrType: patternOrType,
+      ruleType: ruleType,
+      tokenConfig: tokenConfig ? tokenConfig.map(tokenBlockToProto) : [],
+      outputMatchType: outputMatchType ?? undefined,
+    }, PreviewBatchFilenameParsingResultSchema);
+    const items: BatchPreviewItem[] = res.items.map(batchPreviewItemFromProto);
+    renderBatchTable(items);
   } catch (err) {
     container.innerHTML = `<div style="padding: 16px; text-align: center; color: #721c24; font-size: 11px;">Error: ${err}</div>`;
   }
@@ -659,28 +664,21 @@ export async function runBatchParsing() {
   }
 
   try {
-    const res = await callService({
-      RunBatchFilenameParsing: {
-        pattern_or_type: patternOrType,
-        rule_type: ruleType,
-        token_config: tokenConfig,
-        output_match_type: outputMatchType,
-      },
-    });
+    const res = await typedCall("FilenameParserService.RunBatchFilenameParsing", RunBatchFilenameParsingRequestSchema, {
+      patternOrType: patternOrType,
+      ruleType: ruleType,
+      tokenConfig: tokenConfig ? tokenConfig.map(tokenBlockToProto) : [],
+      outputMatchType: outputMatchType ?? undefined,
+    }, RunBatchFilenameParsingResultSchema);
 
-    if (res && "RunBatchFilenameParsingResult" in res) {
-      const data = res.RunBatchFilenameParsingResult;
-      if (statusEl) {
-        statusEl.innerHTML = `
-          <span style="color: #155724; font-size: 11px; font-weight: 600; background-color: #d4edda; border: 1px solid #c3e6cb; padding: 4px 8px; display: inline-block;">
-            <i class="bi bi-check-circle-fill"></i> Complete! Processed: ${data.total_processed} files | Matched: ${data.matched_count} | Tags Created: ${data.tags_created}
-          </span>
-        `;
-      }
-      refreshBatchPreview();
-    } else {
-      if (statusEl) statusEl.innerHTML = `<span style="color: #721c24; font-size: 11px;">Error running batch parsing.</span>`;
+    if (statusEl) {
+      statusEl.innerHTML = `
+        <span style="color: #155724; font-size: 11px; font-weight: 600; background-color: #d4edda; border: 1px solid #c3e6cb; padding: 4px 8px; display: inline-block;">
+          <i class="bi bi-check-circle-fill"></i> Complete! Processed: ${res.totalProcessed} files | Matched: ${res.matchedCount} | Tags Created: ${res.tagsCreated}
+        </span>
+      `;
     }
+    refreshBatchPreview();
   } catch (err) {
     if (statusEl) statusEl.innerHTML = `<span style="color: #721c24; font-size: 11px;">Error: ${err}</span>`;
   }

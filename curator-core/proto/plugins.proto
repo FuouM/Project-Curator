@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package curator.plugins;
+
+import "google/protobuf/empty.proto";
+import "common.proto";
+
+service PluginsService {
+  rpc ValidatePlugin (ValidatePluginRequest) returns (ValidationResult);
+  rpc ListPlugins (google.protobuf.Empty) returns (PluginsListResult);
+  rpc SetPluginEnabled (SetPluginEnabledRequest) returns (google.protobuf.Empty);
+  rpc ReadPluginFile (ReadPluginFileRequest) returns (PluginFileResult);
+  // Dynamic bridge for bundled plugins. Plugins use a `{ command, params }`
+  // contract; `command` names a service operation and `parameters_json` carries
+  // the params object verbatim. The response preserves the legacy JSON shape so
+  // existing plugin bundles keep their parsing behavior.
+  rpc InvokePlugin (InvokePluginRequest) returns (InvokePluginResponse);
+}
+
+message ValidatePluginRequest {
+  string manifest_path = 1;
+}
+
+message ValidationResult {
+  string name = 1;
+  string version = 2;
+  bool valid = 3;
+  optional string error = 4;
+}
+
+message PluginsListResult {
+  repeated curator.common.PluginInfo plugins = 1;
+}
+
+message SetPluginEnabledRequest {
+  string plugin_name = 1;
+  bool enabled = 2;
+}
+
+message ReadPluginFileRequest {
+  string plugin_name = 1;
+  string relative_path = 2;
+}
+
+message PluginFileResult {
+  string content = 1;
+}
+
+message InvokePluginRequest {
+  // Name of the calling plugin bundle (informational; dispatch is by `command`).
+  string plugin_id = 1;
+  // Service operation name, e.g. "TranscodeVideo" (dynamic plugin contract).
+  string command = 2;
+  // Operation parameters as an opaque JSON object, forwarded verbatim.
+  string parameters_json = 3;
+}
+
+message InvokePluginResponse {
+  // JSON-serialized result in the legacy response shape (snake_case fields,
+  // `Error` variant) so bundled plugins keep their existing parsing behavior.
+  string response_json = 1;
+}

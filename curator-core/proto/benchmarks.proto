@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package curator.benchmarks;
+
+import "google/protobuf/empty.proto";
+import "common.proto";
+
+service BenchmarksService {
+  rpc RunBenchmark (RunBenchmarkRequest) returns (BenchmarkResult);
+  rpc RunTaggerBenchmark (RunTaggerBenchmarkRequest) returns (BenchmarkResult);
+  rpc BenchmarkPreprocess (BenchmarkPreprocessRequest) returns (PreprocessBenchmarkResult);
+  rpc RunYoloBenchmark (google.protobuf.Empty) returns (DetectionBenchmarkResult);
+  rpc RunCcipFeatBenchmark (google.protobuf.Empty) returns (DetectionBenchmarkResult);
+  rpc RunCcipMetricsBenchmark (google.protobuf.Empty) returns (DetectionBenchmarkResult);
+  rpc RunOcrDetBenchmark (google.protobuf.Empty) returns (DetectionBenchmarkResult);
+  rpc RunOcrRecBenchmark (google.protobuf.Empty) returns (DetectionBenchmarkResult);
+  rpc RunOcrClsBenchmark (google.protobuf.Empty) returns (DetectionBenchmarkResult);
+  rpc RunMangaBubbleBenchmark (google.protobuf.Empty) returns (DetectionBenchmarkResult);
+}
+
+message RunBenchmarkRequest {
+  curator.common.EmbeddingModel embedding_model = 1;
+  optional bool run_tagger = 2;
+}
+
+message RunTaggerBenchmarkRequest {
+  // Unset benchmarks every configured tagger model.
+  optional curator.common.TaggerModel tagger = 1;
+}
+
+message BenchmarkResult {
+  double clip_cpu_time_ms = 1;
+  optional double clip_gpu_time_ms = 2;
+  optional string clip_gpu_error = 3;
+  optional double tagger_cpu_time_ms = 4;
+  optional double tagger_gpu_time_ms = 5;
+  optional string tagger_gpu_error = 6;
+  bool has_gpu = 7;
+  // Results for every configured tagger (all models, not just preferred).
+  repeated curator.common.TaggerBenchmarkInfo taggers = 8;
+}
+
+message BenchmarkPreprocessRequest {
+  string image_path = 1;
+}
+
+message PreprocessBenchmarkResult {
+  string report = 1;
+}
+
+// CPU vs GPU benchmark timings for the detection/OCR model families.
+message DetectionBenchmarkResult {
+  optional double yolo_cpu_time_ms = 1;
+  optional double yolo_gpu_time_ms = 2;
+  optional string yolo_gpu_error = 3;
+  optional double ccip_feat_cpu_time_ms = 4;
+  optional double ccip_feat_gpu_time_ms = 5;
+  optional string ccip_feat_gpu_error = 6;
+  optional double ccip_metrics_cpu_time_ms = 7;
+  optional double ccip_metrics_gpu_time_ms = 8;
+  optional string ccip_metrics_gpu_error = 9;
+  optional double ocr_det_cpu_time_ms = 10;
+  optional double ocr_det_gpu_time_ms = 11;
+  optional string ocr_det_gpu_error = 12;
+  optional double ocr_rec_cpu_time_ms = 13;
+  optional double ocr_rec_gpu_time_ms = 14;
+  optional string ocr_rec_gpu_error = 15;
+  optional double ocr_cls_cpu_time_ms = 16;
+  optional double ocr_cls_gpu_time_ms = 17;
+  optional string ocr_cls_gpu_error = 18;
+  optional double manga_bubble_cpu_time_ms = 19;
+  optional double manga_bubble_gpu_time_ms = 20;
+  optional string manga_bubble_gpu_error = 21;
+  bool has_gpu = 22;
+}

@@ -1,8 +1,17 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { callService } from "./ipc";
+import { typedCall } from "./ipc";
 import { getPluginViewKeys, registerPluginView, removePluginView } from "./views/navigation";
 import { AssetContext, ImageDetails, PluginInfo, TagContext } from "./types";
 import { selectedImageIds } from "./state";
+import { GetImageRequestSchema, ImageResultSchema } from "./gen/gallery_pb";
+import {
+  InvokePluginRequestSchema,
+  InvokePluginResponseSchema,
+  PluginsListResultSchema,
+  ReadPluginFileRequestSchema,
+  PluginFileResultSchema,
+} from "./gen/plugins_pb";
+import { imageDetailsFromProto, pluginInfoFromProto } from "./proto-adapters";
 
 // ---------------------------------------------------------------------------
 // Plugin Registry State
@@ -48,9 +57,14 @@ export function getAssetContextFromCard(card: HTMLElement): AssetContext {
 
 /** Fetch the full `AssetContext` for an asset id (hydrates hash + tags). */
 export async function fetchAssetContext(imageId: number): Promise<AssetContext> {
-  const resp = await callService({ GetImage: { image_id: imageId } });
-  if ("ImageResult" in resp) {
-    return getAssetContext(resp.ImageResult.image);
+  const resp = await typedCall(
+    "GalleryService.GetImage",
+    GetImageRequestSchema,
+    { imageId: BigInt(imageId) },
+    ImageResultSchema,
+  );
+  if (resp.image) {
+    return getAssetContext(imageDetailsFromProto(resp.image));
   }
   return { asset_id: imageId, path: "", hash: "", tags: [] };
 }
@@ -65,6 +79,23 @@ export async function getSelectionAssetContexts(): Promise<AssetContext[]> {
 // ---------------------------------------------------------------------------
 // PluginHost Global API (design doc Section 8.1/8.2)
 // ---------------------------------------------------------------------------
+
+/**
+ * Bridge a bundled plugin's dynamic `{ command, params }` call onto the typed
+ * `PluginsService.InvokePlugin` RPC. The server dispatches `command` through
+ * the same handler pipeline the legacy single-RPC endpoint used and returns a
+ * JSON-serialized response in the legacy shape, so bundled plugins keep their
+ * existing parsing behavior unchanged.
+ */
+async function invokePlugin(command: string, params: object | null | undefined): Promise<any> {
+  const resp = await typedCall(
+    "PluginsService.InvokePlugin",
+    InvokePluginRequestSchema,
+    { pluginId: "", command, parametersJson: JSON.stringify(params ?? null) },
+    InvokePluginResponseSchema,
+  );
+  return JSON.parse(resp.responseJson);
+}
 
 export interface PluginHostApi {
   registerTab(id: string, label: string, iconClass: string, render: () => HTMLElement): void;
@@ -95,7 +126,7 @@ const pluginHost: PluginHostApi = {
     registeredContextMenuItems.push({ id, label, fn });
   },
   callService(method, params) {
-    return callService({ [method]: params });
+    return invokePlugin(method, params);
   },
   convertFileSrc(filePath: string) {
     return convertFileSrc(filePath);
@@ -158,17 +189,13 @@ export async function initPlugins() {
 
   let resp: any;
   try {
-    resp = await callService({ ListPlugins: null });
+    resp = await typedCall("PluginsService.ListPlugins", null, null, PluginsListResultSchema);
   } catch (e) {
     console.error("initPlugins: ListPlugins failed:", e);
     return;
   }
-  if (!("PluginsListResult" in resp)) {
-    console.error("initPlugins: unexpected ListPlugins response:", resp);
-    return;
-  }
 
-  pluginInfos = resp.PluginsListResult.plugins;
+  pluginInfos = resp.plugins.map(pluginInfoFromProto);
 
   const loadable = pluginInfos.filter(
     (p) => p.enabled && !!p.ui && p.permissions.includes("ui:inject")
@@ -176,11 +203,12 @@ export async function initPlugins() {
 
   for (const p of loadable) {
     try {
-      const fileResp = await callService({ ReadPluginFile: { plugin_name: p.name, relative_path: p.ui! } });
-      if (!("PluginFileResult" in fileResp)) {
-        console.error(`Plugin "${p.name}": failed to read bundle "${p.ui}":`, fileResp);
-        continue;
-      }
+      const fileResp = await typedCall(
+        "PluginsService.ReadPluginFile",
+        ReadPluginFileRequestSchema,
+        { pluginName: p.name, relativePath: p.ui! },
+        PluginFileResultSchema,
+      );
       // Derive the plugin's absolute directory from its manifest path.
       // manifest_path is e.g. "K:\...\plugins\gif-maker\manifest.json"
       const pluginDir = p.manifest_path
@@ -188,7 +216,7 @@ export async function initPlugins() {
       const workspaceRoot = pluginDir
         .replace(/[\\/][^\\/]+$/, "")  // strip plugin directory name
         .replace(/[\\/][^\\/]+$/, ""); // strip "plugins"
-      executePluginBundle(fileResp.PluginFileResult.content, p.name, pluginDir, workspaceRoot);
+      executePluginBundle(fileResp.content, p.name, pluginDir, workspaceRoot);
       console.log(`Plugin "${p.name}" bundle loaded and executed.`);
     } catch (e) {
       console.error(`Plugin "${p.name}": bundle load failed, skipping (core UI untouched):`, e);

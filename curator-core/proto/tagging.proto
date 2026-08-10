@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package curator.tagging;
+
+import "google/protobuf/empty.proto";
+import "common.proto";
+
+service TaggingService {
+  rpc TagImage (TagImageRequest) returns (TagImageResult);
+  rpc TagImageBatch (TagImageBatchRequest) returns (curator.common.BatchTagResult);
+  rpc GetTaggerStatus (google.protobuf.Empty) returns (TaggerStatusResult);
+  rpc EphemeralTagImage (EphemeralTagImageRequest) returns (EphemeralTagResult);
+}
+
+message TagImageRequest {
+  int64 image_id = 1;
+  // Confidence threshold. Unset uses the selected tagger's default.
+  optional float threshold = 2;
+  // If true, wipes existing tags of the selected source before tagging again.
+  optional bool force = 3;
+  // Tagger to use. Unset uses the settings preferred tagger.
+  optional curator.common.TaggerModel tagger = 4;
+}
+
+message TagImageResult {
+  int64 image_id = 1;
+  uint32 tags_applied = 2;
+  // True when the image already had tags of the selected source and was not re-tagged.
+  bool skipped = 3;
+  repeated curator.common.TagSummary tags = 4;
+}
+
+message TagImageBatchRequest {
+  repeated int64 image_ids = 1;
+  optional float threshold = 2;
+  optional bool force = 3;
+  optional curator.common.TaggerModel tagger = 4;
+}
+
+message TaggerStatusResult {
+  curator.common.TaggerModel preferred_tagger = 1;
+  repeated curator.common.TaggerStatusInfo taggers = 2;
+}
+
+message EphemeralTagImageRequest {
+  string path = 1;
+  optional float threshold = 2;
+  optional curator.common.TaggerModel tagger = 3;
+}
+
+message EphemeralTagResult {
+  string path = 1;
+  repeated curator.common.TagSummary tags = 2;
+}

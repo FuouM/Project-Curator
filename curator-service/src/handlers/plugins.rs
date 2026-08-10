@@ -1,6 +1,6 @@
 use anyhow::Context;
 use anyhow::Result;
-use curator_core::ipc::{PluginInfo, Response};
+use curator_core::ipc::PluginInfo;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -87,11 +87,11 @@ fn parse_manifest(path: &Path, fallback_name: &str) -> PluginInfo {
     }
 }
 
-pub async fn list_plugins(data_dir: &Path, settings: &Arc<tokio::sync::Mutex<AppSettings>>) -> Response {
-    let root = match plugin_root(data_dir) {
-        Ok(r) => r,
-        Err(e) => return Response::Error { message: e.to_string() },
-    };
+pub async fn list_plugins(
+    data_dir: &Path,
+    settings: &Arc<tokio::sync::Mutex<AppSettings>>,
+) -> Result<Vec<PluginInfo>> {
+    let root = plugin_root(data_dir)?;
 
     let enabled_map = { settings.lock().await.enabled_plugins.clone() };
     let mut plugins = Vec::new();
@@ -117,7 +117,7 @@ pub async fn list_plugins(data_dir: &Path, settings: &Arc<tokio::sync::Mutex<App
     }
 
     plugins.sort_by(|a, b| a.name.cmp(&b.name));
-    Response::PluginsListResult { plugins }
+    Ok(plugins)
 }
 
 pub async fn set_plugin_enabled(
@@ -125,20 +125,13 @@ pub async fn set_plugin_enabled(
     settings: &Arc<tokio::sync::Mutex<AppSettings>>,
     plugin_name: &str,
     enabled: bool,
-) -> Response {
+) -> Result<()> {
     if !validate_plugin_name(plugin_name) {
-        return Response::Error {
-            message: format!("Invalid plugin name: {}", plugin_name),
-        };
+        anyhow::bail!("Invalid plugin name: {}", plugin_name);
     }
-    let root = match plugin_root(data_dir) {
-        Ok(r) => r,
-        Err(e) => return Response::Error { message: e.to_string() },
-    };
+    let root = plugin_root(data_dir)?;
     if !root.join(plugin_name).join("manifest.json").is_file() {
-        return Response::Error {
-            message: format!("Unknown plugin: {}", plugin_name),
-        };
+        anyhow::bail!("Unknown plugin: {}", plugin_name);
     }
 
     let mut s = settings.lock().await;
@@ -152,22 +145,16 @@ pub async fn set_plugin_enabled(
     match save_res {
         Ok(Ok(())) => {
             info!("Plugin enabled state persisted: {} -> {}", plugin_name, enabled);
-            Response::Success
+            Ok(())
         }
-        Ok(Err(e)) => Response::Error {
-            message: format!("Failed to save settings: {:?}", e),
-        },
-        Err(e) => Response::Error {
-            message: format!("Failed to save settings: {:?}", e),
-        },
+        Ok(Err(e)) => anyhow::bail!("Failed to save settings: {:?}", e),
+        Err(e) => anyhow::bail!("Failed to save settings: {:?}", e),
     }
 }
 
-pub async fn read_plugin_file(data_dir: &Path, plugin_name: &str, relative_path: &str) -> Response {
+pub async fn read_plugin_file(data_dir: &Path, plugin_name: &str, relative_path: &str) -> Result<String> {
     if !validate_plugin_name(plugin_name) {
-        return Response::Error {
-            message: format!("Invalid plugin name: {}", plugin_name),
-        };
+        anyhow::bail!("Invalid plugin name: {}", plugin_name);
     }
 
     // Reject traversal / absolute components before touching the filesystem.
@@ -178,48 +165,27 @@ pub async fn read_plugin_file(data_dir: &Path, plugin_name: &str, relative_path:
         || relative_path.split('\\').any(|p| p == "..");
 
     if has_traversal {
-        return Response::Error {
-            message: "relative_path must be a relative path inside the plugin folder".to_string(),
-        };
+        anyhow::bail!("relative_path must be a relative path inside the plugin folder");
     }
 
-    let root = match plugin_root(data_dir) {
-        Ok(r) => r,
-        Err(e) => return Response::Error { message: e.to_string() },
-    };
+    let root = plugin_root(data_dir)?;
     let plugin_dir = root.join(plugin_name);
 
     // Canonicalize the plugin root and confirm the resolved file stays inside it
     // (path-traversal guard against symlinks / case tricks).
-    let canonical_root = match plugin_dir.canonicalize() {
-        Ok(p) => p,
-        Err(_) => {
-            return Response::Error {
-                message: format!("Plugin folder not found: {}", plugin_name),
-            }
-        }
-    };
+    let canonical_root = plugin_dir
+        .canonicalize()
+        .map_err(|_| anyhow::anyhow!("Plugin folder not found: {}", plugin_name))?;
     let file_path = plugin_dir.join(rel);
-    let canonical_file = match file_path.canonicalize() {
-        Ok(p) => p,
-        Err(e) => {
-            return Response::Error {
-                message: format!("Failed to resolve plugin file: {:?}", e),
-            }
-        }
-    };
+    let canonical_file = file_path
+        .canonicalize()
+        .map_err(|e| anyhow::anyhow!("Failed to resolve plugin file: {:?}", e))?;
     if !canonical_file.starts_with(&canonical_root) {
-        return Response::Error {
-            message: "Requested path escapes the plugin folder".to_string(),
-        };
+        anyhow::bail!("Requested path escapes the plugin folder");
     }
 
-    match fs::read_to_string(&canonical_file) {
-        Ok(content) => Response::PluginFileResult { content },
-        Err(e) => Response::Error {
-            message: format!("Failed to read plugin file: {:?}", e),
-        },
-    }
+    fs::read_to_string(&canonical_file)
+        .map_err(|e| anyhow::anyhow!("Failed to read plugin file: {:?}", e))
 }
 
 /// Validates a plugin `manifest.json` against the design doc Section 4 schema

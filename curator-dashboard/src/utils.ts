@@ -5,6 +5,10 @@ export function logJS(msg: string) {
   invoke("log_frontend", { message: msg }).catch(() => {});
 }
 
+export function safeStringify(value: unknown): string {
+  return JSON.stringify(value, (_key, v) => (typeof v === "bigint" ? v.toString() : v));
+}
+
 export function setStatusMessage(el: HTMLElement | null, message: string, state: "loading" | "success" | "error") {
   if (!el) return;
   el.textContent = message;

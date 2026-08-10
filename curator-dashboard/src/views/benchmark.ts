@@ -1,5 +1,19 @@
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
 import { SafeHtml, html } from "../components";
+import {
+  RunBenchmarkRequestSchema,
+  RunTaggerBenchmarkRequestSchema,
+  BenchmarkResultSchema,
+  DetectionBenchmarkResultSchema,
+} from "../gen/benchmarks_pb";
+import { EmbeddingModel, TaggerModel } from "../gen/common_pb";
+import {
+  GetBenchmarkImagesRequestSchema,
+  BenchmarkImagesResultSchema,
+  RunImageProcessingBenchmarkRequestSchema,
+  ImageProcessingBenchmarkProgressSchema,
+} from "../gen/tools_pb";
+import { StatusResultSchema } from "../gen/system_pb";
 
 interface BenchmarkConfig {
   key: string;
@@ -21,8 +35,7 @@ function extractTaggerResult(
   gpuId: string,
   speedupId: string
 ): { cpuMs: number; gpuMs: number | null; gpuErr: string | null } | null {
-  if (!("BenchmarkResult" in resp)) return null;
-  const br = resp.BenchmarkResult;
+  const br = resp;
   let cpuMs: number | null = null;
   let gpuMs: number | null = null;
   let gpuErr: string | null = null;
@@ -32,16 +45,16 @@ function extractTaggerResult(
   if (Array.isArray(taggers) && taggers.length > 0) {
     const t = taggers.find((x: any) => x.key === key);
     if (t) {
-      cpuMs = t.cpu_time_ms ?? null;
-      gpuMs = t.gpu_time_ms ?? null;
-      gpuErr = t.gpu_error ?? null;
+      cpuMs = t.cpuTimeMs ?? null;
+      gpuMs = t.gpuTimeMs ?? null;
+      gpuErr = t.gpuError ?? null;
       found = true;
     }
   }
   if (!found && key === "camie-tagger-v2") {
-    cpuMs = br.tagger_cpu_time_ms ?? null;
-    gpuMs = br.tagger_gpu_time_ms ?? null;
-    gpuErr = br.tagger_gpu_error ?? null;
+    cpuMs = br.taggerCpuTimeMs ?? null;
+    gpuMs = br.taggerGpuTimeMs ?? null;
+    gpuErr = br.taggerGpuError ?? null;
     found = true;
   }
 
@@ -97,12 +110,12 @@ export function setupBenchmark() {
       cpuEl: getEl("benchmark-clip-cpu"),
       gpuEl: getEl("benchmark-clip-gpu"),
       speedupEl: getEl("benchmark-clip-speedup"),
-      run: () => callService({ RunBenchmark: { embedding_model: "clip-vit-b-32", run_tagger: false } }).catch((e: any) => ({ Error: { message: e.message } })),
+      run: () => typedCall("BenchmarksService.RunBenchmark", RunBenchmarkRequestSchema, { embeddingModel: EmbeddingModel.CLIP_VIT_B_32, runTagger: false }, BenchmarkResultSchema).catch((e: any) => ({ Error: { message: e.message } })),
       extractResult: (resp) => {
-        if (!("BenchmarkResult" in resp)) return null;
-        const { clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error, has_gpu } = resp.BenchmarkResult;
+        if (resp == null) return null;
+        const { clipCpuTimeMs, clipGpuTimeMs, clipGpuError, hasGpu } = resp;
         if (gpuLoaded) {
-          if (has_gpu) {
+          if (hasGpu) {
             gpuLoaded.textContent = "Yes";
             gpuLoaded.style.color = "#008000";
             gpuLoaded.style.fontWeight = "bold";
@@ -111,7 +124,7 @@ export function setupBenchmark() {
             gpuLoaded.style.color = "#555555";
           }
         }
-        return { cpuMs: clip_cpu_time_ms, gpuMs: clip_gpu_time_ms, gpuErr: clip_gpu_error };
+        return { cpuMs: clipCpuTimeMs, gpuMs: clipGpuTimeMs ?? null, gpuErr: clipGpuError ?? null };
       },
     },
     {
@@ -120,11 +133,11 @@ export function setupBenchmark() {
       cpuEl: getEl("benchmark-mclip-cpu"),
       gpuEl: getEl("benchmark-mclip-gpu"),
       speedupEl: getEl("benchmark-mclip-speedup"),
-      run: () => callService({ RunBenchmark: { embedding_model: "mobileclip-s2", run_tagger: false } }).catch((e: any) => ({ Error: { message: e.message } })),
+      run: () => typedCall("BenchmarksService.RunBenchmark", RunBenchmarkRequestSchema, { embeddingModel: EmbeddingModel.MOBILECLIP_S2, runTagger: false }, BenchmarkResultSchema).catch((e: any) => ({ Error: { message: e.message } })),
       extractResult: (resp) => {
-        if (!("BenchmarkResult" in resp)) return null;
-        const { clip_cpu_time_ms, clip_gpu_time_ms, clip_gpu_error } = resp.BenchmarkResult;
-        return { cpuMs: clip_cpu_time_ms, gpuMs: clip_gpu_time_ms, gpuErr: clip_gpu_error };
+        if (resp == null) return null;
+        const { clipCpuTimeMs, clipGpuTimeMs, clipGpuError } = resp;
+        return { cpuMs: clipCpuTimeMs, gpuMs: clipGpuTimeMs ?? null, gpuErr: clipGpuError ?? null };
       },
     },
     {
@@ -133,7 +146,7 @@ export function setupBenchmark() {
       cpuEl: getEl("benchmark-tagger-cpu"),
       gpuEl: getEl("benchmark-tagger-gpu"),
       speedupEl: getEl("benchmark-tagger-speedup"),
-      run: () => callService({ RunTaggerBenchmark: { tagger: "camie" } }).catch((e: any) => ({ Error: { message: e.message } })),
+      run: () => typedCall("BenchmarksService.RunTaggerBenchmark", RunTaggerBenchmarkRequestSchema, { tagger: TaggerModel.CAMIE }, BenchmarkResultSchema).catch((e: any) => ({ Error: { message: e.message } })),
       extractResult: (resp) => extractTaggerResult(resp, "camie-tagger-v2", "benchmark-tagger-cpu", "benchmark-tagger-gpu", "benchmark-tagger-speedup"),
     },
     {
@@ -142,7 +155,7 @@ export function setupBenchmark() {
       cpuEl: getEl("benchmark-tagger-wd-cpu"),
       gpuEl: getEl("benchmark-tagger-wd-gpu"),
       speedupEl: getEl("benchmark-tagger-wd-speedup"),
-      run: () => callService({ RunTaggerBenchmark: { tagger: "wd-eva02" } }).catch((e: any) => ({ Error: { message: e.message } })),
+      run: () => typedCall("BenchmarksService.RunTaggerBenchmark", RunTaggerBenchmarkRequestSchema, { tagger: TaggerModel.WD_EVA02 }, BenchmarkResultSchema).catch((e: any) => ({ Error: { message: e.message } })),
       extractResult: (resp) => extractTaggerResult(resp, "wd-eva02-tagger-2026-canary", "benchmark-tagger-wd-cpu", "benchmark-tagger-wd-gpu", "benchmark-tagger-wd-speedup"),
     },
     {
@@ -151,12 +164,10 @@ export function setupBenchmark() {
       cpuEl: getEl("benchmark-yolo-cpu"),
       gpuEl: getEl("benchmark-yolo-gpu"),
       speedupEl: getEl("benchmark-yolo-speedup"),
-      run: () => callService({ RunYoloBenchmark: null }).catch((e: any) => ({ Error: { message: e.message } })),
+      run: () => typedCall("BenchmarksService.RunYoloBenchmark", null, null, DetectionBenchmarkResultSchema).catch((e: any) => ({ Error: { message: e.message } })),
       extractResult: (resp) => {
-        if (!("DetectionBenchmarkResult" in resp)) return null;
-        const { yolo_cpu_time_ms, yolo_gpu_time_ms, yolo_gpu_error } = resp.DetectionBenchmarkResult;
-        if (yolo_cpu_time_ms === null) return null;
-        return { cpuMs: yolo_cpu_time_ms, gpuMs: yolo_gpu_time_ms, gpuErr: yolo_gpu_error };
+        if (resp == null || resp.yoloCpuTimeMs == null) return null;
+        return { cpuMs: resp.yoloCpuTimeMs, gpuMs: resp.yoloGpuTimeMs ?? null, gpuErr: resp.yoloGpuError ?? null };
       },
     },
     {
@@ -165,12 +176,10 @@ export function setupBenchmark() {
       cpuEl: getEl("benchmark-ccip-feat-cpu"),
       gpuEl: getEl("benchmark-ccip-feat-gpu"),
       speedupEl: getEl("benchmark-ccip-feat-speedup"),
-      run: () => callService({ RunCcipFeatBenchmark: null }).catch((e: any) => ({ Error: { message: e.message } })),
+      run: () => typedCall("BenchmarksService.RunCcipFeatBenchmark", null, null, DetectionBenchmarkResultSchema).catch((e: any) => ({ Error: { message: e.message } })),
       extractResult: (resp) => {
-        if (!("DetectionBenchmarkResult" in resp)) return null;
-        const { ccip_feat_cpu_time_ms, ccip_feat_gpu_time_ms, ccip_feat_gpu_error } = resp.DetectionBenchmarkResult;
-        if (ccip_feat_cpu_time_ms === null) return null;
-        return { cpuMs: ccip_feat_cpu_time_ms, gpuMs: ccip_feat_gpu_time_ms, gpuErr: ccip_feat_gpu_error };
+        if (resp == null || resp.ccipFeatCpuTimeMs == null) return null;
+        return { cpuMs: resp.ccipFeatCpuTimeMs, gpuMs: resp.ccipFeatGpuTimeMs ?? null, gpuErr: resp.ccipFeatGpuError ?? null };
       },
     },
     {
@@ -179,12 +188,10 @@ export function setupBenchmark() {
       cpuEl: getEl("benchmark-ccip-metrics-cpu"),
       gpuEl: getEl("benchmark-ccip-metrics-gpu"),
       speedupEl: getEl("benchmark-ccip-metrics-speedup"),
-      run: () => callService({ RunCcipMetricsBenchmark: null }).catch((e: any) => ({ Error: { message: e.message } })),
+      run: () => typedCall("BenchmarksService.RunCcipMetricsBenchmark", null, null, DetectionBenchmarkResultSchema).catch((e: any) => ({ Error: { message: e.message } })),
       extractResult: (resp) => {
-        if (!("DetectionBenchmarkResult" in resp)) return null;
-        const { ccip_metrics_cpu_time_ms, ccip_metrics_gpu_time_ms, ccip_metrics_gpu_error } = resp.DetectionBenchmarkResult;
-        if (ccip_metrics_cpu_time_ms === null) return null;
-        return { cpuMs: ccip_metrics_cpu_time_ms, gpuMs: ccip_metrics_gpu_time_ms, gpuErr: ccip_metrics_gpu_error };
+        if (resp == null || resp.ccipMetricsCpuTimeMs == null) return null;
+        return { cpuMs: resp.ccipMetricsCpuTimeMs, gpuMs: resp.ccipMetricsGpuTimeMs ?? null, gpuErr: resp.ccipMetricsGpuError ?? null };
       },
     },
     {
@@ -193,12 +200,10 @@ export function setupBenchmark() {
       cpuEl: getEl("benchmark-ocr-det-cpu"),
       gpuEl: getEl("benchmark-ocr-det-gpu"),
       speedupEl: getEl("benchmark-ocr-det-speedup"),
-      run: () => callService({ RunOcrDetBenchmark: null }).catch((e: any) => ({ Error: { message: e.message } })),
+      run: () => typedCall("BenchmarksService.RunOcrDetBenchmark", null, null, DetectionBenchmarkResultSchema).catch((e: any) => ({ Error: { message: e.message } })),
       extractResult: (resp) => {
-        if (!("DetectionBenchmarkResult" in resp)) return null;
-        const { ocr_det_cpu_time_ms, ocr_det_gpu_time_ms, ocr_det_gpu_error } = resp.DetectionBenchmarkResult;
-        if (ocr_det_cpu_time_ms === null) return null;
-        return { cpuMs: ocr_det_cpu_time_ms, gpuMs: ocr_det_gpu_time_ms, gpuErr: ocr_det_gpu_error };
+        if (resp == null || resp.ocrDetCpuTimeMs == null) return null;
+        return { cpuMs: resp.ocrDetCpuTimeMs, gpuMs: resp.ocrDetGpuTimeMs ?? null, gpuErr: resp.ocrDetGpuError ?? null };
       },
     },
     {
@@ -207,12 +212,10 @@ export function setupBenchmark() {
       cpuEl: getEl("benchmark-ocr-rec-cpu"),
       gpuEl: getEl("benchmark-ocr-rec-gpu"),
       speedupEl: getEl("benchmark-ocr-rec-speedup"),
-      run: () => callService({ RunOcrRecBenchmark: null }).catch((e: any) => ({ Error: { message: e.message } })),
+      run: () => typedCall("BenchmarksService.RunOcrRecBenchmark", null, null, DetectionBenchmarkResultSchema).catch((e: any) => ({ Error: { message: e.message } })),
       extractResult: (resp) => {
-        if (!("DetectionBenchmarkResult" in resp)) return null;
-        const { ocr_rec_cpu_time_ms, ocr_rec_gpu_time_ms, ocr_rec_gpu_error } = resp.DetectionBenchmarkResult;
-        if (ocr_rec_cpu_time_ms === null) return null;
-        return { cpuMs: ocr_rec_cpu_time_ms, gpuMs: ocr_rec_gpu_time_ms, gpuErr: ocr_rec_gpu_error };
+        if (resp == null || resp.ocrRecCpuTimeMs == null) return null;
+        return { cpuMs: resp.ocrRecCpuTimeMs, gpuMs: resp.ocrRecGpuTimeMs ?? null, gpuErr: resp.ocrRecGpuError ?? null };
       },
     },
     {
@@ -221,12 +224,10 @@ export function setupBenchmark() {
       cpuEl: getEl("benchmark-ocr-cls-cpu"),
       gpuEl: getEl("benchmark-ocr-cls-gpu"),
       speedupEl: getEl("benchmark-ocr-cls-speedup"),
-      run: () => callService({ RunOcrClsBenchmark: null }).catch((e: any) => ({ Error: { message: e.message } })),
+      run: () => typedCall("BenchmarksService.RunOcrClsBenchmark", null, null, DetectionBenchmarkResultSchema).catch((e: any) => ({ Error: { message: e.message } })),
       extractResult: (resp) => {
-        if (!("DetectionBenchmarkResult" in resp)) return null;
-        const { ocr_cls_cpu_time_ms, ocr_cls_gpu_time_ms, ocr_cls_gpu_error } = resp.DetectionBenchmarkResult;
-        if (ocr_cls_cpu_time_ms === null) return null;
-        return { cpuMs: ocr_cls_cpu_time_ms, gpuMs: ocr_cls_gpu_time_ms, gpuErr: ocr_cls_gpu_error };
+        if (resp == null || resp.ocrClsCpuTimeMs == null) return null;
+        return { cpuMs: resp.ocrClsCpuTimeMs, gpuMs: resp.ocrClsGpuTimeMs ?? null, gpuErr: resp.ocrClsGpuError ?? null };
       },
     },
     {
@@ -235,12 +236,10 @@ export function setupBenchmark() {
       cpuEl: getEl("benchmark-manga-bubble-cpu"),
       gpuEl: getEl("benchmark-manga-bubble-gpu"),
       speedupEl: getEl("benchmark-manga-bubble-speedup"),
-      run: () => callService({ RunMangaBubbleBenchmark: null }).catch((e: any) => ({ Error: { message: e.message } })),
+      run: () => typedCall("BenchmarksService.RunMangaBubbleBenchmark", null, null, DetectionBenchmarkResultSchema).catch((e: any) => ({ Error: { message: e.message } })),
       extractResult: (resp) => {
-        if (!("DetectionBenchmarkResult" in resp)) return null;
-        const { manga_bubble_cpu_time_ms, manga_bubble_gpu_time_ms, manga_bubble_gpu_error } = resp.DetectionBenchmarkResult;
-        if (manga_bubble_cpu_time_ms === null) return null;
-        return { cpuMs: manga_bubble_cpu_time_ms, gpuMs: manga_bubble_gpu_time_ms, gpuErr: manga_bubble_gpu_error };
+        if (resp == null || resp.mangaBubbleCpuTimeMs == null) return null;
+        return { cpuMs: resp.mangaBubbleCpuTimeMs, gpuMs: resp.mangaBubbleGpuTimeMs ?? null, gpuErr: resp.mangaBubbleGpuError ?? null };
       },
     },
   ];
@@ -387,38 +386,30 @@ export function setupBenchmark() {
         const requestedN = inputN ? parseInt(inputN.value, 10) : 100;
         const finalN = isNaN(requestedN) || requestedN <= 0 ? 100 : requestedN;
 
-        const listResp = await callService({ GetBenchmarkImages: { limit: finalN } });
-        if ("Error" in listResp) {
-          throw new Error(listResp.Error.message);
-        }
-        if (!("BenchmarkImagesResult" in listResp)) {
-          throw new Error("Invalid response format when fetching images.");
-        }
-
-        const filepaths = listResp.BenchmarkImagesResult.filepaths;
+        const listResp = await typedCall("ToolsService.GetBenchmarkImages", GetBenchmarkImagesRequestSchema, { limit: finalN }, BenchmarkImagesResultSchema);
+        const filepaths = listResp.filepaths;
         const totalCount = filepaths.length;
         if (totalCount === 0) {
           throw new Error("No benchmark images found in the database.");
         }
 
         // Kick off the background benchmark across all fetched images at once,
-        // then poll per-image progress until it finishes.
-        const startResp = await callService({ RunImageProcessingBenchmark: { filepaths } });
-        if ("Error" in startResp) {
-          throw new Error(startResp.Error.message);
-        }
+        // then poll per-image progress until it finishes. The streaming RPC
+        // resolves with the first progress item; the unary poll below drives
+        // the rest of the run.
+        await typedCall("ToolsService.RunImageProcessingBenchmark", RunImageProcessingBenchmarkRequestSchema, { filepaths }, ImageProcessingBenchmarkProgressSchema);
 
         let running = true;
         let currentProcessed = 0;
 
         const applyProgress = (res: {
           processed: number;
-          decode_time_ms: number;
-          thumbnail_time_ms: number;
-          clip_preprocess_time_ms: number;
-          tagger_preprocess_time_ms: number;
-          yolo_preprocess_time_ms: number;
-          ccip_extract_preprocess_time_ms: number;
+          decodeTimeMs: number;
+          thumbnailTimeMs: number;
+          clipPreprocessTimeMs: number;
+          taggerPreprocessTimeMs: number;
+          yoloPreprocessTimeMs: number;
+          ccipExtractPreprocessTimeMs: number;
         }) => {
           currentProcessed = res.processed || 0;
           if (pipelineCountEl) pipelineCountEl.textContent = `${currentProcessed} / ${totalCount}`;
@@ -428,35 +419,28 @@ export function setupBenchmark() {
             return `${sumMs.toFixed(1)} ms (avg ${avg.toFixed(1)} ms/img)`;
           };
 
-          if (pipelineDecodeEl) pipelineDecodeEl.textContent = formatMs(res.decode_time_ms);
-          if (pipelineThumbEl) pipelineThumbEl.textContent = formatMs(res.thumbnail_time_ms);
-          if (pipelineClipPrepEl) pipelineClipPrepEl.textContent = formatMs(res.clip_preprocess_time_ms);
-          if (pipelineTaggerPrepEl) pipelineTaggerPrepEl.textContent = formatMs(res.tagger_preprocess_time_ms);
-          if (pipelineYoloPrepEl) pipelineYoloPrepEl.textContent = formatMs(res.yolo_preprocess_time_ms);
-          if (pipelineCcipPrepEl) pipelineCcipPrepEl.textContent = formatMs(res.ccip_extract_preprocess_time_ms);
+          if (pipelineDecodeEl) pipelineDecodeEl.textContent = formatMs(res.decodeTimeMs);
+          if (pipelineThumbEl) pipelineThumbEl.textContent = formatMs(res.thumbnailTimeMs);
+          if (pipelineClipPrepEl) pipelineClipPrepEl.textContent = formatMs(res.clipPreprocessTimeMs);
+          if (pipelineTaggerPrepEl) pipelineTaggerPrepEl.textContent = formatMs(res.taggerPreprocessTimeMs);
+          if (pipelineYoloPrepEl) pipelineYoloPrepEl.textContent = formatMs(res.yoloPreprocessTimeMs);
+          if (pipelineCcipPrepEl) pipelineCcipPrepEl.textContent = formatMs(res.ccipExtractPreprocessTimeMs);
 
           // Total = sum of the actual per-step measurements (same source and
           // denominator as the rows above), so it stays consistent rather than
           // reflecting wall-clock/polling overhead.
           const sumTotal =
-            res.decode_time_ms +
-            res.thumbnail_time_ms +
-            res.clip_preprocess_time_ms +
-            res.tagger_preprocess_time_ms +
-            res.yolo_preprocess_time_ms +
-            res.ccip_extract_preprocess_time_ms;
+            res.decodeTimeMs +
+            res.thumbnailTimeMs +
+            res.clipPreprocessTimeMs +
+            res.taggerPreprocessTimeMs +
+            res.yoloPreprocessTimeMs +
+            res.ccipExtractPreprocessTimeMs;
           if (pipelineTotalEl) pipelineTotalEl.textContent = formatMs(sumTotal);
         };
 
         while (running) {
-          const progResp = await callService({ GetImageProcessingBenchmarkProgress: null });
-          if ("Error" in progResp) {
-            throw new Error(progResp.Error.message);
-          }
-          if (!("ImageProcessingBenchmarkProgress" in progResp)) {
-            throw new Error("Invalid progress response format.");
-          }
-          const prog = progResp.ImageProcessingBenchmarkProgress;
+          const prog = await typedCall("ToolsService.GetImageProcessingBenchmarkProgress", null, null, ImageProcessingBenchmarkProgressSchema);
           running = prog.running;
           applyProgress(prog);
           if (running) {
@@ -493,21 +477,19 @@ export function setupBenchmark() {
 
 export async function refreshBenchmarkMaxImages() {
   try {
-    const statusResp = await callService({ GetStatus: null });
-    if ("StatusResult" in statusResp) {
-      const maxImages = statusResp.StatusResult.image_count;
-      const inputN = document.getElementById("benchmark-pipeline-n") as HTMLInputElement | null;
-      const maxHint = document.getElementById("benchmark-pipeline-max-hint");
-      if (inputN) {
-        inputN.max = maxImages.toString();
-        const currVal = parseInt(inputN.value, 10);
-        if (isNaN(currVal) || currVal > maxImages || currVal === 100) {
-          inputN.value = Math.min(100, maxImages).toString();
-        }
+    const statusResp = await typedCall("SystemService.GetStatus", null, null, StatusResultSchema);
+    const maxImages = Number(statusResp.imageCount);
+    const inputN = document.getElementById("benchmark-pipeline-n") as HTMLInputElement | null;
+    const maxHint = document.getElementById("benchmark-pipeline-max-hint");
+    if (inputN) {
+      inputN.max = maxImages.toString();
+      const currVal = parseInt(inputN.value, 10);
+      if (isNaN(currVal) || currVal > maxImages || currVal === 100) {
+        inputN.value = Math.min(100, maxImages).toString();
       }
-      if (maxHint) {
-        maxHint.textContent = `(max ${maxImages})`;
-      }
+    }
+    if (maxHint) {
+      maxHint.textContent = `(max ${maxImages})`;
     }
   } catch (e) {
     console.error("Failed to load max images for benchmark", e);

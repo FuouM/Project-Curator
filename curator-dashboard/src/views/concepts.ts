@@ -1,4 +1,4 @@
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
 import { renderConceptCard, SafeHtml, html } from "../components";
 import { selectedImageIds } from "../state";
 import { renderImages } from "../cards";
@@ -6,6 +6,22 @@ import { refreshDashboard } from "./dashboard";
 import { loadSearchConceptsDropdown } from "./search";
 import { setupSelectionToolbar } from "../selection-toolbar";
 import { showErrorAlert, showSuccessAlert, showWarningAlert } from "../alert";
+import { imageDetailsFromProto } from "../proto-adapters";
+import { EmptySchema } from "@bufbuild/protobuf/wkt";
+import {
+  CreateConceptRequestSchema,
+  UpdateConceptRequestSchema,
+  DeleteConceptRequestSchema,
+  RemoveConceptSampleRequestSchema,
+  RescanConceptRequestSchema,
+  CleanAutoConceptTagsRequestSchema,
+  ConceptListResultSchema,
+  ConceptResultSchema,
+  ConceptRescannedResultSchema,
+  ConceptSamplesResultSchema,
+  AutoConceptTagsCleanedResultSchema,
+} from "../gen/concepts_pb";
+import type { CustomConcept } from "../gen/common_pb";
 
 export function setupInputClearButtons() {
   const inputs = document.querySelectorAll<HTMLInputElement>('.input-field.has-clear');
@@ -38,7 +54,7 @@ export function setupInputClearButtons() {
   });
 }
 
-let fetchedConceptsCache: any[] = [];
+let fetchedConceptsCache: CustomConcept[] = [];
 
 function syncSelectedConceptUI() {
   const existingRadio = document.getElementById("target-type-existing") as HTMLInputElement;
@@ -53,7 +69,7 @@ function syncSelectedConceptUI() {
     if (catSelect && concept.category) catSelect.value = concept.category;
     if (thRange && concept.threshold) {
       thRange.value = concept.threshold.toString();
-      if (thVal) thVal.textContent = parseFloat(concept.threshold).toFixed(2);
+      if (thVal) thVal.textContent = concept.threshold.toFixed(2);
     }
   }
 }
@@ -111,19 +127,17 @@ export async function openTeachConceptModal() {
 
   if (existingSelect) {
     try {
-      const resp = await callService({ ListConcepts: null });
-      if ("ConceptListResult" in resp) {
-        fetchedConceptsCache = resp.ConceptListResult.concepts;
-        if (fetchedConceptsCache.length > 0) {
-          existingSelect.innerHTML = fetchedConceptsCache
-            .map((c: any) => `<option value="${c.name}">${c.name} [${c.category.toUpperCase()}] (${c.sample_count} samples)</option>`)
-            .join("");
-          if (existingRadio) existingRadio.checked = true;
-          syncSelectedConceptUI();
-        } else {
-          existingSelect.innerHTML = `<option value="">No existing concepts found</option>`;
-          if (newRadio) newRadio.checked = true;
-        }
+      const resp = await typedCall("ConceptsService.ListConcepts", null, null, ConceptListResultSchema);
+      fetchedConceptsCache = resp.concepts;
+      if (fetchedConceptsCache.length > 0) {
+        existingSelect.innerHTML = fetchedConceptsCache
+          .map((c) => `<option value="${c.name}">${c.name} [${c.category.toUpperCase()}] (${c.sampleCount} samples)</option>`)
+          .join("");
+        if (existingRadio) existingRadio.checked = true;
+        syncSelectedConceptUI();
+      } else {
+        existingSelect.innerHTML = `<option value="">No existing concepts found</option>`;
+        if (newRadio) newRadio.checked = true;
       }
     } catch (_) {
       existingSelect.innerHTML = `<option value="">Failed to load concepts</option>`;
@@ -140,34 +154,30 @@ export async function loadConceptsView() {
   container.innerHTML = `<div style="padding: 20px; text-align: center; opacity: 0.7;"><i class="bi bi-hourglass-split"></i> Loading custom concepts...</div>`;
 
   try {
-    const resp = await callService({ ListConcepts: null });
-    if ("ConceptListResult" in resp) {
-      const concepts = resp.ConceptListResult.concepts;
-      if (concepts.length === 0) {
-        container.innerHTML = `
-          <div style="grid-column: 1 / -1; padding: 40px 20px; text-align: center; background: var(--sys-menu-bg); border: 1px dashed var(--sys-menu-border); border-radius: 6px;">
-            <i class="bi bi-magic" style="font-size: 32px; color: var(--sys-text-subtle); display: block; margin-bottom: 12px;"></i>
-            <h4 style="margin: 0 0 6px 0;">No Custom Concepts Yet</h4>
-            <p style="margin: 0; font-size: 12px; color: var(--sys-text-subtle);">
-              Select images in the Gallery or open an image's Tags modal and click <strong>"Teach Concept"</strong> to create your first concept!
-            </p>
-          </div>
-        `;
-        return;
-      }
-
-      container.innerHTML = concepts.map((c: any) => renderConceptCard({
-        id: c.id,
-        name: c.name,
-        category: c.category,
-        threshold: c.threshold,
-        sampleCount: c.sample_count,
-        createdAt: c.created_at,
-        updatedAt: c.updated_at,
-      })).join("");
-    } else if ("Error" in resp) {
-      container.innerHTML = `<div style="color: #e81123;">Error loading concepts: ${resp.Error.message}</div>`;
+    const resp = await typedCall("ConceptsService.ListConcepts", null, null, ConceptListResultSchema);
+    const concepts = resp.concepts;
+    if (concepts.length === 0) {
+      container.innerHTML = `
+        <div style="grid-column: 1 / -1; padding: 40px 20px; text-align: center; background: var(--sys-menu-bg); border: 1px dashed var(--sys-menu-border); border-radius: 6px;">
+          <i class="bi bi-magic" style="font-size: 32px; color: var(--sys-text-subtle); display: block; margin-bottom: 12px;"></i>
+          <h4 style="margin: 0 0 6px 0;">No Custom Concepts Yet</h4>
+          <p style="margin: 0; font-size: 12px; color: var(--sys-text-subtle);">
+            Select images in the Gallery or open an image's Tags modal and click <strong>"Teach Concept"</strong> to create your first concept!
+          </p>
+        </div>
+      `;
+      return;
     }
+
+    container.innerHTML = concepts.map((c) => renderConceptCard({
+      id: Number(c.id),
+      name: c.name,
+      category: c.category,
+      threshold: c.threshold,
+      sampleCount: c.sampleCount,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    })).join("");
   } catch (e: any) {
     container.innerHTML = `<div style="color: #e81123;">Error: ${e.message || e}</div>`;
   }
@@ -179,7 +189,7 @@ async function updateConceptThreshold(conceptId: number, val: number) {
   const display = document.getElementById(`concept-th-val-${conceptId}`);
   if (display) display.textContent = `${(val * 100).toFixed(0)}% (${val.toFixed(2)})`;
   try {
-    await callService({ UpdateConcept: { id: conceptId, threshold: val, category: null } });
+    await typedCall("ConceptsService.UpdateConcept", UpdateConceptRequestSchema, { id: BigInt(conceptId), threshold: val }, ConceptResultSchema);
   } catch (e: any) {
     console.error("Failed to update concept threshold", e);
   }
@@ -197,27 +207,19 @@ async function rescanConcept(conceptId: number) {
 
   try {
     if (btn) btn.innerHTML = `<i class="bi bi-cpu animate-spin"></i> Step 2/2: Scoring vectors & tagging...`;
-    const resp = await callService({ RescanConcept: { concept_id: conceptId } });
-    if ("ConceptRescannedResult" in resp) {
-      if (btn) btn.innerHTML = `<i class="bi bi-check-lg"></i> Done (${resp.ConceptRescannedResult.tagged_count})`;
-      setTimeout(() => {
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = originalHtml;
-        }
-      }, 1200);
-      showSuccessAlert(`Rescan complete! Tagged ${resp.ConceptRescannedResult.tagged_count} matching image(s).`);
-      refreshDashboard();
-      if (document.getElementById("view-gallery")?.classList.contains("active")) {
-        const { refreshGallery } = await import("./gallery");
-        refreshGallery();
-      }
-    } else if ("Error" in resp) {
-      showErrorAlert("Rescan failed:\n" + resp.Error.message);
+    const resp = await typedCall("ConceptsService.RescanConcept", RescanConceptRequestSchema, { conceptId: BigInt(conceptId) }, ConceptRescannedResultSchema);
+    if (btn) btn.innerHTML = `<i class="bi bi-check-lg"></i> Done (${resp.taggedCount})`;
+    setTimeout(() => {
       if (btn) {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
       }
+    }, 1200);
+    showSuccessAlert(`Rescan complete! Tagged ${resp.taggedCount} matching image(s).`);
+    refreshDashboard();
+    if (document.getElementById("view-gallery")?.classList.contains("active")) {
+      const { refreshGallery } = await import("./gallery");
+      refreshGallery();
     }
   } catch (e: any) {
     showErrorAlert("Error rescanning concept:\n" + (e.message || e));
@@ -231,12 +233,8 @@ async function rescanConcept(conceptId: number) {
 async function deleteConcept(conceptId: number) {
   if (!confirm("Are you sure you want to delete this custom concept?")) return;
   try {
-    const resp = await callService({ DeleteConcept: { id: conceptId } });
-    if ("Success" in resp) {
-      loadConceptsView();
-    } else if ("Error" in resp) {
-      showErrorAlert("Delete failed:\n" + resp.Error.message);
-    }
+    await typedCall("ConceptsService.DeleteConcept", DeleteConceptRequestSchema, { id: BigInt(conceptId) }, EmptySchema);
+    loadConceptsView();
   } catch (e: any) {
     showErrorAlert("Error deleting concept:\n" + (e.message || e));
   }
@@ -285,31 +283,28 @@ async function removeConceptSample(conceptId: number, imageId: number) {
   }
 
   try {
-    const resp = await callService({ RemoveConceptSample: { concept_id: conceptId, image_id: imageId } });
-    if ("ConceptResult" in resp) {
-      const concept = resp.ConceptResult.concept;
+    const resp = await typedCall("ConceptsService.RemoveConceptSample", RemoveConceptSampleRequestSchema, { conceptId: BigInt(conceptId), imageId: BigInt(imageId) }, ConceptResultSchema);
+    const concept = resp.concept;
 
+    if (concept) {
       const countValElFinal = document.querySelector(`#concept-card-${conceptId} .concept-info-val`);
       if (countValElFinal) {
-        countValElFinal.innerHTML = `<strong>${concept.sample_count}</strong> ${concept.sample_count === 1 ? 'sample' : 'samples'}`;
+        countValElFinal.innerHTML = `<strong>${concept.sampleCount}</strong> ${concept.sampleCount === 1 ? 'sample' : 'samples'}`;
       }
 
       const sampleBtnElFinal = document.querySelector(`#concept-card-${conceptId} .concept-card-actions button`);
       if (sampleBtnElFinal) {
-        sampleBtnElFinal.innerHTML = `<i class="bi bi-images"></i> Samples (${concept.sample_count})`;
+        sampleBtnElFinal.innerHTML = `<i class="bi bi-images"></i> Samples (${concept.sampleCount})`;
       }
-
-      await viewConceptSamples(conceptId, "", true);
-
-      const { refreshModalTags } = await import("./tags");
-      refreshModalTags(imageId).catch(() => {});
-
-      refreshDashboard();
-      loadSearchConceptsDropdown();
-    } else if ("Error" in resp) {
-      showErrorAlert("Failed to remove sample:\n" + resp.Error.message);
-      await viewConceptSamples(conceptId, "", true);
     }
+
+    await viewConceptSamples(conceptId, "", true);
+
+    const { refreshModalTags } = await import("./tags");
+    refreshModalTags(imageId).catch(() => {});
+
+    refreshDashboard();
+    loadSearchConceptsDropdown();
   } catch (e: any) {
     showErrorAlert("Error removing sample:\n" + (e.message || e));
     await viewConceptSamples(conceptId, "", true);
@@ -334,15 +329,14 @@ async function viewConceptSamples(conceptId: number, _conceptName: string, force
   grid.innerHTML = `<div style="grid-column: 1 / -1; padding: 10px; text-align: center; opacity: 0.7; font-size: 11px;"><i class="bi bi-hourglass-split"></i> Loading samples...</div>`;
 
   try {
-    const resp = await callService({ GetConceptSamples: { concept_id: conceptId } });
-    if ("ConceptSamplesResult" in resp) {
-      const samples = resp.ConceptSamplesResult.samples;
-      if (samples.length === 0) {
-        grid.innerHTML = `<div style="grid-column: 1 / -1; padding: 8px; text-align: center; color: #888; font-size: 11px;">No sample images found.</div>`;
-        return;
-      }
+    const resp = await typedCall("ConceptsService.GetConceptSamples", RescanConceptRequestSchema, { conceptId: BigInt(conceptId) }, ConceptSamplesResultSchema);
+    const samples = resp.samples;
+    if (samples.length === 0) {
+      grid.innerHTML = `<div style="grid-column: 1 / -1; padding: 8px; text-align: center; color: #888; font-size: 11px;">No sample images found.</div>`;
+      return;
+    }
 
-      renderImages(samples, `concept-samples-grid-${conceptId}`);
+    renderImages(samples.map(imageDetailsFromProto), `concept-samples-grid-${conceptId}`);
 
       requestAnimationFrame(() => {
         const sampleCards = grid.querySelectorAll(".image-card");
@@ -363,7 +357,6 @@ async function viewConceptSamples(conceptId: number, _conceptName: string, force
           }
         });
       });
-    }
   } catch (e: any) {
     grid.innerHTML = `<div style="grid-column: 1 / -1; color: #ef4444; padding: 6px; font-size: 11px;">Error: ${e.message || e}</div>`;
   }
@@ -502,34 +495,27 @@ export function setupConcepts() {
     try {
       setTeachProgress(45, "Step 2/3: Solving Dual Ridge Decision Boundary...", "Sampling negative background context & fitting regularized hyper-plane in Rust...");
 
-      const resp = await callService({
-        CreateConcept: {
-          name,
-          category,
-          threshold,
-          sample_image_ids: sampleIds,
-        },
-      });
+      await typedCall("ConceptsService.CreateConcept", CreateConceptRequestSchema, {
+        name,
+        category,
+        threshold,
+        sampleImageIds: sampleIds.map((id) => BigInt(id)),
+      }, ConceptResultSchema);
 
-      if ("ConceptResult" in resp) {
-        setTeachProgress(85, "Step 3/3: Applying Concept Tags & Weight BLOB...", "Persisting decision vector and updating ground-truth sample tags...");
-        
-        setTimeout(async () => {
-          setTeachProgress(100, "Complete!", "Concept trained and saved successfully.");
-          setTimeout(() => {
-            teachModal?.classList.remove("active");
-            if (statusPanel) statusPanel.style.display = "none";
-          }, 400);
-          const { refreshModalTags } = await import("./tags");
-          if (sampleIds.length > 0) await refreshModalTags(sampleIds[0]);
-          loadConceptsView();
-          refreshDashboard();
-          loadSearchConceptsDropdown();
-        }, 300);
-      } else if ("Error" in resp) {
-        showErrorAlert("Failed to teach concept:\n" + resp.Error.message);
-        if (statusPanel) statusPanel.style.display = "none";
-      }
+      setTeachProgress(85, "Step 3/3: Applying Concept Tags & Weight BLOB...", "Persisting decision vector and updating ground-truth sample tags...");
+      
+      setTimeout(async () => {
+        setTeachProgress(100, "Complete!", "Concept trained and saved successfully.");
+        setTimeout(() => {
+          teachModal?.classList.remove("active");
+          if (statusPanel) statusPanel.style.display = "none";
+        }, 400);
+        const { refreshModalTags } = await import("./tags");
+        if (sampleIds.length > 0) await refreshModalTags(sampleIds[0]);
+        loadConceptsView();
+        refreshDashboard();
+        loadSearchConceptsDropdown();
+      }, 300);
     } catch (err: any) {
       showErrorAlert("Error teaching concept:\n" + (err.message || err));
       if (statusPanel) statusPanel.style.display = "none";
@@ -560,14 +546,10 @@ export function setupConcepts() {
     }
 
     try {
-      const resp = await callService({ CleanAutoConceptTags: { concept_id: null } });
-      if ("AutoConceptTagsCleanedResult" in resp) {
-        showSuccessAlert(`Cleaned ${resp.AutoConceptTagsCleanedResult.cleaned_count} auto-generated concept tag(s) from non-sample images!`);
-        refreshDashboard();
-        loadConceptsView();
-      } else if ("Error" in resp) {
-        showErrorAlert("Clean failed:\n" + resp.Error.message);
-      }
+      const resp = await typedCall("ConceptsService.CleanAutoConceptTags", CleanAutoConceptTagsRequestSchema, {}, AutoConceptTagsCleanedResultSchema);
+      showSuccessAlert(`Cleaned ${Number(resp.cleanedCount)} auto-generated concept tag(s) from non-sample images!`);
+      refreshDashboard();
+      loadConceptsView();
     } catch (e: any) {
       showErrorAlert("Error cleaning concept tags:\n" + (e.message || e));
     } finally {

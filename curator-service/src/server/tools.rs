@@ -1,0 +1,308 @@
+use crate::handlers;
+use crate::ClientContext;
+use curator_core::grpc::tools::{
+    tools_service_server::ToolsService, BenchmarkImagesResult, BenchmarkSingleImageRequest,
+    ConvertImagesResult, CreateGifFromImagesRequest,
+    EphemeralConvertImagesRequest, GetBenchmarkImagesRequest, GetTranscodeProgressRequest,
+    ImageProcessingBenchmarkProgress, PathExistsRequest, PathExistsResult, ProcessGifEffectsRequest,
+    RunImageProcessingBenchmarkRequest, SingleImageBenchmarkResult, SplitGifRequest,
+    TranscodeProgressResult, TranscodeVideoRequest,
+};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio_stream::wrappers::ReceiverStream;
+use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
+
+pub struct ToolsServiceImpl {
+    ctx: Arc<ClientContext>,
+}
+
+impl ToolsServiceImpl {
+    pub fn new(ctx: Arc<ClientContext>) -> Self {
+        Self { ctx }
+    }
+}
+
+#[tonic::async_trait]
+impl ToolsService for ToolsServiceImpl {
+    async fn ephemeral_convert_images(
+        &self,
+        request: TonicRequest<EphemeralConvertImagesRequest>,
+    ) -> Result<TonicResponse<ConvertImagesResult>, Status> {
+        let req = request.into_inner();
+        let conversions = req
+            .conversions
+            .into_iter()
+            .map(|pair| (pair.source_path, pair.target_path))
+            .collect();
+        let converted = handlers::convert::convert_images(conversions, req.quality as u8)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(TonicResponse::new(ConvertImagesResult {
+            converted: converted.into_iter().map(Into::into).collect(),
+        }))
+    }
+
+    async fn path_exists(
+        &self,
+        request: TonicRequest<PathExistsRequest>,
+    ) -> Result<TonicResponse<PathExistsResult>, Status> {
+        let req = request.into_inner();
+        let exists = handlers::misc::path_exists(&req.path)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(TonicResponse::new(PathExistsResult { exists }))
+    }
+
+    async fn transcode_video(
+        &self,
+        request: TonicRequest<TranscodeVideoRequest>,
+    ) -> Result<TonicResponse<()>, Status> {
+        let req = request.into_inner();
+        let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        handlers::transcode::start_transcode(
+            &req.job_id,
+            &req.input_path,
+            &req.output_path,
+            &req.target_format,
+            req.vcodec,
+            req.acodec,
+            req.crf,
+            req.video_bitrate,
+            req.preset,
+            req.target_size_mb,
+            req.audio_bitrate,
+            req.mixdown,
+            req.sample_rate,
+            req.custom_args,
+            &ffmpeg,
+            &self.ctx.transcode_progress,
+        )
+        .await
+        .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(TonicResponse::new(()))
+    }
+
+    async fn get_transcode_progress(
+        &self,
+        request: TonicRequest<GetTranscodeProgressRequest>,
+    ) -> Result<TonicResponse<TranscodeProgressResult>, Status> {
+        let req = request.into_inner();
+        let state =
+            handlers::transcode::get_transcode_progress(&req.job_id, &self.ctx.transcode_progress)
+                .await;
+        Ok(TonicResponse::new(TranscodeProgressResult {
+            job_id: req.job_id,
+            running: state.running,
+            percent: state.percent,
+            fps: state.fps,
+            x_speed: state.x_speed,
+            out_time_ms: state.out_time_ms,
+            output_path: state.output_path,
+            error: state.error,
+            command: state.command,
+            input_size_bytes: state.input_size_bytes,
+            output_size_bytes: state.output_size_bytes,
+            output_video_size_bytes: state.output_video_size_bytes,
+            output_audio_size_bytes: state.output_audio_size_bytes,
+        }))
+    }
+
+    async fn create_gif_from_images(
+        &self,
+        request: TonicRequest<CreateGifFromImagesRequest>,
+    ) -> Result<TonicResponse<()>, Status> {
+        let req = request.into_inner();
+        let resolved_output = handlers::resolve_relative_path(&self.ctx.data_dir, &req.output_path);
+        let resolved_pattern =
+            handlers::resolve_relative_path(&self.ctx.data_dir, &req.image_pattern);
+        let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        handlers::gif::create_gif_from_images(
+            req.job_id,
+            resolved_pattern,
+            req.frame_rate,
+            resolved_output,
+            req.width,
+            req.height,
+            req.loop_count,
+            req.target_format,
+            &ffmpeg,
+            &self.ctx.transcode_progress,
+        )
+        .await
+        .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(TonicResponse::new(()))
+    }
+
+    async fn process_gif_effects(
+        &self,
+        request: TonicRequest<ProcessGifEffectsRequest>,
+    ) -> Result<TonicResponse<()>, Status> {
+        let req = request.into_inner();
+        let resolved_input = handlers::resolve_relative_path(&self.ctx.data_dir, &req.input_path);
+        let resolved_output = handlers::resolve_relative_path(&self.ctx.data_dir, &req.output_path);
+        let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        handlers::gif::process_gif_effects(
+            req.job_id,
+            resolved_input,
+            resolved_output,
+            req.crop,
+            req.scale,
+            req.speed_multiplier,
+            req.reverse,
+            req.bounce,
+            req.rotate,
+            req.brightness,
+            req.contrast,
+            req.saturation,
+            req.grayscale,
+            req.invert,
+            req.caption_image_base64,
+            req.caption_image_height,
+            req.caption_style,
+            req.max_colors,
+            req.dither_type,
+            req.drop_frames_factor,
+            req.target_format,
+            req.loop_count,
+            req.fps,
+            req.trim_start,
+            req.trim_end,
+            &self.ctx.data_dir,
+            &ffmpeg,
+            &self.ctx.transcode_progress,
+        )
+        .await
+        .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(TonicResponse::new(()))
+    }
+
+    async fn split_gif(
+        &self,
+        request: TonicRequest<SplitGifRequest>,
+    ) -> Result<TonicResponse<()>, Status> {
+        let req = request.into_inner();
+        let resolved_input = handlers::resolve_relative_path(&self.ctx.data_dir, &req.input_path);
+        let resolved_output_dir =
+            handlers::resolve_relative_path(&self.ctx.data_dir, &req.output_dir);
+        let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        handlers::gif::split_gif(
+            req.job_id,
+            resolved_input,
+            resolved_output_dir,
+            &ffmpeg,
+            &self.ctx.transcode_progress,
+        )
+        .await
+        .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(TonicResponse::new(()))
+    }
+
+    async fn get_benchmark_images(
+        &self,
+        request: TonicRequest<GetBenchmarkImagesRequest>,
+    ) -> Result<TonicResponse<BenchmarkImagesResult>, Status> {
+        let req = request.into_inner();
+        let filepaths = handlers::benchmarks::get_benchmark_images(&self.ctx.db, req.limit as usize)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(TonicResponse::new(BenchmarkImagesResult { filepaths }))
+    }
+
+    async fn benchmark_single_image(
+        &self,
+        request: TonicRequest<BenchmarkSingleImageRequest>,
+    ) -> Result<TonicResponse<SingleImageBenchmarkResult>, Status> {
+        let req = request.into_inner();
+        let res = handlers::benchmarks::run_single_image_benchmark(
+            &self.ctx.model_manager,
+            &req.filepath,
+            &self.ctx.settings,
+            &self.ctx.taggers,
+        )
+        .await
+        .map_err(|e| Status::internal(format!("Failed to benchmark image {:?}: {:?}", req.filepath, e)))?;
+        Ok(TonicResponse::new(SingleImageBenchmarkResult {
+            decode_time_ms: res.decode_time_ms,
+            thumbnail_time_ms: res.thumbnail_time_ms,
+            clip_preprocess_time_ms: res.clip_preprocess_time_ms,
+            tagger_preprocess_time_ms: res.tagger_preprocess_time_ms,
+            yolo_preprocess_time_ms: res.yolo_preprocess_time_ms,
+            ccip_extract_preprocess_time_ms: res.ccip_extract_preprocess_time_ms,
+            ocr_det_preprocess_time_ms: res.ocr_det_preprocess_time_ms,
+            ocr_rec_preprocess_time_ms: res.ocr_rec_preprocess_time_ms,
+        }))
+    }
+
+    type RunImageProcessingBenchmarkStream =
+        ReceiverStream<Result<ImageProcessingBenchmarkProgress, Status>>;
+
+    async fn run_image_processing_benchmark(
+        &self,
+        request: TonicRequest<RunImageProcessingBenchmarkRequest>,
+    ) -> Result<TonicResponse<Self::RunImageProcessingBenchmarkStream>, Status> {
+        let req = request.into_inner();
+        handlers::benchmarks::start_image_processing_benchmark(
+            self.ctx.model_manager.clone(),
+            req.filepaths,
+            self.ctx.settings.clone(),
+            self.ctx.taggers.clone(),
+            self.ctx.benchmark_progress.clone(),
+        )
+        .await
+        .map_err(|e| Status::internal(e.to_string()))?;
+
+        let progress = self.ctx.benchmark_progress.clone();
+        let (tx, rx) = tokio::sync::mpsc::channel(8);
+        tokio::spawn(async move {
+            loop {
+                let snapshot = {
+                    let slot = progress.lock().await;
+                    slot.clone().unwrap_or_default()
+                };
+                let done = !snapshot.running;
+                let _ = tx.send(Ok(progress_to_proto(&snapshot))).await;
+                if done {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+        });
+        Ok(TonicResponse::new(ReceiverStream::new(rx)))
+    }
+
+    async fn get_image_processing_benchmark_progress(
+        &self,
+        _request: TonicRequest<()>,
+    ) -> Result<TonicResponse<ImageProcessingBenchmarkProgress>, Status> {
+        let p = handlers::benchmarks::get_image_processing_benchmark_progress(
+            &self.ctx.benchmark_progress,
+        )
+        .await;
+        Ok(TonicResponse::new(progress_to_proto(&p)))
+    }
+}
+
+fn progress_to_proto(p: &handlers::ImageProcessingBenchmarkProgress) -> ImageProcessingBenchmarkProgress {
+    ImageProcessingBenchmarkProgress {
+        running: p.running,
+        processed: p.processed as u32,
+        total: p.total as u32,
+        decode_time_ms: p.decode_time_ms,
+        thumbnail_time_ms: p.thumbnail_time_ms,
+        clip_preprocess_time_ms: p.clip_preprocess_time_ms,
+        tagger_preprocess_time_ms: p.tagger_preprocess_time_ms,
+        yolo_preprocess_time_ms: p.yolo_preprocess_time_ms,
+        ccip_extract_preprocess_time_ms: p.ccip_extract_preprocess_time_ms,
+        ocr_det_preprocess_time_ms: p.ocr_det_preprocess_time_ms,
+        ocr_rec_preprocess_time_ms: p.ocr_rec_preprocess_time_ms,
+    }
+}

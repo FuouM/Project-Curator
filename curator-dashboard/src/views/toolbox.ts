@@ -1,6 +1,12 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
+import { tagSummaryFromProto } from "../proto-adapters";
+import { EphemeralTagImageRequestSchema, EphemeralTagResultSchema } from "../gen/tagging_pb";
+import { EphemeralRunOcrRequestSchema, EphemeralOcrResultSchema } from "../gen/ocr_pb";
+import { EphemeralDetectCharactersRequestSchema, EphemeralDetectionResultSchema, CharacterIdentitiesListSchema } from "../gen/characters_pb";
+import { TaggerModel } from "../gen/common_pb";
+import type { EphemeralOcrDetection, StoredDetection, BubbleBoxResult } from "../gen/common_pb";
 import { maskPath, renderTagPill, SafeHtml, html, type TagSummary } from "../components";
 import { navigateToView } from "./navigation";
 import { buildOcrLabelSvg } from "../ocr-text";
@@ -18,10 +24,66 @@ function firstImagePath(paths: string[]): string | null {
   return paths.find((p) => IMAGE_EXT_RE.test(p)) || paths[0] || null;
 }
 
+interface ToolboxOcrDetection {
+  text: string;
+  confidence: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  x3: number;
+  y3: number;
+  is_from_bubble: boolean;
+}
+
+interface ToolboxStoredDetection {
+  id: number;
+  image_id: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  confidence: number;
+  has_embedding: boolean;
+  identity_id: number | null;
+}
+
+function ocrDetectionFromProto(d: EphemeralOcrDetection): ToolboxOcrDetection {
+  return {
+    text: d.text,
+    confidence: d.confidence,
+    x0: d.x0,
+    y0: d.y0,
+    x1: d.x1,
+    y1: d.y1,
+    x2: d.x2,
+    y2: d.y2,
+    x3: d.x3,
+    y3: d.y3,
+    is_from_bubble: d.isFromBubble,
+  };
+}
+
+function detectionFromProto(d: StoredDetection): ToolboxStoredDetection {
+  return {
+    id: Number(d.id),
+    image_id: Number(d.imageId),
+    x0: d.x0,
+    y0: d.y0,
+    x1: d.x1,
+    y1: d.y1,
+    confidence: d.confidence,
+    has_embedding: d.hasEmbedding,
+    identity_id: d.identityId === undefined ? null : Number(d.identityId),
+  };
+}
+
 let currentPath: string | null = null;
-let currentOcr: any[] = [];
-let currentBubbles: any[] = [];
-let currentDetections: any[] = [];
+let currentOcr: ToolboxOcrDetection[] = [];
+let currentBubbles: BubbleBoxResult[] = [];
+let currentDetections: ToolboxStoredDetection[] = [];
 let identityNames: Map<number, string> = new Map();
 
 function el<T extends HTMLElement>(id: string): T | null {
@@ -140,6 +202,7 @@ async function runTagging() {
 
   const taggerSelect = el<HTMLSelectElement>("toolbox-tagger-select");
   const tagger = taggerSelect ? (taggerSelect.value || null) : null;
+  const taggerEnum = tagger === "camie" ? TaggerModel.CAMIE : tagger === "wd-eva02" ? TaggerModel.WD_EVA02 : undefined;
 
   if (btn) {
     btn.disabled = true;
@@ -149,20 +212,20 @@ async function runTagging() {
   setStatusMessage(status, `Running ${taggerName}...`, "loading");
 
   try {
-    const resp = await callService({ EphemeralTagImage: { path: currentPath, threshold, tagger } });
-    if ("EphemeralTagResult" in resp) {
-      const tags: TagSummary[] = resp.EphemeralTagResult.tags;
-      if (tags.length === 0) {
-        tagList.innerHTML = "";
-        setStatusMessage(status, "No tags above the selected threshold.", "success");
-      } else {
-        tagList.innerHTML = tags.map((t) => renderTagPill(t)).join("");
-        setStatusMessage(status, `${tags.length} tags predicted.`, "success");
-      }
-      if (copyBtn) copyBtn.style.display = tags.length > 0 ? "" : "none";
-    } else if ("Error" in resp) {
-      setStatusMessage(status, `Tagging failed: ${(resp as any).Error.message}`, "error");
+    const resp = await typedCall("TaggingService.EphemeralTagImage", EphemeralTagImageRequestSchema, {
+      path: currentPath as string,
+      threshold,
+      tagger: taggerEnum,
+    }, EphemeralTagResultSchema);
+    const tags: TagSummary[] = resp.tags.map(tagSummaryFromProto);
+    if (tags.length === 0) {
+      tagList.innerHTML = "";
+      setStatusMessage(status, "No tags above the selected threshold.", "success");
+    } else {
+      tagList.innerHTML = tags.map((t) => renderTagPill(t)).join("");
+      setStatusMessage(status, `${tags.length} tags predicted.`, "success");
     }
+    if (copyBtn) copyBtn.style.display = tags.length > 0 ? "" : "none";
   } catch (e: any) {
     logJS("toolbox tagging error: " + (e?.message || e));
     setStatusMessage(status, `IPC error: ${e?.message || e}`, "error");
@@ -238,36 +301,34 @@ async function runOcr() {
   setStatusMessage(status, "Detecting and recognizing text...", "loading");
 
   try {
-    const resp = await callService({ EphemeralRunOcr: { path: currentPath } });
-    if ("EphemeralOcrResult" in resp) {
-      currentOcr = resp.EphemeralOcrResult.detections ?? [];
-      currentBubbles = resp.EphemeralOcrResult.bubble_boxes ?? [];
+    const resp = await typedCall("OcrService.EphemeralRunOcr", EphemeralRunOcrRequestSchema, {
+      path: currentPath as string,
+    }, EphemeralOcrResultSchema);
+    currentOcr = resp.detections.map(ocrDetectionFromProto);
+    currentBubbles = resp.bubbleBoxes;
 
-      if (currentOcr.length === 0) {
-        ocrList.innerHTML = "<span style='color: #64748b; font-style: italic; font-size: 11px;'>No text detected.</span>";
-        setStatusMessage(status, "No text detected.", "success");
-      } else {
-        ocrList.innerHTML = currentOcr
-          .map((d, i) => {
-            const badge = d.is_from_bubble
-              ? '<span style="font-size: 10px; color: #9b59b6; margin-left: 6px;">[bubble]</span>'
-              : "";
-            return (
-              `<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; ` +
-              `padding: 4px 6px; background: var(--sys-window-bg); border: 1px solid var(--sys-border-dark); border-radius: 2px;">` +
-              `<span style="font-size: 11px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(d.text)}">${escapeHtml(d.text)}${badge}</span>` +
-              `<span style="font-size: 10px; color: #555555; white-space: nowrap;">${(d.confidence * 100).toFixed(1)}%</span>` +
-              `<button type="button" class="toolbox-ocr-copy" data-index="${i}" title="Copy text"><i class="bi bi-clipboard"></i></button>` +
-              `</div>`
-            );
-          })
-          .join("");
-        setStatusMessage(status, `${currentOcr.length} text block(s) detected.`, "success");
-      }
-      renderOcrOverlay();
-    } else if ("Error" in resp) {
-      setStatusMessage(status, `OCR failed: ${(resp as any).Error.message}`, "error");
+    if (currentOcr.length === 0) {
+      ocrList.innerHTML = "<span style='color: #64748b; font-style: italic; font-size: 11px;'>No text detected.</span>";
+      setStatusMessage(status, "No text detected.", "success");
+    } else {
+      ocrList.innerHTML = currentOcr
+        .map((d, i) => {
+          const badge = d.is_from_bubble
+            ? '<span style="font-size: 10px; color: #9b59b6; margin-left: 6px;">[bubble]</span>'
+            : "";
+          return (
+            `<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; ` +
+            `padding: 4px 6px; background: var(--sys-window-bg); border: 1px solid var(--sys-border-dark); border-radius: 2px;">` +
+            `<span style="font-size: 11px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(d.text)}">${escapeHtml(d.text)}${badge}</span>` +
+            `<span style="font-size: 10px; color: #555555; white-space: nowrap;">${(d.confidence * 100).toFixed(1)}%</span>` +
+            `<button type="button" class="toolbox-ocr-copy" data-index="${i}" title="Copy text"><i class="bi bi-clipboard"></i></button>` +
+            `</div>`
+          );
+        })
+        .join("");
+      setStatusMessage(status, `${currentOcr.length} text block(s) detected.`, "success");
     }
+    renderOcrOverlay();
   } catch (e: any) {
     logJS("toolbox OCR error: " + (e?.message || e));
     setStatusMessage(status, `IPC error: ${e?.message || e}`, "error");
@@ -332,46 +393,42 @@ async function runDetection() {
 
   try {
     const [detResp, idResp] = await Promise.all([
-      callService({ EphemeralDetectCharacters: { path: currentPath } }),
-      callService({ ListCharacterIdentities: null }),
+      typedCall("CharactersService.EphemeralDetectCharacters", EphemeralDetectCharactersRequestSchema, {
+        path: currentPath as string,
+      }, EphemeralDetectionResultSchema),
+      typedCall("CharactersService.ListCharacterIdentities", null, null, CharacterIdentitiesListSchema),
     ]);
 
-    if ("EphemeralDetectionResult" in detResp) {
-      currentDetections = detResp.EphemeralDetectionResult.detections ?? [];
-      identityNames = new Map();
-      if ("CharacterIdentitiesList" in idResp) {
-        for (const ident of idResp.CharacterIdentitiesList.identities) {
-          identityNames.set(ident.id, ident.name);
-        }
-      }
-
-      if (currentDetections.length === 0) {
-        detList.innerHTML = "<span style='color: #64748b; font-style: italic; font-size: 11px;'>No persons detected.</span>";
-        setStatusMessage(status, "No persons detected.", "success");
-      } else {
-        detList.innerHTML = currentDetections
-          .map((d) => {
-            const color = d.identity_id !== null
-              ? IDENTITY_COLORS[((d.identity_id - 1) % IDENTITY_COLORS.length + IDENTITY_COLORS.length) % IDENTITY_COLORS.length]
-              : "#888888";
-            const name = d.identity_id !== null
-              ? identityNames.get(d.identity_id) || `#${d.identity_id}`
-              : "Unknown";
-            return (
-              `<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; ` +
-              `padding: 4px 6px; background: var(--sys-window-bg); border: 1px solid var(--sys-border-dark); border-radius: 2px;">` +
-              `<span style="font-size: 11px;"><span style="display:inline-block; width:10px; height:10px; background:${color}; margin-right:6px; border:1px solid #555;"></span>${escapeHtml(name)}</span>` +
-              `<span style="font-size: 10px; color: #555555; white-space: nowrap;">${(d.confidence * 100).toFixed(1)}%</span>` +
-              `</div>`
-            );
-          })
-          .join("");
-        setStatusMessage(status, `${currentDetections.length} character(s) detected.`, "success");
-      }
-      renderDetectionOverlay();
-    } else if ("Error" in detResp) {
-      setStatusMessage(status, `Detection failed: ${(detResp as any).Error.message}`, "error");
+    currentDetections = detResp.detections.map(detectionFromProto);
+    identityNames = new Map();
+    for (const ident of idResp.identities) {
+      identityNames.set(Number(ident.id), ident.name);
     }
+
+    if (currentDetections.length === 0) {
+      detList.innerHTML = "<span style='color: #64748b; font-style: italic; font-size: 11px;'>No persons detected.</span>";
+      setStatusMessage(status, "No persons detected.", "success");
+    } else {
+      detList.innerHTML = currentDetections
+        .map((d) => {
+          const color = d.identity_id !== null
+            ? IDENTITY_COLORS[((d.identity_id - 1) % IDENTITY_COLORS.length + IDENTITY_COLORS.length) % IDENTITY_COLORS.length]
+            : "#888888";
+          const name = d.identity_id !== null
+            ? identityNames.get(d.identity_id) || `#${d.identity_id}`
+            : "Unknown";
+          return (
+            `<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; ` +
+            `padding: 4px 6px; background: var(--sys-window-bg); border: 1px solid var(--sys-border-dark); border-radius: 2px;">` +
+            `<span style="font-size: 11px;"><span style="display:inline-block; width:10px; height:10px; background:${color}; margin-right:6px; border:1px solid #555;"></span>${escapeHtml(name)}</span>` +
+            `<span style="font-size: 10px; color: #555555; white-space: nowrap;">${(d.confidence * 100).toFixed(1)}%</span>` +
+            `</div>`
+          );
+        })
+        .join("");
+      setStatusMessage(status, `${currentDetections.length} character(s) detected.`, "success");
+    }
+    renderDetectionOverlay();
   } catch (e: any) {
     logJS("toolbox detection error: " + (e?.message || e));
     setStatusMessage(status, `IPC error: ${e?.message || e}`, "error");

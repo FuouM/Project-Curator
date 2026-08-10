@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package curator.import;
+
+import "google/protobuf/empty.proto";
+import "common.proto";
+
+service ImportService {
+  rpc ImportImage (ImportImageRequest) returns (ImportResult);
+  rpc GetImportedFolders (google.protobuf.Empty) returns (ImportedFoldersResult);
+  rpc BackfillImageFolders (google.protobuf.Empty) returns (BackfillResult);
+  rpc BackfillMediaMetadata (google.protobuf.Empty) returns (MediaMetadataBackfillResult);
+  rpc RescanFolder (RescanFolderRequest) returns (RescanFolderResult);
+  rpc IndexFolder (IndexFolderRequest) returns (IndexFolderResult);
+}
+
+message ImportImageRequest {
+  string path = 1;
+}
+
+message ImportResult {
+  int64 image_id = 1;
+  string sha256 = 2;
+  uint32 imported_count = 3;
+  optional int64 folder_id = 4;
+}
+
+message ImportedFoldersResult {
+  repeated curator.common.FolderDetails folders = 1;
+}
+
+message BackfillResult {
+  int64 images_backfilled = 1;
+}
+
+message MediaMetadataBackfillResult {
+  int64 processed = 1;
+  int64 updated = 2;
+}
+
+message RescanFolderRequest {
+  int64 folder_id = 1;
+}
+
+message RescanFolderResult {
+  int64 folder_id = 1;
+  // New files imported by the rescan (0 when everything was already known).
+  int64 imported = 2;
+  // Total supported media files found in the folder during the scan.
+  int64 found = 3;
+}
+
+message IndexFolderRequest {
+  int64 folder_id = 1;
+}
+
+message IndexFolderResult {
+  int64 folder_id = 1;
+  // Media files newly queued for vectorization.
+  int64 queued = 2;
+}

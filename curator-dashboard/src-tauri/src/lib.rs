@@ -5,8 +5,9 @@ use std::sync::{Arc, OnceLock};
 use tauri::Emitter;
 use tokio::sync::OnceCell;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
-use curator_core::grpc::curator_client::CuratorClient;
 use tonic::transport::Channel;
+
+mod typed_bridge;
 
 use curator_core::thumbnail::ThumbnailCache;
 use curator_core::constants::resolve_data_dir;
@@ -114,60 +115,21 @@ fn spawn_service() {
 
 use tokio::sync::Mutex;
 
-fn get_grpc_client() -> &'static Mutex<Option<CuratorClient<Channel>>> {
-    static CLIENT: OnceLock<Mutex<Option<CuratorClient<Channel>>>> = OnceLock::new();
-    CLIENT.get_or_init(|| Mutex::new(None))
-}
-
-
-static THUMB_DB_PATH: OnceLock<PathBuf> = OnceLock::new();
-static THUMB_CACHE: OnceCell<Arc<ThumbnailCache>> = OnceCell::const_new();
-static IMAGES_DB: OnceCell<SqlitePool> = OnceCell::const_new();
-
-
-
-async fn pipe_request(request_json: &str) -> Result<String, String> {
-    let client_mutex = get_grpc_client();
-    let mut client = {
-        let mut guard = client_mutex.lock().await;
-        ensure_client(&mut guard).await?
-    };
-
-    let grpc_req = curator_core::grpc::CuratorRequest {
-        request_json: request_json.to_string(),
-    };
-
-    match client.call(grpc_req).await {
-        Ok(grpc_resp) => Ok(grpc_resp.into_inner().response_json),
-        Err(e) => {
-            log_dashboard_event(&format!("gRPC call failed, attempting reconnect: {:?}", e));
-            let mut client = {
-                let mut guard = client_mutex.lock().await;
-                *guard = None;
-                ensure_client(&mut guard).await?
-            };
-            let grpc_req = curator_core::grpc::CuratorRequest {
-                request_json: request_json.to_string(),
-            };
-            client
-                .call(grpc_req)
-                .await
-                .map(|resp| resp.into_inner().response_json)
-                .map_err(|e2| format!("Retry also failed: {:?}", e2))
-        }
-    }
+fn get_grpc_channel() -> &'static Mutex<Option<Channel>> {
+    static CHANNEL: OnceLock<Mutex<Option<Channel>>> = OnceLock::new();
+    CHANNEL.get_or_init(|| Mutex::new(None))
 }
 
 /// Connects (and if needed spawns + waits for) the Curator Service, then returns
-/// a cloned client. The global mutex is only held during connect, never across
+/// a cloned `Channel`. The global mutex is only held during connect, never across
 /// the actual gRPC call, so concurrent IPC calls are no longer serialized.
-async fn ensure_client(
-    guard: &mut Option<CuratorClient<Channel>>,
-) -> Result<CuratorClient<Channel>, String> {
+async fn ensure_channel() -> Result<Channel, String> {
+    let mutex = get_grpc_channel();
+    let mut guard = mutex.lock().await;
     if guard.is_none() {
         match curator_core::ipc::grpc_helper::connect_ipc().await {
             Ok(channel) => {
-                *guard = Some(CuratorClient::new(channel));
+                *guard = Some(channel);
             }
             Err(_) => {
                 spawn_service();
@@ -175,7 +137,7 @@ async fn ensure_client(
                 let mut connected = false;
                 while start.elapsed() < std::time::Duration::from_secs(3) {
                     if let Ok(channel) = curator_core::ipc::grpc_helper::connect_ipc().await {
-                        *guard = Some(CuratorClient::new(channel));
+                        *guard = Some(channel);
                         connected = true;
                         break;
                     }
@@ -190,10 +152,17 @@ async fn ensure_client(
     Ok(guard.clone().unwrap())
 }
 
+
+
+static THUMB_DB_PATH: OnceLock<PathBuf> = OnceLock::new();
+static THUMB_CACHE: OnceCell<Arc<ThumbnailCache>> = OnceCell::const_new();
+static IMAGES_DB: OnceCell<SqlitePool> = OnceCell::const_new();
+
 #[tauri::command]
-async fn send_to_service(request_json: String) -> Result<String, String> {
-    log_dashboard_event(&format!("send_to_service: {}", request_json));
-    pipe_request(&request_json).await
+async fn send_to_service_typed(method: String, request_bytes: Vec<u8>) -> Result<Vec<u8>, String> {
+    log_dashboard_event(&format!("send_to_service_typed: {}", method));
+    let channel = ensure_channel().await?;
+    typed_bridge::call_typed(channel, &method, &request_bytes).await
 }
 
 #[tauri::command]
@@ -418,42 +387,9 @@ pub fn run() {
             let app_handle = _app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 log_dashboard_event("Pre-connect: Initializing service connection...");
-                let client_mutex = get_grpc_client();
-                let mut guard = client_mutex.lock().await;
-
-                if guard.is_none() {
-                    match curator_core::ipc::grpc_helper::connect_ipc().await {
-                        Ok(channel) => {
-                            *guard = Some(CuratorClient::new(channel));
-                            log_dashboard_event("Pre-connect: gRPC channel ready.");
-                        }
-                        Err(e) => {
-                            log_dashboard_event(&format!("Pre-connect: Initial connect failed: {:?}", e));
-                            spawn_service();
-                            let start = std::time::Instant::now();
-                            while start.elapsed() < std::time::Duration::from_secs(3) {
-                                if let Ok(channel) = curator_core::ipc::grpc_helper::connect_ipc().await {
-                                    *guard = Some(CuratorClient::new(channel));
-                                    log_dashboard_event("Pre-connect: gRPC channel ready after spawning.");
-                                    break;
-                                }
-                                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                            }
-                        }
-                    }
-                }
-
-                if let Some(ref mut client) = *guard {
-                    let grpc_req = curator_core::grpc::CuratorRequest {
-                        request_json: serde_json::to_string(&curator_core::ipc::Request::Ping).unwrap_or_default(),
-                    };
-                    match client.call(grpc_req).await {
-                        Ok(_) => log_dashboard_event("Pre-connect: Ping OK, connection warm."),
-                        Err(e) => {
-                            log_dashboard_event(&format!("Pre-connect Ping failed: {:?}", e));
-                            *guard = None;
-                        }
-                    }
+                match ensure_channel().await {
+                    Ok(_) => log_dashboard_event("Pre-connect: gRPC channel ready."),
+                    Err(e) => log_dashboard_event(&format!("Pre-connect failed: {e}")),
                 }
 
                 // Emit a Tauri event so the frontend knows the connection is ready
@@ -463,7 +399,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            send_to_service,
+            send_to_service_typed,
             select_path,
             save_file_dialog,
             get_file_size,
