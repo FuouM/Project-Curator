@@ -231,6 +231,7 @@ impl ToolsService for ToolsServiceImpl {
         .await
         .map_err(|e| Status::internal(format!("Failed to benchmark image {:?}: {:?}", req.filepath, e)))?;
         Ok(TonicResponse::new(SingleImageBenchmarkResult {
+            read_time_ms: res.read_time_ms,
             decode_time_ms: res.decode_time_ms,
             thumbnail_time_ms: res.thumbnail_time_ms,
             clip_preprocess_time_ms: res.clip_preprocess_time_ms,
@@ -296,6 +297,7 @@ fn progress_to_proto(p: &handlers::ImageProcessingBenchmarkProgress) -> ImagePro
         running: p.running,
         processed: p.processed as u32,
         total: p.total as u32,
+        read_time_ms: p.read_time_ms,
         decode_time_ms: p.decode_time_ms,
         thumbnail_time_ms: p.thumbnail_time_ms,
         clip_preprocess_time_ms: p.clip_preprocess_time_ms,

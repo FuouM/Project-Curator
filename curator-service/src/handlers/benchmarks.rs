@@ -65,6 +65,7 @@ pub async fn start_image_processing_benchmark(
                     let mut slot = progress_task.lock().await;
                     if let Some(p) = slot.as_mut() {
                         p.processed = idx + 1;
+                        p.read_time_ms += res.read_time_ms;
                         p.decode_time_ms += res.decode_time_ms;
                         p.thumbnail_time_ms += res.thumbnail_time_ms;
                         p.clip_preprocess_time_ms += res.clip_preprocess_time_ms;

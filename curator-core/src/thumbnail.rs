@@ -184,21 +184,23 @@ impl ThumbnailCache {
 pub fn generate_thumbnail(source_path: &Path, target_width: u32) -> Result<Vec<u8>> {
     let (rgb_buf, width, height) = decode_rgb(source_path)
         .with_context(|| format!("Failed to decode image for thumbnail: {:?}", source_path))?;
+    generate_thumbnail_from_rgb(&rgb_buf, width, height, target_width)
+}
 
+pub fn generate_thumbnail_from_rgb(
+    rgb_buf: &[u8],
+    width: u32,
+    height: u32,
+    target_width: u32,
+) -> Result<Vec<u8>> {
     let aspect = height as f64 / width as f64;
     let target_height = (target_width as f64 * aspect).round() as u32;
     let target_height = target_height.max(1);
 
-    let mut rgb_buf = rgb_buf;
+    let mut rgb_buf_cow = std::borrow::Cow::Borrowed(rgb_buf);
     let mut width = width;
     let mut height = height;
 
-    // Downscale is dominated by reading O(source) pixels (the default
-    // Convolution/Bilinear pass); for very large sources that dwarfs everything
-    // else. Cheaply pre-reduce with a Nearest subsample to <= 2x the target
-    // (O(2x target) pixels), then finish with a Bilinear pass (O(intermediate)).
-    // For small sources the intermediate degenerates to the source and this is a
-    // single Bilinear resize.
     let inter_w = width.min(target_width * 2).max(1);
     let inter_h = height.min(target_height * 2).max(1);
 
@@ -211,7 +213,7 @@ pub fn generate_thumbnail(source_path: &Path, target_width: u32) -> Result<Vec<u
         let src_image = fast_image_resize::images::ImageRef::new(
             width,
             height,
-            &rgb_buf,
+            rgb_buf_cow.as_ref(),
             fast_image_resize::PixelType::U8x3,
         )
         .context("Failed to create source image ref for thumbnail pre-resize")?;
@@ -235,7 +237,7 @@ pub fn generate_thumbnail(source_path: &Path, target_width: u32) -> Result<Vec<u
             )
             .context("Failed to pre-resize image for thumbnail")?;
 
-        rgb_buf = mid_image.into_vec();
+        rgb_buf_cow = std::borrow::Cow::Owned(mid_image.into_vec());
         width = inter_w;
         height = inter_h;
     }
@@ -243,7 +245,7 @@ pub fn generate_thumbnail(source_path: &Path, target_width: u32) -> Result<Vec<u
     let src_image = fast_image_resize::images::ImageRef::new(
         width,
         height,
-        &rgb_buf,
+        rgb_buf_cow.as_ref(),
         fast_image_resize::PixelType::U8x3,
     )
     .context("Failed to create source image ref for thumbnail resize")?;

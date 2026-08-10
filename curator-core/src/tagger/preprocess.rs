@@ -12,7 +12,19 @@ pub(crate) fn preprocess_image(
     resizer: &mut fast_image_resize::Resizer,
 ) -> Result<Array4<f32>> {
     let (rgb_buf, orig_w, orig_h) = crate::image_decode::decode_rgb(path)?;
+    preprocess_image_from_rgb(&rgb_buf, orig_w, orig_h, img_size, mean, std, pad_color, resizer)
+}
 
+pub(crate) fn preprocess_image_from_rgb(
+    rgb_buf: &[u8],
+    orig_w: u32,
+    orig_h: u32,
+    img_size: u32,
+    mean: &[f32; 3],
+    std: &[f32; 3],
+    pad_color: &[u8; 3],
+    resizer: &mut fast_image_resize::Resizer,
+) -> Result<Array4<f32>> {
     let aspect = orig_w as f32 / orig_h as f32;
 
     let (new_w, new_h) = if aspect > 1.0 {
@@ -28,7 +40,7 @@ pub(crate) fn preprocess_image(
     let src = fast_image_resize::images::ImageRef::new(
         orig_w,
         orig_h,
-        &rgb_buf,
+        rgb_buf,
         fast_image_resize::PixelType::U8x3,
     )
     .context("Failed to create source image ref")?;

@@ -27,7 +27,16 @@ pub fn decode_and_resize_single_image(
     resizer: &mut fast_image_resize::Resizer,
 ) -> Result<Vec<u8>> {
     let (rgb_buf, width, height) = decode_rgb(path)?;
+    resize_single_rgb_image(&rgb_buf, width, height, target_size, resizer)
+}
 
+pub fn resize_single_rgb_image(
+    rgb_buf: &[u8],
+    width: u32,
+    height: u32,
+    target_size: u32,
+    resizer: &mut fast_image_resize::Resizer,
+) -> Result<Vec<u8>> {
     let crop_size = width.min(height);
     let cx = (width - crop_size) / 2;
     let cy = (height - crop_size) / 2;
@@ -35,12 +44,10 @@ pub fn decode_and_resize_single_image(
     let src_image = fast_image_resize::images::ImageRef::new(
         width,
         height,
-        &rgb_buf,
+        rgb_buf,
         fast_image_resize::PixelType::U8x3,
     )?;
 
-    // Reuse destination buffer inside target size instead of allocating every time if possible.
-    // fast_image_resize's Image type allocates a new vector when created via from_vec_u8.
     let mut dst_image = fast_image_resize::images::Image::from_vec_u8(
         target_size,
         target_size,

@@ -147,14 +147,15 @@ message BenchmarkSingleImageRequest {
 }
 
 message SingleImageBenchmarkResult {
-  double decode_time_ms = 1;
-  double thumbnail_time_ms = 2;
-  double clip_preprocess_time_ms = 3;
-  double tagger_preprocess_time_ms = 4;
-  double yolo_preprocess_time_ms = 5;
-  double ccip_extract_preprocess_time_ms = 6;
-  double ocr_det_preprocess_time_ms = 7;
-  double ocr_rec_preprocess_time_ms = 8;
+  double read_time_ms = 1;
+  double decode_time_ms = 2;
+  double thumbnail_time_ms = 3;
+  double clip_preprocess_time_ms = 4;
+  double tagger_preprocess_time_ms = 5;
+  double yolo_preprocess_time_ms = 6;
+  double ccip_extract_preprocess_time_ms = 7;
+  double ocr_det_preprocess_time_ms = 8;
+  double ocr_rec_preprocess_time_ms = 9;
 }
 
 message RunImageProcessingBenchmarkRequest {
@@ -166,12 +167,14 @@ message ImageProcessingBenchmarkProgress {
   bool running = 1;
   uint32 processed = 2;
   uint32 total = 3;
-  double decode_time_ms = 4;
-  double thumbnail_time_ms = 5;
-  double clip_preprocess_time_ms = 6;
-  double tagger_preprocess_time_ms = 7;
-  double yolo_preprocess_time_ms = 8;
-  double ccip_extract_preprocess_time_ms = 9;
-  double ocr_det_preprocess_time_ms = 10;
-  double ocr_rec_preprocess_time_ms = 11;
+  double read_time_ms = 4;
+  double decode_time_ms = 5;
+  double thumbnail_time_ms = 6;
+  double clip_preprocess_time_ms = 7;
+  double tagger_preprocess_time_ms = 8;
+  double yolo_preprocess_time_ms = 9;
+  double ccip_extract_preprocess_time_ms = 10;
+  double ocr_det_preprocess_time_ms = 11;
+  double ocr_rec_preprocess_time_ms = 12;
 }
+

@@ -353,6 +353,7 @@ export function setupBenchmark() {
 
   const runPipelineBtn = document.getElementById("run-image-proc-benchmark-btn");
   const pipelineCountEl = getEl("benchmark-pipeline-count");
+  const pipelineReadEl = getEl("benchmark-pipeline-read");
   const pipelineDecodeEl = getEl("benchmark-pipeline-decode");
   const pipelineThumbEl = getEl("benchmark-pipeline-thumbnail");
   const pipelineClipPrepEl = getEl("benchmark-pipeline-clip-prep");
@@ -370,6 +371,7 @@ export function setupBenchmark() {
 
       [
         pipelineCountEl,
+        pipelineReadEl,
         pipelineDecodeEl,
         pipelineThumbEl,
         pipelineClipPrepEl,
@@ -404,6 +406,7 @@ export function setupBenchmark() {
 
         const applyProgress = (res: {
           processed: number;
+          readTimeMs: number;
           decodeTimeMs: number;
           thumbnailTimeMs: number;
           clipPreprocessTimeMs: number;
@@ -419,6 +422,7 @@ export function setupBenchmark() {
             return `${sumMs.toFixed(1)} ms (avg ${avg.toFixed(1)} ms/img)`;
           };
 
+          if (pipelineReadEl) pipelineReadEl.textContent = formatMs(res.readTimeMs);
           if (pipelineDecodeEl) pipelineDecodeEl.textContent = formatMs(res.decodeTimeMs);
           if (pipelineThumbEl) pipelineThumbEl.textContent = formatMs(res.thumbnailTimeMs);
           if (pipelineClipPrepEl) pipelineClipPrepEl.textContent = formatMs(res.clipPreprocessTimeMs);
@@ -430,6 +434,7 @@ export function setupBenchmark() {
           // denominator as the rows above), so it stays consistent rather than
           // reflecting wall-clock/polling overhead.
           const sumTotal =
+            res.readTimeMs +
             res.decodeTimeMs +
             res.thumbnailTimeMs +
             res.clipPreprocessTimeMs +
@@ -454,6 +459,7 @@ export function setupBenchmark() {
         if (pipelineErrText) pipelineErrText.textContent = `Execution error: ${errMsg}`;
         [
           pipelineCountEl,
+          pipelineReadEl,
           pipelineDecodeEl,
           pipelineThumbEl,
           pipelineClipPrepEl,
@@ -577,7 +583,7 @@ export function renderBenchmarkHtml(): SafeHtml {
     <div class="group-box" style="display: flex; flex-direction: column; gap: 16px; margin-top: 16px;">
       <div class="group-box-title">Image Processing &amp; Preprocessing Benchmark (N = 100)</div>
       <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">
-        Runs CPU image processing and input preprocessing stages (RGB decoding, thumbnailing, CLIP tensor prep, Tagger fast-image-resize tensor prep, YOLO letterbox tensor prep, and CCIP tensor prep) on up to 100 database images.
+        Runs CPU image processing and input preprocessing stages (Disk I/O read, RGB decoding, thumbnailing, CLIP tensor prep, Tagger fast-image-resize tensor prep, YOLO letterbox tensor prep, and CCIP tensor prep) on up to 100 database images.
       </p>
       <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
         <div style="display: flex; align-items: center; gap: 8px; font-size: 11px;">
@@ -598,6 +604,9 @@ export function renderBenchmarkHtml(): SafeHtml {
             <span id="benchmark-pipeline-count">—</span>
           </div>
           <div style="margin-top: 4px;">
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
+              <span>Disk I/O Read:</span><span id="benchmark-pipeline-read">—</span>
+            </div>
             <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px;">
               <span>Image Decode:</span><span id="benchmark-pipeline-decode">—</span>
             </div>

@@ -1,5 +1,8 @@
-import { callService } from "../ipc";
+import { typedCall } from "../ipc";
 import { setStatusMessage } from "../utils";
+import { ClearThumbnailCacheResultSchema, PurgeResultSchema } from "../gen/gallery_pb";
+import { BackfillResultSchema, MediaMetadataBackfillResultSchema } from "../gen/import_pb";
+import { EmptySchema } from "@bufbuild/protobuf/wkt";
 
 export function setupMaintenanceButtons() {
   // Clear entire thumbnail cache
@@ -11,12 +14,8 @@ export function setupMaintenanceButtons() {
     setStatusMessage(clearThumbStatus, "Clearing thumbnail cache...", "loading");
     clearThumbBtn.setAttribute("disabled", "true");
     try {
-      const resp = await callService({ ClearThumbnailCache: null });
-      if ("ClearThumbnailCacheResult" in resp) {
-        setStatusMessage(clearThumbStatus, `Done! ${resp.ClearThumbnailCacheResult.deleted_count} cached thumbnail(s) removed.`, "success");
-      } else if ("Error" in resp) {
-        setStatusMessage(clearThumbStatus, "Failed: " + resp.Error.message, "error");
-      }
+      const resp = await typedCall("GalleryService.ClearThumbnailCache", null, null, ClearThumbnailCacheResultSchema);
+      setStatusMessage(clearThumbStatus, `Done! ${resp.deletedCount} cached thumbnail(s) removed.`, "success");
     } catch (e: any) {
       setStatusMessage(clearThumbStatus, "Error: " + (e.message || e), "error");
     }
@@ -32,12 +31,8 @@ export function setupMaintenanceButtons() {
     setStatusMessage(purgeStatus, "Purging...", "loading");
     purgeBtn.setAttribute("disabled", "true");
     try {
-      const resp = await callService({ PurgeMissingThumbnails: null });
-      if ("PurgeResult" in resp) {
-        setStatusMessage(purgeStatus, `Done! ${resp.PurgeResult.deleted_count} thumbnail(s) removed.`, "success");
-      } else if ("Error" in resp) {
-        setStatusMessage(purgeStatus, "Failed: " + resp.Error.message, "error");
-      }
+      const resp = await typedCall("GalleryService.PurgeMissingThumbnails", null, null, PurgeResultSchema);
+      setStatusMessage(purgeStatus, `Done! ${resp.deletedCount} thumbnail(s) removed.`, "success");
     } catch (e: any) {
       setStatusMessage(purgeStatus, "Error: " + (e.message || e), "error");
     }
@@ -52,13 +47,9 @@ export function setupMaintenanceButtons() {
     setStatusMessage(backfillStatus, "Backfilling folder assignments...", "loading");
     backfillBtn.setAttribute("disabled", "true");
     try {
-      const resp = await callService({ BackfillImageFolders: null });
-      if ("BackfillResult" in resp) {
-        const count = resp.BackfillResult.images_backfilled;
-        setStatusMessage(backfillStatus, `Done! ${count} image(s) assigned to folders.`, "success");
-      } else if ("Error" in resp) {
-        setStatusMessage(backfillStatus, "Failed: " + resp.Error.message, "error");
-      }
+      const resp = await typedCall("ImportService.BackfillImageFolders", null, null, BackfillResultSchema);
+      const count = resp.imagesBackfilled;
+      setStatusMessage(backfillStatus, `Done! ${count} image(s) assigned to folders.`, "success");
     } catch (e: any) {
       setStatusMessage(backfillStatus, "Error: " + (e.message || e), "error");
     }
@@ -73,13 +64,9 @@ export function setupMaintenanceButtons() {
     setStatusMessage(backfillMediaStatus, "Backfilling media metadata...", "loading");
     backfillMediaBtn.setAttribute("disabled", "true");
     try {
-      const resp = await callService({ BackfillMediaMetadata: null });
-      if ("MediaMetadataBackfillResult" in resp) {
-        const { processed, updated } = resp.MediaMetadataBackfillResult;
-        setStatusMessage(backfillMediaStatus, `Done! ${updated} image(s) updated (${processed} scanned).`, "success");
-      } else if ("Error" in resp) {
-        setStatusMessage(backfillMediaStatus, "Failed: " + resp.Error.message, "error");
-      }
+      const resp = await typedCall("ImportService.BackfillMediaMetadata", null, null, MediaMetadataBackfillResultSchema);
+      const { processed, updated } = resp;
+      setStatusMessage(backfillMediaStatus, `Done! ${updated} image(s) updated (${processed} scanned).`, "success");
     } catch (e: any) {
       setStatusMessage(backfillMediaStatus, "Error: " + (e.message || e), "error");
     }
@@ -95,17 +82,14 @@ export function setupMaintenanceButtons() {
     setStatusMessage(clearCropCacheStatus, "Clearing crop cache...", "loading");
     clearCropCacheBtn.setAttribute("disabled", "true");
     try {
-      const resp = await callService({ ClearCropCache: null });
-      if ("Success" in resp) {
-        const cardsModule = await import("../cards");
-        cardsModule.clearAllCropCaches();
-        setStatusMessage(clearCropCacheStatus, "Crop cache cleared successfully.", "success");
-      } else if ("Error" in resp) {
-        setStatusMessage(clearCropCacheStatus, "Failed: " + resp.Error.message, "error");
-      }
+      await typedCall("CharactersService.ClearCropCache", null, null, EmptySchema);
+      const cardsModule = await import("../cards");
+      cardsModule.clearAllCropCaches();
+      setStatusMessage(clearCropCacheStatus, "Crop cache cleared successfully.", "success");
     } catch (e: any) {
       setStatusMessage(clearCropCacheStatus, "Error: " + (e.message || e), "error");
     }
     clearCropCacheBtn.removeAttribute("disabled");
   });
 }
+

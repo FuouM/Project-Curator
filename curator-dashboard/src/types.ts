@@ -339,6 +339,7 @@ export type ResponsePayload =
       filepaths: string[];
     } }
   | { SingleImageBenchmarkResult: {
+      read_time_ms: number;
       decode_time_ms: number;
       thumbnail_time_ms: number;
       clip_preprocess_time_ms: number;
@@ -352,6 +353,7 @@ export type ResponsePayload =
       running: boolean;
       processed: number;
       total: number;
+      read_time_ms: number;
       decode_time_ms: number;
       thumbnail_time_ms: number;
       clip_preprocess_time_ms: number;

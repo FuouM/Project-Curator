@@ -46,6 +46,7 @@ pub(crate) struct ImageProcessingBenchmarkProgress {
     pub running: bool,
     pub processed: usize,
     pub total: usize,
+    pub read_time_ms: f64,
     pub decode_time_ms: f64,
     pub thumbnail_time_ms: f64,
     pub clip_preprocess_time_ms: f64,
