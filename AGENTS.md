@@ -159,9 +159,10 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
 2. **NO Fallbacks / Feature Removal Policy:** **NEVER** implement silent fallbacks, comment out broken logic, or strip out features (such as `sccache`, test suites, or performance configurations) simply to bypass or dodge an error. When an error or warning occurs, diagnose and fix the root cause properly. Fail fast, preserve required tooling, and expose underlying issues cleanly.
 
 3. **First-Principles Model Verification:** Before modifying inference logic in `curator-core`, create or run standalone programmatic test binaries in `curator-core/src/bin/` (e.g., `test_ort_standalone.rs`) to verify ONNX model initialization and tensor shapes step-by-step.
-4. **Filesystem Safety & Binary Preservation:**
-   * **NEVER** run destructive cleanup commands (`Remove-Item -Force`, `git clean -fd`) on binary runtime files (`.dll`, `.lib`, `.onnx`).
-   * Preserve dependencies in isolated backup directories (e.g., `.curator_ort_dlls_backup/`) before performing directory cleanup operations.
+4. **Filesystem Safety & Preservation Mandate:**
+   * **Deletion Banned:** **NEVER** delete files using `Remove-Item`, `git rm`, `rm`, or `Remove-Item -Force`.
+   * **Deprecation Protocol:** Any file, document, plan (`PLAN_*.md`), or component designated for removal **must** be moved into a `.deprecated/` folder instead of being deleted.
+   * **Binary Preservation:** Preserve binary runtime dependencies (`.dll`, `.lib`, `.onnx`) in isolated directories (`.curator_ort_dlls_backup/`). Do not clean or wipe them.
 5. **Git Workflows & Commit Guidelines:**
    * **No Automated Commits:** **NEVER** run `git commit` or `git push` unless the user explicitly requests it in the *current turn's conversation*. Do not assume a prior commit request applies to subsequent changes, and never preemptively commit new edits.
    * **Verify Diff Before Committing:** When requested to commit, **always** run and inspect `git diff` first to verify the exact changes. This ensures you do not stage unintended modifications or accidentally overwrite the work of other concurrent agents operating outside of your context.
