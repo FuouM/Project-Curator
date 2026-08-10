@@ -338,7 +338,7 @@ impl BackgroundWorker {
                         // Debounce USearch persistence: a full index save is expensive,
                         // so only flush to disk every N batches instead of every batch.
                         batches_since_save += 1;
-                        if added_any && batches_since_save >= INDEX_SAVE_BATCH_INTERVAL {
+                        if added_any && (batches_since_save >= INDEX_SAVE_BATCH_INTERVAL || rx.is_empty()) {
                             batches_since_save = 0;
                             if let Err(e) = vi_inf.save() {
                                 error!("Failed to save USearch index after batch processing: {:?}", e);
