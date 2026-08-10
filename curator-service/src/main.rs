@@ -169,11 +169,20 @@ async fn main() -> Result<(), Error> {
         .open(data_dir.join("curator.log"))
         .context("Failed to open log file")?;
 
+    struct LocalTimer;
+
+    impl tracing_subscriber::fmt::time::FormatTime for LocalTimer {
+        fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
+            write!(w, "{}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f"))
+        }
+    }
+
     let file_layer = tracing_subscriber::fmt::layer()
+        .with_timer(LocalTimer)
         .with_writer(std::sync::Mutex::new(log_file))
         .with_ansi(false);
 
-    let console_layer = tracing_subscriber::fmt::layer();
+    let console_layer = tracing_subscriber::fmt::layer().with_timer(LocalTimer);
 
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new("info"))

@@ -60,7 +60,22 @@ function processLogLine(line: string): string {
   const tsRegex = /^(\[?\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+\-]\d{2}:?\d{2}|Z)?\]?)\s*/;
   const tsMatch = escaped.match(tsRegex);
   if (tsMatch) {
-    timestampHtml = `<span style="color:#71717a; font-weight:500; font-family:var(--sys-font-mono, monospace); margin-right:6px;">${tsMatch[1]}</span>`;
+    const rawTs = tsMatch[1].replace(/^\[/, "").replace(/\]$/, "");
+    let displayTs = rawTs;
+    try {
+      const d = new Date(rawTs);
+      if (!isNaN(d.getTime())) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        const hours = String(d.getHours()).padStart(2, "0");
+        const minutes = String(d.getMinutes()).padStart(2, "0");
+        const seconds = String(d.getSeconds()).padStart(2, "0");
+        const ms = String(d.getMilliseconds()).padStart(3, "0");
+        displayTs = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
+      }
+    } catch (_) {}
+    timestampHtml = `<span style="color:#71717a; font-weight:500; font-family:var(--sys-font-mono, monospace); margin-right:6px;">[${displayTs}]</span>`;
     content = escaped.slice(tsMatch[0].length);
   }
 

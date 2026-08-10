@@ -11,6 +11,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = { workspace = true }
 uuid = { workspace = true }
 clap = { workspace = true }
 sha2 = "0.10"
