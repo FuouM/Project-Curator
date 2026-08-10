@@ -160,9 +160,13 @@ static IMAGES_DB: OnceCell<SqlitePool> = OnceCell::const_new();
 
 #[tauri::command]
 async fn send_to_service_typed(method: String, request_bytes: Vec<u8>) -> Result<Vec<u8>, String> {
-    log_dashboard_event(&format!("send_to_service_typed: {}", method));
     let channel = ensure_channel().await?;
-    typed_bridge::call_typed(channel, &method, &request_bytes).await
+    typed_bridge::call_typed(channel, &method, &request_bytes)
+        .await
+        .map_err(|e| {
+            log_dashboard_event(&format!("send_to_service_typed {} failed: {}", method, e));
+            e
+        })
 }
 
 #[tauri::command]
