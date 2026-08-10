@@ -127,6 +127,9 @@ export function setupSearch() {
     if (!queryInput || !tagInput || !imageInput) return;
 
     const grid = document.getElementById("search-results-grid");
+    const statsMeta = document.getElementById("search-stats-meta");
+    if (statsMeta) statsMeta.style.display = "none";
+
     if (grid) {
       grid.innerHTML = `
         <div class="search-loading-container">
@@ -154,6 +157,7 @@ export function setupSearch() {
       const mediaTypeSelect = document.getElementById("search-media-type-select") as HTMLSelectElement;
       const mediaType = mediaTypeSelect && mediaTypeSelect.value ? mediaTypeSelect.value : null;
 
+      const startTime = performance.now();
       const resp = await typedCall(
         "SearchService.Search",
         SearchRequestSchema,
@@ -173,9 +177,19 @@ export function setupSearch() {
         },
         SearchResultSchema
       );
+      const elapsedMs = performance.now() - startTime;
 
-      renderSearchResults(resp.matches.map(searchMatchFromProto));
+      const matches = resp.matches.map(searchMatchFromProto);
+      renderSearchResults(matches);
+
+      if (statsMeta) {
+        const timeStr = elapsedMs < 1000 ? `${elapsedMs.toFixed(1)} ms` : `${(elapsedMs / 1000).toFixed(2)} seconds`;
+        const count = matches.length;
+        statsMeta.textContent = `About ${count} result${count === 1 ? "" : "s"} (${timeStr})`;
+        statsMeta.style.display = "inline";
+      }
     } catch (e: any) {
+      if (statsMeta) statsMeta.style.display = "none";
       if (grid) grid.innerHTML = `<p style="color: #ef4444; padding: 10px;">IPC Search failed: ${e.message || e}</p>`;
       showErrorAlert("IPC Search failed:\n" + e);
     }
@@ -369,6 +383,7 @@ export function renderSearchHtml(): SafeHtml {
           </button>
           <div class="selection-toolbar-actions extensions-toolbar" style="display: none;"></div>
         </div>
+        <span id="search-stats-meta" style="font-size: 11px; color: var(--sys-text-subtle, #71717a); font-style: italic; display: none;"></span>
       </div>
       <div class="image-grid" id="search-results-grid">
         <!-- Results dynamically populated -->
