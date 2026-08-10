@@ -40,6 +40,10 @@ export function setGalleryPage(v: number) { galleryPage = v; }
 export function setFavoritesPage(v: number) { favoritesPage = v; }
 export function setGalleryTotalCount(v: number) { galleryTotalCount = v; }
 export function setFavoritesTotalCount(v: number) { favoritesTotalCount = v; }
+export function getGalleryPage(): number { return galleryPage; }
+export function getFavoritesPage(): number { return favoritesPage; }
+export function getGalleryTotalCount(): number { return galleryTotalCount; }
+export function getFavoritesTotalCount(): number { return favoritesTotalCount; }
 
 // --- Infinite Scroll ---
 const INFINITE_SCROLL_KEY = "curator-gallery-infinite-scroll";
@@ -48,6 +52,19 @@ export function setGalleryInfiniteScroll(v: boolean) {
   galleryInfiniteScroll = v;
   localStorage.setItem(INFINITE_SCROLL_KEY, v.toString());
 }
+export function getGalleryInfiniteScroll(): boolean { return galleryInfiniteScroll; }
+
+// --- Zen Mode ---
+const ZEN_MODE_KEY = "curator-gallery-zen-mode";
+export let galleryZenMode = localStorage.getItem(ZEN_MODE_KEY) === "true";
+if (galleryZenMode) {
+  galleryInfiniteScroll = true; // force infinite scroll on if zen mode is saved as true
+}
+export function setGalleryZenMode(v: boolean) {
+  galleryZenMode = v;
+  localStorage.setItem(ZEN_MODE_KEY, v.toString());
+}
+export function getGalleryZenMode(): boolean { return galleryZenMode; }
 
 // --- Selection State ---
 export let isSelectMode = false;

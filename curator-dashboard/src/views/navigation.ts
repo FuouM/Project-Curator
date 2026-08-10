@@ -1,4 +1,4 @@
-import { galleryPage, favoritesPage, setGalleryPage, setFavoritesPage, getImagesPerPage, setImagesPerPage, galleryInfiniteScroll, setGalleryInfiniteScroll, galleryTotalCount } from "../state";
+import { favoritesPage, setGalleryPage, setFavoritesPage, getImagesPerPage, setImagesPerPage, setGalleryInfiniteScroll, setGalleryZenMode, getGalleryInfiniteScroll, getGalleryZenMode, getGalleryPage, getGalleryTotalCount } from "../state";
 import { refreshGallery, refreshFavorites, setupPaginationButtons, setupPageJump, loadMoreGallery, isGalleryLoading } from "./gallery";
 import { refreshBenchmarkMaxImages } from "./benchmark";
 import { refreshDashboard } from "./dashboard";
@@ -124,7 +124,9 @@ export function setupNavigation() {
     if (view === "dashboard") {
       refreshDashboard();
     } else if (view === "gallery") {
-      refreshGallery();
+      refreshGallery().then(() => {
+        setTimeout(checkInfiniteScrollFill, 300);
+      });
     } else if (view === "favorites") {
       refreshFavorites();
     } else if (view === "logs") {
@@ -164,11 +166,11 @@ export function setupNavigation() {
 
 
   // Gallery & Favorites Pagination Setup
-  setupPaginationButtons("gallery-prev-btn", "gallery-next-btn", { get value() { return galleryPage; }, set value(v) { setGalleryPage(v); } }, refreshGallery);
+  setupPaginationButtons("gallery-prev-btn", "gallery-next-btn", { get value() { return getGalleryPage(); }, set value(v) { setGalleryPage(v); } }, refreshGallery);
   setupPaginationButtons("favorites-prev-btn", "favorites-next-btn", { get value() { return favoritesPage; }, set value(v) { setFavoritesPage(v); } }, refreshFavorites);
 
   // Gallery & Favorites Page Jump
-  setupPageJump("gallery-jump-btn", "gallery-page-jump", { get value() { return galleryPage; }, set value(v) { setGalleryPage(v); } }, refreshGallery);
+  setupPageJump("gallery-jump-btn", "gallery-page-jump", { get value() { return getGalleryPage(); }, set value(v) { setGalleryPage(v); } }, refreshGallery);
   setupPageJump("favorites-jump-btn", "favorites-page-jump", { get value() { return favoritesPage; }, set value(v) { setFavoritesPage(v); } }, refreshFavorites);
 
   // Gallery per-page selector
@@ -201,9 +203,18 @@ export function setupNavigation() {
   const scrollToggleBtn = document.getElementById("gallery-toggle-infinite-scroll-btn");
   if (scrollToggleBtn) {
     scrollToggleBtn.addEventListener("click", () => {
-      const active = !galleryInfiniteScroll;
+      const active = !getGalleryInfiniteScroll();
       setGalleryInfiniteScroll(active);
       scrollToggleBtn.classList.toggle("primary", active);
+
+      // If turning infinite scroll OFF, Zen Mode must also be turned OFF
+      if (!active && getGalleryZenMode()) {
+        setGalleryZenMode(false);
+        const zenToggleBtn = document.getElementById("gallery-toggle-zen-mode-btn");
+        if (zenToggleBtn) zenToggleBtn.classList.remove("primary");
+        const grid = document.getElementById("gallery-grid");
+        if (grid) grid.classList.remove("zen-mode-active");
+      }
 
       // Update pagination controls visibility
       const controls = document.getElementById("gallery-pagination-controls");
@@ -213,7 +224,44 @@ export function setupNavigation() {
 
       // Reset to page 0 when toggled
       setGalleryPage(0);
-      refreshGallery();
+      refreshGallery().then(() => {
+        setTimeout(checkInfiniteScrollFill, 300);
+      });
+    });
+  }
+
+  // Gallery Zen Mode setup
+  const zenToggleBtn = document.getElementById("gallery-toggle-zen-mode-btn");
+  if (zenToggleBtn) {
+    zenToggleBtn.addEventListener("click", () => {
+      const active = !getGalleryZenMode();
+      setGalleryZenMode(active);
+      zenToggleBtn.classList.toggle("primary", active);
+
+      // Toggle class on the grid
+      const grid = document.getElementById("gallery-grid");
+      if (grid) {
+        grid.classList.toggle("zen-mode-active", active);
+      }
+
+      // If turning Zen Mode ON, Infinite Scroll must also be turned ON
+      if (active && !getGalleryInfiniteScroll()) {
+        setGalleryInfiniteScroll(true);
+        const scrollToggleBtn = document.getElementById("gallery-toggle-infinite-scroll-btn");
+        if (scrollToggleBtn) scrollToggleBtn.classList.add("primary");
+
+        // Update pagination controls visibility
+        const controls = document.getElementById("gallery-pagination-controls");
+        if (controls) {
+          controls.style.display = "none";
+        }
+      }
+
+      // Reset to page 0 and reload gallery to apply changes cleanly
+      setGalleryPage(0);
+      refreshGallery().then(() => {
+        setTimeout(checkInfiniteScrollFill, 300);
+      });
     });
   }
 
@@ -221,7 +269,7 @@ export function setupNavigation() {
   const mainPanel = document.querySelector(".main-panel") as HTMLElement;
   if (mainPanel) {
     mainPanel.addEventListener("scroll", () => {
-      if (!galleryInfiniteScroll) return;
+      if (!getGalleryInfiniteScroll()) return;
 
       const activeView = document.querySelector(".nav-item.active")?.getAttribute("data-view");
       if (activeView !== "gallery") return;
@@ -231,19 +279,44 @@ export function setupNavigation() {
 
       if (position < threshold && !isGalleryLoading) {
         const perPage = getImagesPerPage();
-        const totalPages = Math.ceil(galleryTotalCount / perPage);
-        const nextPage = galleryPage + 1;
+        const totalPages = Math.ceil(getGalleryTotalCount() / perPage);
+        const nextPage = getGalleryPage() + 1;
 
         if (nextPage < totalPages) {
           setGalleryPage(nextPage);
-          loadMoreGallery(nextPage);
+          loadMoreGallery(nextPage).then(() => {
+            setTimeout(checkInfiniteScrollFill, 300);
+          });
         }
       }
     });
   }
+
+  // Initial fill check on startup in case it's restored to infinite scroll
+  setTimeout(checkInfiniteScrollFill, 500);
 }
 
 export function navigateToView(view: string) {
   const navItem = document.querySelector(`.nav-item[data-view="${view}"]`) as HTMLElement | null;
   if (navItem) navItem.click();
+}
+
+export function checkInfiniteScrollFill() {
+  if (!getGalleryInfiniteScroll()) return;
+  const activeView = document.querySelector(".nav-item.active")?.getAttribute("data-view");
+  if (activeView !== "gallery") return;
+
+  const mainPanel = document.querySelector(".main-panel") as HTMLElement;
+  if (!mainPanel) return;
+
+  const perPage = getImagesPerPage();
+  const totalPages = Math.ceil(getGalleryTotalCount() / perPage);
+  const nextPage = getGalleryPage() + 1;
+
+  if (mainPanel.scrollHeight - mainPanel.clientHeight < 50 && nextPage < totalPages && !isGalleryLoading) {
+    setGalleryPage(nextPage);
+    loadMoreGallery(nextPage).then(() => {
+      setTimeout(checkInfiniteScrollFill, 300);
+    });
+  }
 }

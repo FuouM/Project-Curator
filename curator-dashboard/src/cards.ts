@@ -1348,9 +1348,49 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement, append = 
   const fragment = document.createDocumentFragment();
 
   cards.forEach((img) => {
+    let sizeClass = "";
+    if (img.width) {
+      if (img.width < 500) {
+        sizeClass = "card-sz-small";
+      } else if (img.width < 1000) {
+        sizeClass = "card-sz-medium";
+      } else {
+        sizeClass = "card-sz-large";
+      }
+    }
+
     const card = document.createElement("div");
     const isLucky = luckyHighlightId === img.id;
-    card.className = `image-card ${selectedImageIds.has(img.id) ? 'selected' : ''} ${isLucky ? 'lucky-highlight' : ''}`;
+    card.className = `image-card ${selectedImageIds.has(img.id) ? 'selected' : ''} ${isLucky ? 'lucky-highlight' : ''} ${sizeClass}`;
+    
+    const aspect = img.width && img.height ? (img.width / img.height) : 1.5;
+    card.style.setProperty("--aspect", aspect.toString());
+
+    let S = 2; // base scale
+    if (img.width) {
+      if (img.width < 500) {
+        S = 1;
+      } else if (img.width > 1200) {
+        S = 3;
+      }
+    }
+    let C = S;
+    let R = S;
+    if (aspect > 1) {
+      C = Math.round(S * aspect);
+      if (C > 4) {
+        C = 4;
+        R = Math.round(C / aspect) || 1;
+      }
+    } else {
+      R = Math.round(S / aspect);
+      if (R > 4) {
+        R = 4;
+        C = Math.round(R * aspect) || 1;
+      }
+    }
+    card.style.setProperty("--span-c", C.toString());
+    card.style.setProperty("--span-r", R.toString());
     card.dataset.imageId = img.id.toString();
     card.dataset.filepath = img.filepath;
 
@@ -1391,7 +1431,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement, append = 
       <div class="star-btn ${img.favorite ? 'favorite' : ''}" data-id="${img.id}">
         <i class="bi ${img.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
       </div>
-      <div class="${previewClass}">
+      <div class="${previewClass}" ${img.width && img.height ? `style="aspect-ratio: ${img.width} / ${img.height};"` : ''}>
         <img data-thumb-id="${img.id}" data-filepath="${img.filepath}" data-pending="${isPending ? '1' : '0'}" ${srcAttr} alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" class="${imgClass}" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
         ${missingBadge}
@@ -1472,6 +1512,8 @@ export function renderImages(images: ImageDetails[], gridId: string, append = fa
     ocrText: img.ocr_text,
     animation: img.animation,
     video: img.video,
+    width: img.width ?? undefined,
+    height: img.height ?? undefined,
   }));
 
   renderCards(cards, grid, append);
@@ -1504,6 +1546,8 @@ export function renderSearchResults(matches: SearchMatch[]) {
       characterIdentities: m.character_identities,
       animation: m.animation,
       video: m.video,
+      width: m.width ?? undefined,
+      height: m.height ?? undefined,
     };
   });
 

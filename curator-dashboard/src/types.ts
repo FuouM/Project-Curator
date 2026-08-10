@@ -144,6 +144,8 @@ export interface SearchMatch {
   video?: VideoSummary | null;
   favorite: boolean;
   is_missing?: boolean;
+  width?: number;
+  height?: number;
 }
 
 export interface ImageDetails {
@@ -426,6 +428,8 @@ export interface CardImageData {
   ocrText?: string;
   animation?: AnimationSummary | null;
   video?: VideoSummary | null;
+  width?: number;
+  height?: number;
 }
 
 export interface OcrResult {

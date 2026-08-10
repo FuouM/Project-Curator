@@ -401,3 +401,42 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
 .image-viewer-close:hover {
   color: #e81123;
 }
+
+/* Zen Mode Bento Grid Styles (Dense Grid Aspect-Ratio Spans) */
+.image-grid.zen-mode-active {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)) !important;
+  grid-auto-rows: 80px !important;
+  grid-auto-flow: dense !important;
+  gap: 8px !important;
+}
+.image-grid.zen-mode-active .image-card {
+  grid-column: span var(--span-c, 2) !important;
+  grid-row: span var(--span-r, 2) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-color: var(--sys-border-light, #d0d0d0) !important;
+  display: block !important;
+  height: 100% !important;
+}
+.image-grid.zen-mode-active .image-card .image-preview {
+  height: 100% !important;
+  width: 100% !important;
+  border: none !important;
+  background-color: var(--sys-control-bg, #f3f2f1) !important;
+}
+.image-grid.zen-mode-active .image-card .image-preview img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+.image-grid.zen-mode-active .image-card .image-info {
+  display: none !important;
+}
+.image-grid.zen-mode-active .image-card .vector-badge,
+.image-grid.zen-mode-active .image-card .badge-missing,
+.image-grid.zen-mode-active .image-card .badge-video,
+.image-grid.zen-mode-active .image-card .copy-btn,
+.image-grid.zen-mode-active .image-card .info-btn {
+  display: none !important;
+}

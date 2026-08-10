@@ -1,16 +1,35 @@
 import { typedCall } from "../ipc";
 import { SafeHtml, html } from "../components";
-import { galleryPage, favoritesPage, isSelectMode, selectedImageIds, galleryInfiniteScroll } from "../state";
-import { getImagesPerPage, setGalleryTotalCount, setFavoritesTotalCount, galleryTotalCount, favoritesTotalCount } from "../state";
+import { isSelectMode, selectedImageIds, galleryInfiniteScroll, galleryZenMode, getGalleryInfiniteScroll, getGalleryZenMode, getGalleryPage, getFavoritesPage, getGalleryTotalCount, getFavoritesTotalCount, setGalleryPage } from "../state";
+import { getImagesPerPage, setGalleryTotalCount, setFavoritesTotalCount } from "../state";
 import { renderImages } from "../cards";
 import { imageDetailsFromProto } from "../proto-adapters";
 import { ListImagesRequestSchema, ListResultSchema } from "../gen/gallery_pb";
 
 export let isGalleryLoading = false;
 
-export function refreshGallery() { return refreshPaginatedImages(galleryPage, "gallery", "gallery", {}, false); }
+export function refreshGallery() {
+  if (getGalleryZenMode()) {
+    return refreshPaginatedImages(0, "gallery", "gallery", {}, false).then(() => {
+      const perPage = getImagesPerPage();
+      const totalPages = Math.ceil(getGalleryTotalCount() / perPage);
+      if (totalPages > 1) {
+        setGalleryPage(1);
+        return loadMoreGallery(1).then(() => {
+          const totalPages2 = Math.ceil(getGalleryTotalCount() / perPage);
+          if (totalPages2 > 2) {
+            setGalleryPage(2);
+            return loadMoreGallery(2);
+          }
+        });
+      }
+    });
+  } else {
+    return refreshPaginatedImages(getGalleryPage(), "gallery", "gallery", {}, false);
+  }
+}
 export function loadMoreGallery(page: number) { return refreshPaginatedImages(page, "gallery", "gallery", {}, true); }
-export function refreshFavorites() { return refreshPaginatedImages(favoritesPage, "favorites", "favorites", { only_favorites: true }); }
+export function refreshFavorites() { return refreshPaginatedImages(getFavoritesPage(), "favorites", "favorites", { only_favorites: true }); }
 
 export async function refreshPaginatedImages(
   page: number,
@@ -39,12 +58,13 @@ export async function refreshPaginatedImages(
       setGalleryTotalCount(Number(totalCount));
     }
 
-    const totalCountNum = listOpts.only_favorites ? favoritesTotalCount : galleryTotalCount;
+    const totalCountNum = listOpts.only_favorites ? getFavoritesTotalCount() : getGalleryTotalCount();
     const totalPages = Math.max(1, Math.ceil(totalCountNum / perPage));
 
+    const isInfinite = getGalleryInfiniteScroll();
     const indicator = document.getElementById(`${idPrefix}-page-indicator`);
     if (indicator) {
-      if (idPrefix === "gallery" && galleryInfiniteScroll) {
+      if (idPrefix === "gallery" && isInfinite) {
         const loadedCount = Math.min(totalCountNum, (page + 1) * perPage);
         indicator.textContent = `Showing ${loadedCount} of ${totalCountNum} images`;
       } else {
@@ -54,7 +74,14 @@ export async function refreshPaginatedImages(
 
     const controls = document.getElementById(`${idPrefix}-pagination-controls`);
     if (controls) {
-      controls.style.display = (idPrefix === "gallery" && galleryInfiniteScroll) ? "none" : "flex";
+      controls.style.display = (idPrefix === "gallery" && isInfinite) ? "none" : "flex";
+    }
+
+    if (idPrefix === "gallery") {
+      const headerRight = document.getElementById("gallery-header-right");
+      if (headerRight) {
+        headerRight.style.display = getGalleryZenMode() ? "none" : "flex";
+      }
     }
 
     const prevBtn = document.getElementById(`${idPrefix}-prev-btn`) as HTMLButtonElement;
@@ -101,8 +128,11 @@ export function renderGalleryHtml(): SafeHtml {
           <button type="button" class="win-button ${galleryInfiniteScroll ? 'primary' : ''}" id="gallery-toggle-infinite-scroll-btn">
             <i class="bi bi-body-text"></i> Infinite Scroll
           </button>
+          <button type="button" class="win-button ${galleryZenMode ? 'primary' : ''}" id="gallery-toggle-zen-mode-btn">
+            <i class="bi bi-fullscreen"></i> Zen Mode
+          </button>
         </div>
-        <div style="display: flex; align-items: center; gap: 10px;">
+        <div id="gallery-header-right" style="display: ${galleryZenMode ? 'none' : 'flex'}; align-items: center; gap: 10px;">
           <label style="font-size: 11px; color: #555555; display: flex; align-items: center; gap: 4px;">
             Show:
             <select class="input-field" id="gallery-per-page-select" style="width: 60px; height: 22px; font-size: 11px; padding: 1px 4px;">
@@ -121,7 +151,7 @@ export function renderGalleryHtml(): SafeHtml {
           </span>
         </div>
       </div>
-      <div class="image-grid" id="gallery-grid">
+      <div class="image-grid ${galleryZenMode ? 'zen-mode-active' : ''}" id="gallery-grid">
         <!-- Dynamically populated -->
       </div>
     </div>
