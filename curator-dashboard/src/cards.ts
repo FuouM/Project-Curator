@@ -106,15 +106,25 @@ function processQueue() {
 }
 
 function invokeThumbnail(job: ThumbJob) {
-  if (!job.img.isConnected) { activeCount--; thumbLoaded++; updateThumbProgress(); processQueue(); return; }
+  if (!job.img.isConnected) {
+    activeCount--;
+    if (thumbTotal > 0) {
+      thumbLoaded++;
+      updateThumbProgress();
+    }
+    processQueue();
+    return;
+  }
 
   const cachedUrl = thumbCache.get(job.imageId);
   if (cachedUrl) {
     job.img.src = cachedUrl;
     job.img.classList.add("loaded");
     if (job.preview) job.preview.classList.remove("thumb-loading");
-    thumbLoaded++;
-    updateThumbProgress();
+    if (thumbTotal > 0) {
+      thumbLoaded++;
+      updateThumbProgress();
+    }
     activeCount--;
     processQueue();
     return;
@@ -132,8 +142,10 @@ function invokeThumbnail(job: ThumbJob) {
     }
   }).catch(() => {}).finally(() => {
     if (job.preview) job.preview.classList.remove("thumb-loading");
-    thumbLoaded++;
-    updateThumbProgress();
+    if (thumbTotal > 0) {
+      thumbLoaded++;
+      updateThumbProgress();
+    }
     activeCount--;
     processQueue();
   });
@@ -164,29 +176,34 @@ const observedThumbs = new Set<HTMLImageElement>();
 
 const lazyObserver = new IntersectionObserver((entries) => {
   for (const entry of entries) {
-    if (entry.isIntersecting) {
-      const img = entry.target as HTMLImageElement;
-      const imageId = parseInt(img.dataset.thumbId || "0", 10);
-      if (imageId > 0) {
-        const preview = img.closest(".image-preview") as HTMLElement;
-        const fp = img.dataset.filepath || "";
+    const img = entry.target as HTMLImageElement;
+    const imageId = parseInt(img.dataset.thumbId || "0", 10);
+    if (imageId === 0) continue;
+    const preview = img.closest(".image-preview") as HTMLElement;
+    const fp = img.dataset.filepath || "";
 
+    if (entry.isIntersecting) {
+      if (img.dataset.pending === "1" || !img.getAttribute("src")) {
         const cachedUrl = thumbCache.get(imageId);
         if (cachedUrl) {
           img.src = cachedUrl;
           img.classList.add("loaded");
           img.dataset.pending = "0";
           if (preview) preview.classList.remove("thumb-loading");
-          thumbLoaded++;
-          updateThumbProgress();
-        } else if (img.dataset.pending === "1") {
+          if (thumbTotal > 0) {
+            thumbLoaded++;
+            updateThumbProgress();
+          }
+        } else {
           img.dataset.pending = "0";
           if (/\.gif$/i.test(fp)) {
             img.src = convertFileSrc(fp);
             img.classList.add("loaded");
             if (preview) preview.classList.remove("thumb-loading");
-            thumbLoaded++;
-            updateThumbProgress();
+            if (thumbTotal > 0) {
+              thumbLoaded++;
+              updateThumbProgress();
+            }
           } else {
             if (preview) preview.classList.add("thumb-loading");
             queue.push({ imageId, img, preview, gen: generation });
@@ -194,11 +211,18 @@ const lazyObserver = new IntersectionObserver((entries) => {
           }
         }
       }
-      lazyObserver.unobserve(img);
-      observedThumbs.delete(img);
+    } else {
+      // Unload if scrolled out of view and has a loaded src that is a blob URL
+      const src = img.getAttribute("src");
+      if (src && src.startsWith("blob:")) {
+        img.removeAttribute("src");
+        img.classList.remove("loaded");
+        img.dataset.pending = "1";
+        if (preview) preview.classList.add("thumb-loading");
+      }
     }
   }
-}, { rootMargin: "300px" });
+}, { rootMargin: "1000px" });
 
 export function reobserveUnloadedThumbnails(container: HTMLElement) {
   const imgs = container.querySelectorAll<HTMLImageElement>("img[data-thumb-id]");
@@ -1310,9 +1334,16 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
 
 // --- Card Rendering (no per-card event handlers) ---
 
-export function renderCards(cards: CardImageData[], grid: HTMLElement) {
-  clearObservedThumbs();
-  grid.innerHTML = "";
+export function renderCards(cards: CardImageData[], grid: HTMLElement, append = false) {
+  if (!append) {
+    clearObservedThumbs();
+    grid.innerHTML = "";
+  } else {
+    // If the grid was displaying a "no images" placeholder, clear it
+    if (grid.children.length === 1 && grid.firstElementChild?.tagName === "P") {
+      grid.innerHTML = "";
+    }
+  }
 
   const fragment = document.createDocumentFragment();
 
@@ -1396,6 +1427,12 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
     fragment.appendChild(card);
   });
 
+  // Observe new images before appending fragment (since appending empties the fragment)
+  fragment.querySelectorAll<HTMLElement>("img[data-thumb-id]").forEach(img => {
+    observedThumbs.add(img as HTMLImageElement);
+    lazyObserver.observe(img);
+  });
+
   grid.appendChild(fragment);
 
   // Prune disconnected jobs from queue to free unmounted DOM references
@@ -1405,23 +1442,21 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
     }
   }
   if (thumbHideTimer) { clearTimeout(thumbHideTimer); thumbHideTimer = null; }
-  thumbTotal = grid.querySelectorAll<HTMLElement>("img[data-thumb-id]").length;
-  thumbLoaded = grid.querySelectorAll<HTMLElement>("img[data-thumb-id][data-pending='0']").length;
+  const pendingCount = cards.filter(c => !thumbCache.has(c.id) && !/\.gif$/i.test(c.filepath)).length;
+  thumbTotal = pendingCount;
+  thumbLoaded = 0;
   updateThumbProgress();
-
-  grid.querySelectorAll<HTMLElement>("img[data-thumb-id][data-pending='1']").forEach(img => {
-    observedThumbs.add(img as HTMLImageElement);
-    lazyObserver.observe(img);
-  });
 }
 
-export function renderImages(images: ImageDetails[], gridId: string) {
+export function renderImages(images: ImageDetails[], gridId: string, append = false) {
   const grid = document.getElementById(gridId);
   if (!grid) return;
 
 
   if (images.length === 0) {
-    grid.innerHTML = "<p style='color: #64748b; font-style: italic;'>No images imported yet.</p>";
+    if (!append) {
+      grid.innerHTML = "<p style='color: #64748b; font-style: italic;'>No images imported yet.</p>";
+    }
     return;
   }
 
@@ -1439,7 +1474,7 @@ export function renderImages(images: ImageDetails[], gridId: string) {
     video: img.video,
   }));
 
-  renderCards(cards, grid);
+  renderCards(cards, grid, append);
 }
 
 export function renderSearchResults(matches: SearchMatch[]) {

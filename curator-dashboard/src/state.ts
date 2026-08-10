@@ -41,6 +41,14 @@ export function setFavoritesPage(v: number) { favoritesPage = v; }
 export function setGalleryTotalCount(v: number) { galleryTotalCount = v; }
 export function setFavoritesTotalCount(v: number) { favoritesTotalCount = v; }
 
+// --- Infinite Scroll ---
+const INFINITE_SCROLL_KEY = "curator-gallery-infinite-scroll";
+export let galleryInfiniteScroll = localStorage.getItem(INFINITE_SCROLL_KEY) === "true";
+export function setGalleryInfiniteScroll(v: boolean) {
+  galleryInfiniteScroll = v;
+  localStorage.setItem(INFINITE_SCROLL_KEY, v.toString());
+}
+
 // --- Selection State ---
 export let isSelectMode = false;
 export const selectedImageIds = new Set<number>();

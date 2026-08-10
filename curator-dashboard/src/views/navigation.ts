@@ -1,5 +1,5 @@
-import { galleryPage, favoritesPage, setGalleryPage, setFavoritesPage, getImagesPerPage, setImagesPerPage } from "../state";
-import { refreshGallery, refreshFavorites, setupPaginationButtons, setupPageJump } from "./gallery";
+import { galleryPage, favoritesPage, setGalleryPage, setFavoritesPage, getImagesPerPage, setImagesPerPage, galleryInfiniteScroll, setGalleryInfiniteScroll, galleryTotalCount } from "../state";
+import { refreshGallery, refreshFavorites, setupPaginationButtons, setupPageJump, loadMoreGallery, isGalleryLoading } from "./gallery";
 import { refreshBenchmarkMaxImages } from "./benchmark";
 import { refreshDashboard } from "./dashboard";
 import { refreshLogs, clearLogsData, clearLogsFrontendDom } from "./logs";
@@ -196,6 +196,51 @@ export function setupNavigation() {
   // Logs buttons setup
   document.getElementById("refresh-logs-btn")?.addEventListener("click", refreshLogs);
   document.getElementById("clear-logs-btn")?.addEventListener("click", clearLogsData);
+
+  // Gallery Infinite Scroll setup
+  const scrollToggleBtn = document.getElementById("gallery-toggle-infinite-scroll-btn");
+  if (scrollToggleBtn) {
+    scrollToggleBtn.addEventListener("click", () => {
+      const active = !galleryInfiniteScroll;
+      setGalleryInfiniteScroll(active);
+      scrollToggleBtn.classList.toggle("primary", active);
+
+      // Update pagination controls visibility
+      const controls = document.getElementById("gallery-pagination-controls");
+      if (controls) {
+        controls.style.display = active ? "none" : "flex";
+      }
+
+      // Reset to page 0 when toggled
+      setGalleryPage(0);
+      refreshGallery();
+    });
+  }
+
+  // Scroll listener on main-panel for infinite scrolling
+  const mainPanel = document.querySelector(".main-panel") as HTMLElement;
+  if (mainPanel) {
+    mainPanel.addEventListener("scroll", () => {
+      if (!galleryInfiniteScroll) return;
+
+      const activeView = document.querySelector(".nav-item.active")?.getAttribute("data-view");
+      if (activeView !== "gallery") return;
+
+      const threshold = 150; // pixels from the bottom
+      const position = mainPanel.scrollHeight - mainPanel.scrollTop - mainPanel.clientHeight;
+
+      if (position < threshold && !isGalleryLoading) {
+        const perPage = getImagesPerPage();
+        const totalPages = Math.ceil(galleryTotalCount / perPage);
+        const nextPage = galleryPage + 1;
+
+        if (nextPage < totalPages) {
+          setGalleryPage(nextPage);
+          loadMoreGallery(nextPage);
+        }
+      }
+    });
+  }
 }
 
 export function navigateToView(view: string) {

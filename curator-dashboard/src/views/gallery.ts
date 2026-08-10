@@ -1,20 +1,26 @@
 import { typedCall } from "../ipc";
 import { SafeHtml, html } from "../components";
-import { galleryPage, favoritesPage, isSelectMode, selectedImageIds } from "../state";
+import { galleryPage, favoritesPage, isSelectMode, selectedImageIds, galleryInfiniteScroll } from "../state";
 import { getImagesPerPage, setGalleryTotalCount, setFavoritesTotalCount, galleryTotalCount, favoritesTotalCount } from "../state";
 import { renderImages } from "../cards";
 import { imageDetailsFromProto } from "../proto-adapters";
 import { ListImagesRequestSchema, ListResultSchema } from "../gen/gallery_pb";
 
-export function refreshGallery() { return refreshPaginatedImages(galleryPage, "gallery", "gallery", {}); }
+export let isGalleryLoading = false;
+
+export function refreshGallery() { return refreshPaginatedImages(galleryPage, "gallery", "gallery", {}, false); }
+export function loadMoreGallery(page: number) { return refreshPaginatedImages(page, "gallery", "gallery", {}, true); }
 export function refreshFavorites() { return refreshPaginatedImages(favoritesPage, "favorites", "favorites", { only_favorites: true }); }
 
 export async function refreshPaginatedImages(
   page: number,
   idPrefix: string,
   _unused: string,
-  listOpts: { only_favorites?: boolean }
+  listOpts: { only_favorites?: boolean },
+  append = false
 ) {
+  if (isGalleryLoading) return;
+  isGalleryLoading = true;
   const perPage = getImagesPerPage();
   try {
     const resp = await typedCall(
@@ -25,7 +31,7 @@ export async function refreshPaginatedImages(
     );
     const { images, totalCount } = resp;
     const gridId = idPrefix + "-grid";
-    renderImages(images.map(imageDetailsFromProto), gridId);
+    renderImages(images.map(imageDetailsFromProto), gridId, append);
 
     if (listOpts.only_favorites) {
       setFavoritesTotalCount(Number(totalCount));
@@ -37,7 +43,19 @@ export async function refreshPaginatedImages(
     const totalPages = Math.max(1, Math.ceil(totalCountNum / perPage));
 
     const indicator = document.getElementById(`${idPrefix}-page-indicator`);
-    if (indicator) indicator.textContent = `Page ${page + 1} of ${totalPages} (${totalCountNum} images)`;
+    if (indicator) {
+      if (idPrefix === "gallery" && galleryInfiniteScroll) {
+        const loadedCount = Math.min(totalCountNum, (page + 1) * perPage);
+        indicator.textContent = `Showing ${loadedCount} of ${totalCountNum} images`;
+      } else {
+        indicator.textContent = `Page ${page + 1} of ${totalPages} (${totalCountNum} images)`;
+      }
+    }
+
+    const controls = document.getElementById(`${idPrefix}-pagination-controls`);
+    if (controls) {
+      controls.style.display = (idPrefix === "gallery" && galleryInfiniteScroll) ? "none" : "flex";
+    }
 
     const prevBtn = document.getElementById(`${idPrefix}-prev-btn`) as HTMLButtonElement;
     if (prevBtn) prevBtn.disabled = page === 0;
@@ -52,6 +70,8 @@ export async function refreshPaginatedImages(
     }
   } catch (e) {
     console.error(`Failed to refresh ${idPrefix}: `, e);
+  } finally {
+    isGalleryLoading = false;
   }
 }
 
@@ -78,6 +98,9 @@ export function renderGalleryHtml(): SafeHtml {
           <button type="button" class="win-button" id="gallery-lucky-btn">
             <i class="bi bi-shuffle"></i> I'm Feeling Lucky
           </button>
+          <button type="button" class="win-button ${galleryInfiniteScroll ? 'primary' : ''}" id="gallery-toggle-infinite-scroll-btn">
+            <i class="bi bi-body-text"></i> Infinite Scroll
+          </button>
         </div>
         <div style="display: flex; align-items: center; gap: 10px;">
           <label style="font-size: 11px; color: #555555; display: flex; align-items: center; gap: 4px;">
@@ -90,10 +113,12 @@ export function renderGalleryHtml(): SafeHtml {
             </select>
           </label>
           <span id="gallery-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
-          <input type="number" id="gallery-page-jump" min="1" style="width: 50px; font-size: 11px; padding: 2px 4px;" placeholder="#" />
-          <button class="win-button" id="gallery-jump-btn" style="font-size: 11px; padding: 2px 6px;">Go</button>
-          <button class="win-button" id="gallery-prev-btn" disabled><i class="bi bi-caret-left-fill"></i> Prev</button>
-          <button class="win-button" id="gallery-next-btn">Next <i class="bi bi-caret-right-fill"></i></button>
+          <span id="gallery-pagination-controls" style="display: ${galleryInfiniteScroll ? 'none' : 'flex'}; align-items: center; gap: 10px;">
+            <input type="number" id="gallery-page-jump" min="1" style="width: 50px; font-size: 11px; padding: 2px 4px;" placeholder="#" />
+            <button class="win-button" id="gallery-jump-btn" style="font-size: 11px; padding: 2px 6px;">Go</button>
+            <button class="win-button" id="gallery-prev-btn" disabled><i class="bi bi-caret-left-fill"></i> Prev</button>
+            <button class="win-button" id="gallery-next-btn">Next <i class="bi bi-caret-right-fill"></i></button>
+          </span>
         </div>
       </div>
       <div class="image-grid" id="gallery-grid">
