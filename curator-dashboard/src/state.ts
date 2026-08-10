@@ -66,6 +66,17 @@ export function setGalleryZenMode(v: boolean) {
 }
 export function getGalleryZenMode(): boolean { return galleryZenMode; }
 
+// --- Full Images Load Toggle ---
+const FULL_IMAGES_KEY = "curator-gallery-full-images";
+export let galleryFullImages = localStorage.getItem(FULL_IMAGES_KEY) === "true";
+export function setGalleryFullImages(v: boolean) {
+  galleryFullImages = v;
+  localStorage.setItem(FULL_IMAGES_KEY, v.toString());
+}
+export function getGalleryFullImages(): boolean { return galleryFullImages; }
+export const setZenModeFullImages = setGalleryFullImages;
+export const getZenModeFullImages = getGalleryFullImages;
+
 // --- Selection State ---
 export let isSelectMode = false;
 export const selectedImageIds = new Set<number>();

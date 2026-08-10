@@ -2,7 +2,7 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { renderTagPill, maskPath, SafeHtml, html } from "./components";
 import { CardImageData, ImageDetails, SearchMatch, TagSummary, ParsedMetadata, CharacterDetection, CharacterIdentity } from "./types";
 import { imageBytesToPngBlob } from "./utils";
-import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId, formatCopiedTags } from "./state";
+import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId, formatCopiedTags, getGalleryFullImages } from "./state";
 import { openImageViewer } from "./image-viewer";
 import { typedCall } from "./ipc";
 import { refreshCharacters } from "./views/characters";
@@ -121,6 +121,7 @@ function invokeThumbnail(job: ThumbJob) {
     job.img.src = cachedUrl;
     job.img.classList.add("loaded");
     if (job.preview) job.preview.classList.remove("thumb-loading");
+    maybeSwapFullImage();
     if (thumbTotal > 0) {
       thumbLoaded++;
       updateThumbProgress();
@@ -139,6 +140,7 @@ function invokeThumbnail(job: ThumbJob) {
     if (job.img.isConnected) {
       job.img.src = url;
       job.img.classList.add("loaded");
+      maybeSwapFullImage();
     }
   }).catch(() => {}).finally(() => {
     if (job.preview) job.preview.classList.remove("thumb-loading");
@@ -149,6 +151,147 @@ function invokeThumbnail(job: ThumbJob) {
     activeCount--;
     processQueue();
   });
+}
+
+const fullImageCache = new LruCache<string>(1000);
+let scrollDebounceTimer: number | null = null;
+let isScrolling = false;
+
+// Attach passive scroll listener to .main-panel to detect scrolling activity
+if (typeof window !== "undefined") {
+  const handleScroll = () => {
+    isScrolling = true;
+    revertOffscreenFullImagesToThumbnails();
+    if (scrollDebounceTimer) clearTimeout(scrollDebounceTimer);
+    scrollDebounceTimer = window.setTimeout(() => {
+      isScrolling = false;
+      if (window.requestIdleCallback) {
+        window.requestIdleCallback(() => processVisibleFullImages());
+      } else {
+        setTimeout(processVisibleFullImages, 50);
+      }
+    }, 200);
+  };
+
+  document.addEventListener("scroll", handleScroll, { capture: true, passive: true });
+}
+
+let fullTotal = 0;
+let fullLoaded = 0;
+let fullHideTimer: number | null = null;
+
+function updateFullImageProgress() {
+  const cell = document.getElementById("full-progress-cell");
+  const text = document.getElementById("full-progress-text");
+  const fill = document.getElementById("full-progress-fill");
+  if (!cell || !text || !fill) return;
+
+  if (!getGalleryFullImages() || fullTotal === 0) {
+    cell.style.display = "none";
+    return;
+  }
+
+  cell.style.display = "flex";
+  text.textContent = `${fullLoaded}/${fullTotal}`;
+  fill.style.width = `${Math.round((fullLoaded / fullTotal) * 100)}%`;
+
+  if (fullLoaded >= fullTotal) {
+    if (fullHideTimer) clearTimeout(fullHideTimer);
+    fullHideTimer = window.setTimeout(() => { cell.style.display = "none"; }, 1000);
+  }
+}
+
+export function processVisibleFullImages() {
+  if (!getGalleryFullImages() || isScrolling) return;
+
+  const visibleImgs = Array.from(document.querySelectorAll<HTMLImageElement>(".image-grid img[data-thumb-id]"));
+  const vh = window.innerHeight;
+
+  // Filter to visible candidates
+  const candidates = visibleImgs.filter((img) => {
+    const imageId = parseInt(img.dataset.thumbId || "0", 10);
+    const fp = img.dataset.filepath || "";
+    const isVideo = img.dataset.isVideo === "1";
+    if (imageId === 0 || !fp || isVideo) return false;
+    if (img.dataset.fullLoaded === "1" || img.dataset.fullLoading === "1") return false;
+
+    const rect = img.getBoundingClientRect();
+    return rect.bottom >= 0 && rect.top <= vh;
+  });
+
+  if (candidates.length === 0) {
+    updateFullImageProgress();
+    return;
+  }
+
+  fullTotal = candidates.length;
+  fullLoaded = 0;
+  if (fullHideTimer) { clearTimeout(fullHideTimer); fullHideTimer = null; }
+  updateFullImageProgress();
+
+  // Load sequentially one image at a time to prevent GPU frame drops
+  let idx = 0;
+  function loadNext() {
+    if (isScrolling || idx >= candidates.length) return;
+    const img = candidates[idx++];
+    const imageId = parseInt(img.dataset.thumbId || "0", 10);
+    const fp = img.dataset.filepath || "";
+
+    img.dataset.fullLoading = "1";
+    const fullUrl = fullImageCache.get(imageId) || convertFileSrc(fp);
+    fullImageCache.set(imageId, fullUrl);
+
+    const preloader = new Image();
+    preloader.onload = () => {
+      if (img.isConnected && !isScrolling) {
+        img.src = fullUrl;
+        img.dataset.fullLoaded = "1";
+      }
+      img.dataset.fullLoading = "0";
+      fullLoaded++;
+      updateFullImageProgress();
+      if (!isScrolling) setTimeout(loadNext, 30);
+    };
+    preloader.onerror = () => {
+      img.dataset.fullLoading = "0";
+      fullLoaded++;
+      updateFullImageProgress();
+      if (!isScrolling) setTimeout(loadNext, 30);
+    };
+    preloader.src = fullUrl;
+  }
+
+  loadNext();
+}
+
+// Revert off-screen full images back to light thumbnails when user starts scrolling
+function revertOffscreenFullImagesToThumbnails() {
+  const allImgs = document.querySelectorAll<HTMLImageElement>(".image-grid img[data-full-loaded='1']");
+  const vh = window.innerHeight;
+
+  allImgs.forEach((img) => {
+    const rect = img.getBoundingClientRect();
+    if (rect.bottom < -200 || rect.top > vh + 200) {
+      const imageId = parseInt(img.dataset.thumbId || "0", 10);
+      const thumbUrl = thumbCache.get(imageId);
+      if (thumbUrl) {
+        img.src = thumbUrl;
+        img.dataset.fullLoaded = "0";
+      }
+    }
+  });
+}
+
+function maybeSwapFullImage() {
+  if (!getGalleryFullImages() || isScrolling) return;
+
+  // If scroll is stationary right now, schedule a check
+  if (scrollDebounceTimer === null) {
+    scrollDebounceTimer = window.setTimeout(() => {
+      scrollDebounceTimer = null;
+      processVisibleFullImages();
+    }, 150);
+  }
 }
 
 function updateThumbProgress() {
@@ -190,6 +333,7 @@ const lazyObserver = new IntersectionObserver((entries) => {
           img.classList.add("loaded");
           img.dataset.pending = "0";
           if (preview) preview.classList.remove("thumb-loading");
+          maybeSwapFullImage();
           if (thumbTotal > 0) {
             thumbLoaded++;
             updateThumbProgress();
@@ -218,11 +362,12 @@ const lazyObserver = new IntersectionObserver((entries) => {
         img.removeAttribute("src");
         img.classList.remove("loaded");
         img.dataset.pending = "1";
+        img.dataset.fullLoaded = "0";
         if (preview) preview.classList.add("thumb-loading");
       }
     }
   }
-}, { rootMargin: "1000px" });
+}, { rootMargin: "600px" });
 
 export function reobserveUnloadedThumbnails(container: HTMLElement) {
   const imgs = container.querySelectorAll<HTMLImageElement>("img[data-thumb-id]");
@@ -1432,7 +1577,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement, append = 
         <i class="bi ${img.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
       </div>
       <div class="${previewClass}" ${img.width && img.height ? `style="aspect-ratio: ${img.width} / ${img.height};"` : ''}>
-        <img data-thumb-id="${img.id}" data-filepath="${img.filepath}" data-pending="${isPending ? '1' : '0'}" ${srcAttr} alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" class="${imgClass}" />
+        <img data-thumb-id="${img.id}" data-filepath="${img.filepath}" data-is-video="${img.video ? '1' : '0'}" data-pending="${isPending ? '1' : '0'}" ${srcAttr} alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" class="${imgClass}" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
         ${missingBadge}
         ${videoBadge}

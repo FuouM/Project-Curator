@@ -7,7 +7,7 @@ import { DevicePreference, EmbeddingModel, TaggerModel } from "../gen/common_pb"
 import { FFmpegStatusResultSchema, SetFFmpegPathRequestSchema, DownloadProgressResultSchema, DownloadStatusUpdateSchema } from "../gen/models_pb";
 import { StorageStatsResultSchema } from "../gen/folders_pb";
 import { setStatusMessage } from "../utils";
-import { getImageClickAction, setImageClickAction, getTagCopyReplaceUnderscores, setTagCopyReplaceUnderscores } from "../state";
+import { getImageClickAction, setImageClickAction, getTagCopyReplaceUnderscores, setTagCopyReplaceUnderscores, getZenModeFullImages, setZenModeFullImages } from "../state";
 import { applySettingsToUI, refreshTaggerStatus } from "./dashboard";
 import { updateBenchmarkModelHeader } from "./benchmark";
 import { updateReindexProgress, startReindexPolling } from "./settings-reindex";
@@ -94,6 +94,18 @@ export function setupSettings() {
     tagCopyReplaceUnderscoresCheckbox.checked = getTagCopyReplaceUnderscores();
     tagCopyReplaceUnderscoresCheckbox.addEventListener("change", () => {
       setTagCopyReplaceUnderscores(tagCopyReplaceUnderscoresCheckbox.checked);
+    });
+  }
+
+  // Zen Mode Full Images setting (localStorage)
+  const zenModeFullImagesCheckbox = document.getElementById("settings-zen-mode-full-images") as HTMLInputElement;
+  if (zenModeFullImagesCheckbox) {
+    zenModeFullImagesCheckbox.checked = getZenModeFullImages();
+    zenModeFullImagesCheckbox.addEventListener("change", () => {
+      const active = zenModeFullImagesCheckbox.checked;
+      setZenModeFullImages(active);
+      const toolbarBtn = document.getElementById("gallery-toggle-full-images-btn");
+      if (toolbarBtn) toolbarBtn.classList.toggle("primary", active);
     });
   }
 
@@ -559,6 +571,12 @@ export function renderSettingsHtml(): SafeHtml {
         <label style="font-weight: 600; min-width: 120px;">Copied Tags:</label>
         <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;">
           <input type="checkbox" id="settings-tag-copy-replace-underscores"> Replace underscores with spaces in copied tags
+        </label>
+      </div>
+      <div class="form-group" style="flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 8px;">
+        <label style="font-weight: 600; min-width: 120px;">Zen Mode Images:</label>
+        <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;" title="Disabling full resolution image load in Zen mode guarantees maximum smooth, 60fps scrolling performance">
+          <input type="checkbox" id="settings-zen-mode-full-images"> Load full resolution images in Zen Mode (uncheck for maximum 60fps scroll smoothness)
         </label>
       </div>
     </div>

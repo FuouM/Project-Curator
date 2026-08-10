@@ -175,10 +175,18 @@
         <div class="status-dot" id="service-dot"></div>
         <span id="service-status-text">Connecting...</span>
       </div>
-      <div class="status-cell" id="thumb-progress-cell" style="display: none; flex: 1; gap: 8px; border-right: none;">
+      <div class="status-cell" id="thumb-progress-cell" style="display: none; flex: 1; gap: 6px; border-right: none; align-items: center;">
+        <span style="font-size: 10px; font-weight: 600; color: var(--sys-text-subtle); white-space: nowrap;">Thumb:</span>
         <span id="thumb-progress-text" style="font-size: 10px; white-space: nowrap;">0/0</span>
-        <div style="flex: 1; height: 4px; background-color: #e0e0e0; border-radius: 2px; overflow: hidden;">
+        <div style="flex: 1; height: 4px; background-color: var(--sys-border-light, #e0e0e0); border-radius: 2px; overflow: hidden;">
           <div id="thumb-progress-fill" style="width: 0%; height: 100%; background-color: #0078d4; transition: width 0.15s ease;"></div>
+        </div>
+      </div>
+      <div class="status-cell" id="full-progress-cell" style="display: none; flex: 1; gap: 6px; border-right: none; align-items: center;">
+        <span style="font-size: 10px; font-weight: 600; color: var(--sys-text-subtle); white-space: nowrap;">Full Img:</span>
+        <span id="full-progress-text" style="font-size: 10px; white-space: nowrap;">0/0</span>
+        <div style="flex: 1; height: 4px; background-color: var(--sys-border-light, #e0e0e0); border-radius: 2px; overflow: hidden;">
+          <div id="full-progress-fill" style="width: 0%; height: 100%; background-color: #107c41; transition: width 0.15s ease;"></div>
         </div>
       </div>
       <div class="status-cell" id="status-ram-cell" style="display: flex; align-items: center; gap: 4px; margin-left: auto; margin-right: 16px;">

@@ -151,6 +151,11 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  image-rendering: auto;
+  image-rendering: smooth;
+  -ms-interpolation-mode: bicubic;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 .image-info {
   padding: 6px 2px;
@@ -364,6 +369,9 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: high-quality;
+  image-rendering: smooth;
 }
 .image-viewer-btn {
   background-color: #333333;
@@ -429,6 +437,11 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   width: 100% !important;
   height: 100% !important;
   object-fit: cover !important;
+  image-rendering: auto !important;
+  image-rendering: smooth !important;
+  -ms-interpolation-mode: bicubic !important;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 .image-grid.zen-mode-active .image-card .image-info {
   display: none !important;

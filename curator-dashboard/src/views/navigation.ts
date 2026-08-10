@@ -1,4 +1,4 @@
-import { favoritesPage, setGalleryPage, setFavoritesPage, getImagesPerPage, setImagesPerPage, setGalleryInfiniteScroll, setGalleryZenMode, getGalleryInfiniteScroll, getGalleryZenMode, getGalleryPage, getGalleryTotalCount } from "../state";
+import { favoritesPage, setGalleryPage, setFavoritesPage, getImagesPerPage, setImagesPerPage, setGalleryInfiniteScroll, setGalleryZenMode, getGalleryInfiniteScroll, getGalleryZenMode, getGalleryPage, getGalleryTotalCount, getGalleryFullImages, setGalleryFullImages } from "../state";
 import { refreshGallery, refreshFavorites, setupPaginationButtons, setupPageJump, loadMoreGallery, isGalleryLoading } from "./gallery";
 import { refreshBenchmarkMaxImages } from "./benchmark";
 import { refreshDashboard } from "./dashboard";
@@ -9,7 +9,7 @@ import { refreshComponentStylesheet } from "./components-view";
 import { refreshBatchPreview } from "./filename-parser";
 import { refreshCharacters, setupCharactersView } from "./characters";
 import { refreshModelStatus } from "./models";
-import { reobserveUnloadedThumbnails } from "../cards";
+import { reobserveUnloadedThumbnails, processVisibleFullImages } from "../cards";
 
 const subtitles: Record<string, { title: string; sub: string }> = {
   dashboard: { title: "Dashboard", sub: "Overview of your local vector store and image library." },
@@ -265,6 +265,36 @@ export function setupNavigation() {
     });
   }
 
+  // Gallery Full Images toggle setup
+  const fullImagesToggleBtn = document.getElementById("gallery-toggle-full-images-btn");
+  if (fullImagesToggleBtn) {
+    fullImagesToggleBtn.addEventListener("click", () => {
+      const active = !getGalleryFullImages();
+      setGalleryFullImages(active);
+      fullImagesToggleBtn.classList.toggle("primary", active);
+
+      const settingsCheckbox = document.getElementById("settings-zen-mode-full-images") as HTMLInputElement | null;
+      if (settingsCheckbox) settingsCheckbox.checked = active;
+
+      if (active) {
+        processVisibleFullImages();
+      } else {
+        // Revert all currently displayed cards back to fast WebP thumbnails
+        const imgs = document.querySelectorAll<HTMLImageElement>(".image-grid img[data-thumb-id]");
+        imgs.forEach((img) => {
+          img.dataset.fullLoaded = "0";
+          img.dataset.fullLoading = "0";
+          const imageId = parseInt(img.dataset.thumbId || "0", 10);
+          const cachedUrl = (window as any).thumbCache?.get(imageId);
+          if (cachedUrl) {
+            img.src = cachedUrl;
+          }
+        });
+        refreshGallery();
+      }
+    });
+  }
+
   // Scroll listener on main-panel for infinite scrolling
   const mainPanel = document.querySelector(".main-panel") as HTMLElement;
   if (mainPanel) {
@@ -274,7 +304,8 @@ export function setupNavigation() {
       const activeView = document.querySelector(".nav-item.active")?.getAttribute("data-view");
       if (activeView !== "gallery") return;
 
-      const threshold = 150; // pixels from the bottom
+      // In Zen mode, prefetch early with an 800px threshold (1 full page ahead)
+      const threshold = getGalleryZenMode() ? 800 : 150;
       const position = mainPanel.scrollHeight - mainPanel.scrollTop - mainPanel.clientHeight;
 
       if (position < threshold && !isGalleryLoading) {
@@ -313,7 +344,8 @@ export function checkInfiniteScrollFill() {
   const totalPages = Math.ceil(getGalleryTotalCount() / perPage);
   const nextPage = getGalleryPage() + 1;
 
-  if (mainPanel.scrollHeight - mainPanel.clientHeight < 50 && nextPage < totalPages && !isGalleryLoading) {
+  const threshold = getGalleryZenMode() ? 800 : 50;
+  if (mainPanel.scrollHeight - mainPanel.scrollTop - mainPanel.clientHeight < threshold && nextPage < totalPages && !isGalleryLoading) {
     setGalleryPage(nextPage);
     loadMoreGallery(nextPage).then(() => {
       setTimeout(checkInfiniteScrollFill, 300);

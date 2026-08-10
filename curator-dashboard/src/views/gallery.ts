@@ -1,6 +1,6 @@
 import { typedCall } from "../ipc";
 import { SafeHtml, html } from "../components";
-import { isSelectMode, selectedImageIds, galleryInfiniteScroll, galleryZenMode, getGalleryInfiniteScroll, getGalleryZenMode, getGalleryPage, getFavoritesPage, getGalleryTotalCount, getFavoritesTotalCount, setGalleryPage } from "../state";
+import { isSelectMode, selectedImageIds, galleryInfiniteScroll, galleryZenMode, galleryFullImages, getGalleryInfiniteScroll, getGalleryZenMode, getGalleryPage, getFavoritesPage, getGalleryTotalCount, getFavoritesTotalCount, setGalleryPage } from "../state";
 import { getImagesPerPage, setGalleryTotalCount, setFavoritesTotalCount } from "../state";
 import { renderImages } from "../cards";
 import { imageDetailsFromProto } from "../proto-adapters";
@@ -130,6 +130,9 @@ export function renderGalleryHtml(): SafeHtml {
           </button>
           <button type="button" class="win-button ${galleryZenMode ? 'primary' : ''}" id="gallery-toggle-zen-mode-btn">
             <i class="bi bi-fullscreen"></i> Zen Mode
+          </button>
+          <button type="button" class="win-button ${galleryFullImages ? 'primary' : ''}" id="gallery-toggle-full-images-btn" title="Load full resolution images (non-video) smoothly after thumbnail">
+            <i class="bi bi-aspect-ratio"></i> Full Images
           </button>
         </div>
         <div id="gallery-header-right" style="display: ${galleryZenMode ? 'none' : 'flex'}; align-items: center; gap: 10px;">
