@@ -106,9 +106,7 @@ function startImportProgressPolling(targetFolderId: number, expectedBatchCount: 
           }
         }
       }
-    } catch (e) {
-      console.error("Error polling import progress", e);
-    }
+    } catch (_) {}
   }, 400);
 }
 

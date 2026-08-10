@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export function logJS(msg: string) {
-  console.log(msg);
   invoke("log_frontend", { message: msg }).catch(() => {});
 }
 

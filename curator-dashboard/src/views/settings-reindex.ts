@@ -70,9 +70,7 @@ export function startReindexPolling() {
           reindexPollInterval = null;
         }
       }
-    } catch (e) {
-      console.error("Error polling reindex status:", e);
-    }
+    } catch (_) {}
   };
   check();
   reindexPollInterval = setInterval(check, 1000) as unknown as number;

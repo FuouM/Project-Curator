@@ -99,9 +99,7 @@ export async function refreshTaggerStatus() {
   try {
     const resp = await typedCall("TaggingService.GetTaggerStatus", null, null, TaggerStatusResultSchema);
     applyTaggerUpdate(resp);
-  } catch (e: any) {
-    console.log("refreshTaggerStatus exception: " + (e.message || e));
-  }
+  } catch (_) {}
 }
 
 export function startStatusPolling() {
@@ -109,8 +107,7 @@ export function startStatusPolling() {
     try {
       const statusResp = await typedCall("SystemService.GetStatus", null, null, StatusResultSchema);
       applyStatusUpdate(statusResp);
-    } catch (e: any) {
-      console.log("startStatusPolling exception: " + (e.message || e));
+    } catch (_) {
       const dot = document.getElementById("service-dot");
       const text = document.getElementById("service-status-text");
       if (dot && text) { dot.classList.add("offline"); text.textContent = "Service Offline"; }

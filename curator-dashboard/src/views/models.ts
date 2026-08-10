@@ -268,9 +268,7 @@ export function startModelDownloadPolling() {
         stopModelDownloadPolling();
         refreshModelStatus();
       }
-    } catch (e) {
-      console.error("Error polling model downloads:", e);
-    }
+    } catch (_) {}
   };
 
   check();

@@ -217,7 +217,6 @@ export async function initPlugins() {
         .replace(/[\\/][^\\/]+$/, "")  // strip plugin directory name
         .replace(/[\\/][^\\/]+$/, ""); // strip "plugins"
       executePluginBundle(fileResp.content, p.name, pluginDir, workspaceRoot);
-      console.log(`Plugin "${p.name}" bundle loaded and executed.`);
     } catch (e) {
       console.error(`Plugin "${p.name}": bundle load failed, skipping (core UI untouched):`, e);
     }

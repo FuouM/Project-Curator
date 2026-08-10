@@ -46,7 +46,6 @@ export function openBBoxEditor(
   boxX1 = x1;
   boxY1 = y1;
   onSaveCallback = onSave || null;
-  console.log("openBBoxEditor: called with coords =", x0, y0, x1, y1, "filePath =", filePath);
 
   const modal = document.getElementById("bbox-editor-modal");
   const img = document.getElementById("bbox-editor-img") as HTMLImageElement;
@@ -111,17 +110,10 @@ function updateBBoxUI() {
   const scaleX = dispWidth / imgNaturalWidth;
   const scaleY = dispHeight / imgNaturalHeight;
 
-  console.log("updateBBoxUI: clientWidth =", dispWidth, "clientHeight =", dispHeight);
-  console.log("updateBBoxUI: natural =", imgNaturalWidth, imgNaturalHeight);
-  console.log("updateBBoxUI: scale =", scaleX, scaleY);
-  console.log("updateBBoxUI: coords =", boxX0, boxY0, boxX1, boxY1);
-
   const left = Math.min(boxX0, boxX1) * scaleX;
   const top = Math.min(boxY0, boxY1) * scaleY;
   const width = Math.abs(boxX1 - boxX0) * scaleX;
   const height = Math.abs(boxY1 - boxY0) * scaleY;
-
-  console.log("updateBBoxUI: left =", left, "top =", top, "width =", width, "height =", height);
 
   box.style.left = `${left}px`;
   box.style.top = `${top}px`;
