@@ -9,6 +9,7 @@ import { refreshComponentStylesheet } from "./components-view";
 import { refreshBatchPreview } from "./filename-parser";
 import { refreshCharacters, setupCharactersView } from "./characters";
 import { refreshModelStatus } from "./models";
+import { reobserveUnloadedThumbnails } from "../cards";
 
 const subtitles: Record<string, { title: string; sub: string }> = {
   dashboard: { title: "Dashboard", sub: "Overview of your local vector store and image library." },
@@ -97,6 +98,7 @@ export function setupNavigation() {
       sec.classList.remove("active");
       if (sec.id === `view-${view}`) {
         sec.classList.add("active");
+        reobserveUnloadedThumbnails(sec as HTMLElement);
       }
     });
 

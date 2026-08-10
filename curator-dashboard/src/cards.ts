@@ -106,17 +106,30 @@ function processQueue() {
 }
 
 function invokeThumbnail(job: ThumbJob) {
-  if (job.gen !== generation) { activeCount--; processQueue(); return; }
   if (!job.img.isConnected) { activeCount--; thumbLoaded++; updateThumbProgress(); processQueue(); return; }
 
+  const cachedUrl = thumbCache.get(job.imageId);
+  if (cachedUrl) {
+    job.img.src = cachedUrl;
+    job.img.classList.add("loaded");
+    if (job.preview) job.preview.classList.remove("thumb-loading");
+    thumbLoaded++;
+    updateThumbProgress();
+    activeCount--;
+    processQueue();
+    return;
+  }
+
   invoke("get_thumbnail", { imageId: job.imageId }).then((data: any) => {
-    if (job.gen !== generation || !job.img.isConnected || !data) return;
+    if (!data) return;
     const bytes = new Uint8Array(data);
     const blob = new Blob([bytes], { type: "image/webp" });
     const url = URL.createObjectURL(blob);
     cacheThumbnail(job.imageId, url);
-    job.img.src = url;
-    job.img.classList.add("loaded");
+    if (job.img.isConnected) {
+      job.img.src = url;
+      job.img.classList.add("loaded");
+    }
   }).catch(() => {}).finally(() => {
     if (job.preview) job.preview.classList.remove("thumb-loading");
     thumbLoaded++;
@@ -154,21 +167,31 @@ const lazyObserver = new IntersectionObserver((entries) => {
     if (entry.isIntersecting) {
       const img = entry.target as HTMLImageElement;
       const imageId = parseInt(img.dataset.thumbId || "0", 10);
-      if (imageId > 0 && img.dataset.pending === "1") {
-        img.dataset.pending = "0";
+      if (imageId > 0) {
         const preview = img.closest(".image-preview") as HTMLElement;
         const fp = img.dataset.filepath || "";
 
-        if (/\.gif$/i.test(fp)) {
-          img.src = convertFileSrc(fp);
+        const cachedUrl = thumbCache.get(imageId);
+        if (cachedUrl) {
+          img.src = cachedUrl;
           img.classList.add("loaded");
+          img.dataset.pending = "0";
           if (preview) preview.classList.remove("thumb-loading");
           thumbLoaded++;
           updateThumbProgress();
-        } else {
-          if (preview) preview.classList.add("thumb-loading");
-          queue.push({ imageId, img, preview, gen: generation });
-          processQueue();
+        } else if (img.dataset.pending === "1") {
+          img.dataset.pending = "0";
+          if (/\.gif$/i.test(fp)) {
+            img.src = convertFileSrc(fp);
+            img.classList.add("loaded");
+            if (preview) preview.classList.remove("thumb-loading");
+            thumbLoaded++;
+            updateThumbProgress();
+          } else {
+            if (preview) preview.classList.add("thumb-loading");
+            queue.push({ imageId, img, preview, gen: generation });
+            processQueue();
+          }
         }
       }
       lazyObserver.unobserve(img);
@@ -176,6 +199,32 @@ const lazyObserver = new IntersectionObserver((entries) => {
     }
   }
 }, { rootMargin: "300px" });
+
+export function reobserveUnloadedThumbnails(container: HTMLElement) {
+  const imgs = container.querySelectorAll<HTMLImageElement>("img[data-thumb-id]");
+  imgs.forEach(img => {
+    const imageId = parseInt(img.dataset.thumbId || "0", 10);
+    if (imageId <= 0) return;
+
+    const cachedUrl = thumbCache.get(imageId);
+    if (cachedUrl) {
+      if (img.src !== cachedUrl) {
+        img.src = cachedUrl;
+        img.classList.add("loaded");
+        img.dataset.pending = "0";
+        const preview = img.closest(".image-preview") as HTMLElement;
+        if (preview) preview.classList.remove("thumb-loading");
+      }
+      return;
+    }
+
+    if (!img.classList.contains("loaded")) {
+      img.dataset.pending = "1";
+      observedThumbs.add(img);
+      lazyObserver.observe(img);
+    }
+  });
+}
 
 function clearObservedThumbs() {
   if (observedThumbs.size === 0) return;
@@ -1349,9 +1398,12 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement) {
 
   grid.appendChild(fragment);
 
-  // Clear stale queue, bump generation, reset progress
-  generation++;
-  queue.length = 0;
+  // Prune disconnected jobs from queue to free unmounted DOM references
+  for (let i = queue.length - 1; i >= 0; i--) {
+    if (!queue[i].img.isConnected) {
+      queue.splice(i, 1);
+    }
+  }
   if (thumbHideTimer) { clearTimeout(thumbHideTimer); thumbHideTimer = null; }
   thumbTotal = grid.querySelectorAll<HTMLElement>("img[data-thumb-id]").length;
   thumbLoaded = grid.querySelectorAll<HTMLElement>("img[data-thumb-id][data-pending='0']").length;
