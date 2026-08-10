@@ -201,9 +201,33 @@ function init() {
   }).catch(() => {});
 
   startStatusPolling();
+  initFPSCounter();
 
   document.getElementById("dashboard-lucky-btn")?.addEventListener("click", handleFeelingLucky);
   document.getElementById("gallery-lucky-btn")?.addEventListener("click", handleFeelingLucky);
+}
+
+function initFPSCounter() {
+  const fpsEl = document.getElementById("status-fps-text");
+  if (!fpsEl) return;
+
+  const targetEl = fpsEl;
+  let lastTime = performance.now();
+  let frameCount = 0;
+
+  function loop(now: number) {
+    frameCount++;
+    const delta = now - lastTime;
+    if (delta >= 1000) {
+      const fps = Math.round((frameCount * 1000) / delta);
+      targetEl.textContent = `${fps} FPS`;
+      frameCount = 0;
+      lastTime = now;
+    }
+    requestAnimationFrame(loop);
+  }
+
+  requestAnimationFrame(loop);
 }
 
 async function handleFeelingLucky() {
