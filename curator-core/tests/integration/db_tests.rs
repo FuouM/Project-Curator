@@ -134,4 +134,3 @@ fn test_ocr_image_transcription_extraction() {
     let joined_texts = results.iter().map(|d| d.text.to_uppercase()).collect::<Vec<_>>().join(" ");
     assert!(joined_texts.contains("FREEDOM") || joined_texts.contains("DILEMMA") || joined_texts.contains("BOCCHI") || joined_texts.contains("PRETTY"), "Expected OCR results to contain key transcription keywords");
 }
-

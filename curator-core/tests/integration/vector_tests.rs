@@ -415,4 +415,3 @@ async fn test_single_vs_batch_embedding_equivalence() {
         );
     }
 }
-

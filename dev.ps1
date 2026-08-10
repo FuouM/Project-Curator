@@ -1,9 +1,6 @@
 # Launch Project Curator in dev mode
 . "$PSScriptRoot\env.ps1"
 
-
-
-
 # Stop any running service process so the exe isn't locked
 $procs = Get-Process curator-service -ErrorAction SilentlyContinue
 if ($procs) {
@@ -12,8 +9,20 @@ if ($procs) {
     Start-Sleep -Seconds 1
 }
 
+# 1. Regenerate TypeScript protobuf stubs to stay in sync with proto definitions
+Write-Host "Generating Protobuf stubs for dashboard..." -ForegroundColor Cyan
+Push-Location "$PSScriptRoot\curator-dashboard"
+try {
+    npm run gen
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Protobuf code generation failed!" -ForegroundColor Red
+        exit 1
+    }
+} finally {
+    Pop-Location
+}
 
-# Build the service first so it's always fresh
+# 2. Build curator-service daemon
 Write-Host "Building curator-service..." -ForegroundColor Cyan
 cargo build --manifest-path "$PSScriptRoot\curator-service\Cargo.toml"
 if ($LASTEXITCODE -ne 0) {
@@ -22,6 +31,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "Service build OK." -ForegroundColor Green
 
+# 3. Launch Tauri dev server
 $prevDir = $PWD.Path
 Set-Location "$PSScriptRoot\curator-dashboard"
 try {
@@ -38,6 +48,6 @@ try {
     Write-Host "Stopping sccache server..." -ForegroundColor Yellow
     sccache --stop-server 2>&1 | Out-Null
 
-
     Set-Location $prevDir
 }
+

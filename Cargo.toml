@@ -98,7 +98,7 @@ opt-level = 3
 opt-level = 3
 
 [profile.dev.package."curator-core"]
-opt-level = 3
+opt-level = 1
 
 [profile.dev.package."ort"]
 opt-level = 2

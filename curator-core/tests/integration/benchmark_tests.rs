@@ -43,4 +43,3 @@ async fn test_image_processing_benchmark_iterative_paths() {
     let err_msg = result.err().unwrap().to_string();
     assert!(err_msg.contains("Image file does not exist"), "Expected error message to mention nonexistent: {}", err_msg);
 }
-
