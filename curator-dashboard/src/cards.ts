@@ -920,10 +920,8 @@ function formatDuration(ms: number): string {
   return `${ms} ms`;
 }
 
-function openImageInfoModal(img: ImageDetails) {
-  const modal = document.getElementById("image-info-modal");
-  const body = document.getElementById("image-info-modal-body");
-  if (!modal || !body) return;
+export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
+  if (!body) return;
 
   const sha256Short = img.sha256 ? img.sha256.slice(0, 16) + "..." : "—";
   const sha256Full = img.sha256 || "";
@@ -1136,8 +1134,6 @@ function openImageInfoModal(img: ImageDetails) {
     console.error("Plugin metadata renderer failed:", e);
   }
 
-  modal.classList.add("active");
-
   // --- Copy SHA-256 ---
   const copySha = body.querySelector("#info-copy-sha256");
   if (copySha && sha256Full) {
@@ -1151,7 +1147,7 @@ function openImageInfoModal(img: ImageDetails) {
   }
 
   // --- Character Detections ---
-  loadDetectionsForImage(img.id);
+  loadDetectionsForImage(img.id, body);
 
   const detectBtn = body.querySelector("#detect-characters-btn") as HTMLButtonElement;
   if (detectBtn) {
@@ -1162,7 +1158,7 @@ function openImageInfoModal(img: ImageDetails) {
       if (loading) loading.style.display = "block";
       try {
         await typedCall("CharactersService.DetectCharacters", ImageIdRequestSchema, { imageId: BigInt(img.id) }, DetectionResultSchema);
-        await loadDetectionsForImage(img.id);
+        await loadDetectionsForImage(img.id, body);
         await refreshCharacters();
         import("./views/gallery").then(m => m.refreshGallery());
         import("./views/dashboard").then(m => m.refreshDashboard());
@@ -1181,7 +1177,7 @@ function openImageInfoModal(img: ImageDetails) {
     addDetBtn.addEventListener("click", () => {
       import("./bbox-editor").then(m => {
         m.openBBoxEditor(null, img.id, img.current_filepath, 0, 0, 0, 0, () => {
-          loadDetectionsForImage(img.id);
+          loadDetectionsForImage(img.id, body);
           refreshCharacters();
           import("./views/gallery").then(m => m.refreshGallery());
           import("./views/dashboard").then(m => m.refreshDashboard());
@@ -1193,9 +1189,18 @@ function openImageInfoModal(img: ImageDetails) {
   const refreshDetBtn = body.querySelector("#refresh-detections-btn") as HTMLButtonElement;
   if (refreshDetBtn) {
     refreshDetBtn.addEventListener("click", async () => {
-      await loadDetectionsForImage(img.id);
+      await loadDetectionsForImage(img.id, body);
     });
   }
+}
+
+function openImageInfoModal(img: ImageDetails) {
+  const modal = document.getElementById("image-info-modal");
+  const body = document.getElementById("image-info-modal-body");
+  if (!modal || !body) return;
+
+  renderImageInfo(img, body);
+  modal.classList.add("active");
 
   const closeBtn = modal.querySelector(".modal-close");
   const onClose = () => { modal.classList.remove("active"); closeBtn?.removeEventListener("click", onClose); };
@@ -1226,10 +1231,10 @@ function characterIdentityFromProto(p: PCharacterIdentity): CharacterIdentity {
   };
 }
 
-async function loadDetectionsForImage(imageId: number) {
-  const loading = document.getElementById("detections-loading");
-  const empty = document.getElementById("detections-empty");
-  const list = document.getElementById("detections-list");
+async function loadDetectionsForImage(imageId: number, scopeEl: HTMLElement | Document = document) {
+  const loading = scopeEl.querySelector("#detections-loading") as HTMLElement | null;
+  const empty = scopeEl.querySelector("#detections-empty") as HTMLElement | null;
+  const list = scopeEl.querySelector("#detections-list") as HTMLElement | null;
   if (!list) return;
 
   if (loading) loading.style.display = "block";
@@ -1253,7 +1258,7 @@ async function loadDetectionsForImage(imageId: number) {
     await preloadDetectionCrops(detections);
 
     for (const det of detections) {
-      const detEl = renderDetectionRow(det, identities, imageId);
+      const detEl = renderDetectionRow(det, identities, imageId, scopeEl);
       list.appendChild(detEl);
     }
   } catch (e) {
@@ -1284,7 +1289,7 @@ async function preloadDetectionCrops(detections: CharacterDetection[]) {
   }
 }
 
-function renderDetectionRow(det: CharacterDetection, identities: CharacterIdentity[], imageId: number): HTMLElement {
+function renderDetectionRow(det: CharacterDetection, identities: CharacterIdentity[], imageId: number, scopeEl: HTMLElement | Document = document): HTMLElement {
   const detEl = document.createElement("div");
   detEl.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid var(--sys-border-light,#d0d0d0);border-radius:2px;background:var(--sys-window-bg,#fff);font-size:11px;";
 
@@ -1342,7 +1347,7 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
     if (!name) {
       if (det.identity_id !== null) {
         await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: undefined }, EmptySchema);
-        await loadDetectionsForImage(imageId);
+        await loadDetectionsForImage(imageId, scopeEl);
         await refreshCharacters();
         import("./views/gallery").then(m => m.refreshGallery());
         import("./views/dashboard").then(m => m.refreshDashboard());
@@ -1364,7 +1369,7 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
         await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: newId }, EmptySchema);
       }
     }
-    await loadDetectionsForImage(imageId);
+    await loadDetectionsForImage(imageId, scopeEl);
     await refreshCharacters();
     import("./views/gallery").then(m => m.refreshGallery());
     import("./views/dashboard").then(m => m.refreshDashboard());
@@ -1425,7 +1430,7 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
     matchBtn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
     try {
       await typedCall("CharactersService.IdentifyDetection", IdentifyDetectionRequestSchema, { detectionId: BigInt(det.id) }, IdentifyDetectionResultSchema);
-      loadDetectionsForImage(imageId);
+      loadDetectionsForImage(imageId, scopeEl);
       refreshCharacters();
       import("./views/gallery").then(m => m.refreshGallery());
       import("./views/dashboard").then(m => m.refreshDashboard());
@@ -1444,7 +1449,7 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
         import("./bbox-editor").then(m => {
           m.openBBoxEditor(det.id, imageId, fp, det.x0, det.y0, det.x1, det.y1, async () => {
             invalidateCropCache(det.id);
-            await loadDetectionsForImage(imageId);
+            await loadDetectionsForImage(imageId, scopeEl);
             refreshCharacters();
             import("./views/gallery").then(m => m.refreshGallery());
             import("./views/dashboard").then(m => m.refreshDashboard());
@@ -1457,7 +1462,7 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
   actionsEl.querySelector(".delete-det-btn")?.addEventListener("click", async () => {
     if (!confirm("Are you sure you want to delete this detection? This will remove it from the system.")) return;
     await typedCall("CharactersService.DeleteDetection", DeleteDetectionRequestSchema, { detectionId: BigInt(det.id) }, EmptySchema);
-    loadDetectionsForImage(imageId);
+    loadDetectionsForImage(imageId, scopeEl);
     refreshCharacters();
     import("./views/gallery").then(m => m.refreshGallery());
     import("./views/dashboard").then(m => m.refreshDashboard());
@@ -1468,7 +1473,7 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
     const val = select.value;
     const identityId = val ? parseInt(val, 10) : null;
     await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: identityId !== null ? BigInt(identityId) : undefined }, EmptySchema);
-    await loadDetectionsForImage(imageId);
+    await loadDetectionsForImage(imageId, scopeEl);
     await refreshCharacters();
     import("./views/gallery").then(m => m.refreshGallery());
     import("./views/dashboard").then(m => m.refreshDashboard());

@@ -221,6 +221,10 @@
 .modal.active {
   display: flex;
 }
+/* Bounding Box editor stays above the full-screen viewer so it can be opened from the viewer's info panel */
+#bbox-editor-modal {
+  z-index: var(--z-tooltip);
+}
 .modal-content {
   background-color: var(--sys-control-bg);
   border: 1px solid #7a7a7a;

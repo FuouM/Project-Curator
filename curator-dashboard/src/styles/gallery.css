@@ -357,8 +357,15 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   gap: 6px;
   flex-shrink: 0;
 }
+.image-viewer-content {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
 .image-viewer-body {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -372,6 +379,45 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
   image-rendering: -webkit-optimize-contrast;
   image-rendering: high-quality;
   image-rendering: smooth;
+}
+.image-viewer-info-panel {
+  display: none;
+  width: 380px;
+  flex-shrink: 0;
+  flex-direction: column;
+  min-width: 0;
+  background-color: var(--sys-control-bg);
+  border-left: 1px solid #555555;
+  overflow: hidden;
+}
+.image-viewer-info-panel.open {
+  display: flex;
+}
+.image-viewer-info-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background-color: #1e1e1e;
+  color: #ffffff;
+  flex-shrink: 0;
+  border-bottom: 1px solid #3f3f3f;
+  user-select: none;
+  gap: 8px;
+}
+.image-viewer-info-header .image-viewer-title {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.image-viewer-info-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  background-color: var(--sys-control-bg);
 }
 .image-viewer-btn {
   background-color: #333333;

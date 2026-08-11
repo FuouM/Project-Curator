@@ -1125,14 +1125,26 @@ export const SHOWCASE_COMPONENTS: Record<string, { name: string; description: st
               <span class="image-viewer-title"><i class="bi bi-image"></i> sample_image.png — C:\\Users\\demo\\Pictures\\</span>
               <div class="image-viewer-header-actions">
                 <button class="image-viewer-btn"><i class="bi bi-clipboard"></i> Copy</button>
+                <button class="image-viewer-btn"><i class="bi bi-info-circle"></i> Info</button>
                 <button class="image-viewer-btn"><i class="bi bi-folder2-open"></i> Open Folder</button>
                 <div class="image-viewer-close">&times;</div>
               </div>
             </div>
-            <div class="image-viewer-body" style="height: 200px; background-color: #2d2d2d;">
-              <div style="color: #888; font-size: 12px; text-align: center;">
-                <i class="bi bi-image" style="font-size: 48px; display: block; margin-bottom: 8px;"></i>
-                Image preview area
+            <div class="image-viewer-content" style="height: 200px;">
+              <div class="image-viewer-body" style="background-color: #2d2d2d;">
+                <div style="color: #888; font-size: 12px; text-align: center;">
+                  <i class="bi bi-image" style="font-size: 48px; display: block; margin-bottom: 8px;"></i>
+                  Image preview area
+                </div>
+              </div>
+              <div class="image-viewer-info-panel open" style="height: 200px;">
+                <div class="image-viewer-info-header">
+                  <span class="image-viewer-title"><i class="bi bi-info-circle"></i> Image Details</span>
+                  <span class="image-viewer-close" title="Close">&times;</span>
+                </div>
+                <div class="image-viewer-info-body">
+                  <div style="color: #555; font-size: 12px; font-style: italic;">Docked details panel content</div>
+                </div>
               </div>
             </div>
           </div>

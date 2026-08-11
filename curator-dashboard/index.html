@@ -216,17 +216,29 @@
           <button class="image-viewer-btn" id="image-viewer-rerun-ocr" title="Re-run OCR on this image">
             <i class="bi bi-arrow-clockwise"></i> Re-run OCR
           </button>
+          <button class="image-viewer-btn" id="image-viewer-toggle-info" title="Show/Hide image details">
+            <i class="bi bi-info-circle"></i> Info
+          </button>
           <button class="image-viewer-btn" id="image-viewer-open-external">
             <i class="bi bi-box-arrow-up-right"></i> Open Externally
           </button>
           <span class="image-viewer-close" id="image-viewer-close">&times;</span>
         </div>
       </div>
-      <div class="image-viewer-body" style="position: relative;">
-        <img id="image-viewer-img" src="" alt="Full size image" />
-        <video id="image-viewer-video" controls loop preload="metadata" style="display: none; max-width: 100%; max-height: 100%;"></video>
-        <svg id="image-viewer-detections-overlay" style="position:absolute;pointer-events:none;display:none;"></svg>
-        <svg id="image-viewer-ocr-overlay" style="position:absolute;pointer-events:none;display:none;"></svg>
+      <div class="image-viewer-content">
+        <div class="image-viewer-body" style="position: relative;">
+          <img id="image-viewer-img" src="" alt="Full size image" />
+          <video id="image-viewer-video" controls loop preload="metadata" style="display: none; max-width: 100%; max-height: 100%;"></video>
+          <svg id="image-viewer-detections-overlay" style="position:absolute;pointer-events:none;display:none;"></svg>
+          <svg id="image-viewer-ocr-overlay" style="position:absolute;pointer-events:none;display:none;"></svg>
+        </div>
+        <div id="image-viewer-info-panel" class="image-viewer-info-panel">
+          <div class="image-viewer-info-header">
+            <span class="image-viewer-title"><i class="bi bi-info-circle"></i> Image Details</span>
+            <span class="image-viewer-close" id="image-viewer-info-close" title="Close">&times;</span>
+          </div>
+          <div class="image-viewer-info-body" id="image-viewer-info-body"></div>
+        </div>
       </div>
     </div>
 
