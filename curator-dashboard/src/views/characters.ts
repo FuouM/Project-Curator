@@ -1,7 +1,7 @@
 import { typedCall } from "../ipc";
 import { SafeHtml, html } from "../components";
 import { CharacterIdentity, CharacterDetection, CustomConcept } from "../types";
-import { getCachedCrop, setCachedCrop } from "../cards";
+import { getCachedCrop, setCachedCrop } from "../crop-cache";
 import { openImageViewer } from "../image-viewer";
 import { attachAutocomplete } from "../autocomplete";
 import { showErrorAlert, showInfoAlert } from "../alert";
@@ -558,7 +558,7 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number, pr
               const fp = imgResp.image.currentFilepath;
               import("../bbox-editor").then(m => {
                 m.openBBoxEditor(det.id, det.image_id, fp, det.x0, det.y0, det.x1, det.y1, () => {
-                  import("../cards").then(cards => cards.invalidateCropCache(det.id));
+                  import("../crop-cache").then(crop => crop.invalidateCropCache(det.id));
                   refreshCharacters();
                 });
               });

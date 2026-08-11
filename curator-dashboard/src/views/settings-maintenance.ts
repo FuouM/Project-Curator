@@ -83,8 +83,8 @@ export function setupMaintenanceButtons() {
     clearCropCacheBtn.setAttribute("disabled", "true");
     try {
       await typedCall("CharactersService.ClearCropCache", null, null, EmptySchema);
-      const cardsModule = await import("../cards");
-      cardsModule.clearAllCropCaches();
+      const { clearAllCropCaches } = await import("../crop-cache");
+      clearAllCropCaches();
       setStatusMessage(clearCropCacheStatus, "Crop cache cleared successfully.", "success");
     } catch (e: any) {
       setStatusMessage(clearCropCacheStatus, "Error: " + (e.message || e), "error");

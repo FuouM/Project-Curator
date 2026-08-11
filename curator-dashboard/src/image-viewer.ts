@@ -198,7 +198,7 @@ async function toggleInfoPanel() {
     const resp = await typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(currentViewerImageId) }, ImageResultSchema);
     if (!resp.image) return;
     const details = imageDetailsFromProto(resp.image);
-    const { renderImageInfo } = await import("./cards");
+    const { renderImageInfo } = await import("./components/image-info-modal");
     renderImageInfo(details, body);
     infoPanelVisible = true;
     panel.classList.add("open");
