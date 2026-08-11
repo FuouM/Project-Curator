@@ -1,7 +1,8 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { typedCall } from "../ipc";
 import { maskPath, SafeHtml, html } from "../components";
-import { renderImages, attachCardEventHandlers, renderParsedMetadataHtml, renderCardTagsContainerHtml } from "../cards";
+import { renderImages, attachCardEventHandlers } from "../cards";
+import { renderParsedMetadataHtml, renderCardTagsContainerHtml } from "../components/card-tags";
 import { findSimilar } from "./concepts";
 import { imageDetailsFromProto, taggerStatusInfoFromProto } from "../proto-adapters";
 import { ImageDetails } from "../types";

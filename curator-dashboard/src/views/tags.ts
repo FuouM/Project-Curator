@@ -1,7 +1,7 @@
 import { typedCall } from "../ipc";
 import { logJS, safeStringify } from "../utils";
 import { maskPath } from "../components";
-import { getTagPillHtml, renderCardTagsContainerHtml } from "../cards";
+import { getTagPillHtml, renderCardTagsContainerHtml } from "../components/card-tags";
 import { showErrorAlert } from "../alert";
 import { EmptySchema } from "@bufbuild/protobuf/wkt";
 import { imageDetailsFromProto, tagSummaryFromProto } from "../proto-adapters";

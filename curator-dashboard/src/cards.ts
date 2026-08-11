@@ -1,6 +1,8 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { renderTagPill, maskPath, SafeHtml, html } from "./components";
-import { CardImageData, ImageDetails, SearchMatch, TagSummary, ParsedMetadata, CharacterDetection, CharacterIdentity } from "./types";
+import { renderTagPill } from "./components";
+import { renderGalleryCardHtml, renderOcrBlockHtml, formatDuration } from "./components/gallery-card";
+import type { GalleryCardViewData } from "./components/gallery-card";
+import { CardImageData, ImageDetails, SearchMatch, CharacterDetection, CharacterIdentity } from "./types";
 import { imageBytesToPngBlob } from "./utils";
 import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId, formatCopiedTags, getGalleryFullImages } from "./state";
 import { openImageViewer } from "./image-viewer";
@@ -403,123 +405,8 @@ function clearObservedThumbs() {
   observedThumbs.clear();
 }
 
-// --- Tag Pill Helpers ---
+// --- Tag / Metadata renders moved to ./components/card-tags (see implementation_plan_cards.md) ---
 
-export function getTagPillHtml(t: TagSummary, isDeletable = false, imageId = 0): SafeHtml {
-  return renderTagPill(t, { isDeletable, imageId });
-}
-
-export function renderTagListHtml(tags: TagSummary[], maxVisible = 10): SafeHtml {
-  const display = tags.slice(0, maxVisible);
-  const extraCount = tags.length - maxVisible;
-  return (display.map(t => getTagPillHtml(t)).join("") +
-    (extraCount > 0 ? `<span class="tag-pill tag-pill-overflow">+${extraCount} more</span>` : "")) as SafeHtml;
-}
-
-export function renderCardTagsContainerHtml(img: { tags: TagSummary[] }, isFeatured = false): SafeHtml {
-  const tags = img.tags || [];
-  let taggerLabel = "";
-  const firstAITag = tags.find(t => t.source_name && t.source_name.startsWith("ai:"));
-  if (firstAITag) {
-    if (firstAITag.source_name === "ai:camie-tagger-v2") {
-      taggerLabel = "Camie Tagger v2";
-    } else if (firstAITag.source_name === "ai:wd-eva02-tagger-2026-canary") {
-      taggerLabel = "WD EVA02";
-    } else {
-      taggerLabel = (firstAITag.source_name ?? "").replace("ai:", "").toUpperCase();
-    }
-  } else {
-    const hasUser = tags.some(t => t.category === "user");
-    taggerLabel = hasUser ? "USER" : "";
-  }
-
-  if (!taggerLabel && tags.length === 0) {
-    return "" as SafeHtml;
-  }
-  
-  if (!taggerLabel) {
-    taggerLabel = "GENERAL";
-  }
-
-  const tagHtml = isFeatured ? renderTagListHtml(tags, tags.length) : renderTagListHtml(tags);
-  const copyText = tags.map(t => t.tag).join(", ").replace(/"/g, "&quot;");
-
-  return `
-    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; width: 100%;">
-      <div style="font-family: monospace; font-size: 10px; font-weight: bold; background-color: var(--sys-control-bg, #fff); border: 1px solid var(--sys-border-dark, #b0b0b0); border-radius: 2px; padding: 2px 6px; color: var(--sys-text-secondary, #666); text-transform: uppercase; letter-spacing: 0.5px; line-height: 1; white-space: nowrap;">${taggerLabel}</div>
-      <div style="flex: 1; height: 1px; background-color: var(--sys-border-dark, #b0b0b0);"></div>
-      <button type="button" class="tag-copy-btn" data-action="copy-tags" data-copy-tags="${copyText}" title="Copy tags to clipboard">
-        <i class="bi bi-clipboard"></i>
-      </button>
-    </div>
-    <div class="tag-list" style="margin-top: 0;">
-      ${tagHtml}
-    </div>
-  ` as SafeHtml;
-}
-
-export function renderParsedMetadataHtml(meta: ParsedMetadata): SafeHtml {
-  const parts: string[] = [];
-
-  if (meta.match_type === "anime_screenshot") {
-    const animeTag = meta.extracted_tags.find(t => t.toLowerCase().startsWith("anime:"));
-    const epTag = meta.extracted_tags.find(t => t.toLowerCase().startsWith("episode:"));
-    const animeName = animeTag ? animeTag.split(":").slice(1).join(":") : "Unknown";
-    const epNum = epTag ? epTag.split(":").slice(1).join(":") : "?";
-    const partialBadge = meta.partial ? ' <span style="font-size: 9px; color: #856404;">(partial)</span>' : "";
-    parts.push(`<span class="tag-pill tag-copyright" style="font-size: 10px; font-weight: 600;"><i class="bi bi-film"></i> Anime Screenshot: ${animeName} - ${epNum}${partialBadge}</span>`);
-  } else if (meta.match_type === "danbooru") {
-    const hashTag = meta.extracted_tags.find(t => t.toLowerCase().startsWith("hash:"));
-    const artistTag = meta.extracted_tags.find(t => t.toLowerCase().startsWith("artist:"));
-    const hash = hashTag ? hashTag.split(":").slice(1).join(":") : "";
-    const artist = artistTag ? artistTag.split(":").slice(1).join(":") : "?";
-    const hashDisplay = hash.length > 8 ? `${hash.slice(0, 4)}...${hash.slice(-4)}` : hash;
-    const hashLink = hash ? `<a href="https://danbooru.donmai.us/posts?tags=md5%3A${hash}" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline; font-size: inherit;" onmouseover="this.style.textDecoration='none'" onmouseout="this.style.textDecoration='underline'" title="${hash}">${hashDisplay}</a>` : "?";
-    parts.push(`<span class="tag-pill tag-copyright" style="font-size: 10px; font-weight: 600;"><i class="bi bi-grid-3x3-gap"></i> ${artist} - ${hashLink}</span>`);
-  } else {
-    if (meta.datetime_iso) {
-      parts.push(`<span class="tag-pill tag-meta" style="font-size: 10px;"><i class="bi bi-clock"></i> 4chan: ${meta.datetime_iso}</span>`);
-    } else if (meta.artist) {
-      parts.push(`<span class="tag-pill tag-artist" style="font-size: 10px;"><i class="bi bi-person"></i> artist: ${meta.artist}</span>`);
-    }
-  }
-
-  if (meta.pixiv_id) {
-    const pageTag = meta.extracted_tags.find(t => t.startsWith("page:"));
-    const pageStr = pageTag ? ` ${pageTag}` : "";
-    parts.push(`<span class="tag-pill tag-copyright" style="font-size: 10px;"><i class="bi bi-image"></i> pixiv: <a href="https://www.pixiv.net/en/artworks/${meta.pixiv_id}" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline; font-size: inherit;" onmouseover="this.style.textDecoration='none'" onmouseout="this.style.textDecoration='underline'">${meta.pixiv_id}</a>${pageStr}</span>`);
-  }
-  if (meta.twitter_id) parts.push(`<span class="tag-pill tag-character" style="font-size: 10px;"><i class="bi bi-twitter"></i> twitter: ${meta.twitter_id}</span>`);
-
-  const fieldTags = new Set<string>();
-  if (meta.artist) fieldTags.add(`artist:${meta.artist}`);
-  if (meta.pixiv_id) fieldTags.add(`pixiv:${meta.pixiv_id}`);
-  if (meta.twitter_id) fieldTags.add(`twitter:${meta.twitter_id}`);
-  if (meta.datetime_iso) fieldTags.add(`date:${meta.datetime_iso.split(' ')[0]}`);
-  if (meta.match_type === "anime_screenshot") {
-    const a = meta.extracted_tags.find(t => t.toLowerCase().startsWith("anime:"));
-    const e = meta.extracted_tags.find(t => t.toLowerCase().startsWith("episode:"));
-    if (a) fieldTags.add(a);
-    if (e) fieldTags.add(e);
-  }
-
-  for (const tag of meta.extracted_tags) {
-    if (fieldTags.has(tag)) continue;
-    if (tag.startsWith('artist:') || tag.startsWith('pixiv:') || tag.startsWith('twitter:')) continue;
-    if (tag.startsWith('page:')) continue;
-    const tl = tag.toLowerCase();
-    if (tl.startsWith('anime:') || tl.startsWith('episode:')) continue;
-
-    let tagClass = "tag-rank-3";
-    if (tag.startsWith("date:")) tagClass = "tag-meta";
-    else if (tag.startsWith("source:") || tag.startsWith("site:")) tagClass = "tag-meta";
-    else if (tag.startsWith("group:")) tagClass = "tag-character";
-    else if (tag.startsWith("resolution:")) tagClass = "tag-meta";
-    parts.push(`<span class="tag-pill ${tagClass}" style="font-size: 10px; font-family: monospace;">${tag}</span>`);
-  }
-
-  return html`${parts.join(" ")}`;
-}
 
 // --- Event Delegation (one listener per grid, not per card) ---
 
@@ -800,10 +687,6 @@ function trackOcrMouseDown(e: globalThis.MouseEvent) {
   if (block) ocrDownPos.set(block, { x: e.clientX, y: e.clientY });
 }
 
-function ocrTextAttr(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
 function compareIdentitiesPlaceholderLast(a: { name: string }, b: { name: string }): number {
   const aIsPlaceholder = /^Character \d+$/i.test(a.name.trim());
   const bIsPlaceholder = /^Character \d+$/i.test(b.name.trim());
@@ -907,17 +790,6 @@ function handleInfoClick(imageId: number) {
       openImageInfoModal(imageDetailsFromProto(resp.image));
     }
   }).catch(() => {});
-}
-
-function formatDuration(ms: number): string {
-  if (ms >= 60000) {
-    const total = Math.round(ms / 1000);
-    const m = Math.floor(total / 60);
-    const s = total % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  }
-  if (ms >= 1000) return `${(ms / 1000).toFixed(1)} s`;
-  return `${ms} ms`;
 }
 
 export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
@@ -1498,129 +1370,48 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement, append = 
   const fragment = document.createDocumentFragment();
 
   cards.forEach((img) => {
-    let sizeClass = "";
-    if (img.width) {
-      if (img.width < 500) {
-        sizeClass = "card-sz-small";
-      } else if (img.width < 1000) {
-        sizeClass = "card-sz-medium";
-      } else {
-        sizeClass = "card-sz-large";
-      }
-    }
-
-    const card = document.createElement("div");
-    const isLucky = luckyHighlightId === img.id;
-    card.className = `image-card ${selectedImageIds.has(img.id) ? 'selected' : ''} ${isLucky ? 'lucky-highlight' : ''} ${sizeClass}`;
-    
-    const aspect = img.width && img.height ? (img.width / img.height) : 1.5;
-    card.style.setProperty("--aspect", aspect.toString());
-
-    let S = 2; // base scale
-    if (img.width) {
-      if (img.width < 500) {
-        S = 1;
-      } else if (img.width > 1200) {
-        S = 3;
-      }
-    }
-    let C = S;
-    let R = S;
-    if (aspect > 1) {
-      C = Math.round(S * aspect);
-      if (C > 4) {
-        C = 4;
-        R = Math.round(C / aspect) || 1;
-      }
-    } else {
-      R = Math.round(S / aspect);
-      if (R > 4) {
-        R = 4;
-        C = Math.round(R * aspect) || 1;
-      }
-    }
-    card.style.setProperty("--span-c", C.toString());
-    card.style.setProperty("--span-r", R.toString());
-    card.dataset.imageId = img.id.toString();
-    card.dataset.filepath = img.filepath;
-
-    const parsedHtml = img.parsedMetadata ? renderParsedMetadataHtml(img.parsedMetadata) : "";
-
-    const identityHtml = (img.characterIdentities && img.characterIdentities.length > 0)
-      ? `<div class="identity-list">${img.characterIdentities.map(ci => `<span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> ${ci.name}</span>`).join("")}</div>`
-      : "";
-
-    const ocrHtml = img.ocrText
-      ? `<div class="ocr-block" data-action="toggle-ocr"><i class="bi bi-file-earmark-text ocr-icon" data-action="copy-ocr" data-ocr-copy="${ocrTextAttr(img.ocrText)}" title="Copy OCR text"></i><span class="ocr-block-text">${img.ocrText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`
-      : "";
-
-    const missingBadge = img.isMissing
-      ? '<div class="badge-missing"><i class="bi bi-exclamation-triangle"></i> Missing</div>'
-      : "";
-
-    const videoBadge = img.video
-      ? `<div class="badge-video" title="${img.video.format.toUpperCase()} · ${img.video.video_codec}"><i class="bi bi-play-btn-fill"></i> ${formatDuration(img.video.duration_ms)}</div>`
-      : "";
-
+    const cachedSrc = thumbCache.get(img.id);
     const isGif = /\.gif$/i.test(img.filepath);
 
-        // Pre-populate GIF path in cache to avoid flash/delay
-    if (isGif && !thumbCache.has(img.id)) {
+    // Pre-populate GIF path in cache to avoid flash/delay
+    if (isGif && !cachedSrc) {
       cacheThumbnail(img.id, convertFileSrc(img.filepath));
     }
 
-    const cachedSrc = thumbCache.get(img.id);
-    const isCached = cachedSrc !== undefined;
-    const isPending = !isCached;
-    const imgClass = isCached ? "loaded" : "";
-    const previewClass = isCached ? "image-preview" : "image-preview thumb-loading";
-    const srcAttr = isCached ? `src="${cachedSrc}"` : "";
+    const viewData: GalleryCardViewData = {
+      id: img.id,
+      filepath: img.filepath,
+      tags: img.tags,
+      isSelected: selectedImageIds.has(img.id),
+      isFavorite: img.favorite ?? false,
+      isMissing: img.isMissing ?? false,
+      isLucky: luckyHighlightId === img.id,
+      cachedThumbSrc: thumbCache.get(img.id),
+      ocrText: img.ocrText,
+      parsedMetadata: img.parsedMetadata,
+      characterIdentities: img.characterIdentities,
+      video: img.video ? {
+        format: img.video.format,
+        durationMs: img.video.duration_ms,
+        codec: img.video.video_codec,
+      } : undefined,
+      badgeHtml: img.badgeHtml,
+      width: img.width ?? undefined,
+      height: img.height ?? undefined,
+    };
 
-    card.innerHTML = `
-      <input type="checkbox" class="card-select-checkbox" data-id="${img.id}" ${selectedImageIds.has(img.id) ? 'checked' : ''} />
-      <div class="star-btn ${img.favorite ? 'favorite' : ''}" data-id="${img.id}">
-        <i class="bi ${img.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
-      </div>
-      <div class="${previewClass}" ${img.width && img.height ? `style="aspect-ratio: ${img.width} / ${img.height};"` : ''}>
-        <img data-thumb-id="${img.id}" data-filepath="${img.filepath}" data-is-video="${img.video ? '1' : '0'}" data-pending="${isPending ? '1' : '0'}" ${srcAttr} alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" class="${imgClass}" />
-        <span style="display: none;"><i class="bi bi-image"></i></span>
-        ${missingBadge}
-        ${videoBadge}
-        ${img.badgeHtml || ""}
-        <div class="copy-btn" title="Copy image to clipboard"><i class="bi bi-clipboard"></i></div>
-        <div class="info-btn" title="View image details" data-id="${img.id}"><i class="bi bi-info-circle"></i></div>
-      </div>
-      <div class="image-info">
-        <div class="image-path-row">
-          <div class="image-path" title="${img.filepath}">${maskPath(img.filepath)}</div>
-          <button class="win-button image-open-folder-btn" style="display: none; font-size: 10px; padding: 1px 6px; white-space: nowrap;" title="Open containing folder">
-            <i class="bi bi-folder2-open"></i>
-          </button>
-        </div>
-        ${parsedHtml ? `<div class="parsed-metadata-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
-        ${ocrHtml}
-        ${identityHtml}
-        <div class="card-tags-container" style="width: 100%;">
-          ${renderCardTagsContainerHtml(img)}
-        </div>
-        <div style="display: flex; gap: 4px; margin-top: auto; width: 100%;">
-          <button class="win-button" style="font-size: 11px; flex: 1;" data-action="open-tags" data-id="${img.id}" data-filepath="${img.filepath.replace(/\\/g, '\\\\')}">
-            <i class="bi bi-tag"></i> Tags
-          </button>
-          <button class="win-button" style="font-size: 11px; flex: 1;" data-action="find-similar" data-filepath="${img.filepath.replace(/\\/g, '\\\\')}">
-            <i class="bi bi-search"></i> Similar
-          </button>
-        </div>
-      </div>
-    `;
+    // Render pure element string, convert to HTML, and append
+    const host = document.createElement("div");
+    host.innerHTML = renderGalleryCardHtml(viewData).trim();
+    const cardNode = host.firstElementChild as HTMLElement;
 
-    fragment.appendChild(card);
-  });
+    // Observe new image elements before appending (appending empties the fragment)
+    cardNode.querySelectorAll<HTMLImageElement>("img[data-thumb-id]").forEach(imgEl => {
+      observedThumbs.add(imgEl);
+      lazyObserver.observe(imgEl);
+    });
 
-  // Observe new images before appending fragment (since appending empties the fragment)
-  fragment.querySelectorAll<HTMLElement>("img[data-thumb-id]").forEach(img => {
-    observedThumbs.add(img as HTMLImageElement);
-    lazyObserver.observe(img);
+    fragment.appendChild(cardNode);
   });
 
   grid.appendChild(fragment);
@@ -1728,7 +1519,7 @@ export function refreshCardOcr(imageId: number, ocrText: string) {
 
     const existing = info.querySelector(".ocr-block");
     if (ocrText) {
-      const html = `<div class="ocr-block" data-action="toggle-ocr"><i class="bi bi-file-earmark-text ocr-icon" data-action="copy-ocr" data-ocr-copy="${ocrTextAttr(ocrText)}" title="Copy OCR text"></i><span class="ocr-block-text">${ocrText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`;
+      const html = renderOcrBlockHtml(ocrText);
       if (existing) {
         existing.outerHTML = html;
       } else {

@@ -134,3 +134,11 @@ export function renderComponentsHtml(): string {
     <div id="components-showcase-container" style="display: flex; flex-direction: column; gap: 16px;"></div>
   `;
 }
+
+// HMR: re-render the live component showcase without a full page reload
+// whenever a component module or its meta footprint changes.
+if (import.meta.hot) {
+  import.meta.hot.accept(["../components", "./components-view"], () => {
+    refreshComponentStylesheet();
+  });
+}
