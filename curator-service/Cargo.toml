@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 curator-core = { path = "../curator-core" }
+curator-ml = { path = "../curator-ml" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

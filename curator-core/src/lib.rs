@@ -1,91 +1,40 @@
-pub mod benchmark;
-pub mod concept;
-pub mod constants;
-pub mod crop_cache;
-pub mod db;
-pub mod detection;
-pub mod filename_parser;
 pub mod grpc_convert;
-pub mod image_decode;
 pub mod ipc;
-pub mod media;
-pub mod onnx;
-pub mod pipeline;
-pub mod preprocess;
-pub mod tagger;
-pub mod thumbnail;
-pub mod util;
 pub mod vector;
-pub mod video;
 
-pub use onnx::ManagedSession;
+// ── curator-proto (gRPC stubs + shared kernel contracts) ────────────────
+pub use curator_proto::grpc;
+pub use curator_proto::{constants, pipeline, util};
+pub use curator_proto::pipeline::{NodeInfo, NodeRegistry, Port, SystemNode};
+pub use curator_proto::contracts::{DevicePreference, EmbeddingModel, ModelPrecision, TaggerModel};
 
-pub use pipeline::{NodeInfo, NodeRegistry, Port, SystemNode};
+// ── curator-filename-parser ─────────────────────────────────────────────
+pub use curator_filename_parser as filename_parser;
+pub use curator_filename_parser::{FilenameParser, ParsedMetadata};
 
-pub use benchmark::{
-    benchmark_preprocess, run_detection_benchmark, run_onnx_benchmark,
-    run_onnx_benchmark_2d, run_onnx_benchmark_4d, get_benchmark_images, run_single_image_benchmark,
-    DetectionBenchmarkResult, SingleImageBenchmarkResult,
+// ── curator-media ───────────────────────────────────────────────────────
+pub use curator_media as media_engine;
+pub use curator_media::crop_cache;
+pub use curator_media::decode as image_decode;
+pub use curator_media::media;
+pub use curator_media::thumbnail;
+pub use curator_media::video;
+pub use curator_media::CropCache;
+pub use curator_media::media::{is_gif, read_dimensions, read_gif_animation, sha256_file, AnimationInfo};
+pub use curator_media::video::{decode_path, is_video, VideoInfo};
+
+// ── curator-db ──────────────────────────────────────────────────────────
+pub use curator_db as db;
+pub use curator_db::{init_db, models, VectorIndex};
+
+// ── curator-ml ──────────────────────────────────────────────────────────
+pub use curator_ml::{benchmark, concept, detection, onnx, preprocess, tagger};
+pub use curator_ml::onnx::ManagedSession;
+pub use curator_ml::detection::{
+    BubbleDetection, CCIPModel, DetectionPipeline, MangaBubbleDetector, OcrDetection, OcrDetector,
+    YoloDetector,
 };
-pub use crop_cache::CropCache;
-pub use db::init_db;
-pub use db::models;
-pub use detection::{CCIPModel, DetectionPipeline, YoloDetector, OcrDetector, OcrDetection, BubbleDetection, MangaBubbleDetector};
-pub use filename_parser::FilenameParser;
-pub use ipc::{DevicePreference, ImageDetails, SearchMatch, TagSummary, OcrResult};
-pub use media::{is_gif, read_dimensions, read_gif_animation, sha256_file, AnimationInfo};
-pub use video::{decode_path, is_video, VideoInfo};
-pub use tagger::{TagPrediction, TaggerEngine, TaggerManager};
-pub use vector::{ModelManager, VectorIndex, apply_device_preference, OnnxConfig};
-pub use image;
+pub use curator_ml::tagger::{TagPrediction, TaggerEngine, TaggerManager};
 
-pub mod grpc {
-    pub mod common {
-        tonic::include_proto!("curator.common");
-    }
-    pub mod system {
-        tonic::include_proto!("curator.system");
-    }
-    pub mod import {
-        tonic::include_proto!("curator.import");
-    }
-    pub mod gallery {
-        tonic::include_proto!("curator.gallery");
-    }
-    pub mod search {
-        tonic::include_proto!("curator.search");
-    }
-    pub mod tags {
-        tonic::include_proto!("curator.tags");
-    }
-    pub mod tagging {
-        tonic::include_proto!("curator.tagging");
-    }
-    pub mod characters {
-        tonic::include_proto!("curator.characters");
-    }
-    pub mod ocr {
-        tonic::include_proto!("curator.ocr");
-    }
-    pub mod concepts {
-        tonic::include_proto!("curator.concepts");
-    }
-    pub mod models {
-        tonic::include_proto!("curator.models");
-    }
-    pub mod tools {
-        tonic::include_proto!("curator.tools");
-    }
-    pub mod folders {
-        tonic::include_proto!("curator.folders");
-    }
-    pub mod benchmarks {
-        tonic::include_proto!("curator.benchmarks");
-    }
-    pub mod plugins {
-        tonic::include_proto!("curator.plugins");
-    }
-    pub mod parser {
-        tonic::include_proto!("curator.parser");
-    }
-}
+// ── image crate re-export (historical `curator_core::image::*` path) ─────
+pub use image;

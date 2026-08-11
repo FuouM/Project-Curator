@@ -1,16 +1,13 @@
-//! Conversions between the domain types (`crate::ipc`, `crate::detection`, ...) and the
-//! prost-generated protobuf structs (`crate::grpc`).
+//! Conversions between the domain DTOs (`crate::ipc`) and the prost-generated
+//! protobuf structs (`crate::grpc`).
 //!
-//! These `From` impls must live in `curator-core` because the orphan rule requires at least one
-//! of the impl'd types to be local to the crate. Both the domain DTOs and the generated protobuf
-//! structs are defined here, so converting between them is a local trait impl.
+//! Only the DTOs whose source types are local to `curator-core` are converted
+//! here (satisfying the orphan rule). Conversions whose source types live in
+//! sibling crates (e.g. `curator-ml` detections/taggers/concepts and
+//! `curator-filename-parser` metadata) are implemented inside those crates:
+//!   * `curator-ml/src/grpc_convert.rs`  — detection, tagger, concept types
+//!   * `curator-filename-parser/src/grpc_convert.rs` — ParsedMetadata/TokenBlock
 
-use crate::concept::CustomConcept;
-use crate::detection::{
-    CharacterIdentity, CharacterSearchEntry, DetectionCropEntry, DetectionResult, ReidentifyResult,
-    StoredDetection,
-};
-use crate::filename_parser::{BatchPreviewItem, ParsedMetadata, TokenBlock};
 use crate::grpc::common as commonpb;
 use crate::ipc::{
     AnimationSummary, BubbleBoxResult, CharacterIdentitySummary, ConvertedFileInfo,
@@ -18,7 +15,6 @@ use crate::ipc::{
     ImageDetails, ManifestFileInfo, ModelStatusInfo, OcrResult, PluginInfo, SearchMatch, StorageStats,
     StorageTypeStat, TaggerBenchmarkInfo, TagStat, TagSummary, VideoSummary,
 };
-use crate::tagger::TaggerStatusInfo;
 
 impl From<TagSummary> for commonpb::TagSummary {
     fn from(v: TagSummary) -> Self {
@@ -28,57 +24,6 @@ impl From<TagSummary> for commonpb::TagSummary {
             confidence: v.confidence,
             source_name: v.source_name,
             is_blacklisted: v.is_blacklisted,
-        }
-    }
-}
-
-impl From<ParsedMetadata> for commonpb::ParsedMetadata {
-    fn from(v: ParsedMetadata) -> Self {
-        commonpb::ParsedMetadata {
-            match_type: v.match_type,
-            raw_matched: v.raw_matched,
-            artist: v.artist,
-            pixiv_id: v.pixiv_id,
-            twitter_id: v.twitter_id,
-            timestamp_4chan: v.timestamp_4chan,
-            datetime_iso: v.datetime_iso,
-            extracted_tags: v.extracted_tags,
-            partial: v.partial,
-        }
-    }
-}
-
-impl From<commonpb::TokenBlock> for TokenBlock {
-    fn from(v: commonpb::TokenBlock) -> Self {
-        TokenBlock {
-            token_type: v.token_type,
-            value: v.value,
-            label: v.label,
-            enabled: v.enabled,
-            optional_prefix: v.optional_prefix,
-        }
-    }
-}
-
-impl From<TokenBlock> for commonpb::TokenBlock {
-    fn from(v: TokenBlock) -> Self {
-        commonpb::TokenBlock {
-            token_type: v.token_type,
-            value: v.value,
-            label: v.label,
-            enabled: v.enabled,
-            optional_prefix: v.optional_prefix,
-        }
-    }
-}
-
-impl From<BatchPreviewItem> for commonpb::BatchPreviewItem {
-    fn from(v: BatchPreviewItem) -> Self {
-        commonpb::BatchPreviewItem {
-            image_id: v.image_id,
-            filename: v.filename,
-            filepath: v.filepath,
-            match_result: v.match_result.map(Into::into),
         }
     }
 }
@@ -160,21 +105,6 @@ impl From<SearchMatch> for commonpb::SearchMatch {
             video: v.video.map(Into::into),
             favorite: v.favorite,
             is_missing: v.is_missing,
-        }
-    }
-}
-
-impl From<TaggerStatusInfo> for commonpb::TaggerStatusInfo {
-    fn from(v: TaggerStatusInfo) -> Self {
-        commonpb::TaggerStatusInfo {
-            key: v.key,
-            name: v.name,
-            source_name: v.source_name,
-            loaded: v.loaded,
-            model_path: v.model_path,
-            total_tags: v.total_tags as u32,
-            default_threshold: v.default_threshold,
-            input_size: v.input_size,
         }
     }
 }
@@ -329,84 +259,6 @@ impl From<DownloadProgress> for commonpb::DownloadProgress {
             bytes_per_second: v.bytes_per_second,
             elapsed_secs: v.elapsed_secs,
             error: v.error,
-        }
-    }
-}
-
-impl From<CustomConcept> for commonpb::CustomConcept {
-    fn from(v: CustomConcept) -> Self {
-        commonpb::CustomConcept {
-            id: v.id,
-            name: v.name,
-            category: v.category,
-            threshold: v.threshold,
-            sample_count: v.sample_count as u32,
-            created_at: v.created_at,
-            updated_at: v.updated_at,
-        }
-    }
-}
-
-impl From<StoredDetection> for commonpb::StoredDetection {
-    fn from(v: StoredDetection) -> Self {
-        commonpb::StoredDetection {
-            id: v.id,
-            image_id: v.image_id,
-            x0: v.x0,
-            y0: v.y0,
-            x1: v.x1,
-            y1: v.y1,
-            confidence: v.confidence,
-            has_embedding: v.has_embedding,
-            identity_id: v.identity_id,
-        }
-    }
-}
-
-impl From<DetectionResult> for commonpb::DetectionResult {
-    fn from(v: DetectionResult) -> Self {
-        commonpb::DetectionResult {
-            image_id: v.image_id,
-            detections: v.detections.into_iter().map(Into::into).collect(),
-        }
-    }
-}
-
-impl From<DetectionCropEntry> for commonpb::DetectionCropEntry {
-    fn from(v: DetectionCropEntry) -> Self {
-        commonpb::DetectionCropEntry {
-            detection_id: v.detection_id,
-            crop_webp_bytes: v.crop_webp_bytes,
-        }
-    }
-}
-
-impl From<CharacterSearchEntry> for commonpb::CharacterSearchEntry {
-    fn from(v: CharacterSearchEntry) -> Self {
-        commonpb::CharacterSearchEntry {
-            identity_id: v.identity_id,
-            image_ids: v.image_ids,
-        }
-    }
-}
-
-impl From<CharacterIdentity> for commonpb::CharacterIdentity {
-    fn from(v: CharacterIdentity) -> Self {
-        commonpb::CharacterIdentity {
-            id: v.id,
-            name: v.name,
-            detection_count: v.detection_count,
-            created_at: v.created_at,
-        }
-    }
-}
-
-impl From<ReidentifyResult> for commonpb::ReidentifyResult {
-    fn from(v: ReidentifyResult) -> Self {
-        commonpb::ReidentifyResult {
-            total_detections: v.total_detections,
-            matched: v.matched,
-            unmatched: v.unmatched,
         }
     }
 }

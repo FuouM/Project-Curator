@@ -2,8 +2,7 @@ use curator_core::{
     init_db,
     vector::ModelManager,
     ipc::DevicePreference,
-    get_benchmark_images,
-    run_single_image_benchmark,
+    benchmark::{get_benchmark_images, run_single_image_benchmark},
 };
 use tempfile::NamedTempFile;
 use std::path::Path;

@@ -1,6 +1,11 @@
 [workspace]
 members = [
     "curator-core",
+    "curator-proto",
+    "curator-filename-parser",
+    "curator-media",
+    "curator-ml",
+    "curator-db",
     "curator-service",
     "curator-cli",
     "curator-dashboard/src-tauri",
@@ -98,6 +103,15 @@ opt-level = 3
 opt-level = 3
 
 [profile.dev.package."curator-core"]
+opt-level = 1
+
+[profile.dev.package."curator-media"]
+opt-level = 3
+
+[profile.dev.package."curator-ml"]
+opt-level = 2
+
+[profile.dev.package."curator-db"]
 opt-level = 1
 
 [profile.dev.package."ort"]

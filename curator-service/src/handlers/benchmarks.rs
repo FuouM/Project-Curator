@@ -3,7 +3,7 @@ use crate::AppSettings;
 use anyhow::{bail, Result};
 use curator_core::ipc::{EmbeddingModel, ModelPrecision, TaggerBenchmarkInfo, TaggerModel};
 use curator_core::tagger::TaggerManager;
-use curator_core::{ModelManager, SingleImageBenchmarkResult};
+use curator_ml::{ModelManager, SingleImageBenchmarkResult};
 use sqlx::SqlitePool;
 use std::path::Path;
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use tracing::info;
 
 pub async fn get_benchmark_images(db: &SqlitePool, limit: usize) -> Result<Vec<String>> {
-    curator_core::get_benchmark_images(db, limit).await
+    curator_ml::get_benchmark_images(db, limit).await
 }
 
 pub async fn run_single_image_benchmark(
@@ -24,7 +24,7 @@ pub async fn run_single_image_benchmark(
         let preferred = settings.lock().await.preferred_tagger;
         taggers.engine(&preferred).spec()
     };
-    curator_core::run_single_image_benchmark(model_manager, filepath, tagger_spec).await
+    curator_ml::run_single_image_benchmark(model_manager, filepath, tagger_spec).await
 }
 
 /// Kicks off the full-library image-processing benchmark in the background.
@@ -58,7 +58,7 @@ pub async fn start_image_processing_benchmark(
             taggers.engine(&preferred).spec()
         };
         for (idx, filepath) in filepaths.iter().enumerate() {
-            match curator_core::run_single_image_benchmark(&model_manager, filepath, tagger_spec)
+            match curator_ml::run_single_image_benchmark(&model_manager, filepath, tagger_spec)
                 .await
             {
                 Ok(res) => {
@@ -125,7 +125,7 @@ fn benchmark_tagger_engine(
     }
 
     let (cpu_time_ms, gpu_time_ms, gpu_error) = if tagger_path.exists() {
-        match curator_core::run_onnx_benchmark(&tagger_path, spec.input_size as usize) {
+        match curator_ml::run_onnx_benchmark(&tagger_path, spec.input_size as usize) {
             Ok((cpu, gpu, err, _)) => (Some(cpu), gpu, err),
             Err(e) => (
                 None,
@@ -213,7 +213,7 @@ pub async fn run_benchmark_logic(
         tagger_engine.model_path().exists()
     );
 
-    let clip_res = curator_core::run_onnx_benchmark(&vision_path, target_size);
+    let clip_res = curator_ml::run_onnx_benchmark(&vision_path, target_size);
 
     let model_precisions = settings.lock().await.model_precisions.clone();
     let tagger_infos: Vec<TaggerBenchmarkInfo> = if run_tagger_val {
@@ -298,7 +298,7 @@ pub async fn benchmark_preprocess_logic(
         let preferred = settings.lock().await.preferred_tagger;
         taggers.engine(&preferred).spec().input_size
     };
-    match curator_core::benchmark_preprocess(path, input_size, 3) {
+    match curator_ml::benchmark_preprocess(path, input_size, 3) {
         Ok((_decode, _resize, _norm, report)) => {
             info!("Preprocess benchmark:\n{}", report);
             Ok(report)
@@ -417,7 +417,7 @@ pub async fn run_detection_benchmark_logic(
             if !path.exists() {
                 bail!("YOLO model file not found.");
             }
-            let (cpu, gpu, err, has_gpu) = curator_core::run_onnx_benchmark(&path, 640)
+            let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark(&path, 640)
                 .map_err(|e| anyhow::anyhow!("Yolo benchmark failed: {:?}", e))?;
             Ok(detection_outcome(
                 Some((cpu, gpu, err)),
@@ -436,7 +436,7 @@ pub async fn run_detection_benchmark_logic(
             if !path.exists() {
                 bail!("CCIP Feature model file not found.");
             }
-            let (cpu, gpu, err, has_gpu) = curator_core::run_onnx_benchmark(&path, 384)
+            let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark(&path, 384)
                 .map_err(|e| anyhow::anyhow!("CCIP Feature benchmark failed: {:?}", e))?;
             Ok(detection_outcome(
                 None,
@@ -455,7 +455,7 @@ pub async fn run_detection_benchmark_logic(
             if !path.exists() {
                 bail!("CCIP Metrics model file not found.");
             }
-            let (cpu, gpu, err, has_gpu) = curator_core::run_onnx_benchmark_2d(&path, 16, 768)
+            let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark_2d(&path, 16, 768)
                 .map_err(|e| anyhow::anyhow!("CCIP Metrics benchmark failed: {:?}", e))?;
             Ok(detection_outcome(
                 None,
@@ -479,7 +479,7 @@ pub async fn run_detection_benchmark_logic(
             if !path.exists() {
                 bail!("OCR Detection model file not found.");
             }
-            let (cpu, gpu, err, has_gpu) = curator_core::run_onnx_benchmark(&path, 960)
+            let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark(&path, 960)
                 .map_err(|e| anyhow::anyhow!("OCR Detection benchmark failed: {:?}", e))?;
             Ok(detection_outcome(
                 None,
@@ -503,7 +503,7 @@ pub async fn run_detection_benchmark_logic(
             if !path.exists() {
                 bail!("OCR Recognition model file not found.");
             }
-            let (cpu, gpu, err, has_gpu) = curator_core::run_onnx_benchmark_4d(&path, 48, 320)
+            let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark_4d(&path, 48, 320)
                 .map_err(|e| anyhow::anyhow!("OCR Recognition benchmark failed: {:?}", e))?;
             Ok(detection_outcome(
                 None,
@@ -521,7 +521,7 @@ pub async fn run_detection_benchmark_logic(
             if !path.exists() {
                 bail!("OCR Classification model file not found.");
             }
-            let (cpu, gpu, err, has_gpu) = curator_core::run_onnx_benchmark_4d(&path, 80, 160)
+            let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark_4d(&path, 80, 160)
                 .map_err(|e| anyhow::anyhow!("OCR Classification benchmark failed: {:?}", e))?;
             Ok(detection_outcome(
                 None,
@@ -545,7 +545,7 @@ pub async fn run_detection_benchmark_logic(
             if !path.exists() {
                 bail!("Manga Bubble YOLO model file not found.");
             }
-            let (cpu, gpu, err, has_gpu) = curator_core::run_onnx_benchmark(&path, 1280)
+            let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark(&path, 1280)
                 .map_err(|e| anyhow::anyhow!("Manga Bubble YOLO benchmark failed: {:?}", e))?;
             Ok(detection_outcome(
                 None,

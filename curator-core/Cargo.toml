@@ -4,51 +4,24 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+curator-proto = { path = "../curator-proto" }
+curator-filename-parser = { path = "../curator-filename-parser" }
+curator-media = { path = "../curator-media" }
+curator-db = { path = "../curator-db" }
+curator-ml = { path = "../curator-ml" }
 tokio = { workspace = true }
 sqlx = { workspace = true }
-chrono = { workspace = true }
-uuid = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
-regex = "1.11"
-sha2 = "0.10"
-aho-corasick = "1"
-futures-util = "0.3"
-usearch = "2"
 image = "0.25"
 fast_image_resize = "5"
-ab_glyph = "0.2"
 turbojpeg = "1"
 png = { version = "0.18", features = ["zlib-rs"] }
-ndarray = "0.17"
 webp = "0.3"
-ureq = { workspace = true }
-tokenizers = { version = "0.21", default-features = false, features = ["fancy-regex"] }
-tonic = { workspace = true }
-prost = "0.13"
-prost-types = "0.13"
-tokio-stream = "0.1"
-async-stream = "0.3"
-dirs = "6"
-tower = { version = "0.4", features = ["util"] }
-hyper-util = { version = "0.1", features = ["tokio"] }
-
-[build-dependencies]
-tonic-build = "0.12"
-
-[target.'cfg(target_os = "windows")'.dependencies]
-ort = { version = "=2.0.0-rc.11", default-features = false, features = ["load-dynamic", "copy-dylibs", "download-binaries", "tls-native", "directml"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-ort = { version = "=2.0.0-rc.11", default-features = false, features = ["load-dynamic", "copy-dylibs", "download-binaries", "tls-native", "coreml"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-ort = { version = "=2.0.0-rc.11", default-features = false, features = ["load-dynamic", "copy-dylibs", "download-binaries", "tls-native", "cuda", "rocm"] }
-
-[target.'cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))'.dependencies]
-ort = { version = "=2.0.0-rc.11", default-features = false, features = ["load-dynamic", "copy-dylibs", "download-binaries", "tls-native"] }
 
 [dev-dependencies]
 tempfile = "3"
+ndarray = "0.17"
+ort = { version = "=2.0.0-rc.11", default-features = false, features = ["load-dynamic", "copy-dylibs", "download-binaries", "tls-native", "directml"] }

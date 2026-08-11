@@ -10,8 +10,13 @@ The repository is structured as a Rust Cargo workspace coupled with a Tauri v2 d
 
 ```bash
 project-curator/
-├── curator-core/       # Core Rust engine: PNG decoding, CLIP embeddings, vector indexing, SQLite, proto files
-│   └── proto/          # Domain Protobuf specifications (15 services: system, search, gallery, etc.)
+├── curator-core/       # Core aggregator/orchestrator crate: DTOs, grpc_convert, re-exports of child crates
+├── curator-proto/      # Leaf contracts crate: 16 Domain Protobuf specs, generated Tonic stubs,
+│   └── proto/          #   shared kernel (DevicePreference/TaggerModel/etc.), constants, util, pipeline traits, IPC transport
+├── curator-filename-parser/  # Rule & tokenizer engine: presets, token blocks, batch filename parsing
+├── curator-media/      # High-performance media engine: TurboJPEG decode, WebP/GIF, video, thumbnails, CropCache
+├── curator-db/         # SQLite schema, migrations, models, and HNSW vector storage
+├── curator-ml/         # ONNX Runtime engine: CLIP, MobileCLIP, YOLO, OCR, taggers, concept training, benchmarks
 ├── curator-service/    # Background daemon: task queues, ONNX model pipeline, Named Pipe server
 │   └── src/server/     # Domain gRPC service implementations (SystemServiceClient, SearchServiceClient, etc.)
 ├── curator-cli/        # Scriptable CLI: headless indexing, batch query, agentic execution over gRPC
@@ -47,7 +52,7 @@ Always execute commands within the project's isolated environment:
 ```
 
 * **Protobuf Code Generation**:
-  * **Rust**: `curator-core/build.rs` compiles `curator-core/proto/*.proto` automatically during `cargo build` / `cargo check`.
+  * **Rust**: `curator-proto/build.rs` compiles `curator-proto/proto/*.proto` automatically during `cargo build` / `cargo check`.
   * **TypeScript**: `npm run build:proto` (runs `npx buf generate`) emits TS stubs to `curator-dashboard/src/gen/`. Triggered automatically by `dev.ps1` and `npm run dev`.
 
 ---
@@ -100,7 +105,7 @@ Get-Process curator-service -ErrorAction SilentlyContinue | Stop-Process -Force
 
 * **Typed Protobuf Binary Transport**: Do NOT use legacy untyped `Request`/`Response` JSON strings or `callService`. All frontend-backend communication uses domain-specific call functions (`callSystem`, `callSearch`, `callGallery`, `callImport`, `callTags`, etc. in `src/ipc.ts`) that serialize Protobuf messages to raw binary bytes (`.toBinary()`) sent through Tauri's `send_to_service_typed` IPC command.
 * **Adding New RPCs / Types**:
-  1. Add/modify the message or RPC definition in `curator-core/proto/<domain>.proto`.
+  1. Add/modify the message or RPC definition in `curator-proto/proto/<domain>.proto`.
   2. Implement the gRPC trait handler in `curator-service/src/server/<domain>.rs`.
   3. Re-run `dev.ps1` (or `cargo check` + `npm run build:proto` in `curator-dashboard`).
   4. Import generated TS classes from `./gen/<domain>_pb` and use domain helper `call<Domain>`.
@@ -112,7 +117,7 @@ Get-Process curator-service -ErrorAction SilentlyContinue | Stop-Process -Force
 
 1. **Database Schema & Migrations:**
    * **Never** perform ad-hoc SQL modifications or direct index additions on development databases.
-   * All schema updates, new tables, and performance indexes **must** be committed as structured SQL files inside `curator-core/migrations/` (e.g., `0011_feature_name.sql`).
+   * All schema updates, new tables, and performance indexes **must** be committed as structured SQL files inside `curator-db/migrations/` (e.g., `0011_feature_name.sql`).
 
 2. **Query Performance Verification:**
    * Always execute `EXPLAIN QUERY PLAN` on SQLite queries before finalizing refactors to verify index usage and eliminate full table scans or temporary B-trees.
@@ -178,6 +183,9 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
    * When a command, tool, or library fails in an unexpected or persistent way, **immediately use `search_web`** to determine whether the failure is caused by a version limitation, a known bug, or a fundamental capability gap — before writing any code or running any more commands.
    * **Version limitations are blockers, not configuration problems.** If a tool version does not support a feature (e.g., FFmpeg < 9.0 cannot decode animated WebPs), no amount of flag tweaking will fix it. Identify the version requirement first, then escalate to updating the tool or choosing an alternative approach.
    * When a tool needs to be updated to resolve a capability gap, do it — do not loop on workarounds that cannot work.
+8. **Root Implementation Plans Mandate:**
+   * **Root Plan Priority**: If an implementation plan document (e.g., `implementation_plan_modularization.md`, `implementation_plan.md`, or `PLAN_*.md`) exists in the repository root directory, AI agents **MUST** read, use, and update that root file directly in the workspace directory.
+   * **No Local Directory Redirection**: **NEVER** write or redirect implementation plans exclusively to internal/local brain artifact directories when a plan file exists in the repository root directory. Always update the repository root plan file directly so all agents and developers share the exact same authoritative document.
 
 ### Frontend Design Skill (`/frontend-design`) Integration
 
