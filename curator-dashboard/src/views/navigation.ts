@@ -1,3 +1,4 @@
+import { renderPluginNavItemHtml } from "../components/navigation-sidebar";
 import { favoritesPage, setGalleryPage, setFavoritesPage, getImagesPerPage, setImagesPerPage, setGalleryInfiniteScroll, setGalleryZenMode, getGalleryInfiniteScroll, getGalleryZenMode, getGalleryPage, getGalleryTotalCount, getGalleryFullImages, setGalleryFullImages } from "../state";
 import { refreshGallery, refreshFavorites, setupPaginationButtons, setupPageJump, loadMoreGallery, isGalleryLoading } from "./gallery";
 import { refreshBenchmarkMaxImages } from "./benchmark";
@@ -50,11 +51,7 @@ export function registerPluginView(
   if (pluginViews.has(viewKey)) return;
 
   const navList = document.getElementById("extensions-nav-list");
-  const navItem = document.createElement("li");
-  navItem.className = "nav-item";
-  navItem.setAttribute("data-view", viewKey);
-  navItem.innerHTML = `<span><i class="${iconClass}"></i></span> ${label}`;
-  navList?.appendChild(navItem);
+  navList?.insertAdjacentHTML("beforeend", renderPluginNavItemHtml(id, label, iconClass));
 
   const section = document.createElement("section");
   section.className = "view-section";
