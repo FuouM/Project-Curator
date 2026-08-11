@@ -20,6 +20,11 @@ import type {
   StoredDetection as PStoredDetection,
 } from "./gen/common_pb";
 import type { CharacterDetection, CharacterIdentity, OcrResult } from "./types";
+import { imageDetailsFromProto } from "./proto-adapters";
+import {
+  GetImageRequestSchema,
+  ImageResultSchema,
+} from "./gen/gallery_pb";
 
 // --- Proto → legacy converters (these modules consume legacy snake_case shapes) ---
 
@@ -68,6 +73,7 @@ let currentViewerPath: string | null = null;
 let currentViewerImageId: number | null = null;
 let detectionsVisible = false;
 let ocrVisible = false;
+let infoPanelVisible = false;
 
 const IDENTITY_COLORS = [
   "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6",
@@ -116,9 +122,10 @@ export function openImageViewer(filepath: string, _imageId?: number) {
   if (ocrOverlay) ocrOverlay.style.display = "none";
   updateDetectionButton(false);
   updateOcrButton(false);
+  closeInfoPanel();
 }
 
-function closeImageViewer() {
+export function closeImageViewer() {
   const modal = document.getElementById("image-viewer-modal");
   const img = document.getElementById("image-viewer-img") as HTMLImageElement | null;
   const video = document.getElementById("image-viewer-video") as HTMLVideoElement | null;
@@ -129,6 +136,7 @@ function closeImageViewer() {
   currentViewerImageId = null;
   detectionsVisible = false;
   ocrVisible = false;
+  closeInfoPanel();
 }
 
 function updateDetectionButton(active: boolean) {
@@ -141,6 +149,66 @@ function updateOcrButton(active: boolean) {
   const btn = document.getElementById("image-viewer-toggle-ocr");
   if (!btn) return;
   btn.classList.toggle("active", active);
+}
+
+function updateInfoButton(active: boolean) {
+  const btn = document.getElementById("image-viewer-toggle-info");
+  if (!btn) return;
+  btn.classList.toggle("active", active);
+}
+
+function repositionActiveOverlays() {
+  if (ocrVisible) {
+    ocrVisible = false; // reset flag so toggle re-renders position
+    void toggleOcr();
+  }
+  if (detectionsVisible) {
+    detectionsVisible = false; // reset flag so toggle re-renders position
+    void toggleDetections();
+  }
+}
+
+function closeInfoPanel() {
+  infoPanelVisible = false;
+  const panel = document.getElementById("image-viewer-info-panel");
+  const body = document.getElementById("image-viewer-info-body");
+  if (panel) panel.classList.remove("open");
+  if (body) body.innerHTML = "";
+  updateInfoButton(false);
+  // Recalculate overlay positions after sidebar transition/layout change
+  requestAnimationFrame(() => {
+    repositionActiveOverlays();
+  });
+}
+
+async function toggleInfoPanel() {
+  const panel = document.getElementById("image-viewer-info-panel");
+  if (!panel) return;
+
+  if (infoPanelVisible) {
+    closeInfoPanel();
+    return;
+  }
+  if (!currentViewerImageId) return;
+
+  const body = document.getElementById("image-viewer-info-body");
+  if (!body) return;
+
+  try {
+    const resp = await typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(currentViewerImageId) }, ImageResultSchema);
+    if (!resp.image) return;
+    const details = imageDetailsFromProto(resp.image);
+    const { renderImageInfo } = await import("./cards");
+    renderImageInfo(details, body);
+    infoPanelVisible = true;
+    panel.classList.add("open");
+    updateInfoButton(true);
+    requestAnimationFrame(() => {
+      repositionActiveOverlays();
+    });
+  } catch (e: any) {
+    console.error("Failed to load image details:", e);
+  }
 }
 
 function currentViewerIsVideo(): boolean {
@@ -443,7 +511,7 @@ export function setupImageViewer() {
 
   document.getElementById("image-viewer-modal")?.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
-    if (!target.closest("button") && !target.closest(".image-viewer-close") && target.tagName !== "IMG" && target.tagName !== "VIDEO") {
+    if (!target.closest("button") && !target.closest(".image-viewer-close") && !target.closest("#image-viewer-info-panel") && target.tagName !== "IMG" && target.tagName !== "VIDEO") {
       closeImageViewer();
     }
   });
@@ -469,6 +537,16 @@ export function setupImageViewer() {
   document.getElementById("image-viewer-toggle-ocr")?.addEventListener("click", (e) => {
     e.stopPropagation();
     toggleOcr();
+  });
+
+  document.getElementById("image-viewer-toggle-info")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleInfoPanel();
+  });
+
+  document.getElementById("image-viewer-info-close")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeInfoPanel();
   });
 
   document.getElementById("image-viewer-rerun-ocr")?.addEventListener("click", async (e) => {
@@ -500,7 +578,19 @@ export function setupImageViewer() {
   });
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeImageViewer();
+    if (e.key !== "Escape") return;
+    if (infoPanelVisible) {
+      closeInfoPanel();
+      return;
+    }
+    closeImageViewer();
+  });
+
+  window.addEventListener("resize", () => {
+    const modal = document.getElementById("image-viewer-modal");
+    if (modal?.classList.contains("active")) {
+      repositionActiveOverlays();
+    }
   });
 }
 

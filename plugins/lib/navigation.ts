@@ -31,6 +31,17 @@ export function navigateToTab(tabId: string): void {
  * directly if no close button is found.
  */
 export function closeInfoModal(): void {
+  // Close image-viewer overlay modal if active
+  if (window.PluginHost?.closeImageViewer) {
+    window.PluginHost.closeImageViewer();
+  } else {
+    const viewerModal = document.getElementById("image-viewer-modal");
+    if (viewerModal?.classList.contains("active")) {
+      viewerModal.classList.remove("active");
+    }
+  }
+
+  // Close legacy/standalone image-info-modal
   const modal = document.getElementById("image-info-modal");
   if (!modal?.classList.contains("active")) return;
   const closeBtn = modal.querySelector<HTMLElement>(".modal-close");

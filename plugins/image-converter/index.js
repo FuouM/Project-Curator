@@ -71,6 +71,13 @@
     item && item.click();
   }
   function closeInfoModal() {
+    var _a;
+    if ((_a = window.PluginHost) != null && _a.closeImageViewer)
+      window.PluginHost.closeImageViewer();
+    else {
+      let viewerModal = document.getElementById("image-viewer-modal");
+      viewerModal != null && viewerModal.classList.contains("active") && viewerModal.classList.remove("active");
+    }
     let modal = document.getElementById("image-info-modal");
     if (!(modal != null && modal.classList.contains("active"))) return;
     let closeBtn = modal.querySelector(".modal-close");

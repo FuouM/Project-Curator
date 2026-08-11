@@ -104,6 +104,7 @@ export interface PluginHostApi {
   registerContextMenuItem(id: string, label: string, fn: (asset: AssetContext) => void): void;
   callService(method: string, params: object): Promise<any>;
   convertFileSrc(filePath: string): string;
+  closeImageViewer(): void;
   getAssetContext(image: ImageDetails): AssetContext;
   getAssetContextFromCard(card: HTMLElement): AssetContext;
   fetchAssetContext(imageId: number): Promise<AssetContext>;
@@ -130,6 +131,9 @@ const pluginHost: PluginHostApi = {
   },
   convertFileSrc(filePath: string) {
     return convertFileSrc(filePath);
+  },
+  closeImageViewer() {
+    import("./image-viewer").then((m) => m.closeImageViewer());
   },
   getAssetContext,
   getAssetContextFromCard,
