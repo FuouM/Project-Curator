@@ -53,7 +53,7 @@ Always execute commands within the project's isolated environment:
 
 * **Protobuf Code Generation**:
   * **Rust**: `curator-proto/build.rs` compiles `curator-proto/proto/*.proto` automatically during `cargo build` / `cargo check`.
-  * **TypeScript**: `npm run build:proto` (runs `npx buf generate`) emits TS stubs to `curator-dashboard/src/gen/`. Triggered automatically by `dev.ps1` and `npm run dev`.
+  * **TypeScript**: `npm run gen` (runs `npx buf generate ../curator-proto/proto`) emits TS stubs to `curator-dashboard/src/gen/`. Triggered automatically by `dev.ps1` and `npm run dev`.
 
 ---
 
@@ -107,7 +107,7 @@ Get-Process curator-service -ErrorAction SilentlyContinue | Stop-Process -Force
 * **Adding New RPCs / Types**:
   1. Add/modify the message or RPC definition in `curator-proto/proto/<domain>.proto`.
   2. Implement the gRPC trait handler in `curator-service/src/server/<domain>.rs`.
-  3. Re-run `dev.ps1` (or `cargo check` + `npm run build:proto` in `curator-dashboard`).
+  3. Re-run `dev.ps1` (or `cargo check` + `npm run gen` in `curator-dashboard`).
   4. Import generated TS classes from `./gen/<domain>_pb` and use domain helper `call<Domain>`.
 * **Indexed Pattern Search:** Autocomplete components must perform dynamic `LIKE` queries on keypress rather than pre-fetching large data arrays over IPC. Keep response payloads small to guarantee sub-10ms response times.
 
@@ -163,7 +163,7 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
    * **Rust/Backend**: For OS system paths (e.g. system fonts), dynamically query environment variables such as `std::env::var("WINDIR")` instead of hardcoding absolute system paths.
 2. **NO Fallbacks / Feature Removal Policy:** **NEVER** implement silent fallbacks, comment out broken logic, or strip out features (such as `sccache`, test suites, or performance configurations) simply to bypass or dodge an error. When an error or warning occurs, diagnose and fix the root cause properly. Fail fast, preserve required tooling, and expose underlying issues cleanly.
 
-3. **First-Principles Model Verification:** Before modifying inference logic in `curator-core`, create or run standalone programmatic test binaries in `curator-core/src/bin/` (e.g., `test_ort_standalone.rs`) to verify ONNX model initialization and tensor shapes step-by-step.
+3. **First-Principles Model Verification:** Before modifying inference logic, create or run standalone programmatic test binaries to verify ONNX model initialization and tensor shapes step-by-step. ONNX/ORT verification binaries live in `curator-ml/src/bin/` (e.g., `test_ort_wd_tagger.rs`); core aggregation/pipeline verification binaries live in `curator-core/src/bin/` (e.g., `test_system_nodes.rs`).
 4. **Filesystem Safety & Preservation Mandate:**
    * **Deletion Banned:** **NEVER** delete files using `Remove-Item`, `git rm`, `rm`, or `Remove-Item -Force`.
    * **Deprecation Protocol:** Any file, document, plan (`PLAN_*.md`), or component designated for removal **must** be moved into a `.deprecated/` folder instead of being deleted.

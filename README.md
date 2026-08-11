@@ -79,7 +79,7 @@ Run one-off operations on arbitrary files **without touching the library**: auto
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Core IPC bus:** all client-to-service traffic is gRPC (tonic/prost) over a local transport — Windows Named Pipe `\\.\pipe\curator_ipc` on Windows, `~/.curator/curator.sock` Unix Domain Socket elsewhere. Requests are serialized into a single JSON `Request`/`Response` envelope; a per-install **service key** authenticates clients.
+**Core IPC bus:** all client-to-service traffic is strongly-typed gRPC (tonic/prost in Rust, `@bufbuild/protobuf` in TypeScript) over a local transport — Windows Named Pipe `\\.\pipe\curator_ipc` on Windows, `~/.curator/curator.sock` Unix Domain Socket elsewhere. Requests are serialized to raw Protobuf binary (`.toBinary()` / `.fromBinary()`) and sent through Tauri's `send_to_service_typed` IPC bridge from the frontend; a per-install **service key** authenticates clients. The engine internals are organized into modular workspace crates (`curator-proto`, `curator-media`, `curator-db`, `curator-ml`, `curator-filename-parser`) whose public API is re-exported by `curator-core`, so `curator-service`, `curator-cli`, and the Tauri bridge compile against a single aggregator.
 
 **Storage philosophy:** relational metadata (images, tags, sources, character detections, OCR results) lives in SQLite; dense 512-d embeddings live in an isolated in-memory USearch vector index. Original files are never mutated.
 
@@ -89,22 +89,26 @@ Run one-off operations on arbitrary files **without touching the library**: auto
 
 ```bash
 project-curator/
-├── curator-core/        # Core Rust engine: SQLite + migrations, USearch index,
-│   │                    #   ONNX pipelines, media decoding, detection, OCR
-│   ├── src/ipc/         # gRPC client/server transport (Named Pipe / UDS)
-│   ├── src/bin/         # Standalone test & benchmark binaries
-│   └── migrations/      # Versioned SQL migrations (20, schema → media metadata)
-├── curator-service/     # Background daemon: single-writer, task queue, gRPC server,
-│   │                    #   model download/quantize/convert, FFmpeg transcode jobs
-│   └── src/handlers/    # One handler module per IPC request domain
-├── curator-cli/         # Headless CLI client for scripting & agent integration
-├── curator-dashboard/   # Tauri v2 + Vite + TypeScript desktop UI
-│   ├── src-tauri/       # Tauri Rust backend glue (workspace member)
-│   └── src/views/       # One TS view module per tab
-├── plugins/             # TypeScript plugin workspace (esbuild bundles + shared lib/)
-├── docs/                # Design document, image-processing & ML porting guides
-├── scripts/             # Model conversion / quantization helpers (Python venv)
-└── .curator/            # Local runtime state: models, vector index, SQLite DB
+├── curator-proto/            # Leaf contracts crate: 16 gRPC .proto specs, generated Tonic stubs,
+│   └── proto/                #   shared kernel (DevicePreference/TaggerModel), constants, util, IPC transport
+├── curator-filename-parser/  # Rule & tokenizer engine: presets, token blocks, batch filename parsing
+├── curator-media/            # High-performance media engine: TurboJPEG/WebP/GIF decode, video, thumbnails, CropCache
+├── curator-db/               # SQLite schema, versioned migrations, models, and HNSW vector storage
+│   └── migrations/           # Versioned SQL migrations (schema → media metadata)
+├── curator-ml/               # ONNX Runtime engine: CLIP/MobileCLIP, YOLO, OCR, taggers, concept training, benchmarks
+│   └── src/bin/              # Standalone ONNX model-verification binaries
+├── curator-core/             # Aggregator/orchestrator: domain DTOs, grpc_convert, re-exports of child crates
+│   └── src/bin/              # Standalone pipeline test & benchmark binaries
+├── curator-service/          # Background daemon: single-writer, task queue, gRPC server,
+│   └── src/handlers/         #   model download/quantize/convert, FFmpeg transcode jobs
+├── curator-cli/              # Headless CLI client for scripting & agent integration
+├── curator-dashboard/        # Tauri v2 + Vite + TypeScript desktop UI
+│   ├── src-tauri/            # Tauri Rust backend glue & typed binary IPC bridge (workspace member)
+│   └── src/                  # TS UI views, RPC clients (callSearch/callGallery), gen/ stubs
+├── plugins/                  # TypeScript plugin workspace (esbuild bundles + shared lib/)
+├── docs/                     # Design document, image-processing & ML porting guides
+├── scripts/                  # Model conversion / quantization helpers (Python venv)
+└── .curator/                 # Local runtime state: models, vector index, SQLite DB
 ```
 
 The dashboard exposes these tabs: Dashboard, Gallery, Favorites, Tag Statistics, Folders, Import, Search, Concepts, Characters, Filename Parser, Toolbox, Plugins, Logs, Benchmark, Settings, and Models.
