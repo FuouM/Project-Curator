@@ -189,6 +189,7 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
 8. **Root Implementation Plans Mandate:**
    * **Root Plan Priority**: If an implementation plan document (e.g., `implementation_plan_modularization.md`, `implementation_plan.md`, or `PLAN_*.md`) exists in the repository root directory, AI agents **MUST** read, use, and update that root file directly in the workspace directory.
    * **No Local Directory Redirection**: **NEVER** write or redirect implementation plans exclusively to internal/local brain artifact directories when a plan file exists in the repository root directory. Always update the repository root plan file directly so all agents and developers share the exact same authoritative document.
+   * **Mandatory Ultra-Fine Detail**: Implementation plans **MUST** be written with ultra-fine, granular, production-ready specifications. They must detail exact function signatures, interface boundaries, file structures, and line-by-line block transformations. Lazy summaries or high-level placeholders are strictly banned.
 
 ### Frontend Design Skill (`/frontend-design`) Integration
 
