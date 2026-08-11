@@ -15,6 +15,7 @@
 *.css text eol=lf
 *.ts text eol=lf
 *.html text eol=lf
+*.sql text eol=lf
 
 # Test & asset images — treat as binary so git never tries to diff or merge them
 assets/test_images/*.jpg binary
