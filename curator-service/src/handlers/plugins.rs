@@ -102,6 +102,14 @@ pub async fn list_plugins(
             if !dir.is_dir() {
                 continue;
             }
+            // A directory is only a plugin candidate if it declares a
+            // manifest.json. Stray support/utility directories (e.g. a shared
+            // `lib/` or a `node_modules/` tree) have no manifest and are not
+            // plugins — skip them instead of surfacing invalid entries in the
+            // Plugins hub.
+            if !dir.join("manifest.json").is_file() {
+                continue;
+            }
             let name = dir
                 .file_name()
                 .and_then(|n| n.to_str())
