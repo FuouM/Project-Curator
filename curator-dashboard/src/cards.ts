@@ -312,7 +312,7 @@ const lazyObserver = new IntersectionObserver((entries) => {
         img.classList.remove("loaded");
         img.dataset.pending = "1";
         img.dataset.fullLoaded = "0";
-        if (preview) preview.classList.add("thumb-loading");
+        if (preview) preview.classList.remove("thumb-loading");
       }
     }
   }
