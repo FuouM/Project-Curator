@@ -57,3 +57,12 @@ impl TaggerModel {
         }
     }
 }
+
+impl EmbeddingModel {
+    pub fn source_name(&self) -> &'static str {
+        match self {
+            EmbeddingModel::ClipVitB32 => crate::constants::SOURCE_CLIP,
+            EmbeddingModel::MobileClipS2 => crate::constants::SOURCE_MOBILECLIP,
+        }
+    }
+}

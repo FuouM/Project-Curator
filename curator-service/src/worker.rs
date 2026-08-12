@@ -1,5 +1,4 @@
 use curator_core::db::models::Image;
-use curator_core::ipc::EmbeddingModel;
 use curator_core::vector::{ModelManager, VectorIndex};
 use sha2::Digest;
 use sqlx::SqlitePool;
@@ -45,10 +44,7 @@ impl BackgroundWorker {
         let mm_startup = self.model_manager.clone();
         tokio::spawn(async move {
             let active = mm_startup.active_model();
-            let source_name = match active {
-                EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
-                EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
-            };
+            let source_name = active.source_name();
             if let Ok((source_id,)) =
                 sqlx::query_as::<_, (i64,)>("SELECT id FROM sources WHERE name = ? LIMIT 1")
                     .bind(source_name)
@@ -115,10 +111,7 @@ impl BackgroundWorker {
             info!("Pipelined preprocessing stage started.");
             loop {
                 let active = mm_pre.active_model();
-                let source_name = match active {
-                    EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
-                    EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
-                };
+                let source_name = active.source_name();
 
                 // Fetch source_id for active model
                 let source_id = match sqlx::query_as::<_, (i64,)>(

@@ -257,10 +257,7 @@ pub async fn import_single_image(
         .duration_since(std::time::SystemTime::UNIX_EPOCH)?
         .as_secs() as i64;
 
-    let source_name = match active {
-        EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
-        EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
-    };
+    let source_name = active.source_name();
     let clip_source_id = resolve_source_id(db, source_name).await?;
 
     let phash = match curator_core::vector::compute_ahash(phash_source_path(&media, path)) {
@@ -486,10 +483,7 @@ pub async fn import_image_logic(
             }
         });
 
-        let clip_source_id = resolve_source_id(db, match active {
-            EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
-            EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
-        }).await?;
+        let clip_source_id = resolve_source_id(db, active.source_name()).await?;
 
         let mut first_id = 0;
         let mut first_sha = String::new();
@@ -932,10 +926,7 @@ pub async fn index_folder_logic(
         anyhow::bail!("Folder not found: id={}", folder_id);
     }
 
-    let source_name = match active {
-        EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
-        EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
-    };
+    let source_name = active.source_name();
     let source_id = resolve_source_id(db, source_name).await?;
 
     let result = sqlx::query(

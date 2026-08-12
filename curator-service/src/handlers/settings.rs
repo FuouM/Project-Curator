@@ -82,10 +82,7 @@ pub async fn query_status(
     db: &SqlitePool,
     active: EmbeddingModel,
 ) -> Result<(i64, i64, i64, i64, i64)> {
-    let source_name = match active {
-        EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
-        EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
-    };
+    let source_name = active.source_name();
     let source_id = resolve_source_id(db, source_name).await.unwrap_or_default();
 
     let row: (i64, i64, i64, i64) = sqlx::query_as(
@@ -205,10 +202,7 @@ pub async fn update_settings_logic(
             return Err(anyhow::anyhow!("Failed to initialize new model: {:?}", e));
         }
 
-        let source_name = match active_model {
-            EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
-            EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
-        };
+        let source_name = active_model.source_name();
         let source_id = resolve_source_id(db, source_name).await
             .map_err(|e| anyhow::anyhow!("Failed to fetch source ID for model change: {:?}", e))?;
         if let Err(e) = vector_index.clear() {

@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use curator_core::concept::{
     bytes_to_vector, sanitize_concept_name, vector_to_bytes, CustomConcept,
 };
-use curator_core::ipc::EmbeddingModel;
 use curator_core::vector::ModelManager;
 use sqlx::SqlitePool;
 
@@ -84,10 +83,7 @@ pub async fn recompute_concept_prototype_logic(
     let ids: Vec<i64> = sample_rows.into_iter().map(|(id,)| id).collect();
 
     let active_model = model_manager.active_model();
-    let source_name = match active_model {
-        EmbeddingModel::ClipVitB32 => curator_core::constants::SOURCE_CLIP,
-        EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
-    };
+    let source_name = active_model.source_name();
     let source_id = resolve_source_id(db, source_name).await?;
 
     let mut sample_vectors = Vec::new();
@@ -155,10 +151,7 @@ pub async fn recompute_concept_prototype_logic(
     let blob = vector_to_bytes(&proto_vec);
 
     let active_model = model_manager.active_model();
-    let source_name = match active_model {
-        EmbeddingModel::ClipVitB32 => curator_core::constants::SOURCE_CLIP,
-        EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
-    };
+    let source_name = active_model.source_name();
     let source_id = resolve_source_id(db, source_name).await?;
 
     sqlx::query(
@@ -456,10 +449,7 @@ pub async fn rescan_concept_logic(
     let _ = clean_auto_concept_tags_logic(db, Some(concept_id)).await;
 
     let active_model = model_manager.active_model();
-    let source_name = match active_model {
-        EmbeddingModel::ClipVitB32 => curator_core::constants::SOURCE_CLIP,
-        EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
-    };
+    let source_name = active_model.source_name();
     let source_id = match resolve_source_id(db, source_name).await {
         Ok(id) => id,
         Err(_) => return Ok(0),

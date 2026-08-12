@@ -154,10 +154,7 @@ pub async fn reindex_vectors_logic(
     vector_index: &curator_core::vector::VectorIndex,
     active_model: curator_core::ipc::EmbeddingModel,
 ) -> Result<()> {
-    let source_name = match active_model {
-        curator_core::ipc::EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
-        curator_core::ipc::EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
-    };
+    let source_name = active_model.source_name();
     let source_id = resolve_source_id(db, source_name).await?;
 
     if let Err(e) = vector_index.clear() {
@@ -176,10 +173,7 @@ pub async fn reindex_failed_vectors_logic(
     db: &SqlitePool,
     active_model: curator_core::ipc::EmbeddingModel,
 ) -> Result<i64> {
-    let source_name = match active_model {
-        curator_core::ipc::EmbeddingModel::ClipVitB32 => "ai:clip-vit-b-32",
-        curator_core::ipc::EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
-    };
+    let source_name = active_model.source_name();
     let source_id = resolve_source_id(db, source_name).await?;
 
     let result = sqlx::query(

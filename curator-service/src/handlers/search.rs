@@ -1,6 +1,6 @@
 use anyhow::Result;
 use curator_core::concept::bytes_to_vector;
-use curator_core::ipc::{EmbeddingModel, SearchMatch};
+use curator_core::ipc::SearchMatch;
 use curator_core::vector::{ModelManager, VectorIndex};
 use super::image::batch_get_images_logic;
 
@@ -143,10 +143,7 @@ pub async fn search_logic(
     if let Some(c_id) = concept_id {
         if let Ok(concept) = get_custom_concept_by_id(db, c_id).await {
             let active_model = model_manager.active_model();
-            let source_name = match active_model {
-                EmbeddingModel::ClipVitB32 => curator_core::constants::SOURCE_CLIP,
-                EmbeddingModel::MobileClipS2 => "ai:mobileclip-s2",
-            };
+            let source_name = active_model.source_name();
             let source_row: Option<(i64,)> = sqlx::query_as("SELECT id FROM sources WHERE name = ? LIMIT 1")
                 .bind(source_name)
                 .fetch_optional(db)
