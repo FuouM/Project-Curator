@@ -94,7 +94,10 @@ Get-Process curator-service -ErrorAction SilentlyContinue | Stop-Process -Force
 
 ### 2. ONNX Runtime Dependency Management
 
-`onnxruntime.dll` must exist in the root folder and active build target directories (`target/debug` or `target/release`). If missing, run `.\download_ort.ps1`.
+Before running `.\download_ort.ps1`, **ALWAYS** check if `onnxruntime.dll` and `DirectML.dll` already exist in the repository root or target directories (`target/debug` / `target/release`).
+
+* Ensure the workspace root is added to `$env:PATH` (e.g. `$env:PATH = "$PWD;$env:PATH"`) or the DLLs exist in the active target build folder so `ort` can bind to them.
+* **Only** execute `.\download_ort.ps1` if the DLL files are completely missing from the project workspace.
 
 ### 3. CLIP Text Tokenization Rules
 
@@ -190,6 +193,9 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
    * **Root Plan Priority**: If an implementation plan document (e.g., `implementation_plan_modularization.md`, `implementation_plan.md`, or `PLAN_*.md`) exists in the repository root directory, AI agents **MUST** read, use, and update that root file directly in the workspace directory.
    * **No Local Directory Redirection**: **NEVER** write or redirect implementation plans exclusively to internal/local brain artifact directories when a plan file exists in the repository root directory. Always update the repository root plan file directly so all agents and developers share the exact same authoritative document.
    * **Mandatory Ultra-Fine Detail**: Implementation plans **MUST** be written with ultra-fine, granular, production-ready specifications. They must detail exact function signatures, interface boundaries, file structures, and line-by-line block transformations. Lazy summaries or high-level placeholders are strictly banned.
+9. **System Architecture Conformity Mandate:**
+   * **No Inventing Isolated Parallel Solutions:** AI agents **MUST** inspect and conform strictly to the existing codebase architecture and contract specifications (`curator-proto/proto/*.proto`, `ModelsService` in `models.proto`, `ModelsService` / `models.json` manifest, `BenchmarksService` in `benchmarks.proto`, `ManagedSession` in `curator-ml`, etc.).
+   * **Mandatory System Exploration:** Before proposing or drafting implementation plans for new features (such as ML models, benchmarks, settings, downloads, or background tasks), agents **MUST** thoroughly inspect the project's existing domain Protobuf files, gRPC services, and manager classes to integrate seamlessly into existing systems rather than inventing ad-hoc or parallel workflows.
 
 ### Frontend Design Skill (`/frontend-design`) Integration
 
