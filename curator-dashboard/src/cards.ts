@@ -483,8 +483,7 @@ export function setupGridDelegation(grid: HTMLElement) {
     }
     if (target.closest(".image-open-folder-btn")) {
       const filepath = card.dataset.filepath || "";
-      const dir = filepath.replace(/[\\/][^\\/]+$/, "");
-      invoke("open_file_externally", { path: dir }).catch(() => {});
+      invoke("reveal_in_folder", { path: filepath }).catch(() => {});
       return;
     }
 
@@ -585,8 +584,7 @@ export function attachCardEventHandlers(
       return;
     }
     if (target.closest(".image-open-folder-btn")) {
-      const dir = filepath.replace(/[\\/][^\\/]+$/, "");
-      invoke("open_file_externally", { path: dir }).catch(() => {});
+      invoke("reveal_in_folder", { path: filepath }).catch(() => {});
       return;
     }
     if (target.closest(".image-path")) {

@@ -266,12 +266,20 @@ fn reveal_in_explorer(path: &std::path::Path) -> Result<(), String> {
     let win_dir = std::env::var("WINDIR")
         .map_err(|_| "WINDIR environment variable is not set; cannot resolve explorer.exe".to_string())?;
     let explorer = std::path::Path::new(&win_dir).join("explorer.exe");
-    let target = format!("/select,{}", path.display());
+    // explorer.exe parses `/segment` as a command-line switch, so forward
+    // slashes in the path would be consumed as unknown switches with no path
+    // token left, causing Explorer to fall back to the user's Documents
+    // folder. Convert to native backslashes before invoking.
+    //
+    // `/select,` and the path MUST be separate argv tokens (Command quotes the
+    // path token on its own): a single "/select,<path>" argument puts the
+    // switch inside the quotes, which Explorer also mis-handles the same way.
+    let display = path.display().to_string().replace('/', "\\");
     Command::new(explorer)
-        .arg(&target)
+        .arg("/select,")
+        .arg(&display)
         .spawn()
         .map_err(|e| format!("Failed to open file location: {:?}", e))?;
-    log_dashboard_event(&format!("Revealed file in Explorer: {}", path.display()));
     Ok(())
 }
 
@@ -287,6 +295,16 @@ async fn open_log_location(tab: String) -> Result<(), String> {
         return Err(format!("Log file not found: {}", log_file.display()));
     }
     reveal_in_explorer(&log_file)
+}
+
+/// Reveal a file path in Explorer with the file highlighted.
+#[tauri::command]
+async fn reveal_in_folder(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err(format!("Path not found: {}", path));
+    }
+    reveal_in_explorer(p)
 }
 
 #[tauri::command]
@@ -441,6 +459,7 @@ pub fn run() {
             clear_logs,
             clear_service_logs,
             open_log_location,
+            reveal_in_folder,
             log_frontend,
             open_file_externally,
             read_image_bytes,
