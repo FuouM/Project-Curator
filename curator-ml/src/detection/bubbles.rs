@@ -157,44 +157,14 @@ fn nms(mut detections: Vec<BubbleDetection>, iou_threshold: f32) -> Vec<BubbleDe
     // Sort by confidence descending
     detections.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
 
-    let mut keep = Vec::new();
-    let mut suppressed = vec![false; detections.len()];
-
-    for i in 0..detections.len() {
-        if suppressed[i] {
-            continue;
-        }
-        keep.push(detections[i].clone());
-        for j in (i + 1)..detections.len() {
-            if suppressed[j] {
-                continue;
-            }
-            if iou(&detections[i].bbox, &detections[j].bbox) > iou_threshold {
-                suppressed[j] = true;
-            }
-        }
-    }
-
-    // Restore top-to-bottom, left-to-right order
-    keep.sort_by(|a, b| {
+    let keep = super::nms::nms_indices(&detections, iou_threshold, |d| d.bbox);
+    let mut kept: Vec<BubbleDetection> = keep.into_iter().map(|i| detections[i].clone()).collect();
+    kept.sort_by(|a, b| {
         a.bbox[1].partial_cmp(&b.bbox[1])
             .unwrap_or(std::cmp::Ordering::Equal)
             .then(a.bbox[0].partial_cmp(&b.bbox[0]).unwrap_or(std::cmp::Ordering::Equal))
     });
-    keep
-}
-
-/// Compute Intersection over Union (IoU) between two [x1, y1, x2, y2] boxes.
-fn iou(a: &[f32; 4], b: &[f32; 4]) -> f32 {
-    let ix1 = a[0].max(b[0]);
-    let iy1 = a[1].max(b[1]);
-    let ix2 = a[2].min(b[2]);
-    let iy2 = a[3].min(b[3]);
-    let inter = (ix2 - ix1).max(0.0) * (iy2 - iy1).max(0.0);
-    let area_a = (a[2] - a[0]) * (a[3] - a[1]);
-    let area_b = (b[2] - b[0]) * (b[3] - b[1]);
-    let union = area_a + area_b - inter;
-    if union <= 0.0 { 0.0 } else { inter / union }
+    kept
 }
 
 /// Reorder DB text detections based on bubble regions.

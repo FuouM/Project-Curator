@@ -257,49 +257,10 @@ fn postprocess_yolo(
 }
 
 fn apply_nms(detections: &mut Vec<Detection>, iou_threshold: f32) {
-    let mut keep = vec![true; detections.len()];
-    for i in 0..detections.len() {
-        if !keep[i] {
-            continue;
-        }
-        for j in (i + 1)..detections.len() {
-            if !keep[j] {
-                continue;
-            }
-            let iou = compute_iou(&detections[i], &detections[j]);
-            if iou > iou_threshold {
-                keep[j] = false;
-            }
-        }
-    }
-    let mut idx = 0;
-    keep.retain(|&k| {
-        let keep_it = k;
-        if !keep_it {
-            detections.remove(idx);
-        } else {
-            idx += 1;
-        }
-        true
+    let keep = super::nms::nms_indices(detections, iou_threshold, |d| {
+        [d.x0 as f32, d.y0 as f32, d.x1 as f32, d.y1 as f32]
     });
-}
-
-fn compute_iou(a: &Detection, b: &Detection) -> f32 {
-    let inter_x0 = a.x0.max(b.x0) as f32;
-    let inter_y0 = a.y0.max(b.y0) as f32;
-    let inter_x1 = a.x1.min(b.x1) as f32;
-    let inter_y1 = a.y1.min(b.y1) as f32;
-
-    let inter_area = (inter_x1 - inter_x0).max(0.0) * (inter_y1 - inter_y0).max(0.0);
-    let a_area = (a.x1 - a.x0) as f32 * (a.y1 - a.y0) as f32;
-    let b_area = (b.x1 - b.x0) as f32 * (b.y1 - b.y0) as f32;
-    let union_area = a_area + b_area - inter_area;
-
-    if union_area <= 0.0 {
-        0.0
-    } else {
-        inter_area / union_area
-    }
+    *detections = keep.into_iter().map(|i| detections[i].clone()).collect();
 }
 
 impl curator_proto::pipeline::SystemNode for YoloDetector {

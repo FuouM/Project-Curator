@@ -4,6 +4,7 @@ pub mod pipeline;
 pub mod types;
 pub mod yolo;
 pub mod ocr;
+pub mod nms;
 
 pub use pipeline::DetectionPipeline;
 pub use types::*;
