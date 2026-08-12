@@ -260,6 +260,35 @@ async fn clear_service_logs() -> Result<(), String> {
     fs::write(&log_file, "").map_err(|e| format!("Failed to clear service logs: {:?}", e))
 }
 
+/// Reveal a file in Windows Explorer (selects the file inside its parent
+/// folder). explorer.exe is resolved via the `WINDIR` environment variable.
+fn reveal_in_explorer(path: &std::path::Path) -> Result<(), String> {
+    let win_dir = std::env::var("WINDIR")
+        .map_err(|_| "WINDIR environment variable is not set; cannot resolve explorer.exe".to_string())?;
+    let explorer = std::path::Path::new(&win_dir).join("explorer.exe");
+    let target = format!("/select,{}", path.display());
+    Command::new(explorer)
+        .arg(&target)
+        .spawn()
+        .map_err(|e| format!("Failed to open file location: {:?}", e))?;
+    log_dashboard_event(&format!("Revealed file in Explorer: {}", path.display()));
+    Ok(())
+}
+
+/// Open the location of the active log file (dashboard or service) in Explorer.
+#[tauri::command]
+async fn open_log_location(tab: String) -> Result<(), String> {
+    let log_file = if tab == "service" {
+        data_dir().join("service_stdout.log")
+    } else {
+        data_dir().join("dashboard.log")
+    };
+    if !log_file.exists() {
+        return Err(format!("Log file not found: {}", log_file.display()));
+    }
+    reveal_in_explorer(&log_file)
+}
+
 #[tauri::command]
 fn log_frontend(message: String) {
     log_dashboard_event(&format!("[JS] {}", message));
@@ -411,6 +440,7 @@ pub fn run() {
             read_service_logs,
             clear_logs,
             clear_service_logs,
+            open_log_location,
             log_frontend,
             open_file_externally,
             read_image_bytes,

@@ -222,6 +222,15 @@ export function setupLogTabs() {
       renderVisibleLogs(logDiv);
     }
   });
+
+  // Open the active log file's location in Explorer for the current tab
+  document.getElementById("open-log-file-btn")?.addEventListener("click", async () => {
+    try {
+      await invoke("open_log_location", { tab: currentLogTab });
+    } catch (e) {
+      showErrorAlert("Failed to open log file location:\n" + e);
+    }
+  });
 }
 
 export async function refreshLogs() {
@@ -286,6 +295,7 @@ export function renderLogsHtml(): SafeHtml {
           <button class="win-button log-tab" id="log-tab-service" style="border-radius: 0 2px 2px 0;">Service</button>
         </div>
         <div style="flex: 1;"></div>
+        <button class="win-button" id="open-log-file-btn"><i class="bi bi-folder2-open"></i> Open File Location</button>
         <button class="win-button" id="refresh-logs-btn"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
         <button class="win-button" id="clear-logs-btn"><i class="bi bi-x-lg"></i> Clear</button>
       </div>
