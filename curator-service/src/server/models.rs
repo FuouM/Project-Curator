@@ -26,6 +26,38 @@ fn is_terminal_download_status(status: &str) -> bool {
     matches!(status, "completed" | "failed" | "cancelled")
 }
 
+/// Build a Server-streaming response that polls `progress` for `key` every
+/// 250 ms, emitting each snapshot, and ends once the download reaches a
+/// terminal status. Shared by the model-download and FFmpeg-download streams.
+fn download_status_stream(
+    progress: handlers::models::DownloadProgressMap,
+    key: String,
+) -> tonic::Response<ReceiverStream<Result<DownloadStatusUpdate, Status>>> {
+    let (tx, rx) = tokio::sync::mpsc::channel(8);
+    tokio::spawn(async move {
+        loop {
+            let snapshot = {
+                let map = progress.lock().await;
+                map.get(&key).cloned()
+            };
+            if let Some(p) = snapshot {
+                let done = is_terminal_download_status(&p.status);
+                let _ = tx
+                    .send(Ok(DownloadStatusUpdate {
+                        progress: Some(p.into()),
+                        complete: done,
+                    }))
+                    .await;
+                if done {
+                    break;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+    });
+    tonic::Response::new(ReceiverStream::new(rx))
+}
+
 #[tonic::async_trait]
 impl ModelsService for ModelsServiceImpl {
     async fn get_model_status(
@@ -63,31 +95,10 @@ impl ModelsService for ModelsServiceImpl {
             return Err(Status::internal(outcome.message));
         }
 
-        let progress = self.ctx.download_progress.clone();
-        let model_id = req.model_id;
-        let (tx, rx) = tokio::sync::mpsc::channel(8);
-        tokio::spawn(async move {
-            loop {
-                let snapshot = {
-                    let map = progress.lock().await;
-                    map.get(&model_id).cloned()
-                };
-                if let Some(p) = snapshot {
-                    let done = is_terminal_download_status(&p.status);
-                    let _ = tx
-                        .send(Ok(DownloadStatusUpdate {
-                            progress: Some(p.into()),
-                            complete: done,
-                        }))
-                        .await;
-                    if done {
-                        break;
-                    }
-                }
-                tokio::time::sleep(Duration::from_millis(250)).await;
-            }
-        });
-        Ok(TonicResponse::new(ReceiverStream::new(rx)))
+        Ok(download_status_stream(
+            self.ctx.download_progress.clone(),
+            req.model_id,
+        ))
     }
 
     async fn cancel_download(
@@ -247,30 +258,10 @@ impl ModelsService for ModelsServiceImpl {
             return Ok(TonicResponse::new(ReceiverStream::new(rx)));
         }
 
-        let progress = self.ctx.download_progress.clone();
-        let (tx, rx) = tokio::sync::mpsc::channel(8);
-        tokio::spawn(async move {
-            loop {
-                let snapshot = {
-                    let map = progress.lock().await;
-                    map.get(FFMPEG_DOWNLOAD_ID).cloned()
-                };
-                if let Some(p) = snapshot {
-                    let done = is_terminal_download_status(&p.status);
-                    let _ = tx
-                        .send(Ok(DownloadStatusUpdate {
-                            progress: Some(p.into()),
-                            complete: done,
-                        }))
-                        .await;
-                    if done {
-                        break;
-                    }
-                }
-                tokio::time::sleep(Duration::from_millis(250)).await;
-            }
-        });
-        Ok(TonicResponse::new(ReceiverStream::new(rx)))
+        Ok(download_status_stream(
+            self.ctx.download_progress.clone(),
+            FFMPEG_DOWNLOAD_ID.to_string(),
+        ))
     }
 
     async fn get_f_fmpeg_status(
