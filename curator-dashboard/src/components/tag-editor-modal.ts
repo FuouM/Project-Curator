@@ -11,13 +11,11 @@ import { maskPath } from "./path-utils";
 import { getTagPillHtml } from "./card-tags";
 import { refreshCardTags } from "../views/tags";
 
-let isModalWired = false;
-
 export function renderTagEditorModalHtml(imageId: number, filepath: string): SafeHtml {
   return html`
     <div class="modal-header">
       <span class="modal-title">Manage Image Tags</span>
-      <span class="modal-close" id="close-modal"><i class="bi bi-x-lg"></i></span>
+      <span class="modal-close" id="close-modal" data-action="close-modal"><i class="bi bi-x-lg"></i></span>
     </div>
     <form id="tag-form">
       <div class="modal-body">
@@ -57,10 +55,10 @@ export function renderTagEditorModalHtml(imageId: number, filepath: string): Saf
               <option value="0.65">High Precision (0.65)</option>
               <option value="0.35">High Recall (0.35)</option>
             </select>
-            <button type="button" class="win-button" id="auto-tag-modal-btn" style="font-size: 11px;">
+            <button type="button" class="win-button" id="auto-tag-modal-btn" data-action="auto-tag" style="font-size: 11px;">
               <i class="bi bi-stars"></i> AUTO TAG
             </button>
-            <button type="button" class="win-button primary" id="teach-concept-from-modal-btn" style="font-size: 11px;">
+            <button type="button" class="win-button primary" id="teach-concept-from-modal-btn" data-action="teach-concept" style="font-size: 11px;">
               <i class="bi bi-magic"></i> Teach Concept
             </button>
           </div>
@@ -98,59 +96,13 @@ function wireModalClearButton() {
   updateClearVisibility();
 }
 
-function wireModalControls() {
-  const tagForm = document.getElementById("tag-form");
-  const tagImgId = document.getElementById("tag-image-id") as HTMLInputElement | null;
-  const tagNameInput = document.getElementById("tag-name-input") as HTMLInputElement | null;
-
-  tagForm?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (!tagImgId || !tagNameInput) return;
-
-    const imgId = parseInt(tagImgId.value);
-    const tagName = tagNameInput.value.trim();
-
-    try {
-      await typedCall("TagsService.AddTag", AddTagRequestSchema, { imageId: BigInt(imgId), tag: tagName, category: "user" }, EmptySchema);
-      tagNameInput.value = "";
-      tagNameInput.dispatchEvent(new Event("change", { bubbles: true }));
-      await refreshModalTags(imgId);
-      await refreshCardTags(imgId);
-    } catch (e) {
-      showErrorAlert("IPC Tag failed:\n" + e);
-    }
-  });
-
-  document.getElementById("auto-tag-modal-btn")?.addEventListener("click", handleModalAutoTag);
-
-  document.getElementById("teach-concept-from-modal-btn")?.addEventListener("click", async () => {
-    const idInput = document.getElementById("tag-image-id") as HTMLInputElement | null;
-    if (idInput && idInput.value) {
-      const { openTeachConceptModal } = await import("../views/concepts");
-      openTeachConceptModal();
-    }
-  });
-
-  document.getElementById("close-modal")?.addEventListener("click", () => {
-    document.getElementById("add-tag-modal")?.classList.remove("active");
-  });
-
-  wireModalClearButton();
-  isModalWired = true;
-}
-
 export async function openTagModal(imgId: number, path: string) {
   const modal = document.getElementById("add-tag-modal");
   const container = document.getElementById("add-tag-modal-container");
 
-  if (container && !isModalWired) {
+  if (container) {
     container.innerHTML = String(renderTagEditorModalHtml(imgId, path));
-    wireModalControls();
-  } else if (container) {
-    const idInput = document.getElementById("tag-image-id") as HTMLInputElement | null;
-    const pathPreview = document.getElementById("tag-image-path-preview");
-    if (idInput) idInput.value = imgId.toString();
-    if (pathPreview) pathPreview.textContent = maskPath(path);
+    wireModalClearButton();
   }
 
   const statusArea = document.getElementById("auto-tag-modal-status");
@@ -268,6 +220,31 @@ async function removeTag(imgId: number, tagName: string) {
 }
 
 export function setupTagEditorModal() {
+  // Document-level form submission delegation
+  document.addEventListener("submit", async (e) => {
+    const target = e.target as HTMLFormElement;
+    if (target.id === "tag-form") {
+      e.preventDefault();
+      const tagImgId = document.getElementById("tag-image-id") as HTMLInputElement | null;
+      const tagNameInput = document.getElementById("tag-name-input") as HTMLInputElement | null;
+      if (!tagImgId || !tagNameInput) return;
+
+      const imgId = parseInt(tagImgId.value);
+      const tagName = tagNameInput.value.trim();
+
+      try {
+        await typedCall("TagsService.AddTag", AddTagRequestSchema, { imageId: BigInt(imgId), tag: tagName, category: "user" }, EmptySchema);
+        tagNameInput.value = "";
+        tagNameInput.dispatchEvent(new Event("change", { bubbles: true }));
+        await refreshModalTags(imgId);
+        await refreshCardTags(imgId);
+      } catch (err) {
+        showErrorAlert("IPC Tag failed:\n" + err);
+      }
+    }
+  });
+
+  // Document-level click action delegation
   document.addEventListener("click", async (e) => {
     const target = e.target as HTMLElement;
     const actionEl = target.closest("[data-action]") as HTMLElement;
@@ -290,10 +267,20 @@ export function setupTagEditorModal() {
           await typedCall("TagsService.UnblacklistTag", UnblacklistTagRequestSchema, { imageId: BigInt(imgId), tag: tagName }, EmptySchema);
           await refreshModalTags(imgId);
           await refreshCardTags(imgId);
-        } catch (e: any) {
-          showErrorAlert("Error un-blacklisting tag:\n" + (e.message || e));
+        } catch (err: any) {
+          showErrorAlert("Error un-blacklisting tag:\n" + (err.message || err));
         }
       }
+    } else if (action === "auto-tag") {
+      handleModalAutoTag();
+    } else if (action === "teach-concept") {
+      const idInput = document.getElementById("tag-image-id") as HTMLInputElement | null;
+      if (idInput && idInput.value) {
+        const { openTeachConceptModal } = await import("../views/concepts");
+        openTeachConceptModal();
+      }
+    } else if (action === "close-modal") {
+      document.getElementById("add-tag-modal")?.classList.remove("active");
     }
   });
 }
