@@ -2,7 +2,6 @@ use anyhow::Context;
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::error;
 
 use crate::handlers::transcode::{TranscodeProgressMap, TranscodeJobState};
@@ -67,43 +66,17 @@ async fn run_ffmpeg_job(
     let job_id_task = job_id.clone();
 
     // Spawn stdout parser task
-    let reader_task = tokio::spawn(async move {
-        let mut reader = BufReader::new(stdout).lines();
-        let mut fps = 0.0;
-        let mut speed = 0.0;
-        let mut out_time_us = 0;
-        while let Ok(Some(line)) = reader.next_line().await {
-            if let Some(v) = line.strip_prefix("fps=") {
-                fps = v.trim().parse().unwrap_or(fps);
-            } else if let Some(v) = line.strip_prefix("speed=") {
-                speed = v.trim().trim_end_matches('x').parse().unwrap_or(speed);
-            } else if let Some(v) = line.strip_prefix("out_time_us=") {
-                out_time_us = v.trim().parse().unwrap_or(out_time_us);
-            } else if line.starts_with("progress=") {
-                let done = line.trim() == "progress=end";
-                let mut guard = progress_map_task.lock().await;
-                if let Some(state) = guard.get_mut(&job_id_task) {
-                    state.fps = fps;
-                    state.x_speed = speed;
-                    state.out_time_ms = (out_time_us / 1000) as i64;
-                    state.percent = if done { 100.0 } else { (state.percent + 2.0).min(99.0) };
-                }
-            }
-        }
-    });
+    let reader_task = super::transcode::spawn_progress_reader(
+        stdout,
+        progress_map_task,
+        job_id_task,
+        |current, _out_time_ms, done| {
+            if done { 100.0 } else { (current + 2.0).min(99.0) }
+        },
+    );
 
     // Spawn stderr logger/drainer task
-    let stderr_task = tokio::spawn(async move {
-        let mut reader = BufReader::new(stderr).lines();
-        let mut tail = Vec::new();
-        while let Ok(Some(line)) = reader.next_line().await {
-            if tail.len() >= 20 {
-                tail.remove(0);
-            }
-            tail.push(line);
-        }
-        tail.join("\n")
-    });
+    let stderr_task = super::transcode::spawn_stderr_tail_drainer(stderr);
 
     let status = child.wait().await;
     let stderr_tail = stderr_task.await.unwrap_or_default();

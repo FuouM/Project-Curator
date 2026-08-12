@@ -59,6 +59,68 @@ pub struct TranscodeJobState {
     pub output_audio_size_bytes: Option<u64>,
 }
 
+/// Spawn a task that parses FFmpeg `-progress pipe:` stdout key=value lines.
+/// Shared by the transcode and GIF pipelines: it updates the job's fps, speed,
+/// and out_time_ms, computing `percent` via the caller-supplied closure
+/// `(current_percent, out_time_ms, done) -> percent`.
+pub(crate) fn spawn_progress_reader<F>(
+    stdout: tokio::process::ChildStdout,
+    progress_map: TranscodeProgressMap,
+    job_id: String,
+    percent_fn: F,
+) -> tokio::task::JoinHandle<()>
+where
+    F: Fn(f32, i64, bool) -> f32 + Send + Sync + 'static,
+{
+    tokio::spawn(async move {
+        let mut reader = BufReader::new(stdout).lines();
+        let mut fps: f32 = 0.0;
+        let mut speed: f32 = 0.0;
+        let mut out_time_us: u64 = 0;
+        while let Ok(Some(line)) = reader.next_line().await {
+            if let Some(v) = line.strip_prefix("fps=") {
+                fps = v.trim().parse().unwrap_or(fps);
+            } else if let Some(v) = line.strip_prefix("speed=") {
+                speed = v
+                    .trim()
+                    .trim_end_matches('x')
+                    .parse()
+                    .unwrap_or(speed);
+            } else if let Some(v) = line.strip_prefix("out_time_us=") {
+                out_time_us = v.trim().parse().unwrap_or(out_time_us);
+            } else if line.starts_with("progress=") {
+                let done = line.trim() == "progress=end";
+                let out_time_ms = (out_time_us / 1000) as i64;
+                let mut guard = progress_map.lock().await;
+                if let Some(state) = guard.get_mut(&job_id) {
+                    state.fps = fps;
+                    state.x_speed = speed;
+                    state.out_time_ms = out_time_ms;
+                    state.percent = percent_fn(state.percent, out_time_ms, done);
+                }
+            }
+        }
+    })
+}
+
+/// Spawn a task that drains an FFmpeg stderr pipe, keeping the last 20 lines.
+/// Prevents pipe-buffer deadlock and captures the tail for failure diagnostics.
+pub(crate) fn spawn_stderr_tail_drainer(
+    stderr: tokio::process::ChildStderr,
+) -> tokio::task::JoinHandle<String> {
+    tokio::spawn(async move {
+        let mut reader = BufReader::new(stderr).lines();
+        let mut tail: Vec<String> = Vec::new();
+        while let Ok(Some(line)) = reader.next_line().await {
+            if tail.len() >= 20 {
+                tail.remove(0);
+            }
+            tail.push(line);
+        }
+        tail.join("\n")
+    })
+}
+
 fn default_job_state(job_id: &str, output_path: String, input_size: Option<u64>) -> (String, TranscodeJobState) {
     (
         job_id.to_string(),
@@ -467,52 +529,22 @@ pub async fn start_transcode(
     let job_id_task = job_id.to_string();
     let total_task = total_duration_ms;
 
-    let reader_task = tokio::spawn(async move {
-        let mut reader = BufReader::new(stdout).lines();
-        let mut fps: f32 = 0.0;
-        let mut speed: f32 = 0.0;
-        let mut out_time_us: u64 = 0;
-        while let Ok(Some(line)) = reader.next_line().await {
-            if let Some(v) = line.strip_prefix("fps=") {
-                fps = v.trim().parse().unwrap_or(fps);
-            } else if let Some(v) = line.strip_prefix("speed=") {
-                speed = v
-                    .trim()
-                    .trim_end_matches('x')
-                    .parse()
-                    .unwrap_or(speed);
-            } else if let Some(v) = line.strip_prefix("out_time_us=") {
-                out_time_us = v.trim().parse().unwrap_or(out_time_us);
-            } else if line.starts_with("progress=") {
-                let done = line.trim() == "progress=end";
-                let mut guard = map_task.lock().await;
-                if let Some(state) = guard.get_mut(&job_id_task) {
-                    state.fps = fps;
-                    state.x_speed = speed;
-                    state.out_time_ms = (out_time_us / 1000) as i64;
-                    state.percent = ((state.out_time_ms as f64 / total_task as f64) * 100.0)
-                        .clamp(0.0, 100.0) as f32;
-                    if done {
-                        state.percent = 100.0;
-                    }
-                }
+    let reader_task = spawn_progress_reader(
+        stdout,
+        map_task,
+        job_id_task,
+        move |_current, out_time_ms, done| {
+            if done {
+                100.0
+            } else {
+                ((out_time_ms as f64 / total_task as f64) * 100.0).clamp(0.0, 100.0) as f32
             }
-        }
-    });
+        },
+    );
 
     // Drain stderr so the FFmpeg process never blocks on a full pipe; keep the
     // tail of the output for the failure diagnostics reported to the UI.
-    let stderr_task = tokio::spawn(async move {
-        let mut reader = BufReader::new(stderr).lines();
-        let mut tail: Vec<String> = Vec::new();
-        while let Ok(Some(line)) = reader.next_line().await {
-            if tail.len() >= 20 {
-                tail.remove(0);
-            }
-            tail.push(line);
-        }
-        tail.join("\n")
-    });
+    let stderr_task = spawn_stderr_tail_drainer(stderr);
 
     // Finalize job state once the process exits. Runs detached so the IPC
     // request returns immediately and callers poll via GetTranscodeProgress.
