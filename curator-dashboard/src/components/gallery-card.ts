@@ -1,7 +1,7 @@
 import { html, SafeHtml, ComponentMeta } from './_shared';
 import { maskPath } from './path-utils';
 import { TagSummary } from './tag-pill';
-import { renderCardTagsContainerHtml, renderParsedMetadataHtml, ParsedMetadata } from './card-tags';
+import { renderCardTagsContainerHtml, renderParsedMetadataHtml, renderIdentityListHtml, ParsedMetadata } from './card-tags';
 
 export interface GalleryCardViewData {
   id: number;
@@ -89,9 +89,7 @@ export function renderGalleryCardHtml(img: GalleryCardViewData): SafeHtml {
 
   const parsedHtml = img.parsedMetadata ? renderParsedMetadataHtml(img.parsedMetadata) : "";
 
-  const identityHtml = (img.characterIdentities && img.characterIdentities.length > 0)
-    ? `<div class="identity-list">${img.characterIdentities.map(ci => `<span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> ${ci.name}</span>`).join("")}</div>`
-    : "";
+  const identityHtml = renderIdentityListHtml(img.characterIdentities);
 
   const ocrHtml = img.ocrText ? renderOcrBlockHtml(img.ocrText) : "";
 

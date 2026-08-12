@@ -2,7 +2,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { typedCall } from "../ipc";
 import { maskPath, SafeHtml, html } from "../components";
 import { renderImages, attachCardEventHandlers } from "../cards";
-import { renderParsedMetadataHtml, renderCardTagsContainerHtml } from "../components/card-tags";
+import { renderParsedMetadataHtml, renderCardTagsContainerHtml, renderIdentityListHtml } from "../components/card-tags";
 import { findSimilar } from "./concepts";
 import { imageDetailsFromProto, taggerStatusInfoFromProto } from "../proto-adapters";
 import { ImageDetails } from "../types";
@@ -192,7 +192,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
         </div>
         ${parsedHtml ? html`<div class="parsed-metadata-list" style="border-bottom: 1px solid var(--sys-border-light, #d0d0d0); padding-bottom: 6px; margin-bottom: 6px;">${parsedHtml}</div>` : ""}
         ${ocrHtml}
-        ${(featured.character_identities && featured.character_identities.length > 0) ? html`<div class="identity-list" style="margin-top: 6px;">${featured.character_identities.map(ci => html`<span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> ${ci.name}</span>`).join("")}</div>` : ""}
+        ${renderIdentityListHtml(featured.character_identities, "margin-top: 6px;")}
          <div class="card-tags-container" style="width: 100%; margin-top: 6px;">
           ${renderCardTagsContainerHtml(featured, true)}
         </div>

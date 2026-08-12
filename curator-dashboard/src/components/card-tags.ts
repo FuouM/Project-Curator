@@ -23,6 +23,12 @@ export function renderTagListHtml(tags: TagSummary[], maxVisible = 10): SafeHtml
     (extraCount > 0 ? `<span class="tag-pill tag-pill-overflow">+${extraCount} more</span>` : "")) as SafeHtml;
 }
 
+export function renderIdentityListHtml(names: { name: string }[] | undefined, style = ""): SafeHtml {
+  if (!names || names.length === 0) return "" as SafeHtml;
+  const styleAttr = style ? ` style="${style}"` : "";
+  return html`<div class="identity-list"${styleAttr}>${names.map(ci => `<span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> ${ci.name}</span>`).join("")}</div>`;
+}
+
 export function renderCardTagsContainerHtml(img: { tags: TagSummary[] }, isFeatured = false): SafeHtml {
   const tags = img.tags || [];
   let taggerLabel = "";
