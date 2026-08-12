@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tracing::info;
 
-use super::common::{resolve_source_id, sort_tags_by_priority};
+use super::common::{resolve_source_id, sort_tags_by_priority, upsert_tag_id};
 
 pub struct TagImageOutcome {
     pub tags_applied: usize,
@@ -125,34 +125,14 @@ pub async fn tag_image_logic(
     let mut tag_summaries: Vec<TagSummary> = Vec::with_capacity(predictions.len());
 
     // All per-tag writes in one transaction. Categories are never upserted —
-    // the first-inserted category wins — so we use ON CONFLICT(name) DO NOTHING
-    // and fall back to selecting the existing id when the insert returns no row.
+    // the first-inserted category wins.
     let mut tx = db.begin().await?;
     for pred in &predictions {
         if blacklisted_names.contains(&pred.tag) {
             info!("Skipping blacklisted AI tag '{}' for image {}", pred.tag, image_id);
             continue;
         }
-        let tag_row: Option<(i64,)> = sqlx::query_as(
-            "INSERT INTO tags (name, category) VALUES (?, ?)
-             ON CONFLICT(name) DO NOTHING
-             RETURNING id",
-        )
-        .bind(&pred.tag)
-        .bind(&pred.category)
-        .fetch_optional(&mut *tx)
-        .await?;
-
-        let tag_id = match tag_row {
-            Some((id,)) => id,
-            None => {
-                let existing: (i64,) = sqlx::query_as("SELECT id FROM tags WHERE name = ?")
-                    .bind(&pred.tag)
-                    .fetch_one(&mut *tx)
-                    .await?;
-                existing.0
-            }
-        };
+        let tag_id = upsert_tag_id(&mut tx, &pred.tag, &pred.category).await?;
 
         sqlx::query(
             "INSERT OR REPLACE INTO image_tags

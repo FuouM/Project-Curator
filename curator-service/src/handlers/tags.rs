@@ -1,7 +1,7 @@
 use anyhow::Result;
 use sqlx::SqlitePool;
 
-use super::common::{reindex_all_pending, resolve_source_id};
+use super::common::{reindex_all_pending, resolve_source_id, upsert_tag_id};
 
 pub async fn add_tag_logic(
     image_id: i64,
@@ -11,29 +11,9 @@ pub async fn add_tag_logic(
 ) -> Result<()> {
     let source_id = resolve_source_id(db, "user").await?;
 
-    // Insert tag without clobbering an existing category; when the tag already
-    // exists, the insert returns no row and we fetch its id by name.
+    // Insert tag without clobbering an existing category.
     let mut tx = db.begin().await?;
-    let tag_row: Option<(i64,)> = sqlx::query_as(
-        "INSERT INTO tags (name, category) VALUES (?, ?)
-         ON CONFLICT(name) DO NOTHING
-         RETURNING id",
-    )
-    .bind(tag)
-    .bind(category)
-    .fetch_optional(&mut *tx)
-    .await?;
-
-    let tag_id = match tag_row {
-        Some((id,)) => id,
-        None => {
-            let existing: (i64,) = sqlx::query_as("SELECT id FROM tags WHERE name = ?")
-                .bind(tag)
-                .fetch_one(&mut *tx)
-                .await?;
-            existing.0
-        }
-    };
+    let tag_id = upsert_tag_id(&mut tx, tag, category).await?;
 
     sqlx::query(
         "INSERT OR REPLACE INTO image_tags (image_id, tag_id, source_id, confidence, is_deleted)

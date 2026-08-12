@@ -30,6 +30,36 @@ pub async fn reindex_all_pending(
     Ok(())
 }
 
+/// Insert a tag row (or fetch its existing id) inside an ongoing transaction.
+/// The first-inserted category wins; when the insert returns no row the
+/// existing id is selected by name.
+pub async fn upsert_tag_id(
+    tx: &mut sqlx::SqliteConnection,
+    name: &str,
+    category: &str,
+) -> Result<i64> {
+    let tag_row: Option<(i64,)> = sqlx::query_as(
+        "INSERT INTO tags (name, category) VALUES (?, ?)
+         ON CONFLICT(name) DO NOTHING
+         RETURNING id",
+    )
+    .bind(name)
+    .bind(category)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    match tag_row {
+        Some((id,)) => Ok(id),
+        None => {
+            let existing: (i64,) = sqlx::query_as("SELECT id FROM tags WHERE name = ?")
+                .bind(name)
+                .fetch_one(&mut *tx)
+                .await?;
+            Ok(existing.0)
+        }
+    }
+}
+
 pub fn sort_tags_by_priority(tags: &mut [TagSummary]) {
     tags.sort_by(|a, b| {
         let priority = |t: &TagSummary| -> i32 {
