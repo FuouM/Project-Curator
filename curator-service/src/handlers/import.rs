@@ -235,6 +235,86 @@ pub async fn get_or_create_folder(folder_path: &str, db: &SqlitePool) -> Result<
     Ok(id)
 }
 
+/// Reconcile one imported image row within a transaction: update the existing
+/// row (or insert a new one) and ensure a `pending` vector row exists for the
+/// active embedding source. Returns the image id.
+struct PreppedImage {
+    path_str: String,
+    sha256: String,
+    mtime: i64,
+    phash: Option<String>,
+    media: MediaExtract,
+}
+
+async fn upsert_image_row(
+    exec: &mut sqlx::SqliteConnection,
+    item: &PreppedImage,
+    folder_id: Option<i64>,
+    clip_source_id: i64,
+    existing: Option<(i64, String)>,
+) -> Result<i64> {
+    if let Some((id, _old_path)) = existing {
+        sqlx::query(
+            "UPDATE images SET sha256 = ?, current_filepath = ?, mtime = ?, phash = ?, width = COALESCE(?, width), height = COALESCE(?, height), folder_id = COALESCE(folder_id, ?), video_frame_path = COALESCE(?, video_frame_path), deleted_at = NULL WHERE id = ?",
+        )
+        .bind(&item.sha256)
+        .bind(&item.path_str)
+        .bind(item.mtime)
+        .bind(&item.phash)
+        .bind(item.media.width)
+        .bind(item.media.height)
+        .bind(folder_id)
+        .bind(&item.media.video_frame_path)
+        .bind(id)
+        .execute(&mut *exec)
+        .await?;
+
+        let vec_exists: Option<(String,)> = sqlx::query_as(
+            "SELECT vector_state FROM image_vectors WHERE image_id = ? AND source_id = ? LIMIT 1",
+        )
+        .bind(id)
+        .bind(clip_source_id)
+        .fetch_optional(&mut *exec)
+        .await
+        .unwrap_or(None);
+
+        if vec_exists.is_none() {
+            sqlx::query(
+                "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
+            )
+            .bind(id)
+            .bind(clip_source_id)
+            .execute(&mut *exec)
+            .await?;
+        }
+        Ok(id)
+    } else {
+        let id = sqlx::query(
+            "INSERT INTO images (sha256, phash, current_filepath, mtime, folder_id, width, height, video_frame_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&item.sha256)
+        .bind(&item.phash)
+        .bind(&item.path_str)
+        .bind(item.mtime)
+        .bind(folder_id)
+        .bind(item.media.width)
+        .bind(item.media.height)
+        .bind(&item.media.video_frame_path)
+        .execute(&mut *exec)
+        .await?
+        .last_insert_rowid();
+
+        sqlx::query(
+            "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
+        )
+        .bind(id)
+        .bind(clip_source_id)
+        .execute(&mut *exec)
+        .await?;
+        Ok(id)
+    }
+}
+
 pub async fn import_single_image(
     path_str: &str,
     db: &SqlitePool,
@@ -288,69 +368,17 @@ pub async fn import_single_image(
     };
 
     let mut tx = db.begin().await?;
-    let id = if let Some((id, _old_path)) = existing {
-        sqlx::query(
-            "UPDATE images SET sha256 = ?, current_filepath = ?, mtime = ?, phash = ?, width = COALESCE(?, width), height = COALESCE(?, height), folder_id = COALESCE(folder_id, ?), video_frame_path = COALESCE(?, video_frame_path), deleted_at = NULL WHERE id = ?",
-        )
-        .bind(&sha256)
-        .bind(path_str)
-        .bind(mtime)
-        .bind(&phash)
-        .bind(media.width)
-        .bind(media.height)
-        .bind(folder_id)
-        .bind(&media.video_frame_path)
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
-
-        let vec_exists: Option<(String,)> = sqlx::query_as(
-            "SELECT vector_state FROM image_vectors WHERE image_id = ? AND source_id = ? LIMIT 1",
-        )
-        .bind(id)
-        .bind(clip_source_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .unwrap_or(None);
-
-        if vec_exists.is_none() {
-            let _ = sqlx::query(
-                "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
-            )
-            .bind(id)
-            .bind(clip_source_id)
-            .execute(&mut *tx)
-            .await?;
-        }
-        id
-    } else {
-        let id = sqlx::query(
-            "INSERT INTO images (sha256, phash, current_filepath, mtime, folder_id, width, height, video_frame_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&sha256)
-        .bind(&phash)
-        .bind(path_str)
-        .bind(mtime)
-        .bind(folder_id)
-        .bind(media.width)
-        .bind(media.height)
-        .bind(&media.video_frame_path)
-        .execute(&mut *tx)
-        .await?
-        .last_insert_rowid();
-
-        sqlx::query(
-            "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
-        )
-        .bind(id)
-        .bind(clip_source_id)
-        .execute(&mut *tx)
-        .await?;
-        id
+    let item = PreppedImage {
+        path_str: path_str.to_string(),
+        sha256: sha256.clone(),
+        mtime,
+        phash: phash.clone(),
+        media,
     };
+    let id = upsert_image_row(&mut tx, &item, folder_id, clip_source_id, existing).await?;
 
-    upsert_animation_metadata(&mut tx, id, &media).await?;
-    upsert_video_metadata(&mut tx, id, &media).await?;
+    upsert_animation_metadata(&mut tx, id, &item.media).await?;
+    upsert_video_metadata(&mut tx, id, &item.media).await?;
     tx.commit().await?;
 
     Ok((id, sha256))
@@ -415,14 +443,6 @@ pub async fn import_image_logic(
             .iter()
             .filter_map(|p| p.to_str().map(|s| s.to_string()))
             .collect();
-
-        struct PreppedImage {
-            path_str: String,
-            sha256: String,
-            mtime: i64,
-            phash: Option<String>,
-            media: MediaExtract,
-        }
 
         let mut prepped_images = Vec::with_capacity(paths_vec.len());
 
@@ -511,67 +531,8 @@ pub async fn import_image_logic(
                 .await?,
             };
 
-            let img_id = if let Some((id, _old_path)) = existing {
-                let _ = sqlx::query(
-                    "UPDATE images SET sha256 = ?, current_filepath = ?, mtime = ?, phash = ?, width = COALESCE(?, width), height = COALESCE(?, height), folder_id = COALESCE(folder_id, ?), video_frame_path = COALESCE(?, video_frame_path), deleted_at = NULL WHERE id = ?",
-                )
-                .bind(&item.sha256)
-                .bind(&item.path_str)
-                .bind(item.mtime)
-                .bind(&item.phash)
-                .bind(item.media.width)
-                .bind(item.media.height)
-                .bind(folder_id)
-                .bind(&item.media.video_frame_path)
-                .bind(id)
-                .execute(&mut *tx)
-                .await;
-
-                let vec_exists: Option<(String,)> = sqlx::query_as(
-                    "SELECT vector_state FROM image_vectors WHERE image_id = ? AND source_id = ? LIMIT 1",
-                )
-                .bind(id)
-                .bind(clip_source_id)
-                .fetch_optional(&mut *tx)
-                .await
-                .unwrap_or(None);
-
-                if vec_exists.is_none() {
-                    let _ = sqlx::query(
-                        "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
-                    )
-                    .bind(id)
-                    .bind(clip_source_id)
-                    .execute(&mut *tx)
-                    .await;
-                }
-                id
-            } else {
-                let id = sqlx::query(
-                    "INSERT INTO images (sha256, phash, current_filepath, mtime, folder_id, width, height, video_frame_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                )
-                .bind(&item.sha256)
-                .bind(&item.phash)
-                .bind(&item.path_str)
-                .bind(item.mtime)
-                .bind(Some(folder_id))
-                .bind(item.media.width)
-                .bind(item.media.height)
-                .bind(&item.media.video_frame_path)
-                .execute(&mut *tx)
-                .await?
-                .last_insert_rowid();
-
-                let _ = sqlx::query(
-                    "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
-                )
-                .bind(id)
-                .bind(clip_source_id)
-                .execute(&mut *tx)
-                .await;
-
-                id
-            };
+            let img_id = upsert_image_row(&mut tx, &item, Some(folder_id), clip_source_id, existing)
+                .await?;
 
             upsert_animation_metadata(&mut tx, img_id, &item.media).await?;
             upsert_video_metadata(&mut tx, img_id, &item.media).await?;

@@ -5,7 +5,7 @@ use curator_core::vector::{ModelManager, VectorIndex};
 use sqlx::SqlitePool;
 use tracing::{info, warn};
 
-use super::common::resolve_source_id;
+use super::common::{reindex_all_pending, resolve_source_id};
 use super::AppSettings;
 
 pub struct UpdateSettingsParams<'a> {
@@ -205,13 +205,7 @@ pub async fn update_settings_logic(
         let source_name = active_model.source_name();
         let source_id = resolve_source_id(db, source_name).await
             .map_err(|e| anyhow::anyhow!("Failed to fetch source ID for model change: {:?}", e))?;
-        if let Err(e) = vector_index.clear() {
-            return Err(anyhow::anyhow!("Failed to clear index: {:?}", e));
-        }
-        let sql = "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state, vector_checksum)
-                   SELECT id, ?, '', 'pending', NULL FROM images WHERE deleted_at IS NULL
-                   ON CONFLICT(image_id, source_id) DO UPDATE SET vector_state = 'pending', vector_id = '', vector_checksum = NULL";
-        sqlx::query(sql).bind(source_id).execute(db).await?;
+        reindex_all_pending(db, vector_index, source_id).await?;
     }
 
     info!(
