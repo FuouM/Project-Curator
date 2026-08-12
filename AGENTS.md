@@ -174,7 +174,7 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
    * **No Wildcard Staging:** Do not run `git add .` or `git add -A`. Explicitly stage target files by path.
    * **No Plan File Commits:** **NEVER** stage or commit implementation plan documents (`implementation_plan*.md`, `PLAN_*.md`, or scratch design notes) to Git history. Plans are temporary workspace coordination documents. Always exclude plan files when staging changes for a commit.
    * **Respect .gitignore & Deprecated Directories:** **NEVER** stage or force-add files inside `.deprecated/`, `.curator/`, or any directory listed in `.gitignore`. `.deprecated/` exists strictly for local file preservation on disk.
-   * **Targeted Branch Pushing Only:** **NEVER** push dev, feature, or refactor branches to remote (`git push origin <branch>`) unless the user explicitly requests that specific branch name to be pushed. When instructed to merge and commit to `main`, push **ONLY** `main`.
+   * **No Automatic Pushing:** **NEVER** run `git push` on any branch (including `main`) unless the user explicitly requests a push operation in the *current turn's conversation*. Even when instructed to merge or commit to `main`, do not automatically push the branch unless the push itself is explicitly requested.
    * **Commit Message Format:** Summarize changes with a semantic title (`type: description`), followed by detailed bullet points documenting specific file modifications.
 6. **No Lazy Implementations / Strict Analytical Grounding:**
    * **NEVER** use hardcoded approximations, generic magic numbers, or static defaults (such as a hardcoded frame rate fallback or dummy overhead percentage) when the actual parameters can be probed or calculated.
