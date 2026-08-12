@@ -9,7 +9,6 @@ use std::sync::Arc;
 use tracing::info;
 
 use super::common::{resolve_source_id, sort_tags_by_priority};
-use super::ImageRow;
 
 pub struct TagImageOutcome {
     pub tags_applied: usize,
@@ -324,7 +323,7 @@ pub async fn list_images_logic(
     }
 
     let id_list: Vec<i64> = page_ids.iter().map(|r| r.id).collect();
-    let images = fetch_image_details_batch(&id_list, preferred_source, db).await?;
+    let images = batch_get_images_logic(&id_list, preferred_source, db).await?;
 
     Ok((images, total_count))
 }
@@ -535,7 +534,9 @@ pub async fn get_image_logic(
     })
 }
 
-/// Batch-fetch full details for multiple image IDs in 4 queries instead of 4N.
+/// Fetch full details for a batch of image IDs in a single round trip for the
+/// image/tag rows plus scoped sub-queries for the remaining metadata.
+/// List/search/concept callers share this one implementation.
 pub async fn batch_get_images_logic(
     ids: &[i64],
     preferred_source: &str,
@@ -548,209 +549,26 @@ pub async fn batch_get_images_logic(
     let source_id = resolve_source_id(db, preferred_source).await?;
     let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
 
-    let base_sql = format!(
-        "SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite, i.is_missing, i.width, i.height, i.note
-         FROM images i
-         WHERE i.id IN ({}) AND i.deleted_at IS NULL
-         ORDER BY i.created_at DESC, i.id DESC",
-        placeholders
-    );
-    let mut base_q = sqlx::query_as::<_, (i64, String, String, i64, String, bool, bool, Option<i64>, Option<i64>, Option<String>)>(&base_sql);
-    for id in ids {
-        base_q = base_q.bind(id);
-    }
-    let base_rows = base_q.fetch_all(db).await?;
-
-    let mut image_order: Vec<i64> = Vec::new();
-    let mut image_map: std::collections::HashMap<i64, ImageDetails> =
-        std::collections::HashMap::new();
-    for (id, sha256, current_filepath, mtime, created_at, favorite, is_missing, width, height, note) in base_rows {
-        image_order.push(id);
-        image_map.insert(
-            id,
-            ImageDetails {
-                id,
-                sha256,
-                current_filepath,
-                mtime,
-                created_at,
-                tags: Vec::new(),
-                blacklisted_tags: Vec::new(),
-                vector_state: String::new(),
-                favorite,
-                parsed_metadata: None,
-                is_missing,
-                character_identities: Vec::new(),
-                ocr_text: None,
-                width,
-                height,
-                animation: None,
-                video: None,
-                note,
-            },
-        );
-    }
-
-    let tag_sql = format!(
-        "SELECT it.image_id, t.name, t.category, it.confidence, s.name as source_name, it.is_blacklisted
-         FROM image_tags it
-         JOIN tags t ON it.tag_id = t.id
-         LEFT JOIN sources s ON it.source_id = s.id
-         WHERE it.image_id IN ({}) AND it.is_deleted = 0 AND it.source_id = {source_id}",
-        placeholders,
-        source_id = source_id
-    );
-    let mut tag_q = sqlx::query_as::<_, (i64, String, String, f32, Option<String>, bool)>(&tag_sql);
-    for id in ids {
-        tag_q = tag_q.bind(id);
-    }
-    if let Ok(tag_rows) = tag_q.fetch_all(db).await {
-        for (image_id, name, category, confidence, source_name, is_blacklisted) in tag_rows {
-            if source_name.as_deref() == Some("filename_parser") {
-                continue;
-            }
-            if let Some(img) = image_map.get_mut(&image_id) {
-                img.tags.push(TagSummary {
-                    tag: name,
-                    category,
-                    confidence,
-                    source_name,
-                    is_blacklisted,
-                });
-            }
-        }
-    }
-
-    let vec_sql = format!(
-        "SELECT image_id, vector_state FROM image_vectors WHERE image_id IN ({})",
-        placeholders
-    );
-    let mut vec_q = sqlx::query_as::<_, (i64, String)>(&vec_sql);
-    for id in ids {
-        vec_q = vec_q.bind(id);
-    }
-    if let Ok(vec_rows) = vec_q.fetch_all(db).await {
-        for (vid, state) in vec_rows {
-            if let Some(img) = image_map.get_mut(&vid) {
-                img.vector_state = state;
-            }
-        }
-    }
-
-    let pm_sql = format!(
-        "SELECT image_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags, raw_matched
-         FROM image_parsed_metadata WHERE image_id IN ({})",
-        placeholders
-    );
-    let mut pm_q = sqlx::query_as::<_, (i64, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, String, String)>(&pm_sql);
-    for id in ids {
-        pm_q = pm_q.bind(id);
-    }
-    if let Ok(pm_rows) = pm_q.fetch_all(db).await {
-        for (img_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags_json, raw_matched) in pm_rows {
-            if let Some(img) = image_map.get_mut(&img_id) {
-                let extracted_tags: Vec<String> = serde_json::from_str(&extracted_tags_json).unwrap_or_default();
-                img.parsed_metadata = Some(curator_core::ipc::ParsedMetadata {
-                    match_type,
-                    artist,
-                    pixiv_id,
-                    twitter_id,
-                    timestamp_4chan,
-                    datetime_iso,
-                    extracted_tags,
-                    raw_matched,
-                    partial: false,
-                });
-            }
-        }
-    }
-
-    let ocr_sql = format!(
-        "SELECT image_id, GROUP_CONCAT(text, CHAR(10)) FROM image_ocr_detections WHERE image_id IN ({}) GROUP BY image_id",
-        placeholders
-    );
-    let mut ocr_q = sqlx::query_as::<_, (i64, String)>(&ocr_sql);
-    for id in ids {
-        ocr_q = ocr_q.bind(id);
-    }
-    if let Ok(ocr_rows) = ocr_q.fetch_all(db).await {
-        for (img_id, text) in ocr_rows {
-            if let Some(img) = image_map.get_mut(&img_id) {
-                img.ocr_text = Some(text);
-            }
-        }
-    }
-
-    let ci_sql = format!(
-        "SELECT cd.image_id, ci.id, ci.name
-         FROM character_detections cd
-         JOIN character_identities ci ON cd.identity_id = ci.id
-         WHERE cd.image_id IN ({}) AND cd.identity_id IS NOT NULL
-         GROUP BY cd.image_id, ci.id",
-        placeholders
-    );
-    let mut ci_q = sqlx::query_as::<_, (i64, i64, String)>(&ci_sql);
-    for id in ids {
-        ci_q = ci_q.bind(id);
-    }
-    if let Ok(ci_rows) = ci_q.fetch_all(db).await {
-        for (img_id, ci_id, ci_name) in ci_rows {
-            if let Some(img) = image_map.get_mut(&img_id) {
-                img.character_identities.push(curator_core::ipc::CharacterIdentitySummary { id: ci_id, name: ci_name });
-            }
-        }
-    }
-
-    for (img_id, animation) in fetch_animation_metadata_batch(ids, db).await {
-        if let Some(img) = image_map.get_mut(&img_id) {
-            img.animation = Some(animation);
-        }
-    }
-
-    for (img_id, video) in fetch_video_metadata_batch(ids, db).await {
-        if let Some(img) = image_map.get_mut(&img_id) {
-            img.video = Some(video);
-        }
-    }
-
-    let mut images: Vec<ImageDetails> = Vec::with_capacity(image_order.len());
-    for id in image_order {
-        if let Some(mut img) = image_map.remove(&id) {
-            sort_tags_by_priority(&mut img.tags);
-            images.push(img);
-        }
-    }
-    Ok(images)
-}
-
-/// Fetch full details for a batch of image IDs (used by list_images_logic page results).
-async fn fetch_image_details_batch(
-    ids: &[i64],
-    preferred_source: &str,
-    db: &SqlitePool,
-) -> Result<Vec<ImageDetails>> {
-    let source_id = resolve_source_id(db, preferred_source).await?;
-    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql = format!(
         r#"
         SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite, i.is_missing,
                i.width, i.height, i.note,
-               t.name, t.category, it.confidence, s.name as source_name
+               t.name, t.category, it.confidence, s.name as source_name, COALESCE(it.is_blacklisted, 0)
         FROM images i
         LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0 AND it.source_id = {source_id}
         LEFT JOIN tags t ON it.tag_id = t.id
         LEFT JOIN sources s ON it.source_id = s.id
-        WHERE i.id IN ({})
+        WHERE i.id IN ({}) AND i.deleted_at IS NULL
         ORDER BY i.created_at DESC, i.id DESC
         "#,
         placeholders,
         source_id = source_id
     );
-    let mut q = sqlx::query_as::<_, ImageRow>(&sql);
+    let mut q = sqlx::query_as::<_, (i64, String, String, i64, String, bool, bool, Option<i64>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<f32>, Option<String>, bool)>(&sql);
     for id in ids {
         q = q.bind(id);
     }
-    let rows: Vec<ImageRow> = q.fetch_all(db).await?;
+    let rows = q.fetch_all(db).await?;
 
     let mut image_order: Vec<i64> = Vec::new();
     let mut image_map: std::collections::HashMap<i64, ImageDetails> =
@@ -770,6 +588,7 @@ async fn fetch_image_details_batch(
         tag_category,
         confidence,
         source_name,
+        is_blacklisted,
     ) in rows
     {
         if !image_map.contains_key(&id) {
@@ -802,7 +621,7 @@ async fn fetch_image_details_batch(
                     category,
                     confidence: confidence.unwrap_or(0.0),
                     source_name: source_name.clone(),
-                    is_blacklisted: false,
+                    is_blacklisted,
                 });
             }
         }
@@ -856,7 +675,6 @@ async fn fetch_image_details_batch(
             }
         }
 
-        // Fetch character identities for these images
         let ci_query = format!(
             "SELECT DISTINCT cd.image_id, ci.id, ci.name
              FROM character_detections cd

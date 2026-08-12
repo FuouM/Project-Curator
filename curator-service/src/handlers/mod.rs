@@ -22,23 +22,6 @@ use std::sync::Arc;
 
 use crate::AppSettings;
 
-pub(crate) type ImageRow = (
-    i64,
-    String,
-    String,
-    i64,
-    String,
-    bool,
-    bool,
-    Option<i64>,
-    Option<i64>,
-    Option<String>, // note
-    Option<String>,
-    Option<String>,
-    Option<f32>,
-    Option<String>,
-);
-
 /// Shared live state for a background image-processing benchmark running
 /// cross many images. `None` means no benchmark is currently running.
 #[derive(Clone, Default)]
