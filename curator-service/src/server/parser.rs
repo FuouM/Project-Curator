@@ -1,3 +1,4 @@
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::filename_parser::TokenBlock;
 use curator_core::grpc::common::TokenBlock as ProtoTokenBlock;
@@ -67,7 +68,7 @@ impl FilenameParserService for FilenameParserServiceImpl {
             req.output_match_type.as_deref(),
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(PreviewBatchFilenameParsingResult {
             items: items.into_iter().map(Into::into).collect(),
         }))
@@ -86,7 +87,7 @@ impl FilenameParserService for FilenameParserServiceImpl {
             req.output_match_type.as_deref(),
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(RunBatchFilenameParsingResult {
             total_processed: res.total_processed as u32,
             matched_count: res.matched_count as u32,

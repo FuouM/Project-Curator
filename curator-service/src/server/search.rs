@@ -1,4 +1,5 @@
 use crate::handlers;
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::common as commonpb;
 use curator_core::grpc::search::{
@@ -52,7 +53,7 @@ impl SearchService for SearchServiceImpl {
             ffmpeg,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(SearchResult {
             matches: matches.into_iter().map(Into::into).collect(),
         }))
@@ -65,7 +66,7 @@ impl SearchService for SearchServiceImpl {
         let req = request.into_inner();
         let tags = handlers::tags::get_character_suggestions_logic(&self.ctx.db, req.query.as_deref())
             .await
-            .map_err(|e| Status::internal(format!("Failed to fetch character suggestions: {:?}", e)))?;
+            .map_err(|e| internal_status(format!("Failed to fetch character suggestions: {:?}", e)))?;
         Ok(TonicResponse::new(commonpb::TagStatisticsResult {
             tags: tags.into_iter().map(Into::into).collect(),
         }))

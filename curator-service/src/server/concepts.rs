@@ -1,4 +1,5 @@
 use crate::handlers;
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::concepts::{
     concepts_service_server::ConceptsService, AddConceptSamplesRequest, AutoConceptTagsCleanedResult,
@@ -35,7 +36,7 @@ impl ConceptsService for ConceptsServiceImpl {
             &self.ctx.model_manager,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(ConceptResult {
             concept: Some(concept.into()),
         }))
@@ -47,7 +48,7 @@ impl ConceptsService for ConceptsServiceImpl {
     ) -> Result<TonicResponse<ConceptListResult>, Status> {
         let concepts = handlers::concepts::list_concepts_logic(&self.ctx.db)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(ConceptListResult {
             concepts: concepts.into_iter().map(Into::into).collect(),
         }))
@@ -65,7 +66,7 @@ impl ConceptsService for ConceptsServiceImpl {
             req.category,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(ConceptResult {
             concept: Some(concept.into()),
         }))
@@ -78,7 +79,7 @@ impl ConceptsService for ConceptsServiceImpl {
         let req = request.into_inner();
         handlers::concepts::delete_concept_logic(&self.ctx.db, req.id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -94,7 +95,7 @@ impl ConceptsService for ConceptsServiceImpl {
             &self.ctx.model_manager,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(ConceptResult {
             concept: Some(concept.into()),
         }))
@@ -112,7 +113,7 @@ impl ConceptsService for ConceptsServiceImpl {
             &self.ctx.model_manager,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(ConceptResult {
             concept: Some(concept.into()),
         }))
@@ -130,7 +131,7 @@ impl ConceptsService for ConceptsServiceImpl {
             &self.ctx.vector_index,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(ConceptRescannedResult {
             concept_id: req.concept_id,
             tagged_count: tagged_count as u32,
@@ -149,7 +150,7 @@ impl ConceptsService for ConceptsServiceImpl {
             &preferred_source,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(ConceptSamplesResult {
             concept_id: req.concept_id,
             samples: samples.into_iter().map(Into::into).collect(),
@@ -163,7 +164,7 @@ impl ConceptsService for ConceptsServiceImpl {
         let req = request.into_inner();
         let cleaned_count = handlers::concepts::clean_auto_concept_tags_logic(&self.ctx.db, req.concept_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(AutoConceptTagsCleanedResult { cleaned_count }))
     }
 }

@@ -1,4 +1,5 @@
 use crate::handlers;
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::plugins::{
     plugins_service_server::PluginsService, InvokePluginRequest, InvokePluginResponse,
@@ -30,7 +31,7 @@ async fn dispatch_plugin_command(
                 .ok_or_else(|| Status::invalid_argument("missing path"))?;
             let exists = handlers::misc::path_exists(path)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
             Ok(serde_json::json!({
                 "PathExistsResult": { "exists": exists }
             }))
@@ -87,7 +88,7 @@ async fn dispatch_plugin_command(
             }
             let converted = handlers::convert::convert_images(conversions, quality)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
             let converted_json: Vec<serde_json::Value> = converted
                 .into_iter()
                 .map(|c| serde_json::json!({
@@ -120,7 +121,7 @@ async fn dispatch_plugin_command(
 
             let ffmpeg = handlers::resolve_ffmpeg_path(&ctx.data_dir, &ctx.settings)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
 
             if let Err(e) = handlers::transcode::start_transcode(
                 job_id,
@@ -160,7 +161,7 @@ async fn dispatch_plugin_command(
 
             let ffmpeg = handlers::resolve_ffmpeg_path(&ctx.data_dir, &ctx.settings)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
 
             if let Err(e) = handlers::gif::create_gif_from_images(
                 job_id.to_string(),
@@ -211,7 +212,7 @@ async fn dispatch_plugin_command(
 
             let ffmpeg = handlers::resolve_ffmpeg_path(&ctx.data_dir, &ctx.settings)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
 
             if let Err(e) = handlers::gif::process_gif_effects(
                 job_id.to_string(),
@@ -257,7 +258,7 @@ async fn dispatch_plugin_command(
 
             let ffmpeg = handlers::resolve_ffmpeg_path(&ctx.data_dir, &ctx.settings)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
 
             if let Err(e) = handlers::gif::split_gif(
                 job_id.to_string(),
@@ -307,7 +308,7 @@ impl PluginsService for PluginsServiceImpl {
     ) -> Result<TonicResponse<PluginsListResult>, Status> {
         let plugins = handlers::plugins::list_plugins(&self.ctx.data_dir, &self.ctx.settings)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(PluginsListResult {
             plugins: plugins.into_iter().map(Into::into).collect(),
         }))
@@ -325,7 +326,7 @@ impl PluginsService for PluginsServiceImpl {
             req.enabled,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -340,7 +341,7 @@ impl PluginsService for PluginsServiceImpl {
             &req.relative_path,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(PluginFileResult { content }))
     }
 
@@ -358,7 +359,7 @@ impl PluginsService for PluginsServiceImpl {
 
         let response = dispatch_plugin_command(&self.ctx, &req.command, &params).await?;
         let response_json = serde_json::to_string(&response)
-            .map_err(|e| Status::internal(format!("failed to serialize response: {e}")))?;
+            .map_err(|e| internal_status(format!("failed to serialize response: {e}")))?;
         Ok(TonicResponse::new(InvokePluginResponse { response_json }))
     }
 }

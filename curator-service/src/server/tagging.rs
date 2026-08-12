@@ -1,5 +1,6 @@
 use crate::handlers;
 use crate::server::convert;
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::common as commonpb;
 use curator_core::grpc::tagging::{
@@ -33,7 +34,7 @@ impl TaggingService for TaggingServiceImpl {
         let force = req.force.unwrap_or(false);
         let outcome = handlers::image::tag_image_logic(req.image_id, threshold, force, &self.ctx.db, engine)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(TagImageResult {
             image_id: req.image_id,
             tags_applied: outcome.tags_applied as u32,
@@ -57,7 +58,7 @@ impl TaggingService for TaggingServiceImpl {
             &self.ctx.db,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(commonpb::BatchTagResult {
             processed: processed as u32,
             failed: failed as u32,
@@ -89,7 +90,7 @@ impl TaggingService for TaggingServiceImpl {
             &self.ctx.taggers,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(EphemeralTagResult {
             path,
             tags: tags.into_iter().map(Into::into).collect(),

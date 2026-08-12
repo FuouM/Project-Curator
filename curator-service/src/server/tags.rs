@@ -1,4 +1,5 @@
 use crate::handlers;
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::common as commonpb;
 use curator_core::grpc::tags::{
@@ -27,7 +28,7 @@ impl TagsService for TagsServiceImpl {
         let req = request.into_inner();
         handlers::tags::add_tag_logic(req.image_id, &req.tag, &req.category, &self.ctx.db)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -38,7 +39,7 @@ impl TagsService for TagsServiceImpl {
         let req = request.into_inner();
         handlers::tags::remove_tag_logic(req.image_id, &req.tag, &self.ctx.db)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -49,7 +50,7 @@ impl TagsService for TagsServiceImpl {
         let req = request.into_inner();
         handlers::tags::unblacklist_tag_logic(req.image_id, &req.tag, &self.ctx.db)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -60,7 +61,7 @@ impl TagsService for TagsServiceImpl {
         let preferred_source = super::preferred_source(&self.ctx).await;
         let tags = handlers::tags::get_tag_statistics_logic(&preferred_source, &self.ctx.db)
             .await
-            .map_err(|e| Status::internal(format!("Failed to fetch tag statistics: {:?}", e)))?;
+            .map_err(|e| internal_status(format!("Failed to fetch tag statistics: {:?}", e)))?;
         Ok(TonicResponse::new(commonpb::TagStatisticsResult {
             tags: tags.into_iter().map(Into::into).collect(),
         }))
@@ -93,7 +94,7 @@ impl TagsService for TagsServiceImpl {
         .await
         .map_err(|e| {
             tracing::error!("BackfillTagSource failed: {:?}", e);
-            Status::internal(e.to_string())
+            internal_status(e)
         })?;
         Ok(TonicResponse::new(commonpb::BatchTagResult {
             processed: result.processed as u32,

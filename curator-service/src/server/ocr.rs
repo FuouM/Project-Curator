@@ -1,4 +1,5 @@
 use crate::handlers;
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::ocr::{
     ocr_service_server::OcrService, EphemeralOcrResult, EphemeralRunOcrRequest, ImageIdRequest,
@@ -27,7 +28,7 @@ impl OcrService for OcrServiceImpl {
         let (image_id, detections, bubble_boxes) =
             handlers::ocr::run_ocr_logic(req.image_id, &self.ctx.db, &self.ctx.ocr)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(OcrDetectionsResult {
             image_id,
             detections: detections.into_iter().map(Into::into).collect(),
@@ -43,7 +44,7 @@ impl OcrService for OcrServiceImpl {
         let (image_id, detections, bubble_boxes) =
             handlers::ocr::get_ocr_detections_logic(req.image_id, &self.ctx.db)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(OcrDetectionsResult {
             image_id,
             detections: detections.into_iter().map(Into::into).collect(),
@@ -59,7 +60,7 @@ impl OcrService for OcrServiceImpl {
         let (path, detections, bubble_boxes) =
             handlers::ocr::ephemeral_run_ocr_logic(req.path, &self.ctx.ocr)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(EphemeralOcrResult {
             path,
             detections: detections.into_iter().map(Into::into).collect(),

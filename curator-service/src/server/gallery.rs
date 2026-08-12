@@ -1,4 +1,5 @@
 use crate::handlers;
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::gallery::{
     gallery_service_server::GalleryService, ClearThumbnailCacheResult, GetImageRequest,
@@ -29,7 +30,7 @@ impl GalleryService for GalleryServiceImpl {
         let image =
             handlers::image::get_image_logic(req.image_id, &preferred_source, &self.ctx.db)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(ImageResult {
             image: Some(image.into()),
         }))
@@ -49,7 +50,7 @@ impl GalleryService for GalleryServiceImpl {
             &self.ctx.db,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(ListResult {
             images: images.into_iter().map(Into::into).collect(),
             total_count,
@@ -63,7 +64,7 @@ impl GalleryService for GalleryServiceImpl {
         let req = request.into_inner();
         handlers::tags::set_favorite_logic(req.image_id, req.favorite, &self.ctx.db)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -74,7 +75,7 @@ impl GalleryService for GalleryServiceImpl {
         let req = request.into_inner();
         handlers::image::set_note_logic(req.image_id, req.note, &self.ctx.db)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -86,7 +87,7 @@ impl GalleryService for GalleryServiceImpl {
         let (data, is_missing) =
             handlers::image::get_thumbnail_logic(req.image_id, req.width, &self.ctx.thumbnail_cache, &self.ctx.db)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(ThumbnailResult { data, is_missing }))
     }
 
@@ -97,7 +98,7 @@ impl GalleryService for GalleryServiceImpl {
         let deleted_count =
             handlers::image::purge_missing_thumbnails_logic(&self.ctx.thumbnail_cache, &self.ctx.db)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(PurgeResult { deleted_count }))
     }
 
@@ -107,7 +108,7 @@ impl GalleryService for GalleryServiceImpl {
     ) -> Result<TonicResponse<ClearThumbnailCacheResult>, Status> {
         let deleted_count = handlers::image::clear_thumbnails_logic(&self.ctx.thumbnail_cache)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(ClearThumbnailCacheResult { deleted_count }))
     }
 }

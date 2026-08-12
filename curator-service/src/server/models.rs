@@ -1,4 +1,5 @@
 use crate::handlers;
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::common as commonpb;
 use curator_core::grpc::models::{
@@ -69,7 +70,7 @@ impl ModelsService for ModelsServiceImpl {
             &self.ctx.download_progress,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(ModelStatusResult {
             models: models.into_iter().map(Into::into).collect(),
         }))
@@ -90,9 +91,9 @@ impl ModelsService for ModelsServiceImpl {
             &self.ctx.cancel_tokens,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         if !outcome.success {
-            return Err(Status::internal(outcome.message));
+            return Err(internal_status(outcome.message));
         }
 
         Ok(download_status_stream(
@@ -112,7 +113,7 @@ impl ModelsService for ModelsServiceImpl {
             &self.ctx.cancel_tokens,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(ModelActionResult {
             success: outcome.success,
             message: outcome.message,
@@ -126,7 +127,7 @@ impl ModelsService for ModelsServiceImpl {
         let req = request.into_inner();
         let outcome = handlers::models::remove_model(&self.ctx.data_dir.join("models"), &req.model_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(ModelActionResult {
             success: outcome.success,
             message: outcome.message,
@@ -139,7 +140,7 @@ impl ModelsService for ModelsServiceImpl {
     ) -> Result<TonicResponse<DownloadProgressResult>, Status> {
         let downloads = handlers::models::get_download_progress(&self.ctx.download_progress)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(DownloadProgressResult {
             downloads: downloads.into_iter().map(Into::into).collect(),
         }))
@@ -156,7 +157,7 @@ impl ModelsService for ModelsServiceImpl {
             &req.format,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(ModelActionResult {
             success: outcome.success,
             message: outcome.message,
@@ -172,7 +173,7 @@ impl ModelsService for ModelsServiceImpl {
         let req = request.into_inner();
         let outcome = handlers::models::convert_model(&self.ctx.data_dir.join("models"), &req.model_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         if !outcome.success {
             // Nothing started — emit a single terminal update carrying the reason.
             let (tx, rx) = tokio::sync::mpsc::channel(1);
@@ -219,7 +220,7 @@ impl ModelsService for ModelsServiceImpl {
         let req = request.into_inner();
         let logs = handlers::models::get_conversion_logs(&self.ctx.data_dir.join("models"), &req.model_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(ConversionLogsResult {
             logs: logs.logs,
             is_running: logs.is_running,
@@ -240,7 +241,7 @@ impl ModelsService for ModelsServiceImpl {
             &self.ctx.cancel_tokens,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         if !outcome.started {
             // Nothing started — emit a single terminal update carrying the reason.
             let (tx, rx) = tokio::sync::mpsc::channel(1);
@@ -270,7 +271,7 @@ impl ModelsService for ModelsServiceImpl {
     ) -> Result<TonicResponse<FFmpegStatusResult>, Status> {
         let status = handlers::ffmpeg::get_ffmpeg_status(&self.ctx.data_dir, &self.ctx.settings)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(FFmpegStatusResult {
             resolved_path: status.resolved_path,
             version: status.version,
@@ -286,7 +287,7 @@ impl ModelsService for ModelsServiceImpl {
         let req = request.into_inner();
         handlers::ffmpeg::set_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings, req.path)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -301,7 +302,7 @@ impl ModelsService for ModelsServiceImpl {
             &req.path,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(MediaMetadataResult {
             duration_ms: meta.duration_ms,
             fps: meta.fps,

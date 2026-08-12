@@ -1,4 +1,5 @@
 use crate::handlers;
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::benchmarks::{
     benchmarks_service_server::BenchmarksService, BenchmarkPreprocessRequest, BenchmarkResult,
@@ -68,7 +69,7 @@ async fn detection(
         &ctx.settings,
     )
     .await
-    .map_err(|e| Status::internal(e.to_string()))?;
+    .map_err(internal_status)?;
     Ok(TonicResponse::new(detection_response(outcome)))
 }
 
@@ -87,7 +88,7 @@ impl BenchmarksService for BenchmarksServiceImpl {
             &self.ctx.taggers,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(benchmark_response(outcome)))
     }
 
@@ -102,7 +103,7 @@ impl BenchmarksService for BenchmarksServiceImpl {
             &self.ctx.taggers,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(benchmark_response(outcome)))
     }
 
@@ -117,7 +118,7 @@ impl BenchmarksService for BenchmarksServiceImpl {
             &self.ctx.taggers,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(PreprocessBenchmarkResult { report }))
     }
 

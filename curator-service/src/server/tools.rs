@@ -1,4 +1,5 @@
 use crate::handlers;
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::tools::{
     tools_service_server::ToolsService, BenchmarkImagesResult, BenchmarkSingleImageRequest,
@@ -37,7 +38,7 @@ impl ToolsService for ToolsServiceImpl {
             .collect();
         let converted = handlers::convert::convert_images(conversions, req.quality as u8)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(ConvertImagesResult {
             converted: converted.into_iter().map(Into::into).collect(),
         }))
@@ -50,7 +51,7 @@ impl ToolsService for ToolsServiceImpl {
         let req = request.into_inner();
         let exists = handlers::misc::path_exists(&req.path)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(PathExistsResult { exists }))
     }
 
@@ -61,7 +62,7 @@ impl ToolsService for ToolsServiceImpl {
         let req = request.into_inner();
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         handlers::transcode::start_transcode(
             &req.job_id,
             &req.input_path,
@@ -81,7 +82,7 @@ impl ToolsService for ToolsServiceImpl {
             &self.ctx.transcode_progress,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -120,7 +121,7 @@ impl ToolsService for ToolsServiceImpl {
             handlers::resolve_relative_path(&self.ctx.data_dir, &req.image_pattern);
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         handlers::gif::create_gif_from_images(
             req.job_id,
             resolved_pattern,
@@ -134,7 +135,7 @@ impl ToolsService for ToolsServiceImpl {
             &self.ctx.transcode_progress,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -147,7 +148,7 @@ impl ToolsService for ToolsServiceImpl {
         let resolved_output = handlers::resolve_relative_path(&self.ctx.data_dir, &req.output_path);
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         handlers::gif::process_gif_effects(
             req.job_id,
             resolved_input,
@@ -178,7 +179,7 @@ impl ToolsService for ToolsServiceImpl {
             &self.ctx.transcode_progress,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -192,7 +193,7 @@ impl ToolsService for ToolsServiceImpl {
             handlers::resolve_relative_path(&self.ctx.data_dir, &req.output_dir);
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         handlers::gif::split_gif(
             req.job_id,
             resolved_input,
@@ -201,7 +202,7 @@ impl ToolsService for ToolsServiceImpl {
             &self.ctx.transcode_progress,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -212,7 +213,7 @@ impl ToolsService for ToolsServiceImpl {
         let req = request.into_inner();
         let filepaths = handlers::benchmarks::get_benchmark_images(&self.ctx.db, req.limit as usize)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(BenchmarkImagesResult { filepaths }))
     }
 
@@ -228,7 +229,7 @@ impl ToolsService for ToolsServiceImpl {
             &self.ctx.taggers,
         )
         .await
-        .map_err(|e| Status::internal(format!("Failed to benchmark image {:?}: {:?}", req.filepath, e)))?;
+        .map_err(|e| internal_status(format!("Failed to benchmark image {:?}: {:?}", req.filepath, e)))?;
         Ok(TonicResponse::new(SingleImageBenchmarkResult {
             read_time_ms: res.read_time_ms,
             decode_time_ms: res.decode_time_ms,
@@ -258,7 +259,7 @@ impl ToolsService for ToolsServiceImpl {
             self.ctx.benchmark_progress.clone(),
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
 
         let progress = self.ctx.benchmark_progress.clone();
         let (tx, rx) = tokio::sync::mpsc::channel(8);

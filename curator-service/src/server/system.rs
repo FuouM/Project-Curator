@@ -1,5 +1,6 @@
 use crate::handlers;
 use crate::server::convert;
+use crate::server::internal_status;
 use crate::server::preferred_source;
 use crate::ClientContext;
 use curator_core::grpc::system::{
@@ -34,7 +35,7 @@ impl SystemService for SystemServiceImpl {
         let (image_count, vector_count, pending_jobs, preprocessing_jobs, ram_usage_bytes) =
             handlers::settings::query_status(&self.ctx.db, active)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(StatusResult {
             image_count,
             vector_count,
@@ -57,7 +58,7 @@ impl SystemService for SystemServiceImpl {
             &preferred,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(DashboardInitResult {
             image_count: d.image_count,
             vector_count: d.vector_count,
@@ -93,7 +94,7 @@ impl SystemService for SystemServiceImpl {
         let preferred = preferred_source(&self.ctx).await;
         let (image, index) = handlers::image::get_random_image_logic(&self.ctx.db, &preferred)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(RandomImageResult {
             image: Some(image.into()),
             index,
@@ -160,7 +161,7 @@ impl SystemService for SystemServiceImpl {
             preferred_tagger: convert::tagger_from_proto(req.preferred_tagger),
         })
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(SettingsResult {
             clip_device: convert::device_to_proto(&s.clip_device),
             tagger_device: convert::device_to_proto(&s.tagger_device),
@@ -187,7 +188,7 @@ impl SystemService for SystemServiceImpl {
         let active = self.ctx.model_manager.active_model();
         handlers::tags::reindex_vectors_logic(&self.ctx.db, &self.ctx.vector_index, active)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(ReindexVectorsResult { started: true }))
     }
 
@@ -198,7 +199,7 @@ impl SystemService for SystemServiceImpl {
         let active = self.ctx.model_manager.active_model();
         let requeued = handlers::tags::reindex_failed_vectors_logic(&self.ctx.db, active)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(ReindexFailedVectorsResult { requeued }))
     }
 }

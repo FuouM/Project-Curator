@@ -1,4 +1,5 @@
 use crate::handlers;
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::import::{
     import_service_server::ImportService, BackfillResult, ImportImageRequest, ImportResult,
@@ -50,7 +51,7 @@ impl ImportService for ImportServiceImpl {
                 &self.ctx.data_dir,
             )
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(ImportResult {
             image_id,
             sha256,
@@ -65,7 +66,7 @@ impl ImportService for ImportServiceImpl {
     ) -> Result<TonicResponse<ImportedFoldersResult>, Status> {
         let folders = handlers::import::get_imported_folders_logic(&self.ctx.db)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(ImportedFoldersResult {
             folders: folders.into_iter().map(Into::into).collect(),
         }))
@@ -78,7 +79,7 @@ impl ImportService for ImportServiceImpl {
         let _write_guard = self.ctx.import_lock.lock().await;
         let images_backfilled = handlers::import::backfill_image_folders(&self.ctx.db)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(BackfillResult { images_backfilled }))
     }
 
@@ -94,7 +95,7 @@ impl ImportService for ImportServiceImpl {
             &self.ctx.data_dir,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(MediaMetadataBackfillResult { processed, updated }))
     }
 
@@ -114,7 +115,7 @@ impl ImportService for ImportServiceImpl {
             &self.ctx.data_dir,
         )
         .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(RescanFolderResult {
             folder_id: req.folder_id,
             imported,
@@ -131,7 +132,7 @@ impl ImportService for ImportServiceImpl {
         let active = self.active_embedding_model().await;
         let queued = handlers::import::index_folder_logic(req.folder_id, &self.ctx.db, active)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(IndexFolderResult {
             folder_id: req.folder_id,
             queued,

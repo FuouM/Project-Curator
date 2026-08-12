@@ -1,4 +1,5 @@
 use crate::handlers;
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::folders::{
     folders_service_server::FoldersService, DeleteFolderRequest, DeleteFolderResult,
@@ -26,7 +27,7 @@ impl FoldersService for FoldersServiceImpl {
     ) -> Result<TonicResponse<StorageStatsResult>, Status> {
         let stats = handlers::image::get_storage_stats_logic(&self.ctx.db)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(StorageStatsResult {
             stats: Some(stats.into()),
         }))
@@ -39,7 +40,7 @@ impl FoldersService for FoldersServiceImpl {
         let req = request.into_inner();
         let success = handlers::import::update_folder_path_logic(req.id, &req.new_path, &self.ctx.db)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(UpdateFolderPathResult { success }))
     }
 
@@ -50,7 +51,7 @@ impl FoldersService for FoldersServiceImpl {
         let req = request.into_inner();
         let success = handlers::import::delete_folder_logic(req.id, &self.ctx.db)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(DeleteFolderResult { success }))
     }
 
@@ -60,7 +61,7 @@ impl FoldersService for FoldersServiceImpl {
     ) -> Result<TonicResponse<DuplicateFoldersResult>, Status> {
         let groups = handlers::import::detect_duplicate_folders_logic(&self.ctx.db)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(DuplicateFoldersResult {
             groups: groups.into_iter().map(Into::into).collect(),
         }))
@@ -77,7 +78,7 @@ impl FoldersService for FoldersServiceImpl {
         let (success, images_moved) =
             handlers::import::merge_folders_logic(req.keep_folder_id, req.merge_folder_id, &self.ctx.db)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(MergeFoldersResult {
             success,
             images_moved,

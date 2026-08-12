@@ -1,3 +1,4 @@
+use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::characters::{
     characters_service_server::CharactersService, AddDetectionRequest, AddDetectionResult,
@@ -35,7 +36,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .detect_image(req.image_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(
             curator_core::grpc::common::DetectionResult {
                 image_id: result.image_id,
@@ -54,7 +55,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .detect_batch(&req.image_ids)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(DetectionBatchResult {
             results: results.into_iter().map(Into::into).collect(),
         }))
@@ -70,7 +71,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .get_detections(req.image_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(CharacterDetectionsResult {
             image_id: req.image_id,
             detections: detections.into_iter().map(Into::into).collect(),
@@ -87,7 +88,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .get_detections_batch(&req.image_ids)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(DetectionBatchResult {
             results: results.into_iter().map(Into::into).collect(),
         }))
@@ -103,7 +104,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .load_crop_jpeg(req.detection_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?
+            .map_err(internal_status)?
             .ok_or_else(|| Status::not_found("Image file not found"))?;
         Ok(TonicResponse::new(DetectionCropResult {
             crop_webp_bytes: bytes,
@@ -122,7 +123,7 @@ impl CharactersService for CharactersServiceImpl {
                 .detection
                 .load_crop_jpeg(detection_id)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?
+                .map_err(internal_status)?
             {
                 crops.push(curator_core::detection::DetectionCropEntry {
                     detection_id,
@@ -144,7 +145,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .assign_identity(req.detection_id, req.identity_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -158,7 +159,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .create_identity(req.name)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(CharacterIdentitiesList {
             identities: vec![curator_core::grpc::common::CharacterIdentity {
                 id,
@@ -178,7 +179,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .rename_identity(req.identity_id, req.name)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -191,7 +192,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .delete_identity(req.identity_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -204,7 +205,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .list_identities()
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(CharacterIdentitiesList {
             identities: identities.into_iter().map(Into::into).collect(),
         }))
@@ -219,7 +220,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .reidentify_all()
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(
             curator_core::grpc::common::ReidentifyResult {
                 total_detections: result.total_detections as i64,
@@ -239,7 +240,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .search_by_character(req.identity_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(CharacterSearchResult { image_ids }))
     }
 
@@ -253,7 +254,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .search_by_character_batch(&req.identity_ids)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(CharacterSearchBatchResult {
             results: results.into_iter().map(Into::into).collect(),
         }))
@@ -268,7 +269,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .list_unassigned_detections()
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(UnassignedDetectionsList {
             detections: detections.into_iter().map(Into::into).collect(),
         }))
@@ -283,7 +284,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .delete_detection(req.detection_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -296,7 +297,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .update_detection_bbox(req.detection_id, req.x0, req.y0, req.x1, req.y1)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 
@@ -310,7 +311,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .add_detection(req.image_id, req.x0, req.y0, req.x1, req.y1)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(AddDetectionResult {
             detection: Some(detection.into()),
         }))
@@ -326,7 +327,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .identify_detection(req.detection_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(IdentifyDetectionResult { identity_id }))
     }
 
@@ -341,7 +342,7 @@ impl CharactersService for CharactersServiceImpl {
             .detection
             .detect_image_path(path_obj)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(EphemeralDetectionResult {
             path: req.path,
             detections: detections.into_iter().map(Into::into).collect(),
@@ -354,7 +355,7 @@ impl CharactersService for CharactersServiceImpl {
             .crop_cache
             .clear()
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
 }
