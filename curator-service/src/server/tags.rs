@@ -57,10 +57,7 @@ impl TagsService for TagsServiceImpl {
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<commonpb::TagStatisticsResult>, Status> {
-        let preferred_source = {
-            let s = self.ctx.settings.lock().await;
-            s.preferred_tagger.source_name().to_string()
-        };
+        let preferred_source = super::preferred_source(&self.ctx).await;
         let tags = handlers::tags::get_tag_statistics_logic(&preferred_source, &self.ctx.db)
             .await
             .map_err(|e| Status::internal(format!("Failed to fetch tag statistics: {:?}", e)))?;

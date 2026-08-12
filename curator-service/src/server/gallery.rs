@@ -25,10 +25,7 @@ impl GalleryService for GalleryServiceImpl {
         request: TonicRequest<GetImageRequest>,
     ) -> Result<TonicResponse<ImageResult>, Status> {
         let req = request.into_inner();
-        let preferred_source = {
-            let s = self.ctx.settings.lock().await;
-            s.preferred_tagger.source_name().to_string()
-        };
+        let preferred_source = super::preferred_source(&self.ctx).await;
         let image =
             handlers::image::get_image_logic(req.image_id, &preferred_source, &self.ctx.db)
                 .await
@@ -43,10 +40,7 @@ impl GalleryService for GalleryServiceImpl {
         request: TonicRequest<ListImagesRequest>,
     ) -> Result<TonicResponse<ListResult>, Status> {
         let req = request.into_inner();
-        let preferred_source = {
-            let s = self.ctx.settings.lock().await;
-            s.preferred_tagger.source_name().to_string()
-        };
+        let preferred_source = super::preferred_source(&self.ctx).await;
         let (images, total_count) = handlers::image::list_images_logic(
             req.limit as usize,
             req.offset as usize,

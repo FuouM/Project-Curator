@@ -1,5 +1,6 @@
 use crate::handlers;
 use crate::server::convert;
+use crate::server::preferred_source;
 use crate::ClientContext;
 use curator_core::grpc::system::{
     system_service_server::SystemService, DashboardInitResult, RandomImageResult,
@@ -17,11 +18,6 @@ impl SystemServiceImpl {
     pub fn new(ctx: Arc<ClientContext>) -> Self {
         Self { ctx }
     }
-}
-
-async fn preferred_source(ctx: &Arc<ClientContext>) -> String {
-    let s = ctx.settings.lock().await;
-    s.preferred_tagger.source_name().to_string()
 }
 
 #[tonic::async_trait]

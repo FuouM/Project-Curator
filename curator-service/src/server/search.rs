@@ -25,10 +25,7 @@ impl SearchService for SearchServiceImpl {
         request: TonicRequest<SearchRequest>,
     ) -> Result<TonicResponse<SearchResult>, Status> {
         let req = request.into_inner();
-        let preferred_source = {
-            let s = self.ctx.settings.lock().await;
-            s.preferred_tagger.source_name().to_string()
-        };
+        let preferred_source = super::preferred_source(&self.ctx).await;
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
             .ok();

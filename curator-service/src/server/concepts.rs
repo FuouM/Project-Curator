@@ -142,10 +142,7 @@ impl ConceptsService for ConceptsServiceImpl {
         request: TonicRequest<RescanConceptRequest>,
     ) -> Result<TonicResponse<ConceptSamplesResult>, Status> {
         let req = request.into_inner();
-        let preferred_source = {
-            let s = self.ctx.settings.lock().await;
-            s.preferred_tagger.source_name().to_string()
-        };
+        let preferred_source = super::preferred_source(&self.ctx).await;
         let samples = handlers::concepts::get_concept_samples_logic(
             &self.ctx.db,
             req.concept_id,
