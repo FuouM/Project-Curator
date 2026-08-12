@@ -157,6 +157,7 @@ export function renderGalleryHtml(): SafeHtml {
       <div class="image-grid ${galleryZenMode ? 'zen-mode-active' : ''}" id="gallery-grid">
         <!-- Dynamically populated -->
       </div>
+      <div id="gallery-sentinel" style="height: 2px; width: 100%; pointer-events: none; flex: 0 0 auto;"></div>
     </div>
   `;
 }

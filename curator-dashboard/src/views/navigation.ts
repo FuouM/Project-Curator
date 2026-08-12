@@ -76,6 +76,49 @@ export function removePluginView(viewKey: string) {
   document.getElementById(`view-${viewKey}`)?.remove();
 }
 
+// --- Infinite scroll IntersectionObserver sentinel ---
+let galleryInfiniteObserver: IntersectionObserver | null = null;
+let gallerySentinel: HTMLElement | null = null;
+
+function buildGalleryInfiniteObserver() {
+  galleryInfiniteObserver?.disconnect();
+  galleryInfiniteObserver = null;
+
+  const mainPanel = document.querySelector(".main-panel") as HTMLElement | null;
+  gallerySentinel = document.getElementById("gallery-sentinel") as HTMLElement | null;
+  if (!mainPanel || !gallerySentinel) return;
+
+  const margin = getGalleryZenMode() ? "800px 0px" : "160px 0px";
+  galleryInfiniteObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      if (!getGalleryInfiniteScroll()) continue;
+      if (isGalleryLoading) continue;
+
+      const perPage = getImagesPerPage();
+      const totalPages = Math.ceil(getGalleryTotalCount() / perPage);
+      const nextPage = getGalleryPage() + 1;
+      if (nextPage >= totalPages) continue;
+
+      setGalleryPage(nextPage);
+      loadMoreGallery(nextPage).then(() => {
+        // Re-observe: appended content may leave the sentinel still intersecting
+        // (viewport not yet full). IO does not re-fire on unchanged state; force it.
+        reobserveGallerySentinel();
+      });
+    }
+  }, { root: mainPanel, rootMargin: margin, threshold: 0 });
+
+  galleryInfiniteObserver.observe(gallerySentinel);
+}
+
+function reobserveGallerySentinel() {
+  if (galleryInfiniteObserver && gallerySentinel) {
+    galleryInfiniteObserver.unobserve(gallerySentinel);
+    galleryInfiniteObserver.observe(gallerySentinel);
+  }
+}
+
 export function setupNavigation() {
   setupCharactersView();
 
@@ -122,7 +165,7 @@ export function setupNavigation() {
       refreshDashboard();
     } else if (view === "gallery") {
       refreshGallery().then(() => {
-        setTimeout(checkInfiniteScrollFill, 300);
+        setTimeout(reobserveGallerySentinel, 300);
       });
     } else if (view === "favorites") {
       refreshFavorites();
@@ -222,7 +265,8 @@ export function setupNavigation() {
       // Reset to page 0 when toggled
       setGalleryPage(0);
       refreshGallery().then(() => {
-        setTimeout(checkInfiniteScrollFill, 300);
+        buildGalleryInfiniteObserver();
+        setTimeout(reobserveGallerySentinel, 300);
       });
     });
   }
@@ -257,7 +301,8 @@ export function setupNavigation() {
       // Reset to page 0 and reload gallery to apply changes cleanly
       setGalleryPage(0);
       refreshGallery().then(() => {
-        setTimeout(checkInfiniteScrollFill, 300);
+        buildGalleryInfiniteObserver();
+        setTimeout(reobserveGallerySentinel, 300);
       });
     });
   }
@@ -292,60 +337,16 @@ export function setupNavigation() {
     });
   }
 
-  // Scroll listener on main-panel for infinite scrolling
-  const mainPanel = document.querySelector(".main-panel") as HTMLElement;
-  if (mainPanel) {
-    mainPanel.addEventListener("scroll", () => {
-      if (!getGalleryInfiniteScroll()) return;
-
-      const activeView = document.querySelector(".nav-item.active")?.getAttribute("data-view");
-      if (activeView !== "gallery") return;
-
-      // In Zen mode, prefetch early with an 800px threshold (1 full page ahead)
-      const threshold = getGalleryZenMode() ? 800 : 150;
-      const position = mainPanel.scrollHeight - mainPanel.scrollTop - mainPanel.clientHeight;
-
-      if (position < threshold && !isGalleryLoading) {
-        const perPage = getImagesPerPage();
-        const totalPages = Math.ceil(getGalleryTotalCount() / perPage);
-        const nextPage = getGalleryPage() + 1;
-
-        if (nextPage < totalPages) {
-          setGalleryPage(nextPage);
-          loadMoreGallery(nextPage).then(() => {
-            setTimeout(checkInfiniteScrollFill, 300);
-          });
-        }
-      }
-    });
-  }
+  // Infinite scroll is driven by an IntersectionObserver watching the
+  // #gallery-sentinel element (mounted in renderGalleryHtml). The observer is
+  // rebuilt here (rootMargin differs by Zen Mode, and rootMargin is read-only).
+  buildGalleryInfiniteObserver();
 
   // Initial fill check on startup in case it's restored to infinite scroll
-  setTimeout(checkInfiniteScrollFill, 500);
+  setTimeout(reobserveGallerySentinel, 500);
 }
 
 export function navigateToView(view: string) {
   const navItem = document.querySelector(`.nav-item[data-view="${view}"]`) as HTMLElement | null;
   if (navItem) navItem.click();
-}
-
-export function checkInfiniteScrollFill() {
-  if (!getGalleryInfiniteScroll()) return;
-  const activeView = document.querySelector(".nav-item.active")?.getAttribute("data-view");
-  if (activeView !== "gallery") return;
-
-  const mainPanel = document.querySelector(".main-panel") as HTMLElement;
-  if (!mainPanel) return;
-
-  const perPage = getImagesPerPage();
-  const totalPages = Math.ceil(getGalleryTotalCount() / perPage);
-  const nextPage = getGalleryPage() + 1;
-
-  const threshold = getGalleryZenMode() ? 800 : 50;
-  if (mainPanel.scrollHeight - mainPanel.scrollTop - mainPanel.clientHeight < threshold && nextPage < totalPages && !isGalleryLoading) {
-    setGalleryPage(nextPage);
-    loadMoreGallery(nextPage).then(() => {
-      setTimeout(checkInfiniteScrollFill, 300);
-    });
-  }
 }
