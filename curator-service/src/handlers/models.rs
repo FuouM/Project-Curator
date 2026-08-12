@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
@@ -40,6 +40,33 @@ pub struct FFmpegDownloadOutcome {
 pub struct ConversionLogs {
     pub logs: String,
     pub is_running: bool,
+}
+
+/// Locate the project root containing `scripts/venv/Scripts/python.exe` and the
+/// named helper script. Checks the current working directory first, then walks
+/// up to 5 parents from the current executable. Falls back to `cwd_fallback`.
+fn find_script_root(script_name: &str, cwd_fallback: PathBuf) -> PathBuf {
+    let script_present = |root: &Path| -> bool {
+        root.join("scripts/venv/Scripts/python.exe").exists()
+            && root.join("scripts").join(script_name).exists()
+    };
+
+    let mut project_root = std::env::current_dir().unwrap_or(cwd_fallback);
+    if !script_present(&project_root) {
+        if let Ok(exe_path) = std::env::current_exe() {
+            let mut p = exe_path.as_path();
+            for _ in 0..5 {
+                if let Some(parent) = p.parent() {
+                    if script_present(parent) {
+                        project_root = parent.to_path_buf();
+                        break;
+                    }
+                    p = parent;
+                }
+            }
+        }
+    }
+    project_root
 }
 
 /// Read the model manifest from disk.
@@ -922,27 +949,7 @@ pub async fn quantize_model(
     }
 
     // Find Python venv and quantization script
-    let mut project_root = std::env::current_dir().unwrap_or_else(|_| data_dir.to_path_buf());
-    let found = project_root.join("scripts/venv/Scripts/python.exe").exists()
-        && project_root.join("scripts/quantize-models.py").exists();
-    
-    // If not found in CWD, walk up from the current executable path
-    if !found {
-        if let Ok(exe_path) = std::env::current_exe() {
-            let mut p = exe_path.as_path();
-            for _ in 0..5 {
-                if let Some(parent) = p.parent() {
-                    if parent.join("scripts/venv/Scripts/python.exe").exists()
-                        && parent.join("scripts/quantize-models.py").exists()
-                    {
-                        project_root = parent.to_path_buf();
-                        break;
-                    }
-                    p = parent;
-                }
-            }
-        }
-    }
+    let project_root = find_script_root("quantize-models.py", data_dir.to_path_buf());
 
     let venv_python = project_root.join("scripts/venv/Scripts/python.exe");
     let script = project_root.join("scripts/quantize-models.py");
@@ -1046,27 +1053,10 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
         });
     }
 
-    let mut project_root = std::env::current_dir().unwrap_or_else(|_| {
-        model_dir.parent().unwrap_or(model_dir).to_path_buf()
-    });
-    let found = project_root.join("scripts/venv/Scripts/python.exe").exists()
-        && project_root.join("scripts/convert_to_onnx.py").exists();
-    if !found {
-        if let Ok(exe_path) = std::env::current_exe() {
-            let mut p = exe_path.as_path();
-            for _ in 0..5 {
-                if let Some(parent) = p.parent() {
-                    if parent.join("scripts/venv/Scripts/python.exe").exists()
-                        && parent.join("scripts/convert_to_onnx.py").exists()
-                    {
-                        project_root = parent.to_path_buf();
-                        break;
-                    }
-                    p = parent;
-                }
-            }
-        }
-    }
+    let project_root = find_script_root(
+        "convert_to_onnx.py",
+        model_dir.parent().unwrap_or(model_dir).to_path_buf(),
+    );
 
     let venv_python = project_root.join("scripts/venv/Scripts/python.exe");
     let script = project_root.join("scripts/convert_to_onnx.py");
