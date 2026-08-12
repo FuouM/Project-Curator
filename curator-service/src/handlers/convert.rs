@@ -177,7 +177,10 @@ fn encode_dynamic(img: &DynamicImage, ext: &str, quality: u8) -> Result<Vec<u8>,
                 .write_image(&rgba, w, h, ExtendedColorType::Rgba8)
                 .map_err(|e| format!("AVIF encode failed: {:?}", e))?;
         }
-        other => return Err(format!("Unsupported target format: {}", other)),
+        // Callers pre-validate `ext` against ENCODE_FORMATS (see `convert_one`),
+        // so every variant above is covered; this arm is unreachable by
+        // construction.
+        _ => unreachable!("ext was pre-validated against ENCODE_FORMATS"),
     }
 
     Ok(buf)

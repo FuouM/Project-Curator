@@ -50,7 +50,6 @@ struct ClientContext {
     taggers: Arc<TaggerManager>,
     detection: Arc<DetectionPipeline>,
     ocr: Arc<curator_core::OcrDetector>,
-    service_key: Arc<String>,
     data_dir: Arc<PathBuf>,
     settings: Arc<tokio::sync::Mutex<AppSettings>>,
     thumbnail_cache: Arc<ThumbnailCache>,
@@ -192,7 +191,7 @@ async fn main() -> Result<(), Error> {
 
     info!("Starting Project Curator Service...");
 
-    let service_key = load_or_create_service_key(&data_dir)?;
+    let _service_key = load_or_create_service_key(&data_dir)?;
     info!("Service Key authenticated successfully.");
 
     let db_path = data_dir.join("curator.db");
@@ -334,16 +333,6 @@ async fn main() -> Result<(), Error> {
     ));
     info!("OCR detector configured (PP-OCRv6 small, models load on first use)");
 
-    // Build the node registry with all system nodes
-    let mut node_registry = curator_core::NodeRegistry::new();
-    node_registry.register(model_manager.clone());
-    for tg in taggers.all() {
-        node_registry.register(tg);
-    }
-    node_registry.register(ocr.clone());
-    info!("Node registry initialized with {} system nodes", node_registry.len());
-    let _node_registry = Arc::new(node_registry);
-
     let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone());
     worker.start();
 
@@ -395,7 +384,6 @@ async fn main() -> Result<(), Error> {
         taggers,
         detection,
         ocr,
-        service_key: Arc::new(service_key),
         data_dir: Arc::new(data_dir),
         settings: settings_arc,
         thumbnail_cache,

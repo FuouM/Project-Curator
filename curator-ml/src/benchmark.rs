@@ -678,47 +678,6 @@ pub fn run_onnx_benchmark_4d(
     Ok((cpu_time, gpu_time, gpu_err, has_gpu))
 }
 
-pub struct DetectionBenchmarkResult {
-    pub yolo_cpu_ms: f64,
-    pub yolo_gpu_ms: Option<f64>,
-    pub yolo_gpu_error: Option<String>,
-    pub ccip_feat_cpu_ms: f64,
-    pub ccip_feat_gpu_ms: Option<f64>,
-    pub ccip_feat_gpu_error: Option<String>,
-    pub ccip_metrics_cpu_ms: f64,
-    pub ccip_metrics_gpu_ms: Option<f64>,
-    pub ccip_metrics_gpu_error: Option<String>,
-    pub has_gpu: bool,
-}
-
-pub fn run_detection_benchmark(
-    yolo_path: &Path,
-    ccip_feat_path: &Path,
-    ccip_metrics_path: &Path,
-) -> Result<DetectionBenchmarkResult> {
-    let (yolo_cpu, yolo_gpu, yolo_err, has_gpu) =
-        run_onnx_benchmark(yolo_path, 640)?;
-
-    let (ccip_feat_cpu, ccip_feat_gpu, ccip_feat_err, _) =
-        run_onnx_benchmark(ccip_feat_path, 384)?;
-
-    let (ccip_metrics_cpu, ccip_metrics_gpu, ccip_metrics_err, _) =
-        run_onnx_benchmark_2d(ccip_metrics_path, 16, 768)?;
-
-    Ok(DetectionBenchmarkResult {
-        yolo_cpu_ms: yolo_cpu,
-        yolo_gpu_ms: yolo_gpu,
-        yolo_gpu_error: yolo_err,
-        ccip_feat_cpu_ms: ccip_feat_cpu,
-        ccip_feat_gpu_ms: ccip_feat_gpu,
-        ccip_feat_gpu_error: ccip_feat_err,
-        ccip_metrics_cpu_ms: ccip_metrics_cpu,
-        ccip_metrics_gpu_ms: ccip_metrics_gpu,
-        ccip_metrics_gpu_error: ccip_metrics_err,
-        has_gpu,
-    })
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SingleImageBenchmarkResult {
     pub read_time_ms: f64,

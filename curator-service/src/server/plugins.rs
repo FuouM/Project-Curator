@@ -239,7 +239,6 @@ async fn dispatch_plugin_command(
                 fps,
                 trim_start,
                 trim_end,
-                &ctx.data_dir,
                 &ffmpeg,
                 &ctx.transcode_progress,
             )

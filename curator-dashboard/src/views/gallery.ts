@@ -10,7 +10,7 @@ export let isGalleryLoading = false;
 
 export function refreshGallery() {
   if (getGalleryZenMode()) {
-    return refreshPaginatedImages(0, "gallery", "gallery", {}, false).then(() => {
+    return refreshPaginatedImages(0, "gallery", {}, false).then(() => {
       const perPage = getImagesPerPage();
       const totalPages = Math.ceil(getGalleryTotalCount() / perPage);
       if (totalPages > 1) {
@@ -25,16 +25,15 @@ export function refreshGallery() {
       }
     });
   } else {
-    return refreshPaginatedImages(getGalleryPage(), "gallery", "gallery", {}, false);
+    return refreshPaginatedImages(getGalleryPage(), "gallery", {}, false);
   }
 }
-export function loadMoreGallery(page: number) { return refreshPaginatedImages(page, "gallery", "gallery", {}, true); }
-export function refreshFavorites() { return refreshPaginatedImages(getFavoritesPage(), "favorites", "favorites", { only_favorites: true }); }
+export function loadMoreGallery(page: number) { return refreshPaginatedImages(page, "gallery", {}, true); }
+export function refreshFavorites() { return refreshPaginatedImages(getFavoritesPage(), "favorites", { only_favorites: true }); }
 
 export async function refreshPaginatedImages(
   page: number,
   idPrefix: string,
-  _unused: string,
   listOpts: { only_favorites?: boolean },
   append = false
 ) {

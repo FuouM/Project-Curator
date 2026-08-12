@@ -1,15 +1,5 @@
 import { html, SafeHtml, ComponentMeta } from './_shared';
 
-export interface CustomConceptData {
-  id: number;
-  name: string;
-  category: string;
-  threshold: number;
-  sample_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface ConceptCardProps {
   id: number;
   name: string;
@@ -61,17 +51,6 @@ export function renderConceptCard(props: ConceptCardProps): SafeHtml {
 }
 
 /** @deprecated Use renderConceptCard instead */
-export function renderConceptCardHtml(c: CustomConceptData): SafeHtml {
-  return renderConceptCard({
-    id: c.id,
-    name: c.name,
-    category: c.category,
-    threshold: c.threshold,
-    sampleCount: c.sample_count,
-    createdAt: c.created_at,
-    updatedAt: c.updated_at,
-  });
-}
 
 export const meta: ComponentMeta = {
   name: "Concept Card",

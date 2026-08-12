@@ -97,7 +97,7 @@ pub async fn get_model_status(
 
     for entry in &entries {
         let mut downloaded_files = Vec::new();
-        let mut total_size: u64 = 0;
+        let total_size: u64 = 0;
         let mut downloaded_size: u64 = 0;
 
         for file in &entry.files {
@@ -108,8 +108,6 @@ pub async fn get_model_status(
                     downloaded_size += meta.len();
                 }
             }
-            // Estimate total size from file size if available, otherwise 0
-            total_size += 0; // Will be set during download from Content-Length
         }
 
         // Check for quantized variants

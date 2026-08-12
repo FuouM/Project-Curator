@@ -239,7 +239,6 @@ pub async fn process_gif_effects(
     fps: Option<u32>,
     trim_start: Option<f64>,
     trim_end: Option<f64>,
-    _data_dir: &Path,
     ffmpeg_path: &Path,
     progress_map: &TranscodeProgressMap,
 ) -> anyhow::Result<()> {

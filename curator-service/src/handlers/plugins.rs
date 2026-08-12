@@ -240,7 +240,7 @@ pub async fn validate_plugin_logic(manifest_path_str: &str) -> Result<(String, S
         .context("Missing or empty 'version' field")?
         .to_string();
 
-    let description = val
+    let _description = val
         .get("description")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
@@ -296,7 +296,6 @@ pub async fn validate_plugin_logic(manifest_path_str: &str) -> Result<(String, S
         }
     }
 
-    let _ = description;
     Ok((name, version))
 }
 

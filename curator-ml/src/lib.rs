@@ -18,7 +18,6 @@ pub use detection::{
 };
 pub use tagger::{TagPrediction, TaggerEngine, TaggerManager, TaggerModelSpec, CAMIE_SPEC, WD_EVA02_SPEC};
 pub use benchmark::{
-    benchmark_preprocess, run_detection_benchmark, run_onnx_benchmark, run_onnx_benchmark_2d,
-    run_onnx_benchmark_4d, get_benchmark_images, run_single_image_benchmark,
-    DetectionBenchmarkResult, SingleImageBenchmarkResult,
+    benchmark_preprocess, run_onnx_benchmark, run_onnx_benchmark_2d, run_onnx_benchmark_4d,
+    get_benchmark_images, run_single_image_benchmark, SingleImageBenchmarkResult,
 };

@@ -174,7 +174,6 @@ impl ToolsService for ToolsServiceImpl {
             req.fps,
             req.trim_start,
             req.trim_end,
-            &self.ctx.data_dir,
             &ffmpeg,
             &self.ctx.transcode_progress,
         )
