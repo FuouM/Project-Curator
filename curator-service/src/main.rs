@@ -197,41 +197,23 @@ async fn main() -> Result<(), Error> {
     let db_path = data_dir.join("curator.db");
     let db = init_db(&db_path).await?;
 
-    sqlx::query(
-        "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES ('ai:clip-vit-b-32', 'AI_MODEL', '{}')"
-    )
-    .execute(&db)
-    .await?;
-
-    sqlx::query(
-        "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES ('ai:camie-tagger-v2', 'AI_MODEL', '{}')"
-    )
-    .execute(&db)
-    .await?;
-
-    sqlx::query(
-        "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES ('ai:wd-eva02-tagger-2026-canary', 'AI_MODEL', '{}')"
-    )
-    .execute(&db)
-    .await?;
-
-    sqlx::query(
-        "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES ('ai:mobileclip-s2', 'AI_MODEL', '{}')"
-    )
-    .execute(&db)
-    .await?;
-
-    sqlx::query(
-        "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES ('user', 'USER', '{}')",
-    )
-    .execute(&db)
-    .await?;
-
-    sqlx::query(
-        "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES ('ai:custom-concepts', 'AI_MODEL', '{}')",
-    )
-    .execute(&db)
-    .await?;
+    // Seed the built-in tag sources; each row is idempotent.
+    for (name, source_type) in [
+        (curator_core::constants::SOURCE_CLIP, "AI_MODEL"),
+        (curator_core::constants::SOURCE_CAMIE, "AI_MODEL"),
+        (curator_core::constants::SOURCE_WD_EVA02, "AI_MODEL"),
+        (curator_core::constants::SOURCE_MOBILECLIP, "AI_MODEL"),
+        (curator_core::constants::SOURCE_USER, "USER"),
+        (curator_core::constants::SOURCE_CUSTOM_CONCEPTS, "AI_MODEL"),
+    ] {
+        sqlx::query(
+            "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES (?, ?, '{}')",
+        )
+        .bind(name)
+        .bind(source_type)
+        .execute(&db)
+        .await?;
+    }
 
     let _ = handlers::concepts::sync_all_custom_concept_tags(&db).await;
 
