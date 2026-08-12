@@ -6,7 +6,7 @@ import { setupBenchmark } from "./views/benchmark";
 import { setupSettings } from "./views/settings";
 import { setupImport } from "./views/import";
 import { setupSearch, renderSearchHtml } from "./views/search";
-import { setupTags } from "./views/tags";
+import { setupTagEditorModal } from "./components/tag-editor-modal";
 import { setupConcepts } from "./views/concepts";
 import { setupFilenameParserView } from "./views/filename-parser";
 import { setupNavigation, navigateToView } from "./views/navigation";
@@ -158,7 +158,7 @@ function init() {
   setupGlobalContextMenu();
   setupImport();
   setupSearch();
-  setupTags();
+  setupTagEditorModal();
   setupImageViewer();
   setupLogTabs();
   setupConcepts();

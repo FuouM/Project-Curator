@@ -7,7 +7,7 @@ import { imageBytesToPngBlob } from "./utils";
 import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId, formatCopiedTags, getGalleryFullImages } from "./state";
 import { openImageViewer } from "./image-viewer";
 import { typedCall } from "./ipc";
-import { openTagModal } from "./views/tags";
+import { openTagModal } from "./components/tag-editor-modal";
 import { findSimilar } from "./views/concepts";
 import { LruCache } from "./lru-cache";
 import { EmptySchema } from "@bufbuild/protobuf/wkt";

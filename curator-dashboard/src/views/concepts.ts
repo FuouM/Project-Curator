@@ -300,7 +300,7 @@ async function removeConceptSample(conceptId: number, imageId: number) {
 
     await viewConceptSamples(conceptId, "", true);
 
-    const { refreshModalTags } = await import("./tags");
+    const { refreshModalTags } = await import("../components/tag-editor-modal");
     refreshModalTags(imageId).catch(() => {});
 
     refreshDashboard();
@@ -423,18 +423,10 @@ function setupConceptDelegation(container: HTMLElement) {
 // ── Setup ────────────────────────────────────────────────────────────
 
 export function setupConcepts() {
-  // Teach Concept Modal Trigger from Tag Modal
-  const teachModalBtn = document.getElementById("teach-concept-from-modal-btn");
+  // Teach Concept Modal
   const teachModal = document.getElementById("teach-concept-modal");
   const closeTeachModal = document.getElementById("close-teach-modal");
   const cancelTeachModal = document.getElementById("cancel-teach-modal");
-
-  teachModalBtn?.addEventListener("click", () => {
-    const idInput = document.getElementById("tag-image-id") as HTMLInputElement;
-    if (idInput && idInput.value) {
-      openTeachConceptModal();
-    }
-  });
 
   closeTeachModal?.addEventListener("click", () => teachModal?.classList.remove("active"));
   cancelTeachModal?.addEventListener("click", () => teachModal?.classList.remove("active"));
@@ -510,7 +502,7 @@ export function setupConcepts() {
           teachModal?.classList.remove("active");
           if (statusPanel) statusPanel.style.display = "none";
         }, 400);
-        const { refreshModalTags } = await import("./tags");
+        const { refreshModalTags } = await import("../components/tag-editor-modal");
         if (sampleIds.length > 0) await refreshModalTags(sampleIds[0]);
         loadConceptsView();
         refreshDashboard();

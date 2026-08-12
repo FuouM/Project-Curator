@@ -300,60 +300,8 @@
 
     <!-- Add Tag Modal Dialog -->
     <div class="modal" id="add-tag-modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <span class="modal-title">Manage Image Tags</span>
-          <span class="modal-close" id="close-modal"><i class="bi bi-x-lg"></i></span>
-        </div>
-        <form id="tag-form">
-          <div class="modal-body">
-            <input type="hidden" id="tag-image-id" />
-            <p style="font-size: 11px; color: #555555; word-break: break-all;" id="tag-image-path-preview"></p>
-            
-            <div class="group-box" style="margin: 4px 0; padding: 12px 6px 6px 6px;">
-              <div class="group-box-title">Active Tags</div>
-              <div id="modal-tag-list">
-                <!-- Active tags list -->
-              </div>
-            </div>
-
-            <div class="group-box" id="modal-blacklisted-group" style="margin: 8px 0 4px 0; padding: 12px 6px 6px 6px; display: none;">
-              <div class="group-box-title" style="color: #ef4444;"><i class="bi bi-slash-circle"></i> Blacklisted Tags (AI Exclusions)</div>
-              <div id="modal-blacklisted-tag-list" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px;">
-                <!-- Blacklisted tags list -->
-              </div>
-            </div>
-
-            <div class="form-group" style="margin-top: 8px;">
-              <div class="input-wrapper" style="flex: 1;">
-                <input class="input-field has-clear" id="tag-name-input" placeholder="Enter tag name (e.g. meme)..." required />
-                <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
-              </div>
-              <button type="submit" class="win-button">Add Tag</button>
-            </div>
-
-            <!-- AI Auto-Tagging Section -->
-            <div style="border-top: 1px solid #d0d0d0; margin-top: 12px; padding-top: 10px;">
-              <div style="font-size: 10px; font-weight: bold; color: #444; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">
-                <i class="bi bi-stars"></i> AUTO TAG
-              </div>
-              <div class="form-group">
-                <select class="input-field" id="tagger-threshold-select" style="width: 155px; font-size: 11px;">
-                  <option value="0.5" selected>Balanced (0.50)</option>
-                  <option value="0.65">High Precision (0.65)</option>
-                  <option value="0.35">High Recall (0.35)</option>
-                </select>
-                <button type="button" class="win-button" id="auto-tag-modal-btn" style="font-size: 11px;">
-                  <i class="bi bi-stars"></i> AUTO TAG
-                </button>
-                <button type="button" class="win-button primary" id="teach-concept-from-modal-btn" style="font-size: 11px;">
-                  <i class="bi bi-magic"></i> Teach Concept
-                </button>
-              </div>
-              <p id="auto-tag-modal-status" style="font-size: 11px; margin-top: 4px; color: #555555; min-height: 16px;"></p>
-            </div>
-          </div>
-        </form>
+      <div class="modal-content" style="max-width: 480px;" id="add-tag-modal-container">
+        <!-- Loaded dynamically by openTagModal() -->
       </div>
     </div>
 
