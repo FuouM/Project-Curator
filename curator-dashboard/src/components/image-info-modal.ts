@@ -337,9 +337,16 @@ export function openImageInfoModal(img: ImageDetails) {
   modal.classList.add("active");
 
   const closeBtn = modal.querySelector(".modal-close");
-  const onClose = () => { modal.classList.remove("active"); closeBtn?.removeEventListener("click", onClose); };
+  const onBackdropClick = (e: MouseEvent) => {
+    if (e.target === modal) onClose();
+  };
+  const onClose = () => {
+    modal.classList.remove("active");
+    closeBtn?.removeEventListener("click", onClose);
+    modal.removeEventListener("click", onBackdropClick);
+  };
   closeBtn?.addEventListener("click", onClose);
-  modal.addEventListener("click", (e) => { if (e.target === modal) onClose(); }, { once: true });
+  modal.addEventListener("click", onBackdropClick);
 }
 
 function storedDetectionFromProto(p: PStoredDetection): CharacterDetection {
