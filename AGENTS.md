@@ -196,6 +196,9 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
 9. **System Architecture Conformity Mandate:**
    * **No Inventing Isolated Parallel Solutions:** AI agents **MUST** inspect and conform strictly to the existing codebase architecture and contract specifications (`curator-proto/proto/*.proto`, `ModelsService` in `models.proto`, `ModelsService` / `models.json` manifest, `BenchmarksService` in `benchmarks.proto`, `ManagedSession` in `curator-ml`, etc.).
    * **Mandatory System Exploration:** Before proposing or drafting implementation plans for new features (such as ML models, benchmarks, settings, downloads, or background tasks), agents **MUST** thoroughly inspect the project's existing domain Protobuf files, gRPC services, and manager classes to integrate seamlessly into existing systems rather than inventing ad-hoc or parallel workflows.
+10. **Strict User Request Alignment & Anti-Bypass Mandate:**
+    * **Targeted Debugging:** When the user requests testing, debugging, or fixing a specific feature or UI flow (such as downloading a model via the UI Models tab), AI agents **MUST** trace and fix the actual end-to-end system pipeline (e.g. manifest URLs, network handlers, IPC bridge routing, background tasks).
+    * **Bypasses & Shortcuts Strictly Banned:** **NEVER** bypass or fake a broken feature by copying files locally on disk, hardcoding dummy fallbacks, or faking state behind the user's back to superficially "make it work". Always fix the true underlying system logic.
 
 ### Frontend Design Skill (`/frontend-design`) Integration
 
