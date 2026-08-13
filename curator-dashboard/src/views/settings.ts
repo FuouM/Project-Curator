@@ -1,9 +1,9 @@
-﻿import { html, SafeHtml } from "../components";
+import { html, SafeHtml } from "../components";
 import { initStorageStats } from "./settings/storage-stats";
 import { bindOcrPreviewControls, renderOcrPreview, setupOcrDragListeners } from "./settings/ocr-preview";
 import { refreshFfmpegStatus, setupFfmpegListeners } from "./settings/ffmpeg-status";
 import { bindSettingsForm } from "./settings/settings-form";
-import { loadNsfwPrefs, saveNsfwPrefs, NsfwAction, refreshAllNsfw } from "../nsfw";
+import { loadNsfwPrefs, saveNsfwPrefs, NsfwAction, refreshAllNsfw, DEFAULT_NSFW_PREFS } from "../nsfw";
 import { getSafetyRescanProgress, triggerSafetyRescan } from "../ipc";
 
 export function setupSettings() {
@@ -65,6 +65,17 @@ function bindNsfwPreferences() {
     slider.addEventListener("input", () => {
       sliderReadout.textContent = `${Math.round(parseFloat(slider.value) * 100)}%`;
     });
+
+    const resetBtn = document.getElementById("nsfw-threshold-reset") as HTMLButtonElement | null;
+    if (resetBtn) {
+      resetBtn.addEventListener("click", () => {
+        const defaultThreshold = DEFAULT_NSFW_PREFS.threshold;
+        slider.value = String(defaultThreshold);
+        sliderReadout.textContent = `${Math.round(defaultThreshold * 100)}%`;
+        saveNsfwPrefs({ ...loadNsfwPrefs(), threshold: defaultThreshold });
+        refreshAllNsfw();
+      });
+    }
   }
 
   const scanBtn = document.getElementById("nsfw-scan-btn") as HTMLButtonElement | null;
@@ -197,9 +208,12 @@ export function renderSettingsHtml(): SafeHtml {
       <div class="form-group" style="flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 8px;">
         <label style="font-weight: 600; min-width: 120px; display: flex; justify-content: space-between; width: 100%; align-items: center;">
           <span>Sensitivity Threshold:</span>
-          <span id="nsfw-threshold-value" style="color: var(--sys-accent, #0078d7); font-weight: 700;"></span>
+          <span style="display: flex; gap: 8px; align-items: center;">
+            <button class="win-button" id="nsfw-threshold-reset" style="font-size: 10px; padding: 2px 6px; font-weight: normal; line-height: 1;">Reset to Default</button>
+            <span id="nsfw-threshold-value" style="color: var(--sys-accent, #0078d7); font-weight: 700;"></span>
+          </span>
         </label>
-        <input type="range" id="nsfw-threshold" min="0.10" max="0.90" step="0.01" value="0.50" style="width: 100%;" />
+        <input type="range" id="nsfw-threshold" min="0.10" max="0.99" step="0.01" value="0.91" style="width: 100%;" />
         <span style="font-size: 11px; color: #666666;">Lower = block more aggressively; values apply to all already-scanned images instantly, no re-inference.</span>
       </div>
       <div style="border-top: 1px solid #e5e7eb; margin: 4px 0; padding-top: 8px;">

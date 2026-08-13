@@ -11,7 +11,7 @@ export interface NsfwPrefs {
 
 const STORAGE_KEY = "nsfw-filter";
 
-export const DEFAULT_NSFW_PREFS: NsfwPrefs = { action: "none", threshold: 0.5 };
+export const DEFAULT_NSFW_PREFS: NsfwPrefs = { action: "none", threshold: 0.91 };
 
 export function loadNsfwPrefs(): NsfwPrefs {
   try {
