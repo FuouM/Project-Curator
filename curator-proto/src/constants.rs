@@ -30,7 +30,8 @@ pub fn resolve_data_dir() -> std::path::PathBuf {
     }
 
     // 2. Walk up from the current executable.
-    if let Ok(exe) = std::env::current_exe() {
+    let exe_path = std::env::current_exe().ok();
+    if let Some(ref exe) = exe_path {
         if let Some(root) = find_workspace_root(exe.as_path()) {
             return root.join(".curator");
         }
@@ -43,8 +44,17 @@ pub fn resolve_data_dir() -> std::path::PathBuf {
         }
     }
 
+    // 4. Production Portable Fallback: If no workspace markers (Cargo.toml/git) are found
+    //    (e.g., in a compiled portable release folder), default to a `.curator` directory
+    //    adjacent to the running executable itself.
+    if let Some(ref exe) = exe_path {
+        if let Some(parent) = exe.parent() {
+            return parent.join(".curator");
+        }
+    }
+
     panic!(
-        "Could not locate the Project Curator workspace root. \
+        "Could not locate the Project Curator workspace root or executable parent directory. \
          Set the CURATOR_DATA_DIR environment variable to the `.curator` data directory path."
     );
 }
