@@ -16,7 +16,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { workspace = true }
 uuid = { workspace = true }
 clap = { workspace = true }
-sha2 = "0.10"
+sha2 = { workspace = true }
 bytemuck = "1"
 sqlx = { workspace = true }
 ureq = { workspace = true }
@@ -25,6 +25,6 @@ tokio-stream = { workspace = true }
 tokio-util = "0.7"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sysinfo = { version = "0.33.0" }
-image = "0.25"
+image = { workspace = true }
 base64 = "0.22"
 

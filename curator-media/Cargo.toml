@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-image = "0.25"
-turbojpeg = "1"
-fast_image_resize = "5"
-png = { version = "0.18", features = ["zlib-rs"] }
-webp = "0.3"
-sha2 = "0.10"
+image = { workspace = true }
+turbojpeg = { workspace = true }
+fast_image_resize = { workspace = true }
+png = { workspace = true }
+webp = { workspace = true }
+sha2 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }

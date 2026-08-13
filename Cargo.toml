@@ -34,6 +34,19 @@ stable_deref_trait = { version = "1", features = ["alloc"] }
 bit-set = { version = "0.5", features = ["std"] }
 foldhash = { version = "0.1", features = ["std"] }
 percent-encoding = "2"
+image = { version = "0.25", features = ["ico"] }
+ort = { version = "=2.0.0-rc.11", default-features = false }
+fast_image_resize = "5"
+turbojpeg = "1"
+webp = "0.3"
+png = { version = "0.18", features = ["zlib-rs"] }
+prost-types = "0.13"
+tower = { version = "0.4", features = ["util"] }
+hyper-util = { version = "0.1", features = ["tokio", "client", "server", "service"] }
+dirs = "6"
+async-stream = "0.3"
+tonic-build = "0.12"
+
 
 [profile.dev]
 opt-level = 0

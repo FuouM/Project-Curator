@@ -15,11 +15,11 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
-image = "0.25"
-fast_image_resize = "5"
-turbojpeg = "1"
-png = { version = "0.18", features = ["zlib-rs"] }
-webp = "0.3"
+image = { workspace = true }
+fast_image_resize = { workspace = true }
+turbojpeg = { workspace = true }
+png = { workspace = true }
+webp = { workspace = true }
 
 # Align workspace dependency features to prevent cache invalidation between target compilation graphs
 tokio-stream = { workspace = true }
@@ -29,8 +29,14 @@ indexmap = { workspace = true }
 stable_deref_trait = { workspace = true }
 bit-set = { workspace = true }
 foldhash = { workspace = true }
+percent-encoding = { workspace = true }
+prost = { workspace = true }
+tonic = { workspace = true }
+tower = { workspace = true }
+hyper-util = { workspace = true }
+dirs = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
 ndarray = "0.17"
-ort = { version = "=2.0.0-rc.11", default-features = false, features = ["load-dynamic", "copy-dylibs", "download-binaries", "tls-native", "directml"] }
+ort = { workspace = true, features = ["load-dynamic", "copy-dylibs", "download-binaries", "tls-native", "half", "directml"] }

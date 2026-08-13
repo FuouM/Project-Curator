@@ -118,7 +118,7 @@ Before running `.\download_ort.ps1`, **ALWAYS** check if `onnxruntime.dll` and `
 
 * **Workspace Centralization**: All new third-party crates added to child packages **MUST** first be defined in the root `Cargo.toml` `[workspace.dependencies]` table (specifying versions and baseline features) and inherited in child packages using `{ workspace = true }`.
 * **Transitive Feature Union Alignment**: If a third-party crate is transitively shared between the service and the Tauri dashboard with mismatched features, the unified features **MUST** be explicitly declared in the root workspace dependency, and that dependency **MUST** be added to `curator-core/Cargo.toml` to guarantee Cargo resolves identical build graphs for both target binaries.
-* **No Implicit Defaults**: When importing shared workspace crates like `curator-core` into front-end targets (e.g. `curator-dashboard/src-tauri/Cargo.toml`), always explicitly declare `default-features = false` to match the service's build flag configurations and prevent Cargo cache invalidation.
+* **Feature Profile Unification**: Never mix `default-features = true` and `default-features = false` states when importing shared internal workspace crates (like `curator-core`) across different target packages. To prevent Cargo from resolving separate dependency feature subgraphs (which triggers a full rebuild when switching targets), always import shared internal crates using their default features. Do not declare `default-features = false` for internal workspace dependencies.
 
 ---
 

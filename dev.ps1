@@ -24,7 +24,7 @@ try {
 
 # 2. Build curator-service daemon
 Write-Host "Building curator-service..." -ForegroundColor Cyan
-cargo build --manifest-path "$PSScriptRoot\curator-service\Cargo.toml" --no-default-features
+cargo build --manifest-path "$PSScriptRoot\curator-service\Cargo.toml"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Service build failed!" -ForegroundColor Red
     exit 1

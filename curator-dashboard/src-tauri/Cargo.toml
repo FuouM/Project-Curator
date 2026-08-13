@@ -22,7 +22,7 @@ tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
-curator-core = { path = "../../curator-core", default-features = false }
+curator-core = { path = "../../curator-core" }
 tokio = { workspace = true }
 chrono = { workspace = true }
 rfd = "0.15"
