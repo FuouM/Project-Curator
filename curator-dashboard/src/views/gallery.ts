@@ -24,12 +24,58 @@ export function refreshGallery() {
         });
       }
     });
+  } else if (getGalleryInfiniteScroll()) {
+    // Rebuild every accumulated page (0..currentPage) so the infinite list
+    // stays contiguous. Rendering only the current page slice would leave the
+    // view stuck mid-list, unable to scroll back to earlier pages.
+    return rebuildGalleryAccumulated();
   } else {
     return refreshPaginatedImages(getGalleryPage(), "gallery", {}, false);
   }
 }
+
+async function rebuildGalleryAccumulated() {
+  const perPage = getImagesPerPage();
+  const totalPages = Math.max(1, Math.ceil(getGalleryTotalCount() / perPage));
+  const target = Math.min(getGalleryPage(), totalPages - 1);
+  await refreshPaginatedImages(0, "gallery", {}, false);
+  for (let i = 1; i <= target; i++) {
+    await refreshPaginatedImages(i, "gallery", {}, true);
+  }
+}
 export function loadMoreGallery(page: number) { return refreshPaginatedImages(page, "gallery", {}, true); }
 export function refreshFavorites() { return refreshPaginatedImages(getFavoritesPage(), "favorites", { only_favorites: true }); }
+
+/**
+ * Refresh the gallery while preserving the accumulated infinite-scroll list and
+ * the user's scroll position. Used on nav return to the gallery view.
+ *
+ * A cheap staleness probe (page 0's newest image vs the currently displayed
+ * newest card) decides whether the library changed. If it did (new imports,
+ * deletions), pages 0..currentPage are rebuilt; otherwise the DOM is left
+ * untouched so the scroll position survives the round-trip.
+ */
+export async function refreshGalleryPreserving() {
+  const perPage = getImagesPerPage();
+  const grid = document.getElementById("gallery-grid");
+  if (!grid) return;
+
+  const probe = await typedCall(
+    "GalleryService.ListImages",
+    ListImagesRequestSchema,
+    { limit: perPage, offset: 0, onlyFavorites: false },
+    ListResultSchema
+  );
+  setGalleryTotalCount(Number(probe.totalCount));
+
+  const firstCard = grid.querySelector<HTMLElement>(".image-card");
+  const displayedFirstId = firstCard ? Number(firstCard.dataset.imageId) : NaN;
+  const newestId = probe.images.length ? Number(probe.images[0].id) : NaN;
+
+  if (newestId === displayedFirstId) return;
+
+  await rebuildGalleryAccumulated();
+}
 
 export async function refreshPaginatedImages(
   page: number,
@@ -158,6 +204,7 @@ export function renderGalleryHtml(): SafeHtml {
       </div>
       <div id="gallery-sentinel" style="height: 2px; width: 100%; pointer-events: none; flex: 0 0 auto;"></div>
     </div>
+    <button type="button" id="gallery-scroll-top-btn" class="scroll-top-btn" title="Scroll to top" style="display: none;"><i class="bi bi-arrow-up"></i></button>
   `;
 }
 

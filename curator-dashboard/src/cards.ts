@@ -47,6 +47,20 @@ interface ThumbJob {
 
 const queue: ThumbJob[] = [];
 
+// While true, thumbnail generation jobs are not enqueued (used during a
+// programmatic scroll-to-top where intermediate images are not needed).
+export let thumbLoadPaused = false;
+
+export function setThumbLoadPaused(paused: boolean) {
+  thumbLoadPaused = paused;
+}
+
+export function resumeThumbLoading() {
+  thumbLoadPaused = false;
+  const panel = document.querySelector(".main-panel") as HTMLElement | null;
+  if (panel) reobserveUnloadedThumbnails(panel);
+}
+
 function processQueue() {
   while (activeCount < MAX_CONCURRENT && queue.length > 0) {
     const job = queue.shift()!;
@@ -299,6 +313,7 @@ const lazyObserver = new IntersectionObserver((entries) => {
               updateThumbProgress();
             }
           } else {
+            if (thumbLoadPaused) continue;
             if (preview) preview.classList.add("thumb-loading");
             queue.push({ imageId, img, preview, gen: generation });
             processQueue();

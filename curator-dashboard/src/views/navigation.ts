@@ -1,6 +1,6 @@
 import { renderPluginNavItemHtml } from "../components/navigation-sidebar";
 import { favoritesPage, setGalleryPage, setFavoritesPage, getImagesPerPage, setImagesPerPage, setGalleryInfiniteScroll, setGalleryZenMode, getGalleryInfiniteScroll, getGalleryZenMode, getGalleryPage, getGalleryTotalCount, getGalleryFullImages, setGalleryFullImages } from "../state";
-import { refreshGallery, refreshFavorites, setupPaginationButtons, setupPageJump, loadMoreGallery, isGalleryLoading } from "./gallery";
+import { refreshGallery, refreshFavorites, setupPaginationButtons, setupPageJump, loadMoreGallery, isGalleryLoading, refreshGalleryPreserving } from "./gallery";
 import { refreshBenchmarkMaxImages } from "./benchmark";
 import { refreshDashboard } from "./dashboard";
 import { refreshLogs, clearLogsData, clearLogsFrontendDom } from "./logs";
@@ -10,7 +10,7 @@ import { refreshComponentStylesheet } from "./components-view";
 import { refreshBatchPreview } from "./filename-parser";
 import { refreshCharacters, setupCharactersView } from "./characters";
 import { refreshModelStatus, clearCompletedModelsConsoleLogs } from "./models";
-import { reobserveUnloadedThumbnails, processVisibleFullImages } from "../cards";
+import { reobserveUnloadedThumbnails, processVisibleFullImages, setThumbLoadPaused, resumeThumbLoading } from "../cards";
 
 const subtitles: Record<string, { title: string; sub: string }> = {
   dashboard: { title: "Dashboard", sub: "Overview of your local vector store and image library." },
@@ -79,6 +79,9 @@ export function removePluginView(viewKey: string) {
 // --- Infinite scroll IntersectionObserver sentinel ---
 let galleryInfiniteObserver: IntersectionObserver | null = null;
 let gallerySentinel: HTMLElement | null = null;
+let galleryScrollTop = 0;
+let scrollTopPauseActive = false;
+let scrollTopResumeTimer: number | null = null;
 
 function buildGalleryInfiniteObserver() {
   galleryInfiniteObserver?.disconnect();
@@ -127,6 +130,15 @@ export function setupNavigation() {
   const viewSubtitle = document.getElementById("view-subtitle");
 
   const activateView = (item: HTMLElement) => {
+    // Capture the gallery scroll position before leaving so it can be restored
+    // when returning (the gallery DOM is kept mounted, only display toggles).
+    const prevNavItem = document.querySelector(".nav-item.active");
+    const prevView = prevNavItem?.getAttribute("data-view");
+    const scrollHost = document.querySelector(".main-panel") as HTMLElement | null;
+    if (prevView === "gallery" && scrollHost) {
+      galleryScrollTop = scrollHost.scrollTop;
+    }
+
     document.querySelectorAll(".nav-item").forEach((i) => i.classList.remove("active"));
     item.classList.add("active");
 
@@ -167,7 +179,16 @@ export function setupNavigation() {
     if (view === "dashboard") {
       refreshDashboard();
     } else if (view === "gallery") {
-      refreshGallery().then(() => {
+      // Preserve the accumulated infinite-scroll list (and its scroll position)
+      // when returning to the gallery. Only refresh the grid from scratch when
+      // it is empty or pagination mode is active.
+      const grid = document.getElementById("gallery-grid");
+      const hasCards = grid ? grid.querySelector<HTMLElement>(".image-card") !== null : false;
+      const preserve = getGalleryInfiniteScroll() && hasCards;
+      const load = preserve ? refreshGalleryPreserving() : refreshGallery();
+      load.then(() => {
+        const panel = document.querySelector(".main-panel") as HTMLElement | null;
+        if (panel) panel.scrollTop = galleryScrollTop;
         setTimeout(reobserveGallerySentinel, 300);
       });
     } else if (view === "favorites") {
@@ -339,6 +360,47 @@ export function setupNavigation() {
       }
     });
   }
+
+  // Scroll-to-top button: shows when the gallery is scrolled down, hides on
+  // any other view or when back at the top.
+  const mainPanelHost = document.querySelector(".main-panel") as HTMLElement | null;
+  if (mainPanelHost) {
+    mainPanelHost.addEventListener("scroll", () => {
+      const btn = document.getElementById("gallery-scroll-top-btn");
+      if (!btn) return;
+      const activeView = document.querySelector(".nav-item.active")?.getAttribute("data-view");
+      if (activeView !== "gallery") {
+        btn.style.display = "none";
+        return;
+      }
+      btn.style.display = mainPanelHost.scrollTop > 400 ? "flex" : "none";
+    });
+  }
+  document.getElementById("gallery-scroll-top-btn")?.addEventListener("click", () => {
+    const panel = document.querySelector(".main-panel") as HTMLElement | null;
+    if (!panel || panel.scrollTop <= 0) return;
+    // Suppress intermediate thumbnail loading while flying back to the top;
+    // resume once the smooth scroll reaches the top (with a safety timeout).
+    if (scrollTopPauseActive) return;
+    scrollTopPauseActive = true;
+    setThumbLoadPaused(true);
+    panel.scrollTo({ top: 0, behavior: "smooth" });
+
+    const done = () => {
+      scrollTopPauseActive = false;
+      panel.removeEventListener("scroll", onScroll);
+      if (scrollTopResumeTimer) {
+        clearTimeout(scrollTopResumeTimer);
+        scrollTopResumeTimer = null;
+      }
+      resumeThumbLoading();
+    };
+    const onScroll = () => {
+      if (panel.scrollTop <= 0) done();
+    };
+    panel.addEventListener("scroll", onScroll, { passive: true });
+    scrollTopResumeTimer = window.setTimeout(done, 3000);
+  });
 
   // Infinite scroll is driven by an IntersectionObserver watching the
   // #gallery-sentinel element (mounted in renderGalleryHtml). The observer is
