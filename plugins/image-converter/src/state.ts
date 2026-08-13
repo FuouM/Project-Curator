@@ -7,6 +7,8 @@
  * otherwise require setters for every mutable field.
  */
 
+import { loadPersisted, savePersisted } from "../../lib";
+
 export const TAB_ID = "image-converter" as const;
 
 export const CONVERT_FORMATS = [
@@ -32,7 +34,7 @@ export interface ConverterState {
 export const state: ConverterState = {
   queue: [],
   inQueue: {},
-  outputDir: localStorage.getItem("image-converter-output-dir") || "",
+  outputDir: loadPersisted("image-converter-output-dir", ""),
   targetExt: "png",
   quality: 90,
   busy: false,
@@ -40,5 +42,5 @@ export const state: ConverterState = {
 
 export function setOutputDir(value: string): void {
   state.outputDir = value;
-  localStorage.setItem("image-converter-output-dir", value);
+  savePersisted("image-converter-output-dir", value);
 }

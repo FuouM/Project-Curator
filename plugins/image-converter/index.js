@@ -4,31 +4,19 @@
 // ─────────────────────────────────────────────────────────────────────
 "use strict";
 (() => {
-  // image-converter/src/state.ts
-  var TAB_ID = "image-converter", CONVERT_FORMATS = [
-    "png",
-    "jpg",
-    "webp",
-    "gif",
-    "bmp",
-    "tiff",
-    "qoi",
-    "tga",
-    "pnm",
-    "hdr",
-    "ico",
-    "exr",
-    "avif"
-  ], state = {
-    queue: [],
-    inQueue: {},
-    outputDir: localStorage.getItem("image-converter-output-dir") || "",
-    targetExt: "png",
-    quality: 90,
-    busy: !1
-  };
-  function setOutputDir(value) {
-    state.outputDir = value, localStorage.setItem("image-converter-output-dir", value);
+  // lib/log.ts
+  var LOG_COLORS = {
+    info: "#cccccc",
+    success: "#10b981",
+    error: "#f87171"
+  }, CONSOLE_LINE_CSS = "font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:#cccccc;white-space:pre-wrap;word-break:break-all;";
+  function createLogger(elementId) {
+    return function(message, kind = "info") {
+      let box = document.getElementById(elementId);
+      if (!box) return;
+      let line = document.createElement("div");
+      line.style.cssText = kind === "info" ? CONSOLE_LINE_CSS : `font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:${LOG_COLORS[kind]};white-space:pre-wrap;word-break:break-all;`, line.textContent = message, box.appendChild(line), box.scrollTop = box.scrollHeight;
+    };
   }
 
   // lib/ipc-utils.ts
@@ -37,6 +25,20 @@
     var _a;
     let resp = await PH.callService("PathExists", { path });
     return !!((_a = resp == null ? void 0 : resp.PathExistsResult) != null && _a.exists);
+  }
+  async function pickDirectory() {
+    return pickPath(!0);
+  }
+  async function pickPath(isDirectory) {
+    var _a;
+    let api = window.__TAURI__;
+    if (!((_a = api == null ? void 0 : api.core) != null && _a.invoke)) return null;
+    try {
+      let selected = await api.core.invoke("select_path", { isDirectory });
+      return typeof selected == "string" && selected.length > 0 ? selected : null;
+    } catch (e) {
+      return null;
+    }
   }
   async function getUniqueOutputPath(sourcePath, outputDir, targetExt) {
     let base = sourcePath.split(/[/\\]/).pop(), dotIdx = base.lastIndexOf("."), stem = dotIdx !== -1 ? base.substring(0, dotIdx) : base, sep = outputDir.includes("\\") ? "\\" : "/", cleanDir = outputDir.replace(/[/\\]+$/, ""), n = 0;
@@ -51,19 +53,19 @@
     }
   }
 
-  // lib/log.ts
-  var LOG_COLORS = {
-    info: "#cccccc",
-    success: "#10b981",
-    error: "#f87171"
-  };
-  function createLogger(elementId) {
-    return function(message, kind = "info") {
-      let box = document.getElementById(elementId);
-      if (!box) return;
-      let line = document.createElement("div");
-      line.style.cssText = `font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:${LOG_COLORS[kind]};white-space:pre-wrap;word-break:break-all;`, line.textContent = message, box.appendChild(line), box.scrollTop = box.scrollHeight;
-    };
+  // lib/storage.ts
+  function loadPersisted(key, fallback) {
+    try {
+      return localStorage.getItem(key) || fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+  function savePersisted(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+    }
   }
 
   // lib/navigation.ts
@@ -131,6 +133,33 @@
 
   // lib/poll.ts
   var PH2 = window.PluginHost;
+
+  // image-converter/src/state.ts
+  var TAB_ID = "image-converter", CONVERT_FORMATS = [
+    "png",
+    "jpg",
+    "webp",
+    "gif",
+    "bmp",
+    "tiff",
+    "qoi",
+    "tga",
+    "pnm",
+    "hdr",
+    "ico",
+    "exr",
+    "avif"
+  ], state = {
+    queue: [],
+    inQueue: {},
+    outputDir: loadPersisted("image-converter-output-dir", ""),
+    targetExt: "png",
+    quality: 90,
+    busy: !1
+  };
+  function setOutputDir(value) {
+    state.outputDir = value, savePersisted("image-converter-output-dir", value);
+  }
 
   // image-converter/src/ui.ts
   var PH3 = window.PluginHost;
@@ -242,13 +271,9 @@
       state.queue.length = 0, state.inQueue = {}, updateQueueList(), updateProgress(0, 0), log("Queue cleared.", "info");
     });
     let browseBtn = container.querySelector("#converter-browse-btn"), outInput = container.querySelector("#converter-output-dir");
-    outInput && (outInput.value = state.outputDir), browseBtn && outInput && ((_c = window.__TAURI__) != null && _c.core) && browseBtn.addEventListener("click", () => {
-      window.__TAURI__.core.invoke("select_path", { isDirectory: !0 }).then((path) => {
-        path && (outInput.value = path, setOutputDir(path), log(`Output directory set: ${path}`, "success"));
-      }).catch((err) => {
-        let msg = err instanceof Error ? err.message : String(err);
-        log(`Folder picker failed: ${msg}`, "error");
-      });
+    outInput && (outInput.value = state.outputDir), browseBtn && outInput && ((_c = window.__TAURI__) != null && _c.core) && browseBtn.addEventListener("click", async () => {
+      let path = await pickDirectory();
+      path && (outInput.value = path, setOutputDir(path), log(`Output directory set: ${path}`, "success"));
     });
     let formatSelect = container.querySelector("#converter-format");
     formatSelect && (formatSelect.value = state.targetExt, formatSelect.addEventListener("change", () => {

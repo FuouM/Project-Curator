@@ -4,27 +4,6 @@
 // ─────────────────────────────────────────────────────────────────────
 "use strict";
 (() => {
-  // gif-maker/src/state.ts
-  var TAB_ID = "gif-maker", state = {
-    history: [],
-    historyIndex: -1,
-    currentMedia: null,
-    customFontName: "Roboto Condensed Bold",
-    currentTool: "maker",
-    sequencePattern: "",
-    activeJobId: null,
-    droppedFrames: [],
-    cropState: {
-      x: 0,
-      y: 0,
-      w: 200,
-      h: 200,
-      dragging: !1,
-      resizing: !1,
-      needsReset: !0
-    }
-  }, workspaceRoot = window.__curator_workspace_root__ || "", pluginDir = window.__curator_plugin_dir__ || "";
-
   // lib/log.ts
   var LOG_COLORS = {
     info: "#cccccc",
@@ -51,6 +30,30 @@
 
   // lib/ipc-utils.ts
   var PH = window.PluginHost;
+  async function pickDirectory() {
+    return pickPath(!0);
+  }
+  async function pickFile() {
+    return pickPath(!1);
+  }
+  async function pickPath(isDirectory) {
+    var _a;
+    let api = window.__TAURI__;
+    if (!((_a = api == null ? void 0 : api.core) != null && _a.invoke)) return null;
+    try {
+      let selected = await api.core.invoke("select_path", { isDirectory });
+      return typeof selected == "string" && selected.length > 0 ? selected : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function getPluginDirs() {
+    var _a, _b;
+    return {
+      pluginDir: (_a = window.__curator_plugin_dir__) != null ? _a : "",
+      workspaceRoot: (_b = window.__curator_workspace_root__) != null ? _b : ""
+    };
+  }
 
   // lib/drop-zone.ts
   var boundTabs = /* @__PURE__ */ new Set();
@@ -148,6 +151,27 @@
       onComplete: (success, last) => onComplete(success, last)
     });
   }
+
+  // gif-maker/src/state.ts
+  var TAB_ID = "gif-maker", state = {
+    history: [],
+    historyIndex: -1,
+    currentMedia: null,
+    customFontName: "Roboto Condensed Bold",
+    currentTool: "maker",
+    sequencePattern: "",
+    activeJobId: null,
+    droppedFrames: [],
+    cropState: {
+      x: 0,
+      y: 0,
+      w: 200,
+      h: 200,
+      dragging: !1,
+      resizing: !1,
+      needsReset: !0
+    }
+  }, { pluginDir: pluginDirValue, workspaceRoot: workspaceRootValue } = getPluginDirs(), workspaceRoot = workspaceRootValue, pluginDir = pluginDirValue;
 
   // gif-maker/src/ui.ts
   var PH3 = window.PluginHost;
@@ -908,12 +932,7 @@
   }
   async function handleBrowseFile() {
     try {
-      let api = window.__TAURI__;
-      if (!api || !api.core || !api.core.invoke) {
-        logConsole("Error: Native Tauri bridge is not initialized.", "error");
-        return;
-      }
-      let path = await api.core.invoke("select_path", { isDirectory: !1 });
+      let path = await pickFile();
       path && (state.currentTool === "maker" ? /\.(png|jpe?g|webp|gif)$/i.test(path) ? (state.droppedFrames.push(path), logConsole("Added frame: " + path.split(/[\\/]/).pop(), "success"), renderDroppedFrames()) : logConsole("Error: Select an image file to add to GIF Maker frames.", "error") : pushHistoryState(path, "Opened file: " + path.split(/[\\/]/).pop()));
     } catch (err) {
       let msg = err instanceof Error ? err.message : String(err);
@@ -1267,19 +1286,16 @@
             sizeRange.value = String(val), renderWysiwygCanvas();
           }), [txtArea, styleSel].forEach((elem) => {
             elem.addEventListener("input", renderWysiwygCanvas);
-          }), browseFontBtn.addEventListener("click", () => {
-            window.__TAURI__ && window.__TAURI__.core ? window.__TAURI__.core.invoke("select_path", { isDirectory: !1 }).then((path) => {
-              if (path) {
-                let ext = path.split(".").pop().toLowerCase();
-                if (ext === "ttf" || ext === "otf") {
-                  let fileName = path.split(/[\\/]/).pop();
-                  fontInp.value = fileName, loadCustomFontFile(path);
-                } else
-                  logConsole("Warning: Please select a valid .ttf or .otf file.", "error");
-              }
-            }).catch((err) => {
-              logConsole("Error selecting path: " + err, "error");
-            }) : logConsole("Tauri core invoke API not available.", "error");
+          }), browseFontBtn.addEventListener("click", async () => {
+            let path = await pickFile();
+            if (path) {
+              let ext = path.split(".").pop().toLowerCase();
+              if (ext === "ttf" || ext === "otf") {
+                let fileName = path.split(/[\\/]/).pop();
+                fontInp.value = fileName, loadCustomFontFile(path);
+              } else
+                logConsole("Warning: Please select a valid .ttf or .otf file.", "error");
+            }
           }), (_b2 = content.querySelector("#gm-btn-apply-caption")) == null || _b2.addEventListener("click", () => void handleApplyCaption());
         })();
         break;
@@ -1401,12 +1417,9 @@
         `;
           let splitInp = content.querySelector("#gm-inp-split-dir");
           splitInp.value = defaultDir, (_a2 = content.querySelector("#gm-btn-split-browse")) == null || _a2.addEventListener("click", async () => {
-            var _a3;
             try {
-              if ((_a3 = window.__TAURI__) != null && _a3.core) {
-                let selected = await window.__TAURI__.core.invoke("select_path", { isDirectory: !0 });
-                selected && (splitInp.value = selected);
-              }
+              let selected = await pickDirectory();
+              selected && (splitInp.value = selected);
             } catch (e) {
               logConsole("Folder browse error: " + e, "error");
             }

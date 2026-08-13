@@ -8,6 +8,8 @@ import {
   formatBytes,
   pollTranscodeProgress,
   setupDropZone as _setupDropZone,
+  pickDirectory,
+  pickFile,
 } from "../../lib";
 
 const PH = window.PluginHost;
@@ -1310,12 +1312,7 @@ export async function handleLoadSelection(): Promise<void> {
 
 export async function handleBrowseFile(): Promise<void> {
   try {
-    const api = window.__TAURI__;
-    if (!api || !api.core || !api.core.invoke) {
-      logConsole("Error: Native Tauri bridge is not initialized.", "error");
-      return;
-    }
-    const path = await api.core.invoke("select_path", { isDirectory: false });
+    const path = await pickFile();
     if (path) {
       if (state.currentTool === "maker") {
         if (/\.(png|jpe?g|webp|gif)$/i.test(path)) {
@@ -1883,27 +1880,17 @@ export function setupToolboxPane(): void {
           elem.addEventListener("input", renderWysiwygCanvas);
         });
 
-        browseFontBtn.addEventListener("click", () => {
-          if (window.__TAURI__ && window.__TAURI__.core) {
-            window.__TAURI__.core
-              .invoke("select_path", { isDirectory: false })
-              .then((path: string) => {
-                if (path) {
-                  const ext = path.split(".").pop()!.toLowerCase();
-                  if (ext === "ttf" || ext === "otf") {
-                    const fileName = path.split(/[\\/]/).pop()!;
-                    fontInp.value = fileName;
-                    loadCustomFontFile(path);
-                  } else {
-                    logConsole("Warning: Please select a valid .ttf or .otf file.", "error");
-                  }
-                }
-              })
-              .catch((err: unknown) => {
-                logConsole("Error selecting path: " + err, "error");
-              });
-          } else {
-            logConsole("Tauri core invoke API not available.", "error");
+browseFontBtn.addEventListener("click", async () => {
+          const path = await pickFile();
+          if (path) {
+            const ext = path.split(".").pop()!.toLowerCase();
+            if (ext === "ttf" || ext === "otf") {
+              const fileName = path.split(/[\\/]/).pop()!;
+              fontInp.value = fileName;
+              loadCustomFontFile(path);
+            } else {
+              logConsole("Warning: Please select a valid .ttf or .otf file.", "error");
+            }
           }
         });
         content.querySelector("#gm-btn-apply-caption")?.addEventListener("click", () => void handleApplyCaption());
@@ -2059,10 +2046,8 @@ export function setupToolboxPane(): void {
 
         content.querySelector("#gm-btn-split-browse")?.addEventListener("click", async () => {
           try {
-            if (window.__TAURI__?.core) {
-              const selected = await window.__TAURI__.core.invoke("select_path", { isDirectory: true });
-              if (selected) splitInp.value = selected;
-            }
+            const selected = await pickDirectory();
+            if (selected) splitInp.value = selected;
           } catch (e: unknown) {
             logConsole("Folder browse error: " + e, "error");
           }

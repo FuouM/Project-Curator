@@ -2,6 +2,8 @@
  * Shared state for the ffmpeg-transcoder plugin.
  */
 
+import { loadPersisted, savePersisted } from "../../lib";
+
 export const TAB_ID = "ffmpeg-transcoder" as const;
 export const VIDEO_RE = /\.(mp4|webm)$/i;
 
@@ -29,7 +31,7 @@ export interface TranscoderState {
 export const state: TranscoderState = {
   queue: [],
   inQueue: {},
-  outputDir: localStorage.getItem("ffmpeg-transcoder-output-dir") || "",
+  outputDir: loadPersisted("ffmpeg-transcoder-output-dir", ""),
   targetFormat: "mp4",
   vcodec: "",
   acodec: "",
@@ -41,18 +43,18 @@ export const state: TranscoderState = {
   audioBitrateKbps: 0,
   mixdown: "",
   sampleRate: 0,
-  mode: localStorage.getItem("ffmpeg-transcoder-mode") || "guided",
-  customArgs: localStorage.getItem("ffmpeg-transcoder-custom-args") || "",
+  mode: loadPersisted("ffmpeg-transcoder-mode", "guided"),
+  customArgs: loadPersisted("ffmpeg-transcoder-custom-args", ""),
   busy: false,
-  verbose: localStorage.getItem("ffmpeg-transcoder-verbose") === "true",
+  verbose: loadPersisted("ffmpeg-transcoder-verbose", "false") === "true",
 };
 
 export function setVerbose(value: boolean): void {
   state.verbose = !!value;
-  localStorage.setItem("ffmpeg-transcoder-verbose", state.verbose ? "true" : "false");
+  savePersisted("ffmpeg-transcoder-verbose", state.verbose ? "true" : "false");
 }
 
 export function setOutputDir(value: string): void {
   state.outputDir = value;
-  localStorage.setItem("ffmpeg-transcoder-output-dir", value);
+  savePersisted("ffmpeg-transcoder-output-dir", value);
 }

@@ -26,10 +26,25 @@ export async function checkFileExists(path: string): Promise<boolean> {
  * cancellation/no-API case.
  */
 export async function pickDirectory(): Promise<string | null> {
+  return pickPath(true);
+}
+
+/**
+ * Opens the native file picker and resolves the chosen file path.
+ *
+ * Returns `null` when the user cancels, the picker fails, or the Tauri core
+ * API is unavailable — never throws. Callers decide how to surface the
+ * cancellation/no-API case.
+ */
+export async function pickFile(): Promise<string | null> {
+  return pickPath(false);
+}
+
+async function pickPath(isDirectory: boolean): Promise<string | null> {
   const api = window.__TAURI__;
   if (!api?.core?.invoke) return null;
   try {
-    const selected = await api.core.invoke("select_path", { isDirectory: true });
+    const selected = await api.core.invoke("select_path", { isDirectory });
     return typeof selected === "string" && selected.length > 0 ? selected : null;
   } catch {
     return null;

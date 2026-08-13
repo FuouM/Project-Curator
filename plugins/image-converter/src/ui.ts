@@ -23,6 +23,7 @@ import {
   navigateToTab as _navigateToTab,
   closeInfoModal,
   setupDropZone as _setupDropZone,
+  pickDirectory,
 } from "../../lib";
 
 const PH = window.PluginHost;
@@ -366,19 +367,13 @@ export function renderTab(): HTMLElement {
   const outInput = container.querySelector<HTMLInputElement>("#converter-output-dir");
   if (outInput) outInput.value = state.outputDir;
   if (browseBtn && outInput && window.__TAURI__?.core) {
-    browseBtn.addEventListener("click", () => {
-      window.__TAURI__!.core!.invoke("select_path", { isDirectory: true })
-        .then((path: string) => {
-          if (path) {
-            outInput.value = path;
-            setOutputDir(path);
-            log(`Output directory set: ${path}`, "success");
-          }
-        })
-        .catch((err: unknown) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          log(`Folder picker failed: ${msg}`, "error");
-        });
+    browseBtn.addEventListener("click", async () => {
+      const path = await pickDirectory();
+      if (path) {
+        outInput.value = path;
+        setOutputDir(path);
+        log(`Output directory set: ${path}`, "success");
+      }
     });
   }
 

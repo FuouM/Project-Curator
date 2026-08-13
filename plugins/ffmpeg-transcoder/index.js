@@ -4,54 +4,6 @@
 // ─────────────────────────────────────────────────────────────────────
 "use strict";
 (() => {
-  // ffmpeg-transcoder/src/state.ts
-  var TAB_ID = "ffmpeg-transcoder", VIDEO_RE = /\.(mp4|webm)$/i, state = {
-    queue: [],
-    inQueue: {},
-    outputDir: localStorage.getItem("ffmpeg-transcoder-output-dir") || "",
-    targetFormat: "mp4",
-    vcodec: "",
-    acodec: "",
-    qualityMode: "crf",
-    crf: 23,
-    bitrateKbps: 6e3,
-    preset: "",
-    targetSizeMb: 25,
-    audioBitrateKbps: 0,
-    mixdown: "",
-    sampleRate: 0,
-    mode: localStorage.getItem("ffmpeg-transcoder-mode") || "guided",
-    customArgs: localStorage.getItem("ffmpeg-transcoder-custom-args") || "",
-    busy: !1,
-    verbose: localStorage.getItem("ffmpeg-transcoder-verbose") === "true"
-  };
-  function setVerbose(value) {
-    state.verbose = !!value, localStorage.setItem("ffmpeg-transcoder-verbose", state.verbose ? "true" : "false");
-  }
-  function setOutputDir(value) {
-    state.outputDir = value, localStorage.setItem("ffmpeg-transcoder-output-dir", value);
-  }
-
-  // lib/ipc-utils.ts
-  var PH = window.PluginHost;
-  async function checkFileExists(path) {
-    var _a;
-    let resp = await PH.callService("PathExists", { path });
-    return !!((_a = resp == null ? void 0 : resp.PathExistsResult) != null && _a.exists);
-  }
-  async function getUniqueOutputPath(sourcePath, outputDir, targetExt) {
-    let base = sourcePath.split(/[/\\]/).pop(), dotIdx = base.lastIndexOf("."), stem = dotIdx !== -1 ? base.substring(0, dotIdx) : base, sep = outputDir.includes("\\") ? "\\" : "/", cleanDir = outputDir.replace(/[/\\]+$/, ""), n = 0;
-    for (; ; ) {
-      let name = n === 0 ? `${stem}.${targetExt}` : `${stem}_${n}.${targetExt}`, candidate = `${cleanDir}${sep}${name}`;
-      if (candidate.toLowerCase() === sourcePath.toLowerCase()) {
-        n++;
-        continue;
-      }
-      if (!await checkFileExists(candidate)) return candidate;
-      n++;
-    }
-  }
-
   // lib/log.ts
   var LOG_COLORS = {
     info: "#cccccc",
@@ -74,6 +26,55 @@
     if (bytes === 0) return "0 B";
     let units = ["B", "KB", "MB", "GB", "TB"], i = Math.floor(Math.log(bytes) / Math.log(1024));
     return `${(bytes / Math.pow(1024, i)).toFixed(decimals)} ${(_a = units[i]) != null ? _a : "B"}`;
+  }
+
+  // lib/ipc-utils.ts
+  var PH = window.PluginHost;
+  async function checkFileExists(path) {
+    var _a;
+    let resp = await PH.callService("PathExists", { path });
+    return !!((_a = resp == null ? void 0 : resp.PathExistsResult) != null && _a.exists);
+  }
+  async function pickDirectory() {
+    return pickPath(!0);
+  }
+  async function pickPath(isDirectory) {
+    var _a;
+    let api = window.__TAURI__;
+    if (!((_a = api == null ? void 0 : api.core) != null && _a.invoke)) return null;
+    try {
+      let selected = await api.core.invoke("select_path", { isDirectory });
+      return typeof selected == "string" && selected.length > 0 ? selected : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  async function getUniqueOutputPath(sourcePath, outputDir, targetExt) {
+    let base = sourcePath.split(/[/\\]/).pop(), dotIdx = base.lastIndexOf("."), stem = dotIdx !== -1 ? base.substring(0, dotIdx) : base, sep = outputDir.includes("\\") ? "\\" : "/", cleanDir = outputDir.replace(/[/\\]+$/, ""), n = 0;
+    for (; ; ) {
+      let name = n === 0 ? `${stem}.${targetExt}` : `${stem}_${n}.${targetExt}`, candidate = `${cleanDir}${sep}${name}`;
+      if (candidate.toLowerCase() === sourcePath.toLowerCase()) {
+        n++;
+        continue;
+      }
+      if (!await checkFileExists(candidate)) return candidate;
+      n++;
+    }
+  }
+
+  // lib/storage.ts
+  function loadPersisted(key, fallback) {
+    try {
+      return localStorage.getItem(key) || fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+  function savePersisted(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+    }
   }
 
   // lib/navigation.ts
@@ -192,6 +193,34 @@
       onTick,
       onComplete: (success, last) => onComplete(success, last)
     });
+  }
+
+  // ffmpeg-transcoder/src/state.ts
+  var TAB_ID = "ffmpeg-transcoder", VIDEO_RE = /\.(mp4|webm)$/i, state = {
+    queue: [],
+    inQueue: {},
+    outputDir: loadPersisted("ffmpeg-transcoder-output-dir", ""),
+    targetFormat: "mp4",
+    vcodec: "",
+    acodec: "",
+    qualityMode: "crf",
+    crf: 23,
+    bitrateKbps: 6e3,
+    preset: "",
+    targetSizeMb: 25,
+    audioBitrateKbps: 0,
+    mixdown: "",
+    sampleRate: 0,
+    mode: loadPersisted("ffmpeg-transcoder-mode", "guided"),
+    customArgs: loadPersisted("ffmpeg-transcoder-custom-args", ""),
+    busy: !1,
+    verbose: loadPersisted("ffmpeg-transcoder-verbose", "false") === "true"
+  };
+  function setVerbose(value) {
+    state.verbose = !!value, savePersisted("ffmpeg-transcoder-verbose", state.verbose ? "true" : "false");
+  }
+  function setOutputDir(value) {
+    state.outputDir = value, savePersisted("ffmpeg-transcoder-output-dir", value);
   }
 
   // ffmpeg-transcoder/src/ui.ts
@@ -369,13 +398,9 @@
       state.queue.length = 0, state.inQueue = {}, updateQueueList(), updateProgress(0, 0), log("Queue cleared.", "info");
     });
     let browseBtn = container.querySelector("#transcoder-browse-btn"), outInput = container.querySelector("#transcoder-output-dir");
-    outInput && (outInput.value = state.outputDir), browseBtn && outInput && window.__TAURI__ && window.__TAURI__.core && browseBtn.addEventListener("click", () => {
-      window.__TAURI__.core.invoke("select_path", { isDirectory: !0 }).then((path) => {
-        path && (outInput.value = path, setOutputDir(path), verboseLog("Output directory set: " + path, "success"));
-      }).catch((err) => {
-        let msg = err instanceof Error ? err.message : String(err);
-        log("Folder picker failed: " + msg, "error");
-      });
+    outInput && (outInput.value = state.outputDir), browseBtn && outInput && window.__TAURI__ && window.__TAURI__.core && browseBtn.addEventListener("click", async () => {
+      let path = await pickDirectory();
+      path && (outInput.value = path, setOutputDir(path), verboseLog("Output directory set: " + path, "success"));
     }), outInput && outInput.addEventListener("change", () => {
       setOutputDir(outInput.value.trim());
     });
@@ -454,14 +479,14 @@
       customBlock && (customBlock.style.display = isCustom ? "block" : "none");
     }
     modeSelect && (modeSelect.value = state.mode, modeSelect.addEventListener("change", () => {
-      localStorage.setItem("ffmpeg-transcoder-mode", modeSelect.value), updateMode();
+      savePersisted("ffmpeg-transcoder-mode", modeSelect.value), updateMode();
     })), customTextarea && (customTextarea.value = state.customArgs, customTextarea.addEventListener("input", () => {
-      state.customArgs = customTextarea.value, localStorage.setItem("ffmpeg-transcoder-custom-args", state.customArgs);
+      state.customArgs = customTextarea.value, savePersisted("ffmpeg-transcoder-custom-args", state.customArgs);
     }));
     let customDefaultBtn = container.querySelector("#transcoder-custom-default-btn");
     customDefaultBtn && customDefaultBtn.addEventListener("click", () => {
       let template = "-i {input} -c:v libx264 -crf 18 -preset medium -c:a aac {output}";
-      state.customArgs = template, customTextarea && (customTextarea.value = template), localStorage.setItem("ffmpeg-transcoder-custom-args", template), log("Custom command template filled. Edit as needed.", "info");
+      state.customArgs = template, customTextarea && (customTextarea.value = template), savePersisted("ffmpeg-transcoder-custom-args", template), log("Custom command template filled. Edit as needed.", "info");
     }), updateMode(), setCodecOptions();
     let verboseCheckbox = container.querySelector("#transcoder-verbose");
     return verboseCheckbox && (verboseCheckbox.checked = state.verbose, verboseCheckbox.addEventListener("change", () => {

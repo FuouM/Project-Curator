@@ -11,6 +11,8 @@ import {
   setupDropZone as _setupDropZone,
   formatBytes,
   pollTranscodeProgress,
+  pickDirectory,
+  savePersisted,
 } from "../../lib";
 
 const PH = window.PluginHost;
@@ -423,17 +425,13 @@ export function renderTab(): HTMLElement {
   const outInput = container.querySelector<HTMLInputElement>("#transcoder-output-dir");
   if (outInput) outInput.value = state.outputDir;
   if (browseBtn && outInput && window.__TAURI__ && window.__TAURI__.core) {
-    browseBtn.addEventListener("click", () => {
-      window.__TAURI__!.core!.invoke("select_path", { isDirectory: true }).then((path: string) => {
-        if (path) {
-          outInput.value = path;
-          setOutputDir(path);
-          verboseLog("Output directory set: " + path, "success");
-        }
-      }).catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        log("Folder picker failed: " + msg, "error");
-      });
+    browseBtn.addEventListener("click", async () => {
+      const path = await pickDirectory();
+      if (path) {
+        outInput.value = path;
+        setOutputDir(path);
+        verboseLog("Output directory set: " + path, "success");
+      }
     });
   }
   if (outInput) {
@@ -612,7 +610,7 @@ export function renderTab(): HTMLElement {
   if (modeSelect) {
     modeSelect.value = state.mode;
     modeSelect.addEventListener("change", () => {
-      localStorage.setItem("ffmpeg-transcoder-mode", modeSelect.value);
+      savePersisted("ffmpeg-transcoder-mode", modeSelect.value);
       updateMode();
     });
   }
@@ -620,7 +618,7 @@ export function renderTab(): HTMLElement {
     customTextarea.value = state.customArgs;
     customTextarea.addEventListener("input", () => {
       state.customArgs = customTextarea.value;
-      localStorage.setItem("ffmpeg-transcoder-custom-args", state.customArgs);
+      savePersisted("ffmpeg-transcoder-custom-args", state.customArgs);
     });
   }
   const customDefaultBtn = container.querySelector("#transcoder-custom-default-btn");
@@ -629,7 +627,7 @@ export function renderTab(): HTMLElement {
       const template = "-i {input} -c:v libx264 -crf 18 -preset medium -c:a aac {output}";
       state.customArgs = template;
       if (customTextarea) customTextarea.value = template;
-      localStorage.setItem("ffmpeg-transcoder-custom-args", template);
+      savePersisted("ffmpeg-transcoder-custom-args", template);
       log("Custom command template filled. Edit as needed.", "info");
     });
   }

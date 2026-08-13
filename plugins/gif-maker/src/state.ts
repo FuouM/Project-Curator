@@ -2,6 +2,8 @@
  * Shared state definitions for the gif-maker plugin.
  */
 
+import { getPluginDirs } from "../../lib";
+
 export const TAB_ID = "gif-maker" as const;
 
 export interface HistoryItem {
@@ -66,6 +68,7 @@ export const state: GifMakerState = {
   },
 };
 
-export const workspaceRoot: string = (window as any).__curator_workspace_root__ || "";
-export const pluginDir: string = (window as any).__curator_plugin_dir__ || "";
+const { pluginDir: pluginDirValue, workspaceRoot: workspaceRootValue } = getPluginDirs();
+export const workspaceRoot: string = workspaceRootValue;
+export const pluginDir: string = pluginDirValue;
 

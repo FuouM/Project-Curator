@@ -14,7 +14,7 @@ export type { LogKind, Logger } from "./log";
 
 export { formatBytes } from "./format";
 
-export { checkFileExists, getUniqueOutputPath, pickDirectory, getPluginDirs } from "./ipc-utils";
+export { checkFileExists, getUniqueOutputPath, pickDirectory, pickFile, getPluginDirs } from "./ipc-utils";
 
 export { loadPersisted, savePersisted } from "./storage";
 

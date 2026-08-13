@@ -32,11 +32,14 @@
   // lib/ipc-utils.ts
   var PH = window.PluginHost;
   async function pickDirectory() {
+    return pickPath(!0);
+  }
+  async function pickPath(isDirectory) {
     var _a;
     let api = window.__TAURI__;
     if (!((_a = api == null ? void 0 : api.core) != null && _a.invoke)) return null;
     try {
-      let selected = await api.core.invoke("select_path", { isDirectory: !0 });
+      let selected = await api.core.invoke("select_path", { isDirectory });
       return typeof selected == "string" && selected.length > 0 ? selected : null;
     } catch (e) {
       return null;
