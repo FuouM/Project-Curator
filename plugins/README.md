@@ -32,6 +32,9 @@ plugins/
 ├── gif-maker/         # WYSIWYG timeline GIF compiler and editor
 │   ├── src/
 │   └── index.js       # Bundled build output
+├── minipaint/         # Full raster photo editor (offline iframe runtime)
+│   ├── src/
+│   └── index.js       # Bundled build output
 ├── plugin-types.d.ts  # Ambient global definitions for PluginHost API
 ├── package.json       # Workspace npm package definitions
 ├── build.js           # esbuild bundler script
