@@ -27,7 +27,7 @@ import { renderBenchmarkHtml } from "./views/benchmark";
 import { renderSettingsHtml } from "./views/settings";
 import { renderComponentsHtml } from "./views/components-view";
 import { renderModelsHtml, setupModelsView } from "./views/models";
-import { renderImages, setupGridDelegation, setupGlobalContextMenu } from "./cards";
+import { renderImages, setupGridDelegation, setupGlobalContextMenu, setThumbLoadPaused, resumeThumbLoading } from "./cards";
 import { setGalleryPage, getImagesPerPage, setLuckyHighlightId } from "./state";
 import { refreshGallery } from "./views/gallery";
 import { initPlugins } from "./plugin-host";
@@ -230,6 +230,16 @@ function initFPSCounter() {
   requestAnimationFrame(loop);
 }
 
+async function waitForGalleryCard(imageId: number, timeoutMs: number): Promise<HTMLElement | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const card = document.querySelector(`#gallery-grid [data-image-id="${imageId}"]`) as HTMLElement | null;
+    if (card) return card;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return document.querySelector(`#gallery-grid [data-image-id="${imageId}"]`) as HTMLElement | null;
+}
+
 async function handleFeelingLucky() {
   try {
     const resp = await typedCall("SystemService.GetRandomImage", null, null, RandomImageResultSchema);
@@ -243,17 +253,31 @@ async function handleFeelingLucky() {
     setGalleryPage(page);
     navigateToView("gallery");
 
-    // Wait for gallery to render, then open viewer and clear highlight
-    setTimeout(() => {
-      refreshGallery().then(() => {
-        const card = document.querySelector(`#gallery-grid [data-image-id="${image.id}"]`) as HTMLElement | null;
-        if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
-        openImageViewer(image.current_filepath, image.id);
-        setTimeout(() => setLuckyHighlightId(null), 3000);
-      });
+    // Navigating into the gallery triggers its own load (which holds
+    // isGalleryLoading), so refreshGallery() here may early-return while that
+    // rebuild is still in flight. Wait for the target card to actually appear in
+    // the DOM, then teleport straight to it (no smooth scroll through
+    // intermediate pages), and open the viewer. Thumbnail enqueuing is paused
+    // during the wait so neither the intermediate pages nor the old viewport
+    // position load their thumbnails; only the target page's thumbnails load
+    // once loading resumes.
+    setTimeout(async () => {
+      setThumbLoadPaused(true);
+      try {
+        await refreshGallery();
+        const card = await waitForGalleryCard(image.id, 8000);
+        if (card) card.scrollIntoView({ behavior: "auto", block: "center" });
+      } finally {
+        setThumbLoadPaused(false);
+        resumeThumbLoading();
+      }
+      openImageViewer(image.current_filepath, image.id);
+      setTimeout(() => setLuckyHighlightId(null), 3000);
     }, 50);
   } catch (e: any) {
     console.error("I'm Feeling Lucky failed:", e);
+    setThumbLoadPaused(false);
+    resumeThumbLoading();
   }
 }
 
