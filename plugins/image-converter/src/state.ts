@@ -32,8 +32,13 @@ export interface ConverterState {
 export const state: ConverterState = {
   queue: [],
   inQueue: {},
-  outputDir: "",
+  outputDir: localStorage.getItem("image-converter-output-dir") || "",
   targetExt: "png",
   quality: 90,
   busy: false,
 };
+
+export function setOutputDir(value: string): void {
+  state.outputDir = value;
+  localStorage.setItem("image-converter-output-dir", value);
+}

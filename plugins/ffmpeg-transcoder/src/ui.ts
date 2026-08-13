@@ -2,7 +2,7 @@
  * UI components, DOM event logic, and transcode execution loop for ffmpeg-transcoder.
  */
 
-import { state, TAB_ID, VIDEO_RE, setVerbose } from "./state";
+import { state, TAB_ID, VIDEO_RE, setVerbose, setOutputDir } from "./state";
 import { getUniqueOutputPath } from "./ipc";
 import {
   createLogger,
@@ -421,12 +421,13 @@ export function renderTab(): HTMLElement {
 
   const browseBtn = container.querySelector("#transcoder-browse-btn");
   const outInput = container.querySelector<HTMLInputElement>("#transcoder-output-dir");
+  if (outInput) outInput.value = state.outputDir;
   if (browseBtn && outInput && window.__TAURI__ && window.__TAURI__.core) {
     browseBtn.addEventListener("click", () => {
       window.__TAURI__!.core!.invoke("select_path", { isDirectory: true }).then((path: string) => {
         if (path) {
           outInput.value = path;
-          state.outputDir = path;
+          setOutputDir(path);
           verboseLog("Output directory set: " + path, "success");
         }
       }).catch((err: unknown) => {
@@ -437,7 +438,7 @@ export function renderTab(): HTMLElement {
   }
   if (outInput) {
     outInput.addEventListener("change", () => {
-      state.outputDir = outInput.value.trim();
+      setOutputDir(outInput.value.trim());
     });
   }
 

@@ -22,11 +22,14 @@
   ], state = {
     queue: [],
     inQueue: {},
-    outputDir: "",
+    outputDir: localStorage.getItem("image-converter-output-dir") || "",
     targetExt: "png",
     quality: 90,
     busy: !1
   };
+  function setOutputDir(value) {
+    state.outputDir = value, localStorage.setItem("image-converter-output-dir", value);
+  }
 
   // lib/ipc-utils.ts
   var PH = window.PluginHost;
@@ -239,9 +242,9 @@
       state.queue.length = 0, state.inQueue = {}, updateQueueList(), updateProgress(0, 0), log("Queue cleared.", "info");
     });
     let browseBtn = container.querySelector("#converter-browse-btn"), outInput = container.querySelector("#converter-output-dir");
-    browseBtn && outInput && ((_c = window.__TAURI__) != null && _c.core) && browseBtn.addEventListener("click", () => {
+    outInput && (outInput.value = state.outputDir), browseBtn && outInput && ((_c = window.__TAURI__) != null && _c.core) && browseBtn.addEventListener("click", () => {
       window.__TAURI__.core.invoke("select_path", { isDirectory: !0 }).then((path) => {
-        path && (outInput.value = path, state.outputDir = path, log(`Output directory set: ${path}`, "success"));
+        path && (outInput.value = path, setOutputDir(path), log(`Output directory set: ${path}`, "success"));
       }).catch((err) => {
         let msg = err instanceof Error ? err.message : String(err);
         log(`Folder picker failed: ${msg}`, "error");
@@ -255,7 +258,7 @@
     return qualityInput && qualityInput.addEventListener("input", () => {
       state.quality = parseInt(qualityInput.value, 10) || 90, qualityValue && (qualityValue.textContent = String(state.quality));
     }), outInput && outInput.addEventListener("change", () => {
-      state.outputDir = outInput.value.trim();
+      setOutputDir(outInput.value.trim());
     }), setTimeout(() => {
       qualityVisibility(), setupDropZone(TAB_ID, "converter-drop-zone", (paths) => {
         paths.forEach(addToQueue);

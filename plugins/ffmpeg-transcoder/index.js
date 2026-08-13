@@ -8,7 +8,7 @@
   var TAB_ID = "ffmpeg-transcoder", VIDEO_RE = /\.(mp4|webm)$/i, state = {
     queue: [],
     inQueue: {},
-    outputDir: "",
+    outputDir: localStorage.getItem("ffmpeg-transcoder-output-dir") || "",
     targetFormat: "mp4",
     vcodec: "",
     acodec: "",
@@ -27,6 +27,9 @@
   };
   function setVerbose(value) {
     state.verbose = !!value, localStorage.setItem("ffmpeg-transcoder-verbose", state.verbose ? "true" : "false");
+  }
+  function setOutputDir(value) {
+    state.outputDir = value, localStorage.setItem("ffmpeg-transcoder-output-dir", value);
   }
 
   // lib/ipc-utils.ts
@@ -349,15 +352,15 @@
       state.queue.length = 0, state.inQueue = {}, updateQueueList(), updateProgress(0, 0), log("Queue cleared.", "info");
     });
     let browseBtn = container.querySelector("#transcoder-browse-btn"), outInput = container.querySelector("#transcoder-output-dir");
-    browseBtn && outInput && window.__TAURI__ && window.__TAURI__.core && browseBtn.addEventListener("click", () => {
+    outInput && (outInput.value = state.outputDir), browseBtn && outInput && window.__TAURI__ && window.__TAURI__.core && browseBtn.addEventListener("click", () => {
       window.__TAURI__.core.invoke("select_path", { isDirectory: !0 }).then((path) => {
-        path && (outInput.value = path, state.outputDir = path, verboseLog("Output directory set: " + path, "success"));
+        path && (outInput.value = path, setOutputDir(path), verboseLog("Output directory set: " + path, "success"));
       }).catch((err) => {
         let msg = err instanceof Error ? err.message : String(err);
         log("Folder picker failed: " + msg, "error");
       });
     }), outInput && outInput.addEventListener("change", () => {
-      state.outputDir = outInput.value.trim();
+      setOutputDir(outInput.value.trim());
     });
     let formatSelect = container.querySelector("#transcoder-format"), vcodecSelect = container.querySelector("#transcoder-vcodec"), acodecSelect = container.querySelector("#transcoder-acodec"), presetSelect = container.querySelector("#transcoder-preset");
     function updateAudioControls() {

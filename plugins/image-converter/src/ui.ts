@@ -16,7 +16,7 @@
  * calls addToQueue directly — keeping both in ui.ts avoids a circular import.
  */
 
-import { CONVERT_FORMATS, TAB_ID, state } from "./state";
+import { CONVERT_FORMATS, TAB_ID, state, setOutputDir } from "./state";
 import { getUniqueOutputPath } from "./ipc";
 import {
   createLogger,
@@ -364,13 +364,14 @@ export function renderTab(): HTMLElement {
 
   const browseBtn = container.querySelector<HTMLButtonElement>("#converter-browse-btn");
   const outInput = container.querySelector<HTMLInputElement>("#converter-output-dir");
+  if (outInput) outInput.value = state.outputDir;
   if (browseBtn && outInput && window.__TAURI__?.core) {
     browseBtn.addEventListener("click", () => {
       window.__TAURI__!.core!.invoke("select_path", { isDirectory: true })
         .then((path: string) => {
           if (path) {
             outInput.value = path;
-            state.outputDir = path;
+            setOutputDir(path);
             log(`Output directory set: ${path}`, "success");
           }
         })
@@ -401,7 +402,7 @@ export function renderTab(): HTMLElement {
 
   if (outInput) {
     outInput.addEventListener("change", () => {
-      state.outputDir = outInput.value.trim();
+      setOutputDir(outInput.value.trim());
     });
   }
 

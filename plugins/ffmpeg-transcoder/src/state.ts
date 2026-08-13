@@ -29,7 +29,7 @@ export interface TranscoderState {
 export const state: TranscoderState = {
   queue: [],
   inQueue: {},
-  outputDir: "",
+  outputDir: localStorage.getItem("ffmpeg-transcoder-output-dir") || "",
   targetFormat: "mp4",
   vcodec: "",
   acodec: "",
@@ -50,4 +50,9 @@ export const state: TranscoderState = {
 export function setVerbose(value: boolean): void {
   state.verbose = !!value;
   localStorage.setItem("ffmpeg-transcoder-verbose", state.verbose ? "true" : "false");
+}
+
+export function setOutputDir(value: string): void {
+  state.outputDir = value;
+  localStorage.setItem("ffmpeg-transcoder-output-dir", value);
 }
