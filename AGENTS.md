@@ -114,6 +114,12 @@ Before running `.\download_ort.ps1`, **ALWAYS** check if `onnxruntime.dll` and `
   4. Import generated TS classes from `./gen/<domain>_pb` and use domain helper `call<Domain>`.
 * **Indexed Pattern Search:** Autocomplete components must perform dynamic `LIKE` queries on keypress rather than pre-fetching large data arrays over IPC. Keep response payloads small to guarantee sub-10ms response times.
 
+### 5. Workspace Dependency & Feature Alignment (Double Compilation Prevention)
+
+* **Workspace Centralization**: All new third-party crates added to child packages **MUST** first be defined in the root `Cargo.toml` `[workspace.dependencies]` table (specifying versions and baseline features) and inherited in child packages using `{ workspace = true }`.
+* **Transitive Feature Union Alignment**: If a third-party crate is transitively shared between the service and the Tauri dashboard with mismatched features, the unified features **MUST** be explicitly declared in the root workspace dependency, and that dependency **MUST** be added to `curator-core/Cargo.toml` to guarantee Cargo resolves identical build graphs for both target binaries.
+* **No Implicit Defaults**: When importing shared workspace crates like `curator-core` into front-end targets (e.g. `curator-dashboard/src-tauri/Cargo.toml`), always explicitly declare `default-features = false` to match the service's build flag configurations and prevent Cargo cache invalidation.
+
 ---
 
 ## 4. Data Integrity & Database Mandates
@@ -199,6 +205,24 @@ The dashboard strictly follows a modern, dark-mode **WinForms Desktop Control** 
 10. **Strict User Request Alignment & Anti-Bypass Mandate:**
     * **Targeted Debugging:** When the user requests testing, debugging, or fixing a specific feature or UI flow (such as downloading a model via the UI Models tab), AI agents **MUST** trace and fix the actual end-to-end system pipeline (e.g. manifest URLs, network handlers, IPC bridge routing, background tasks).
     * **Bypasses & Shortcuts Strictly Banned:** **NEVER** bypass or fake a broken feature by copying files locally on disk, hardcoding dummy fallbacks, or faking state behind the user's back to superficially "make it work". Always fix the true underlying system logic.
+11. **No Silent Failures & Relevant Command Execution Mandate:**
+    * **Mandatory Error Logging & Visual Error Banners:** Every failure path in background tasks (network downloads, conversions, IPC handlers) **MUST** log an explicit `tracing::error!` / `console.error` log entry and present a clear, human-readable error banner in the UI. Silent failures, swallowed exceptions, or unhandled status states are strictly forbidden.
+    * **No Irrelevant Build/Test Execution:** AI agents **MUST NOT** execute workspace-wide build (`cargo check`) or test commands when performing localized fixes (such as UI HTML/CSS tweaks, manifest JSON updates, or isolated helper adjustments) where full workspace compilation is completely irrelevant.
+12. **Deterministic Dependency Capture & Anti-Guesswork Mandate:**
+    * **No Manual Package Lists:** AI agents **MUST NEVER** manually type out, guess, or approximate package dependency lists in environment files (`requirements.txt`, `Cargo.toml`, `package.json`).
+    * **Mandatory Native Environment Dumps:** When updating environment specification files, AI agents **MUST** execute native environment dumping commands (`pip freeze`, `cargo tree`, `npm ls`) directly into the target specification file to guarantee 100% exact, repeatable, and non-hallucinated environment definitions.
+13. **Strict Scope Discipline & Zero Unrequested Features Mandate:**
+    * **No Scope Creep:** AI agents **MUST ONLY** build, modify, or extend what the user explicitly requested.
+    * **No Inventing Variants or Modes:** Do NOT add extra quantization modes, formats, unrequested script options, or extraneous variants simply because files or examples exist in reference directories. Check the manifest files (`model_manifest.json`) and stick strictly to the user's prompt.
+14. **No Temporary Fixes & Real Solutions Mandate:**
+    * **Temporary Band-Aids Banned:** **NEVER** write quick-and-dirty band-aids, temporary fallback hacks, variable-suffix workarounds (e.g. `fp16_1`, `temp_path`, `path_v2`), or partial fixes to dodge an error.
+    * **Mandatory First-Principles Solutions:** Always diagnose the root cause, refactor existing logic cleanly, and implement robust, production-grade, long-term architectural solutions.
+15. **No Excuses & No False Assumptions Mandate:**
+    * **No False Assumptions:** **NEVER** make assumptions, invent excuses, or blame old binary/process state when an error occurs.
+    * **Mandatory Analytical Diagnosis:** When an error or unexpected output is reported by the user, **immediately inspect the exact source code logic and type signatures** from first principles to locate and resolve the true root cause.
+16. **Mandatory Action First & Zero Explanatory Procrastination Mandate:**
+    * **Apply Code Fixes Before Responding:** When a bug, failure, root cause, or missing configuration is identified, AI agents **MUST** execute the code modifications in the files FIRST before sending any response text to the user.
+    * **No Prose Without Action:** Sending a response that merely explains a solution or root cause without having already executed the code fix in the workspace is strictly forbidden. Explanations may only be provided after the fix has been applied.
 
 ### Frontend Design Skill (`/frontend-design`) Integration
 
