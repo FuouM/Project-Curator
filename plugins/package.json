@@ -7,10 +7,12 @@
     "build:ffmpeg-transcoder": "node build.js --plugin ffmpeg-transcoder",
     "build:image-compare": "node build.js --plugin image-compare",
     "build:gif-maker": "node build.js --plugin gif-maker",
+    "build:minipaint": "node build.js --plugin minipaint",
     "watch:image-converter": "node watch.js --plugin image-converter",
     "watch:ffmpeg-transcoder": "node watch.js --plugin ffmpeg-transcoder",
     "watch:image-compare": "node watch.js --plugin image-compare",
-    "watch:gif-maker": "node watch.js --plugin gif-maker"
+    "watch:gif-maker": "node watch.js --plugin gif-maker",
+    "watch:minipaint": "node watch.js --plugin minipaint"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

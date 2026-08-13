@@ -33,6 +33,7 @@ indexmap = { version = "2", features = ["serde"] }
 stable_deref_trait = { version = "1", features = ["alloc"] }
 bit-set = { version = "0.5", features = ["std"] }
 foldhash = { version = "0.1", features = ["std"] }
+percent-encoding = "2"
 
 [profile.dev]
 opt-level = 0

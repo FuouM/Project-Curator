@@ -6,6 +6,7 @@ use tauri::Emitter;
 use tokio::sync::OnceCell;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use tonic::transport::Channel;
+use percent_encoding::percent_decode_str;
 
 mod typed_bridge;
 
@@ -200,6 +201,94 @@ async fn save_file_dialog(suggested_name: String, filter_name: String, extension
         .save_file()
         .await;
     Ok(file.map(|f| f.path().to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+async fn save_edited_image(request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    // 1. Raw body — reject anything that was not sent as raw bytes.
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err("expected raw binary body".to_string());
+    };
+    if data.is_empty() {
+        return Err("empty payload".to_string());
+    }
+
+    // 2. Metadata rides in request headers (x-filename, x-format, x-out-dir).
+    //    The plugin percent-encodes the name/dir so non-ASCII values survive
+    //    header serialization; decode them here before use.
+    let get_header = |name: &str| {
+        request
+            .headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| percent_decode_str(s).decode_utf8_lossy().into_owned())
+    };
+    let filename = get_header("x-filename").unwrap_or_else(|| "export".to_string());
+    let format = get_header("x-format").unwrap_or_else(|| "png".to_string());
+
+    // 3. Strict extension whitelist — never derive a suffix from caller input.
+    let ext = match format.as_str() {
+        "png" => "png",
+        "jpg" | "jpeg" => "jpg",
+        "webp" => "webp",
+        "bmp" => "bmp",
+        "gif" => "gif",
+        "json" => "json",
+        other => return Err(format!("unsupported format: {other}")),
+    };
+
+    // 4. Resolve the output directory (persisted plugin setting). The plugin passes
+    //    the absolute dir as the x-out-dir header; verify it exists and create if needed.
+    let out_dir = std::path::PathBuf::from(get_header("x-out-dir").unwrap_or_default());
+    if out_dir.as_os_str().is_empty() {
+        return Err("missing x-out-dir".to_string());
+    }
+    tokio::fs::create_dir_all(&out_dir)
+        .await
+        .map_err(|e| format!("create output dir: {e}"))?;
+
+    // 5. Collision-free final name: <stem>_<stamp>.<ext>, then _2, _3, …
+    let safe_stem = sanitize_stem(&filename);
+    let stamp = chrono::Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();
+    let mut final_path = out_dir.join(format!("{safe_stem}_{stamp}.{ext}"));
+    let mut n = 2u32;
+    while final_path.exists() {
+        final_path = out_dir.join(format!("{safe_stem}_{stamp}_{n}.{ext}"));
+        n += 1;
+    }
+
+    // 6. Crash-safety: write to a temp file in the SAME directory, then rename
+    //    (rename is atomic on the same NTFS volume; temp must share the target's
+    //    directory or volume or the rename would fail across volumes).
+    let tmp_path = final_path.with_extension(format!("{ext}.tmp"));
+    tokio::fs::write(&tmp_path, &data)
+        .await
+        .map_err(|e| format!("write temp file: {e}"))?;
+    if let Err(e) = tokio::fs::rename(&tmp_path, &final_path).await {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err(format!("rename temp file: {e}"));
+    }
+
+    log_dashboard_event(&format!("minipaint: saved edited image -> {:?}", final_path));
+    Ok(final_path.to_string_lossy().into_owned())
+}
+
+/// Keep the user-supplied name free of path separators and control characters.
+fn sanitize_stem(name: &str) -> String {
+    let stem = std::path::Path::new(name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("image");
+    let cleaned: String = stem
+        .chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' | '\0' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect();
+    let cleaned = cleaned.trim();
+    if cleaned.is_empty() { "image".to_string() } else { cleaned.to_string() }
 }
 
 fn read_last_n_bytes(path: &std::path::Path, max_bytes: usize) -> std::io::Result<String> {
@@ -453,6 +542,7 @@ pub fn run() {
             send_to_service_typed,
             select_path,
             save_file_dialog,
+            save_edited_image,
             get_file_size,
             read_logs,
             read_service_logs,

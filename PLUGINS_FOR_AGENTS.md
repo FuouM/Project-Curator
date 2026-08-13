@@ -179,8 +179,24 @@ Converts absolute Windows disk paths (`C:\...` or `K:\...`) into browser-safe as
 
 ```javascript
 var safeUrl = PluginHost.convertFileSrc("K:\\Pictures\\sample.png");
-// Output: "http://asset.localhost/K%3A/Pictures/sample.png"
+// Real output: "http://asset.localhost/K%3A%5CPictures%5Csample.png"
 ```
+
+> **⚠ Critical Gotcha — Single-Segment URL:** On Windows, `convertFileSrc` percent-encodes the **entire** path (`\` → `%5C`, `:` → `%3A`), collapsing it into **one URL path segment**. Tauri's asset handler (`src/protocol/asset.rs`) decodes the URL path and `File::open`s it, so a **direct** absolute request works — but any **relative** `src`/`href` inside a document served from that URL resolves against the protocol root and 404s (`dist/bundle.js` → `http://asset.localhost/dist/bundle.js` → file not found). This breaks any embedded HTML editor / iframe that loads sibling scripts, styles, or images with relative paths.
+>
+> **Fix — build a multi-segment URL manually.** Split on `\`, `encodeURIComponent` each segment, join with `/` (Tauri decodes the path and Windows accepts `/` separators):
+>
+> ```javascript
+> function assetDirUrl(absPath) {
+>   var origin = PH.convertFileSrc("");            // "http://asset.localhost/"
+>   var encoded = absPath.split("\\").map(encodeURIComponent).join("/");
+>   return origin + encoded;
+> }
+> // → "http://asset.localhost/K%3A/<workspace>/plugins/minipaint/editor/index.html"
+> // relative "dist/bundle.js" now resolves to ".../editor/dist/bundle.js" ✓
+> ```
+>
+> Reference implementation: `plugins/minipaint/src/editor.ts` (`assetDirUrl`). Do **not** pass an initial asset through a `?image=` query param either — downstream apps (e.g. miniPaint) often read query values without URL-decoding; relay it instead via `postMessage` (`minipaint:load-image`) after the iframe's `load` event.
 
 #### 3. IPC Core Service Requests (`callService`)
 
@@ -521,6 +537,112 @@ function setMode(newMode) {
   localStorage.setItem("my-plugin-mode", newMode);
 }
 ```
+
+### Pattern 9: Full-Height Plugin Tabs (`.view-section` Height Collapse)
+
+The generic plugin container `#view-extensions-<id>` is `.view-section`, which is `display: block` with **no height** (see `curator-dashboard/src/styles/layout.css`). A `height: 100%` chain inside it therefore collapses — a plugin iframe drops to its default ~150px, and `flex: 1` children have nothing to stretch against.
+
+**Fix**: inject a scoped stylesheet that turns the section into a stretching flex column inside the flex `.main-panel`:
+
+```javascript
+// index.ts, before registering the tab
+if (!document.getElementById("my-plugin-styles")) {
+  var style = document.createElement("style");
+  style.id = "my-plugin-styles";
+  style.textContent =
+    "#view-extensions-my-plugin-id.active {" +
+    "  display: flex !important;" +
+    "  flex-direction: column;" +
+    "  flex: 1;" +
+    "  min-height: 0;" +
+    "  overflow: hidden !important;" +
+    "}";
+  document.head.appendChild(style);
+}
+```
+
+* Prefer `flex: 1; min-height: 0` over the legacy `calc(100vh - Npx)` approach — it tracks the panel's real height and avoids magic numbers (AGENTS.md §6.6).
+* Reference implementations: `plugins/minipaint/src/index.ts` (minipaint styles) and `plugins/gif-maker/src/ui.ts` `injectStyles()`.
+
+---
+
+### Pattern 10: Surfacing Console Errors from a Cross-Origin iframe
+
+A plugin that embeds a third-party editor in an `asset.localhost` iframe cannot rely on its own
+`console.error` being visible: the iframe console is effectively hidden and the frame is
+cross-origin to the host, so uncaught errors die silently. When diagnosing "it does nothing"
+reports from iframed tools (e.g. miniPaint GIF export), always relay errors to the host first.
+
+**Fix** (inside the injected in-iframe bridge script):
+
+```javascript
+function reportError(message, detail) {
+  try { window.parent.postMessage({ type: "minipaint:console-error", message: String(message), detail: detail ? String(detail) : "" }, "*"); }
+  catch (e) { /* host unreachable */ }
+}
+window.addEventListener("error", function (ev) {
+  var detail = ev.error && ev.error.stack ? ev.error.stack : (ev.filename + ":" + ev.lineno);
+  reportError(ev.message || "Uncaught error", detail);
+});
+window.addEventListener("unhandledrejection", function (ev) {
+  var r = ev.reason;
+  reportError("Unhandled promise rejection", r && r.stack ? r.stack : String(r));
+});
+```
+
+Host side receives it in the existing bridge `onMessage` handler and logs to the dashboard
+console:
+
+```typescript
+if (d.type === "minipaint:console-error") {
+  console.error(`[minipaint iframe] ${d.message || "unknown error"}${d.detail ? "\n" + d.detail : ""}`);
+  return;
+}
+```
+
+* Combine with an injected `<script src="...">` for any encoder/worker library (e.g. gif.js) that
+  the host cannot reach through module scope — load it early, poll for the global, and fail loud
+  if it never appears.
+* Reference implementation: `plugins/minipaint/curator-bridge.js` +
+  `plugins/minipaint/src/editor.ts`.
+
+---
+
+### Pattern 11: Fixing `willReadFrequently` Canvas Readback Lag in Embedded Editors
+
+When an iframed editor is readback-heavy (filters, blend modes, layer compositing, GIF/export
+pixel reads), WebView2 logs `Canvas2D: Multiple readback operations using getImageData are
+faster with the willReadFrequently attribute set to true` and the app visibly lags. The warning
+is not cosmetic: each `getImageData` on a context that keeps a GPU-backed surface forces a slow
+GPU→CPU copy, and miniPaint does this constantly.
+
+**Fix**: wrap `getContext` in the injected in-iframe bridge **before** the editor's `load`-time
+init creates any canvases, and force the flag for `"2d"` contexts:
+
+```javascript
+(function patchCanvasContexts() {
+  var origGetContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type) {
+    var args = arguments;
+    if (type === "2d") {
+      if (args.length > 1 && args[1] && typeof args[1] === "object") {
+        if (!("willReadFrequently" in args[1])) {
+          args = [type, Object.assign({ willReadFrequently: true }, args[1])];
+        }
+      } else {
+        args = [type, { willReadFrequently: true }];
+      }
+    }
+    return origGetContext.apply(this, args);
+  };
+})();
+```
+
+* Ordering matters: the bridge tag must be injected before the editor creates its first canvas
+  (miniPaint's app init runs on `window.load`, and the bridge is injected before `</body>`, so
+  the patch wins). Preserve any options object the caller already passed (`alpha`, etc.).
+* Only patch `"2d"` — leave `"webgl"`/`"webgl2"` contexts untouched.
+* Reference implementation: `plugins/minipaint/curator-bridge.js`.
 
 ---
 

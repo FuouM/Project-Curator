@@ -1,0 +1,12 @@
+{
+  "name": "minipaint",
+  "version": "1.0.0",
+  "description": "Full-featured offline image editor for local canvas painting, scaling, cropping, and adjustments (miniPaint v4.14.3).",
+  "author": "Project Curator",
+  "permissions": ["ui:inject"],
+  "components": {
+    "ui": "index.js",
+    "type": "javascript"
+  },
+  "hooks": []
+}

@@ -10,6 +10,7 @@ pub mod misc;
 pub mod models;
 pub mod ocr;
 pub mod plugins;
+pub mod plugin_runtime;
 pub mod safety;
 pub mod search;
 pub mod settings;

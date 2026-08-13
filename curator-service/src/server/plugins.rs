@@ -1,4 +1,5 @@
 use crate::handlers;
+use crate::handlers::plugins::plugin_runtime_spec_exists;
 use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::plugins::{
@@ -275,6 +276,86 @@ async fn dispatch_plugin_command(
             }
             Ok(serde_json::json!("Success"))
         }
+        "CheckPluginRuntimeInstalled" => {
+            let plugin = params["plugin"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing plugin"))?;
+            let installed =
+                crate::handlers::plugins::plugin_runtime_index_exists(&ctx.data_dir, plugin)
+                    .map_err(internal_status)?;
+            Ok(serde_json::json!({
+                "CheckPluginRuntimeInstalledResult": { "installed": installed }
+            }))
+        }
+
+        "InstallPluginRuntime" => {
+            let plugin = params["plugin"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing plugin"))?
+                .to_string();
+            if !plugin_runtime_spec_exists(&ctx.data_dir, &plugin).map_err(internal_status)? {
+                return Ok(serde_json::json!({
+                    "InstallPluginRuntimeResult": { "started": false, "error": "plugin has no install.json runtime spec" }
+                }));
+            }
+
+            // Guard against a second concurrent install of the same plugin.
+            let running = {
+                let guard = ctx.plugin_runtime_progress.lock().await;
+                matches!(guard.get(&plugin).map(|s| s.status.as_str()),
+                         Some("downloading" | "extracting"))
+            };
+            if running {
+                return Ok(serde_json::json!({
+                    "InstallPluginRuntimeResult": { "started": false, "error": "install already running" }
+                }));
+            }
+
+            let ctx_clone = ctx.clone();
+            tokio::spawn(async move {
+                let progress = ctx_clone.plugin_runtime_progress.clone();
+                if let Err(e) = crate::handlers::plugin_runtime::install_plugin_runtime(
+                    ctx_clone.data_dir.clone(),
+                    plugin.clone(),
+                    progress.clone(),
+                )
+                .await
+                {
+                    crate::handlers::plugin_runtime::progress_mut(&progress, &plugin, |s| {
+                        s.status = "failed".to_string();
+                        s.error = Some(e.to_string());
+                    });
+                    crate::handlers::plugin_runtime::progress_log(
+                        &progress,
+                        &plugin,
+                        format!("[ERROR] {e}"),
+                    );
+                }
+            });
+            Ok(serde_json::json!({
+                "InstallPluginRuntimeResult": { "started": true }
+            }))
+        }
+
+        "GetPluginRuntimeInstallProgress" => {
+            let plugin = params["plugin"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing plugin"))?;
+            let p = crate::handlers::plugin_runtime::get_runtime_progress(
+                &ctx.plugin_runtime_progress,
+                plugin,
+            )
+            .await;
+            Ok(serde_json::json!({
+                "GetPluginRuntimeInstallProgressResult": {
+                    "status": p.status,
+                    "percent": p.percent,
+                    "logs": p.logs,
+                    "error": p.error,
+                }
+            }))
+        }
+
         unknown => Err(Status::invalid_argument(format!("Unknown plugin command: {unknown}"))),
     }
 }

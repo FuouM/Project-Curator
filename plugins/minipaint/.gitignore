@@ -1,0 +1,3 @@
+# Ignore the downloaded/extracted miniPaint editor runtime.
+# Only the plugin source + bundled index.js are tracked in git.
+/editor/

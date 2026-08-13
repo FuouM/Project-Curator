@@ -37,7 +37,8 @@ interface PluginHostApi {
     id: string,
     label: string,
     iconClass: string,
-    render: () => HTMLElement
+    render: () => HTMLElement,
+    chromeLess?: boolean
   ): void;
   registerMetadataRenderer(
     id: string,
@@ -65,6 +66,8 @@ interface PluginHostApi {
   fetchAssetContext(imageId: number): Promise<AssetContext>;
   getSelectionAssetContexts(): Promise<AssetContext[]>;
   getAssetContextFromCard(card: HTMLElement): AssetContext;
+  /** Close the full-screen image viewer (if open), e.g. before navigating to a tab. */
+  closeImageViewer(): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,9 +85,16 @@ interface TauriWebview {
   onDragDropEvent(handler: (event: { payload: TauriDragDropPayload }) => void): any;
 }
 
+interface TauriInvokeOptions {
+  headers?: Record<string, string>;
+}
+
 interface TauriCore {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   invoke(cmd: string, args?: Record<string, unknown>): Promise<any>;
+  // Raw-body overload: passing a typed array as the payload (no JSON/base64).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  invoke(cmd: string, args: ArrayBuffer | Uint8Array, options?: TauriInvokeOptions): Promise<any>;
 }
 
 // ---------------------------------------------------------------------------

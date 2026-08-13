@@ -1,0 +1,15 @@
+{
+  "output_dir": "editor",
+  "archive_url": "https://github.com/viliusle/miniPaint/archive/refs/tags/v4.14.3.zip",
+  "zip_root": "miniPaint-4.14.3",
+  "extract_dirs": ["dist", "images", "src/js/libs/gifjs"],
+  "extract_files": ["index.html"],
+  "verify": {
+    "path": "dist/bundle.js",
+    "sha256": "d084e2659fa7dc1c125663d08e354ccfab3c0cfb78281716ff83b0a6b9283356"
+  },
+  "inject": {
+    "source": "curator-bridge.js",
+    "tag": "<script src=\"curator-bridge.js\"></script>"
+  }
+}

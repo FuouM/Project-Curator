@@ -37,6 +37,7 @@ interface PluginViewEntry {
   title: string;
   sub: string;
   refresh: () => void;
+  chromeLess?: boolean;
 }
 const pluginViews = new Map<string, PluginViewEntry>();
 
@@ -45,7 +46,8 @@ export function registerPluginView(
   label: string,
   iconClass: string,
   sub: string,
-  refresh: () => void
+  refresh: () => void,
+  chromeLess = false
 ) {
   const viewKey = `extensions-${id}`;
   if (pluginViews.has(viewKey)) return;
@@ -58,7 +60,7 @@ export function registerPluginView(
   section.id = `view-${viewKey}`;
   document.querySelector(".main-panel")?.appendChild(section);
 
-  pluginViews.set(viewKey, { title: label, sub, refresh });
+  pluginViews.set(viewKey, { title: label, sub, refresh, chromeLess });
 }
 
 export function getPluginViewSubtitle(view: string): PluginViewEntry | undefined {
@@ -167,6 +169,14 @@ export function setupNavigation() {
         viewTitle.textContent = meta.title;
         viewSubtitle.textContent = meta.sub;
       }
+    }
+
+    // A plugin view may request chrome-less rendering (its content carries its
+    // own header, e.g. a full-screen editor); honor that per-view instead of
+    // special-casing individual plugin ids here.
+    const header = document.querySelector<HTMLElement>(".header");
+    if (header) {
+      header.style.display = pluginViews.get(view)?.chromeLess ? "none" : "";
     }
 
     if (view !== "logs") {

@@ -14,7 +14,7 @@ use crate::AppSettings;
 /// that holds `curator-core/`, `curator-service/`, and the git-tracked
 /// `plugins/`. Fails fast (no silent fallback) when `data_dir` has no parent,
 /// e.g. a bare drive root.
-fn plugin_root(data_dir: &Path) -> anyhow::Result<PathBuf> {
+pub(crate) fn plugin_root(data_dir: &Path) -> anyhow::Result<PathBuf> {
     let parent = data_dir.parent().context(format!(
         "data_dir {:?} has no parent; cannot resolve workspace-root plugins/ directory",
         data_dir
@@ -126,6 +126,46 @@ pub async fn list_plugins(
 
     plugins.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(plugins)
+}
+
+/// Resolve the plugin's runtime output directory (`plugins/<name>/<output_dir>`),
+/// as declared in the plugin's `install.json`. Returns `None` when the plugin has
+/// no runtime-install spec (i.e. it ships a pure JS bundle, like `example-plugin`).
+pub fn plugin_runtime_dir(data_dir: &Path, plugin_name: &str) -> Result<Option<PathBuf>> {
+    if !validate_plugin_name(plugin_name) {
+        anyhow::bail!("Invalid plugin name: {}", plugin_name);
+    }
+    let root = plugin_root(data_dir)?;
+    let spec_path = root.join(plugin_name).join("install.json");
+    if !spec_path.is_file() {
+        return Ok(None);
+    }
+    let content = fs::read_to_string(&spec_path)?;
+    let val: serde_json::Value = serde_json::from_str(&content)?;
+    let output_dir = val
+        .get("output_dir")
+        .and_then(|v| v.as_str())
+        .unwrap_or("runtime");
+    Ok(Some(root.join(plugin_name).join(output_dir)))
+}
+
+/// True when the plugin's extracted runtime entrypoint exists on disk.
+pub fn plugin_runtime_index_exists(data_dir: &Path, plugin_name: &str) -> Result<bool> {
+    Ok(match plugin_runtime_dir(data_dir, plugin_name)? {
+        Some(dir) => dir.join("index.html").is_file(),
+        None => false,
+    })
+}
+
+/// True when the plugin ships an `install.json` runtime-install spec.
+pub fn plugin_runtime_spec_exists(data_dir: &Path, plugin_name: &str) -> Result<bool> {
+    if !validate_plugin_name(plugin_name) {
+        anyhow::bail!("Invalid plugin name: {}", plugin_name);
+    }
+    Ok(plugin_root(data_dir)?
+        .join(plugin_name)
+        .join("install.json")
+        .is_file())
 }
 
 pub async fn set_plugin_enabled(

@@ -57,6 +57,7 @@ struct ClientContext {
     cancel_tokens: handlers::models::CancelTokens,
     benchmark_progress: handlers::BenchmarkProgressMap,
     transcode_progress: handlers::transcode::TranscodeProgressMap,
+    plugin_runtime_progress: handlers::plugin_runtime::PluginRuntimeProgressMap,
     /// Service-side safety classifier and its coalescing import batch queue.
     safety: handlers::safety::SafetyService,
     /// Serializes folder scan/import write bursts. gRPC handles every RPC in
@@ -360,6 +361,8 @@ async fn main() -> Result<(), Error> {
     let benchmark_progress: handlers::BenchmarkProgressMap = Arc::new(tokio::sync::Mutex::new(None));
     let transcode_progress: handlers::transcode::TranscodeProgressMap =
         Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+    let plugin_runtime_progress: handlers::plugin_runtime::PluginRuntimeProgressMap =
+        Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
 
     let data_dir_arc = Arc::new(data_dir);
     let safety = handlers::safety::SafetyService::new((*data_dir_arc).clone());
@@ -378,6 +381,7 @@ async fn main() -> Result<(), Error> {
         cancel_tokens,
         benchmark_progress,
         transcode_progress,
+        plugin_runtime_progress,
         safety,
         import_lock: tokio::sync::Mutex::new(()),
     });

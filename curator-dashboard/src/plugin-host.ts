@@ -17,7 +17,13 @@ import { imageDetailsFromProto, pluginInfoFromProto } from "./proto-adapters";
 // Plugin Registry State
 // ---------------------------------------------------------------------------
 
-const registeredTabs: Array<{ id: string; label: string; iconClass: string; render: () => HTMLElement }> = [];
+const registeredTabs: Array<{
+  id: string;
+  label: string;
+  iconClass: string;
+  render: () => HTMLElement;
+  chromeLess?: boolean;
+}> = [];
 const registeredRenderers: Array<{ id: string; fn: (asset: AssetContext) => HTMLElement | null }> = [];
 const registeredToolbarButtons: Array<{ id: string; label: string; iconClass: string; fn: (selection: AssetContext[]) => void }> = [];
 const registeredContextMenuItems: Array<{ id: string; label: string; fn: (asset: AssetContext) => void }> = [];
@@ -98,7 +104,7 @@ async function invokePlugin(command: string, params: object | null | undefined):
 }
 
 export interface PluginHostApi {
-  registerTab(id: string, label: string, iconClass: string, render: () => HTMLElement): void;
+  registerTab(id: string, label: string, iconClass: string, render: () => HTMLElement, chromeLess?: boolean): void;
   registerMetadataRenderer(id: string, fn: (asset: AssetContext) => HTMLElement | null): void;
   registerToolbarButton(id: string, label: string, iconClass: string, fn: (selection: AssetContext[]) => void): void;
   registerContextMenuItem(id: string, label: string, fn: (asset: AssetContext) => void): void;
@@ -114,8 +120,8 @@ export interface PluginHostApi {
 }
 
 const pluginHost: PluginHostApi = {
-  registerTab(id, label, iconClass, render) {
-    registeredTabs.push({ id, label, iconClass, render });
+  registerTab(id, label, iconClass, render, chromeLess) {
+    registeredTabs.push({ id, label, iconClass, render, chromeLess });
   },
   registerMetadataRenderer(id, fn) {
     registeredRenderers.push({ id, fn });
@@ -254,7 +260,7 @@ function mountPluginTabs() {
         const el = tab.render();
         if (el) section.appendChild(el);
       }
-    });
+    }, tab.chromeLess);
   }
 }
 
