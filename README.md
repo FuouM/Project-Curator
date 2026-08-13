@@ -22,6 +22,7 @@ The system is built around a **single-writer background service**: the `curator-
 | --- | --- |
 | **Semantic (CLIP)** | Natural-language query mapped into a 512-d visual feature space. Embedding models: **CLIP ViT-B/32** (default) or **MobileCLIP S2**. |
 | **Danbooru-style auto-tagging** | Two selectable multi-label taggers: **Camie Tagger v2** (default) and **WD EVA02 Tagger 2026 Canary** (optional; safetensors weights converted to ONNX in-app). Namespaced tag categories, tag blacklisting, confidence thresholds. |
+| **NSFW safety classification** | EfficientNet-based 5-class image safety classifier (Safe, Neutral, Suggestive, Explicit, Extreme). Safetensors converted to ONNX in-app with FP16 quantization, configurable safety tagging, and gallery blur filters. |
 | **Reverse image search** | Query by image path — find visual lookalikes, composition variants, and near-duplicates via stored embeddings. |
 | **OCR text search** | PP-OCRv6 text detection/recognition with full-text search over in-image text. Optional textline orientation classifier and **manga speech-bubble detection** (quantized int8 YOLO). |
 | **Filename regex parsing** | Token-block builder compiles user rules into regex to extract artist names, dates, custom IDs, etc. Live test, batch preview, and batch apply modes. |
@@ -30,7 +31,7 @@ The system is built around a **single-writer background service**: the `curator-
 
 ### Media Support
 
-- **Images:** PNG, JPEG, WebP, animated GIF, BMP, TIFF, QOI, TGA, PNM, HDR, ICO, EXR, AVIF.
+- **Images:** PNG, JPEG, WebP, animated GIF, BMP, TIFF, QOI, TGA, PNM, HDR, ICO, EXR, AVIF. Supports custom per-image notes, star favoriting, and multi-selection batch actions.
 - **Animated GIFs:** per-frame metadata, animation timing, and loop count; a full create/crop/resize/effect/caption editor ships as the GIF Maker plugin.
 - **Videos:** MP4 and WebM probed via **FFmpeg** (dimensions, duration, fps, codecs, bitrate) with WebP frame previews. A background **transcoding service** converts between formats and codecs with live progress reporting. FFmpeg is auto-detected, or a portable build can be downloaded into the data directory.
 - Thumbnails and detection-crop thumbnails are generated on demand and cached in a dedicated SQLite cache.
@@ -39,7 +40,7 @@ The system is built around a **single-writer background service**: the `curator-
 
 - Plugins are self-contained TypeScript bundles (`index.js`) declared by a `manifest.json` (name, version, permissions) and loaded by the dashboard's plugin host.
 - Built with **esbuild** from a TypeScript workspace that ships a shared `lib/` (logging, IPC utilities, drop-zone handling, progress polling).
-- Bundled plugins: **Image Converter**, **FFmpeg Transcoder**, **Image Compare**, and **GIF Maker**.
+- Bundled plugins: **Image Converter**, **FFmpeg Transcoder**, **Image Compare**, **GIF Maker**, and **miniPaint** (full offline raster editor with layers, filters, and drawing tools).
 
 ### Toolbox (Ephemeral Processing)
 
@@ -47,8 +48,8 @@ Run one-off operations on arbitrary files **without touching the library**: auto
 
 ### Model Management
 
-- Curated `model_manifest.json` catalog of ONNX models (embedding, tagging, detection, OCR) fetched from Hugging Face.
-- Download manager with live progress and cancellation; optional **int8/fp16 quantization**; in-app **safetensors → ONNX conversion** for WD EVA02; portable **FFmpeg** download.
+- Curated `model_manifest.json` catalog of ONNX models (embedding, tagging, detection, OCR, safety classification) fetched from Hugging Face.
+- Download manager with live progress and cancellation; optional **int8/fp16 quantization**; in-app **safetensors → ONNX conversion** for WD EVA02 and NSFW detection; portable **FFmpeg** download.
 - Per-pipeline device preference (`auto` / `cpu` / `gpu`) and model precision, plus CPU-vs-GPU benchmarks for every model.
 
 ---
@@ -73,7 +74,8 @@ Run one-off operations on arbitrary files **without touching the library**: auto
 │  │     ├── CLIP & MobileCLIP embeddings                                │
 │  │     ├── Camie & WD EVA02 taggers                                    │
 │  │     ├── YOLO person detection + CCIP character ID                   │
-│  │     └── PP-OCRv6 text detection/recognition + bubble detector       │
+│  │     ├── PP-OCRv6 text detection/recognition + bubble detector       │
+│  │     └── NSFW image safety classification                            │
 │  ├── Background worker       (vector indexing job queue)               │
 │  └── Thumbnail / crop cache  (SQLite)                                  │
 └────────────────────────────────────────────────────────────────────────┘
@@ -81,7 +83,7 @@ Run one-off operations on arbitrary files **without touching the library**: auto
 
 **Core IPC bus:** all client-to-service traffic is strongly-typed gRPC (tonic/prost in Rust, `@bufbuild/protobuf` in TypeScript) over a local transport — Windows Named Pipe `\\.\pipe\curator_ipc` on Windows, `~/.curator/curator.sock` Unix Domain Socket elsewhere. Requests are serialized to raw Protobuf binary (`.toBinary()` / `.fromBinary()`) and sent through Tauri's `send_to_service_typed` IPC bridge from the frontend; a per-install **service key** authenticates clients. The engine internals are organized into modular workspace crates (`curator-proto`, `curator-media`, `curator-db`, `curator-ml`, `curator-filename-parser`) whose public API is re-exported by `curator-core`, so `curator-service`, `curator-cli`, and the Tauri bridge compile against a single aggregator.
 
-**Storage philosophy:** relational metadata (images, tags, sources, character detections, OCR results) lives in SQLite; dense 512-d embeddings live in an isolated in-memory USearch vector index. Original files are never mutated.
+**Storage philosophy:** relational metadata (images, tags, sources, character detections, OCR results, notes, safety classifications) lives in SQLite; dense 512-d embeddings live in an isolated in-memory USearch vector index. Original files are never mutated.
 
 ---
 
@@ -95,7 +97,7 @@ project-curator/
 ├── curator-media/            # High-performance media engine: TurboJPEG/WebP/GIF decode, video, thumbnails, CropCache
 ├── curator-db/               # SQLite schema, versioned migrations, models, and HNSW vector storage
 │   └── migrations/           # Versioned SQL migrations (schema → media metadata)
-├── curator-ml/               # ONNX Runtime engine: CLIP/MobileCLIP, YOLO, OCR, taggers, concept training, benchmarks
+├── curator-ml/               # ONNX Runtime engine: CLIP/MobileCLIP, YOLO, OCR, taggers, safety, concepts, benchmarks
 │   └── src/bin/              # Standalone ONNX model-verification binaries
 ├── curator-core/             # Aggregator/orchestrator: domain DTOs, grpc_convert, re-exports of child crates
 │   └── src/bin/              # Standalone pipeline test & benchmark binaries
@@ -111,7 +113,7 @@ project-curator/
 └── .curator/                 # Local runtime state: models, vector index, SQLite DB
 ```
 
-The dashboard exposes these tabs: Dashboard, Gallery, Favorites, Tag Statistics, Folders, Import, Search, Concepts, Characters, Filename Parser, Toolbox, Plugins, Logs, Benchmark, Settings, and Models.
+The dashboard exposes standard views (Dashboard, Gallery, Favorites, Tag Statistics, Folders, Import, Search, Concepts, Characters, Filename Parser, Toolbox, Plugins, Logs, Benchmark, Settings, Models, and Component Stylesheet) along with dynamically registered plugin views injected into the sidebar navigation.
 
 ---
 
