@@ -4,35 +4,147 @@
 // ─────────────────────────────────────────────────────────────────────
 "use strict";
 (() => {
+  // lib/log.ts
+  var LOG_COLORS = {
+    info: "#cccccc",
+    success: "#10b981",
+    error: "#f87171"
+  }, CONSOLE_LINE_CSS = "font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:#cccccc;white-space:pre-wrap;word-break:break-all;";
+  function appendLogLines(elementId, lines, fromIndex) {
+    let box = document.getElementById(elementId);
+    if (!box || fromIndex >= lines.length) return lines.length;
+    let docFrag = document.createDocumentFragment();
+    for (let i = fromIndex; i < lines.length; i++) {
+      let line = document.createElement("div");
+      line.style.cssText = CONSOLE_LINE_CSS, line.textContent = lines[i], docFrag.appendChild(line);
+    }
+    return box.appendChild(docFrag), box.scrollTop = box.scrollHeight, lines.length;
+  }
+  function createLogger(elementId) {
+    return function(message, kind = "info") {
+      let box = document.getElementById(elementId);
+      if (!box) return;
+      let line = document.createElement("div");
+      line.style.cssText = kind === "info" ? CONSOLE_LINE_CSS : `font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:${LOG_COLORS[kind]};white-space:pre-wrap;word-break:break-all;`, line.textContent = message, box.appendChild(line), box.scrollTop = box.scrollHeight;
+    };
+  }
+
+  // lib/ipc-utils.ts
+  var PH = window.PluginHost;
+  async function pickDirectory() {
+    var _a;
+    let api = window.__TAURI__;
+    if (!((_a = api == null ? void 0 : api.core) != null && _a.invoke)) return null;
+    try {
+      let selected = await api.core.invoke("select_path", { isDirectory: !0 });
+      return typeof selected == "string" && selected.length > 0 ? selected : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function getPluginDirs() {
+    var _a, _b;
+    return {
+      pluginDir: (_a = window.__curator_plugin_dir__) != null ? _a : "",
+      workspaceRoot: (_b = window.__curator_workspace_root__) != null ? _b : ""
+    };
+  }
+
+  // lib/storage.ts
+  function loadPersisted(key, fallback) {
+    try {
+      return localStorage.getItem(key) || fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+  function savePersisted(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+    }
+  }
+
+  // lib/navigation.ts
+  function navigateToTab(tabId) {
+    let item = document.querySelector(
+      `.nav-item[data-view="extensions-${tabId}"]`
+    );
+    item && item.click();
+  }
+  function closeInfoModal() {
+    var _a;
+    if ((_a = window.PluginHost) != null && _a.closeImageViewer)
+      window.PluginHost.closeImageViewer();
+    else {
+      let viewerModal = document.getElementById("image-viewer-modal");
+      viewerModal != null && viewerModal.classList.contains("active") && viewerModal.classList.remove("active");
+    }
+    let modal = document.getElementById("image-info-modal");
+    if (!(modal != null && modal.classList.contains("active"))) return;
+    let closeBtn = modal.querySelector(".modal-close");
+    closeBtn ? closeBtn.click() : modal.classList.remove("active");
+  }
+
+  // lib/poll.ts
+  var PH2 = window.PluginHost;
+  function pollServiceProgress({
+    fetch,
+    isRunning,
+    onTick,
+    onComplete,
+    intervalMs = 500
+  }) {
+    let tick = async () => {
+      let value;
+      try {
+        value = await fetch();
+      } catch (e) {
+        onComplete(!1);
+        return;
+      }
+      if (value === void 0) {
+        setTimeout(tick, intervalMs);
+        return;
+      }
+      if (onTick(value), !isRunning(value)) {
+        onComplete(!0, value);
+        return;
+      }
+      setTimeout(tick, intervalMs);
+    };
+    tick();
+  }
+
   // minipaint/src/state.ts
   var TAB_ID = "minipaint", state = {
-    outputDir: localStorage.getItem("minipaint-output-dir") || "",
+    outputDir: loadPersisted("minipaint-output-dir", ""),
     busy: !1
   };
   function setOutputDir(value) {
-    state.outputDir = value, localStorage.setItem("minipaint-output-dir", value);
+    state.outputDir = value, savePersisted("minipaint-output-dir", value);
   }
 
   // minipaint/src/ipc.ts
-  var PH = window.PluginHost;
+  var PH3 = window.PluginHost;
   async function checkInstalled() {
-    var _a2;
-    let resp = await PH.callService("CheckPluginRuntimeInstalled", { plugin: "minipaint" });
-    return !!((_a2 = resp == null ? void 0 : resp.CheckPluginRuntimeInstalledResult) != null && _a2.installed);
+    var _a;
+    let resp = await PH3.callService("CheckPluginRuntimeInstalled", { plugin: "minipaint" });
+    return !!((_a = resp == null ? void 0 : resp.CheckPluginRuntimeInstalledResult) != null && _a.installed);
   }
   async function startInstallation() {
-    var _a2;
-    let resp = await PH.callService("InstallPluginRuntime", { plugin: "minipaint" });
-    return !!((_a2 = resp == null ? void 0 : resp.InstallPluginRuntimeResult) != null && _a2.started);
+    var _a;
+    let resp = await PH3.callService("InstallPluginRuntime", { plugin: "minipaint" });
+    return !!((_a = resp == null ? void 0 : resp.InstallPluginRuntimeResult) != null && _a.started);
   }
   async function getProgress() {
-    var _a2;
-    let resp = await PH.callService("GetPluginRuntimeInstallProgress", { plugin: "minipaint" });
-    return (_a2 = resp == null ? void 0 : resp.GetPluginRuntimeInstallProgressResult) != null ? _a2 : { status: "idle", percent: 0, logs: [] };
+    var _a;
+    let resp = await PH3.callService("GetPluginRuntimeInstallProgress", { plugin: "minipaint" });
+    return (_a = resp == null ? void 0 : resp.GetPluginRuntimeInstallProgressResult) != null ? _a : { status: "idle", percent: 0, logs: [] };
   }
   async function saveEditedImage(p) {
-    var _a2;
-    let tauriCore = (_a2 = window.__TAURI__) == null ? void 0 : _a2.core;
+    var _a;
+    let tauriCore = (_a = window.__TAURI__) == null ? void 0 : _a.core;
     if (!tauriCore)
       throw new Error("Tauri core API not available; cannot save edited image.");
     return { ok: !0, path: await tauriCore.invoke(
@@ -47,48 +159,6 @@
       }
     ) };
   }
-
-  // lib/log.ts
-  var LOG_COLORS = {
-    info: "#cccccc",
-    success: "#10b981",
-    error: "#f87171"
-  };
-  function createLogger(elementId) {
-    return function(message, kind = "info") {
-      let box = document.getElementById(elementId);
-      if (!box) return;
-      let line = document.createElement("div");
-      line.style.cssText = `font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:${LOG_COLORS[kind]};white-space:pre-wrap;word-break:break-all;`, line.textContent = message, box.appendChild(line), box.scrollTop = box.scrollHeight;
-    };
-  }
-
-  // lib/ipc-utils.ts
-  var PH2 = window.PluginHost;
-
-  // lib/navigation.ts
-  function navigateToTab(tabId) {
-    let item = document.querySelector(
-      `.nav-item[data-view="extensions-${tabId}"]`
-    );
-    item && item.click();
-  }
-  function closeInfoModal() {
-    var _a2;
-    if ((_a2 = window.PluginHost) != null && _a2.closeImageViewer)
-      window.PluginHost.closeImageViewer();
-    else {
-      let viewerModal = document.getElementById("image-viewer-modal");
-      viewerModal != null && viewerModal.classList.contains("active") && viewerModal.classList.remove("active");
-    }
-    let modal = document.getElementById("image-info-modal");
-    if (!(modal != null && modal.classList.contains("active"))) return;
-    let closeBtn = modal.querySelector(".modal-close");
-    closeBtn ? closeBtn.click() : modal.classList.remove("active");
-  }
-
-  // lib/poll.ts
-  var PH3 = window.PluginHost;
 
   // minipaint/src/installer.ts
   function renderInstaller(onComplete) {
@@ -121,24 +191,28 @@
       started || log("An install is already running; polling existing task.", "info"), pollProgress();
     });
     function pollProgress() {
-      let rendered = 0, timer = setInterval(async () => {
-        let prog;
-        try {
-          prog = await getProgress();
-        } catch (e) {
-          return;
-        }
-        let box = document.getElementById("minipaint-install-log");
-        if (box && prog.logs && prog.logs.length > rendered) {
-          let docFrag = document.createDocumentFragment();
-          for (let i = rendered; i < prog.logs.length; i++) {
-            let line = document.createElement("div");
-            line.style.cssText = "font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:#cccccc;white-space:pre-wrap;word-break:break-all;", line.textContent = prog.logs[i], docFrag.appendChild(line);
+      let rendered = 0;
+      pollServiceProgress({
+        fetch: async () => {
+          try {
+            return await getProgress();
+          } catch (e) {
+            return;
           }
-          box.appendChild(docFrag), rendered = prog.logs.length, box.scrollTop = box.scrollHeight;
+        },
+        isRunning: (p) => p.status !== "completed" && p.status !== "failed",
+        onTick: (p) => {
+          rendered = appendLogLines("minipaint-install-log", p.logs, rendered);
+        },
+        onComplete: (ok, last) => {
+          let p = last;
+          if (p && p.status === "failed") {
+            log(`Install failed: ${p.error || "unknown error"}`, "error"), btn.disabled = !1;
+            return;
+          }
+          log("Install completed.", "success"), onComplete();
         }
-        prog.status === "completed" ? (clearInterval(timer), log("Install completed.", "success"), onComplete()) : prog.status === "failed" && (clearInterval(timer), log(`Install failed: ${prog.error || "unknown error"}`, "error"), btn.disabled = !1);
-      }, 500);
+      });
     }
     return container;
   }
@@ -146,7 +220,7 @@
   // minipaint/src/editor.ts
   var PH4 = window.PluginHost, currentFrame = null, editorWorkspaceRoot = "";
   async function onMessage(ev) {
-    var _a2, _b2, _c, _d;
+    var _a, _b, _c, _d;
     if (ev.source !== (currentFrame == null ? void 0 : currentFrame.contentWindow)) return;
     let d = ev.data;
     if (!(!d || typeof d != "object")) {
@@ -158,9 +232,9 @@
         return;
       }
       if (d.type === "minipaint:save") {
-        let bytes = (_a2 = d.buffer) != null ? _a2 : d;
+        let bytes = (_a = d.buffer) != null ? _a : d;
         if (!(bytes instanceof ArrayBuffer)) {
-          (_b2 = currentFrame == null ? void 0 : currentFrame.contentWindow) == null || _b2.postMessage(
+          (_b = currentFrame == null ? void 0 : currentFrame.contentWindow) == null || _b.postMessage(
             { type: "minipaint:save-result", ok: !1, error: "no buffer in save message" },
             "*"
           );
@@ -200,8 +274,8 @@
       iframe.src = assetDirUrl(`${pluginDir}\\editor\\index.html`), initialPath && iframe.addEventListener(
         "load",
         () => {
-          var _a2;
-          (_a2 = iframe.contentWindow) == null || _a2.postMessage(
+          var _a;
+          (_a = iframe.contentWindow) == null || _a.postMessage(
             { type: "minipaint:load-image", url: PH4.convertFileSrc(initialPath) },
             "*"
           );
@@ -214,24 +288,19 @@
     };
   }
   function loadAssetIntoEditor(path) {
-    var _a2;
-    !currentFrame || !path || (_a2 = currentFrame.contentWindow) == null || _a2.postMessage(
+    var _a;
+    !currentFrame || !path || (_a = currentFrame.contentWindow) == null || _a.postMessage(
       { type: "minipaint:load-image", url: PH4.convertFileSrc(path) },
       "*"
     );
   }
   async function browseOutputDir(onSelected) {
-    var _a2, _b2;
-    try {
-      let selected = await ((_b2 = (_a2 = window.__TAURI__) == null ? void 0 : _a2.core) == null ? void 0 : _b2.invoke("select_path", { isDirectory: !0 }));
-      selected && (setOutputDir(selected), onSelected(selected));
-    } catch (e) {
-      console.error("minipaint: folder picker failed", e);
-    }
+    let selected = await pickDirectory();
+    selected && (setOutputDir(selected), onSelected(selected));
   }
 
   // minipaint/src/index.ts
-  var PH5 = window.PluginHost, _a, _b;
+  var PH5 = window.PluginHost;
   if (!PH5)
     console.error("minipaint: PluginHost not available; aborting.");
   else {
@@ -247,7 +316,7 @@
       }
     `, document.head.appendChild(style);
     }
-    let pluginDir = (_a = window.__curator_plugin_dir__) != null ? _a : "", workspaceRoot = (_b = window.__curator_workspace_root__) != null ? _b : "", editorHost = null, toggleBtn = null, editorMounted = !1, teardown = null, updateToggle = () => {
+    let { pluginDir, workspaceRoot } = getPluginDirs(), editorHost = null, toggleBtn = null, editorMounted = !1, teardown = null, updateToggle = () => {
       toggleBtn && (toggleBtn.innerHTML = editorMounted ? '<i class="bi bi-stop-circle"></i> Unload Editor' : '<i class="bi bi-play-circle"></i> Load Editor');
     }, ensureEditor = (initialPath) => {
       if (editorMounted) {
@@ -259,10 +328,10 @@
       teardown == null || teardown(), teardown = null, editorMounted = !1, updateToggle();
     };
     PH5.registerMetadataRenderer("minipaint-send", (asset) => {
-      var _a2;
+      var _a;
       if (!(asset != null && asset.path)) return null;
       let box = document.createElement("div");
-      return box.className = "group-box", box.style.cssText = "margin-top:8px;", box.innerHTML = '<div class="group-box-title"><i class="bi bi-palette"></i> Image Editor</div><div style="display:flex;align-items:center;gap:8px;padding:2px 0;">  <span style="font-size:11px;color:#555;flex:1;">Open this image in the miniPaint editor. The editor loads on demand and stays parked otherwise.</span>  <button type="button" class="win-button" id="minipaint-send-asset">    <i class="bi bi-brush"></i> Send to Editor  </button></div>', (_a2 = box.querySelector("#minipaint-send-asset")) == null || _a2.addEventListener("click", () => {
+      return box.className = "group-box", box.style.cssText = "margin-top:8px;", box.innerHTML = '<div class="group-box-title"><i class="bi bi-palette"></i> Image Editor</div><div style="display:flex;align-items:center;gap:8px;padding:2px 0;">  <span style="font-size:11px;color:#555;flex:1;">Open this image in the miniPaint editor. The editor loads on demand and stays parked otherwise.</span>  <button type="button" class="win-button" id="minipaint-send-asset">    <i class="bi bi-brush"></i> Send to Editor  </button></div>', (_a = box.querySelector("#minipaint-send-asset")) == null || _a.addEventListener("click", () => {
         closeInfoModal(), navigateToTab(TAB_ID), ensureEditor(asset.path);
       }), box;
     }), PH5.registerTab(TAB_ID, "Image Editor", "bi bi-palette", () => {

@@ -30,13 +30,13 @@
     info: "#cccccc",
     success: "#10b981",
     error: "#f87171"
-  };
+  }, CONSOLE_LINE_CSS = "font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:#cccccc;white-space:pre-wrap;word-break:break-all;";
   function createLogger(elementId) {
     return function(message, kind = "info") {
       let box = document.getElementById(elementId);
       if (!box) return;
       let line = document.createElement("div");
-      line.style.cssText = `font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:${LOG_COLORS[kind]};white-space:pre-wrap;word-break:break-all;`, line.textContent = message, box.appendChild(line), box.scrollTop = box.scrollHeight;
+      line.style.cssText = kind === "info" ? CONSOLE_LINE_CSS : `font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:${LOG_COLORS[kind]};white-space:pre-wrap;word-break:break-all;`, line.textContent = message, box.appendChild(line), box.scrollTop = box.scrollHeight;
     };
   }
 
@@ -96,40 +96,57 @@
 
   // lib/poll.ts
   var PH2 = window.PluginHost;
+  function pollServiceProgress({
+    fetch,
+    isRunning,
+    onTick,
+    onComplete,
+    intervalMs = 500
+  }) {
+    let tick = async () => {
+      let value;
+      try {
+        value = await fetch();
+      } catch (e) {
+        onComplete(!1);
+        return;
+      }
+      if (value === void 0) {
+        setTimeout(tick, intervalMs);
+        return;
+      }
+      if (onTick(value), !isRunning(value)) {
+        onComplete(!0, value);
+        return;
+      }
+      setTimeout(tick, intervalMs);
+    };
+    tick();
+  }
   function pollTranscodeProgress({
     jobId,
     onTick,
     onComplete,
     intervalMs = 500
   }) {
-    let tick = async () => {
-      let resp;
-      try {
-        resp = await PH2.callService("GetTranscodeProgress", { job_id: jobId });
-      } catch (e) {
-        onComplete(!1);
-        return;
-      }
-      let raw = resp == null ? void 0 : resp.TranscodeProgressResult;
-      if (!raw) {
-        onComplete(!1);
-        return;
-      }
-      let progress = {
-        percent: Math.round(raw.percent || 0),
-        running: !!raw.running,
-        error: raw.error,
-        fps: raw.fps,
-        xSpeed: raw.x_speed,
-        raw
-      };
-      if (onTick(progress), !progress.running) {
-        onComplete(progress.percent >= 100 && !progress.error, progress);
-        return;
-      }
-      setTimeout(tick, intervalMs);
-    };
-    tick();
+    pollServiceProgress({
+      intervalMs,
+      fetch: async () => {
+        let resp = await PH2.callService("GetTranscodeProgress", { job_id: jobId }), raw = resp == null ? void 0 : resp.TranscodeProgressResult;
+        if (raw)
+          return {
+            percent: Math.round(raw.percent || 0),
+            running: !!raw.running,
+            error: raw.error,
+            fps: raw.fps,
+            xSpeed: raw.x_speed,
+            raw
+          };
+      },
+      isRunning: (p) => p.running,
+      onTick,
+      onComplete: (success, last) => onComplete(success, last)
+    });
   }
 
   // gif-maker/src/ui.ts

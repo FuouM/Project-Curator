@@ -21,6 +21,38 @@ const LOG_COLORS: Record<LogKind, string> = {
   error: "#f87171",
 };
 
+const CONSOLE_LINE_CSS =
+  "font-family:'Consolas',monospace;font-size:11px;line-height:1.4;" +
+  "color:#cccccc;white-space:pre-wrap;word-break:break-all;";
+
+/**
+ * Appends newly-arrived console lines (from `fromIndex` onward in `lines`) as
+ * plain info-styled divs. Returns the new total line count so callers can pass
+ * it back on the next tick as `fromIndex`.
+ *
+ * Useful when the backend accumulates a growing log array (e.g. an install
+ * console) and the frontend only wants to render the delta per poll.
+ */
+export function appendLogLines(
+  elementId: string,
+  lines: string[],
+  fromIndex: number
+): number {
+  const box = document.getElementById(elementId);
+  if (!box || fromIndex >= lines.length) return lines.length;
+
+  const docFrag = document.createDocumentFragment();
+  for (let i = fromIndex; i < lines.length; i++) {
+    const line = document.createElement("div");
+    line.style.cssText = CONSOLE_LINE_CSS;
+    line.textContent = lines[i];
+    docFrag.appendChild(line);
+  }
+  box.appendChild(docFrag);
+  box.scrollTop = box.scrollHeight;
+  return lines.length;
+}
+
 /**
  * Creates a logger function bound to the DOM element with the given ID.
  *
@@ -38,8 +70,7 @@ export function createLogger(elementId: string): Logger {
 
     const line = document.createElement("div");
     line.style.cssText =
-      "font-family:'Consolas',monospace;font-size:11px;line-height:1.4;" +
-      `color:${LOG_COLORS[kind]};white-space:pre-wrap;word-break:break-all;`;
+      kind === "info" ? CONSOLE_LINE_CSS : `font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:${LOG_COLORS[kind]};white-space:pre-wrap;word-break:break-all;`;
     line.textContent = message;
     box.appendChild(line);
     box.scrollTop = box.scrollHeight;

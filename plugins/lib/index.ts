@@ -9,16 +9,18 @@
  * imports end up in its bundled index.js.
  */
 
-export { createLogger } from "./log";
+export { createLogger, appendLogLines } from "./log";
 export type { LogKind, Logger } from "./log";
 
 export { formatBytes } from "./format";
 
-export { checkFileExists, getUniqueOutputPath } from "./ipc-utils";
+export { checkFileExists, getUniqueOutputPath, pickDirectory, getPluginDirs } from "./ipc-utils";
+
+export { loadPersisted, savePersisted } from "./storage";
 
 export { navigateToTab, closeInfoModal } from "./navigation";
 
 export { setupDropZone } from "./drop-zone";
 
-export { pollTranscodeProgress } from "./poll";
-export type { TranscodeProgress, PollOptions } from "./poll";
+export { pollServiceProgress, pollTranscodeProgress } from "./poll";
+export type { PollServiceOptions, TranscodeProgress, PollOptions } from "./poll";

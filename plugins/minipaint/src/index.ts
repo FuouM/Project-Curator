@@ -23,7 +23,7 @@ import { TAB_ID, state } from "./state";
 import { checkInstalled } from "./ipc";
 import { renderInstaller } from "./installer";
 import { mountEditor, loadAssetIntoEditor, browseOutputDir } from "./editor";
-import { navigateToTab, closeInfoModal } from "../../lib";
+import { navigateToTab, closeInfoModal, getPluginDirs } from "../../lib";
 
 const PH = window.PluginHost;
 if (!PH) {
@@ -48,8 +48,7 @@ if (!PH) {
     document.head.appendChild(style);
   }
 
-  const pluginDir = window.__curator_plugin_dir__ ?? "";
-  const workspaceRoot = window.__curator_workspace_root__ ?? "";
+  const { pluginDir, workspaceRoot } = getPluginDirs();
 
   // Editor lifecycle is hoisted to module scope so both the tab's toggle and
   // the info-modal "Send to Editor" button share one mount/unmount path.

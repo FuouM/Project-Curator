@@ -7,6 +7,8 @@
  * otherwise require setters for every mutable field.
  */
 
+import { loadPersisted, savePersisted } from "../../lib";
+
 export const TAB_ID = "minipaint" as const;
 
 export interface MiniPaintState {
@@ -17,11 +19,11 @@ export interface MiniPaintState {
 }
 
 export const state: MiniPaintState = {
-  outputDir: localStorage.getItem("minipaint-output-dir") || "",
+  outputDir: loadPersisted("minipaint-output-dir", ""),
   busy: false,
 };
 
 export function setOutputDir(value: string): void {
   state.outputDir = value;
-  localStorage.setItem("minipaint-output-dir", value);
+  savePersisted("minipaint-output-dir", value);
 }

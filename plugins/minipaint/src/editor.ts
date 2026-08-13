@@ -15,6 +15,7 @@
 
 import { state, setOutputDir } from "./state";
 import { saveEditedImage } from "./ipc";
+import { pickDirectory } from "../../lib";
 
 const PH = window.PluginHost;
 
@@ -153,14 +154,10 @@ export function loadAssetIntoEditor(path: string): void {
 
 /** Pick a new output directory (shared by the always-visible settings row). */
 export async function browseOutputDir(onSelected: (dir: string) => void): Promise<void> {
-  try {
-    const selected = await window.__TAURI__?.core?.invoke("select_path", { isDirectory: true });
-    if (selected) {
-      setOutputDir(selected);
-      onSelected(selected);
-    }
-  } catch (e) {
-    console.error("minipaint: folder picker failed", e);
+  const selected = await pickDirectory();
+  if (selected) {
+    setOutputDir(selected);
+    onSelected(selected);
   }
 }
 

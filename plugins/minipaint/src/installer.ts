@@ -6,7 +6,7 @@
  * color-coded console (same createLogger style as the app diagnostics).
  */
 
-import { createLogger } from "../../lib";
+import { createLogger, appendLogLines, pollServiceProgress } from "../../lib";
 import { startInstallation, getProgress } from "./ipc";
 
 export function renderInstaller(onComplete: () => void): HTMLElement {
@@ -52,38 +52,29 @@ export function renderInstaller(onComplete: () => void): HTMLElement {
 
   function pollProgress(): void {
     let rendered = 0;
-    const timer = setInterval(async () => {
-      let prog;
-      try {
-        prog = await getProgress();
-      } catch {
-        return; // transient IPC error; keep polling
-      }
-      const box = document.getElementById("minipaint-install-log");
-      if (box && prog.logs && prog.logs.length > rendered) {
-        const docFrag = document.createDocumentFragment();
-        for (let i = rendered; i < prog.logs.length; i++) {
-          const line = document.createElement("div");
-          line.style.cssText =
-            "font-family:'Consolas',monospace;font-size:11px;line-height:1.4;" +
-            "color:#cccccc;white-space:pre-wrap;word-break:break-all;";
-          line.textContent = prog.logs[i];
-          docFrag.appendChild(line);
+    pollServiceProgress({
+      fetch: async () => {
+        try {
+          return await getProgress();
+        } catch {
+          return undefined; // transient IPC error; keep polling
         }
-        box.appendChild(docFrag);
-        rendered = prog.logs.length;
-        box.scrollTop = box.scrollHeight;
-      }
-      if (prog.status === "completed") {
-        clearInterval(timer);
+      },
+      isRunning: (p) => p.status !== "completed" && p.status !== "failed",
+      onTick: (p) => {
+        rendered = appendLogLines("minipaint-install-log", p.logs, rendered);
+      },
+      onComplete: (ok, last) => {
+        const p = last;
+        if (p && p.status === "failed") {
+          log(`Install failed: ${p.error || "unknown error"}`, "error");
+          btn.disabled = false;
+          return;
+        }
         log("Install completed.", "success");
         onComplete();
-      } else if (prog.status === "failed") {
-        clearInterval(timer);
-        log(`Install failed: ${prog.error || "unknown error"}`, "error");
-        btn.disabled = false;
-      }
-    }, 500);
+      },
+    });
   }
 
   return container;

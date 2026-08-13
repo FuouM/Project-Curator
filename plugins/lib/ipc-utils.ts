@@ -19,6 +19,35 @@ export async function checkFileExists(path: string): Promise<boolean> {
 }
 
 /**
+ * Opens the native folder picker and resolves the chosen directory.
+ *
+ * Returns `null` when the user cancels, the picker fails, or the Tauri core
+ * API is unavailable — never throws. Callers decide how to surface the
+ * cancellation/no-API case.
+ */
+export async function pickDirectory(): Promise<string | null> {
+  const api = window.__TAURI__;
+  if (!api?.core?.invoke) return null;
+  try {
+    const selected = await api.core.invoke("select_path", { isDirectory: true });
+    return typeof selected === "string" && selected.length > 0 ? selected : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads the plugin's runtime context (absolute dirs injected by the host
+ * before each bundle executes). Returns empty strings when unavailable.
+ */
+export function getPluginDirs(): { pluginDir: string; workspaceRoot: string } {
+  return {
+    pluginDir: (window as any).__curator_plugin_dir__ ?? "",
+    workspaceRoot: (window as any).__curator_workspace_root__ ?? "",
+  };
+}
+
+/**
  * Resolves a collision-free output file path.
  *
  * Given a source path, an output directory, and a target extension, returns
