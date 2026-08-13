@@ -1,4 +1,4 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { typedCall } from "../ipc";
 import { maskPath, SafeHtml, html } from "../components";
 import { renderImages, attachCardEventHandlers } from "../cards";
@@ -155,6 +155,12 @@ export function renderFeaturedDay(featured: ImageDetails) {
   }
 
   const srcUrl = convertFileSrc(featured.current_filepath);
+  // Videos can't render in an <img>. Detect by extension (DB metadata can be
+  // missing for older imports). Videos are thumbnailed as animated WebP via the
+  // get_thumbnail command (FFmpeg 2s preview) which is swapped in after the
+  // card renders; if that fails, a <video> fallback plays the file directly.
+  const isVideo = /\.(mp4|webm)$/i.test(featured.current_filepath);
+  const featuredImgSrc = isVideo ? "" : srcUrl;
   const badgeClass = featured.vector_state === "ready" ? "badge-ready" : "badge-pending";
   const parsedHtml = featured.parsed_metadata ? renderParsedMetadataHtml(featured.parsed_metadata) : "";
   const ocrHtml = featured.ocr_text
@@ -168,7 +174,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
           <i class="bi ${featured.favorite ? 'bi-star-fill' : 'bi-star'}"></i>
         </div>
         <div class="image-preview featured-preview">
-          <img src="${srcUrl}" alt="Featured Image" style="width: 100%; height: 100%; object-fit: cover;" />
+          <img src="${featuredImgSrc}" alt="Featured Image" style="width: 100%; height: 100%; object-fit: cover;" />
           <div class="vector-badge ${badgeClass}">${featured.vector_state}</div>
           <div class="featured-badge-overlay"><i class="bi bi-stars"></i> Feature of the Day</div>
           <div class="nsfw-blackout" aria-hidden="true"></div>
@@ -203,6 +209,37 @@ export function renderFeaturedDay(featured: ImageDetails) {
   `;
 
   featuredCardCleanup = attachCardEventHandlers(container, featured.id, featured.current_filepath, featured, ".featured-preview", true);
+
+  // Videos are thumbnailed as animated WebP previews upstream; fetch that
+  // thumbnail and swap it into the featured <img> once available. If the
+  // thumbnail cannot be produced, fall back to a <video> element so the card
+  // still shows the actual clip.
+  if (isVideo) {
+    invoke("get_thumbnail", { imageId: featured.id })
+      .then((data: any) => {
+        if (!data) return;
+        const bytes = new Uint8Array(data);
+        const blob = new Blob([bytes], { type: "image/webp" });
+        const url = URL.createObjectURL(blob);
+        const featuredImg = container.querySelector(".featured-preview img") as HTMLImageElement | null;
+        if (featuredImg && featuredImg.isConnected) {
+          featuredImg.src = url;
+        }
+      })
+      .catch(() => {
+        const featuredImg = container.querySelector(".featured-preview img") as HTMLElement | null;
+        if (!featuredImg || !featuredImg.isConnected) return;
+        const video = document.createElement("video");
+        video.src = srcUrl;
+        video.muted = true;
+        video.loop = true;
+        video.playsInline = true;
+        video.autoplay = true;
+        video.style.cssText = "width: 100%; height: 100%; object-fit: cover;";
+        featuredImg.replaceWith(video);
+        void video.play().catch(() => {});
+      });
+  }
 
   const featuredCardEl = container.querySelector(".featured-card") as HTMLElement | null;
   if (featuredCardEl) {
