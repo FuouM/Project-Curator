@@ -148,6 +148,35 @@ impl SafetyService {
         write_classifications(db, &results).await;
     }
 
+    /// Classify a single arbitrary image file (ephemeral, library-agnostic).
+    /// Unlike the import path — where a missing model is a no-op — the toolbox
+    /// must fail fast so the UI can surface the missing-model state clearly.
+    pub async fn classify_path(&self, path: &str) -> Result<SafetyClassification> {
+        let model_path = SafetyClassifier::resolve_model_path(&self.data_dir);
+        if !model_path.exists() {
+            bail!(
+                "Safety model file not found ({:?}). Download nsfw-detection-2-mini in Settings > Models.",
+                model_path
+            );
+        }
+        let classifier = self.ensure_classifier()?;
+        let path_owned = path.to_string();
+        tokio::task::spawn_blocking(move || {
+            let (buffer, width, height) =
+                decode_rgb(std::path::Path::new(&path_owned)).map_err(|e| {
+                    anyhow::anyhow!("Failed to decode safety image {:?}: {:#}", path_owned, e)
+                })?;
+            let img = curator_core::image::RgbImage::from_raw(width, height, buffer)
+                .ok_or_else(|| anyhow::anyhow!("Invalid RGB buffer for {:?}", path_owned))?;
+            let mut results = classifier.classify_images_batch(&[img]);
+            results
+                .pop()
+                .unwrap_or_else(|| Err(anyhow::anyhow!("Safety classification produced no result")))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Safety classification task panicked: {:?}", e))?
+    }
+
     /// Kick off the retroactive full-library scan in the background. Returns
     /// `started = false` when a scan is already running. Re-classifies rows whose
     /// five per-class columns are all `NULL` (unclassified), keeping

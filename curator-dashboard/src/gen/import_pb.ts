@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file import.proto.
  */
 export const file_import: GenFile = /*@__PURE__*/
-  fileDesc("CgxpbXBvcnQucHJvdG8SDmN1cmF0b3IuaW1wb3J0IiIKEkltcG9ydEltYWdlUmVxdWVzdBIMCgRwYXRoGAEgASgJIm4KDEltcG9ydFJlc3VsdBIQCghpbWFnZV9pZBgBIAEoAxIOCgZzaGEyNTYYAiABKAkSFgoOaW1wb3J0ZWRfY291bnQYAyABKA0SFgoJZm9sZGVyX2lkGAQgASgDSACIAQFCDAoKX2ZvbGRlcl9pZCJHChVJbXBvcnRlZEZvbGRlcnNSZXN1bHQSLgoHZm9sZGVycxgBIAMoCzIdLmN1cmF0b3IuY29tbW9uLkZvbGRlckRldGFpbHMiKwoOQmFja2ZpbGxSZXN1bHQSGQoRaW1hZ2VzX2JhY2tmaWxsZWQYASABKAMiQQobTWVkaWFNZXRhZGF0YUJhY2tmaWxsUmVzdWx0EhEKCXByb2Nlc3NlZBgBIAEoAxIPCgd1cGRhdGVkGAIgASgDIigKE1Jlc2NhbkZvbGRlclJlcXVlc3QSEQoJZm9sZGVyX2lkGAEgASgDIkgKElJlc2NhbkZvbGRlclJlc3VsdBIRCglmb2xkZXJfaWQYASABKAMSEAoIaW1wb3J0ZWQYAiABKAMSDQoFZm91bmQYAyABKAMiJwoSSW5kZXhGb2xkZXJSZXF1ZXN0EhEKCWZvbGRlcl9pZBgBIAEoAyI2ChFJbmRleEZvbGRlclJlc3VsdBIRCglmb2xkZXJfaWQYASABKAMSDgoGcXVldWVkGAIgASgDIkcKElJlc2NhblNhZmV0eVJlc3VsdBIPCgdzdGFydGVkGAEgASgIEg8KB3BlbmRpbmcYAiABKAMSDwoHbWVzc2FnZRgDIAEoCSJqChRTYWZldHlSZXNjYW5Qcm9ncmVzcxIPCgdydW5uaW5nGAEgASgIEhEKCXByb2Nlc3NlZBgCIAEoAxINCgV0b3RhbBgDIAEoAxIPCgd1cGRhdGVkGAQgASgDEg4KBnN0YXR1cxgFIAEoCTK3BQoNSW1wb3J0U2VydmljZRJPCgtJbXBvcnRJbWFnZRIiLmN1cmF0b3IuaW1wb3J0LkltcG9ydEltYWdlUmVxdWVzdBocLmN1cmF0b3IuaW1wb3J0LkltcG9ydFJlc3VsdBJTChJHZXRJbXBvcnRlZEZvbGRlcnMSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaJS5jdXJhdG9yLmltcG9ydC5JbXBvcnRlZEZvbGRlcnNSZXN1bHQSTgoUQmFja2ZpbGxJbWFnZUZvbGRlcnMSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaHi5jdXJhdG9yLmltcG9ydC5CYWNrZmlsbFJlc3VsdBJcChVCYWNrZmlsbE1lZGlhTWV0YWRhdGESFi5nb29nbGUucHJvdG9idWYuRW1wdHkaKy5jdXJhdG9yLmltcG9ydC5NZWRpYU1ldGFkYXRhQmFja2ZpbGxSZXN1bHQSVwoMUmVzY2FuRm9sZGVyEiMuY3VyYXRvci5pbXBvcnQuUmVzY2FuRm9sZGVyUmVxdWVzdBoiLmN1cmF0b3IuaW1wb3J0LlJlc2NhbkZvbGRlclJlc3VsdBJUCgtJbmRleEZvbGRlchIiLmN1cmF0b3IuaW1wb3J0LkluZGV4Rm9sZGVyUmVxdWVzdBohLmN1cmF0b3IuaW1wb3J0LkluZGV4Rm9sZGVyUmVzdWx0EkoKDFJlc2NhblNhZmV0eRIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRoiLmN1cmF0b3IuaW1wb3J0LlJlc2NhblNhZmV0eVJlc3VsdBJXChdHZXRTYWZldHlSZXNjYW5Qcm9ncmVzcxIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRokLmN1cmF0b3IuaW1wb3J0LlNhZmV0eVJlc2NhblByb2dyZXNzYgZwcm90bzM", [file_google_protobuf_empty, file_common]);
+  fileDesc("CgxpbXBvcnQucHJvdG8SDmN1cmF0b3IuaW1wb3J0IiIKEkltcG9ydEltYWdlUmVxdWVzdBIMCgRwYXRoGAEgASgJIm4KDEltcG9ydFJlc3VsdBIQCghpbWFnZV9pZBgBIAEoAxIOCgZzaGEyNTYYAiABKAkSFgoOaW1wb3J0ZWRfY291bnQYAyABKA0SFgoJZm9sZGVyX2lkGAQgASgDSACIAQFCDAoKX2ZvbGRlcl9pZCJHChVJbXBvcnRlZEZvbGRlcnNSZXN1bHQSLgoHZm9sZGVycxgBIAMoCzIdLmN1cmF0b3IuY29tbW9uLkZvbGRlckRldGFpbHMiKwoOQmFja2ZpbGxSZXN1bHQSGQoRaW1hZ2VzX2JhY2tmaWxsZWQYASABKAMiQQobTWVkaWFNZXRhZGF0YUJhY2tmaWxsUmVzdWx0EhEKCXByb2Nlc3NlZBgBIAEoAxIPCgd1cGRhdGVkGAIgASgDIigKE1Jlc2NhbkZvbGRlclJlcXVlc3QSEQoJZm9sZGVyX2lkGAEgASgDIkgKElJlc2NhbkZvbGRlclJlc3VsdBIRCglmb2xkZXJfaWQYASABKAMSEAoIaW1wb3J0ZWQYAiABKAMSDQoFZm91bmQYAyABKAMiJwoSSW5kZXhGb2xkZXJSZXF1ZXN0EhEKCWZvbGRlcl9pZBgBIAEoAyI2ChFJbmRleEZvbGRlclJlc3VsdBIRCglmb2xkZXJfaWQYASABKAMSDgoGcXVldWVkGAIgASgDIkcKElJlc2NhblNhZmV0eVJlc3VsdBIPCgdzdGFydGVkGAEgASgIEg8KB3BlbmRpbmcYAiABKAMSDwoHbWVzc2FnZRgDIAEoCSJqChRTYWZldHlSZXNjYW5Qcm9ncmVzcxIPCgdydW5uaW5nGAEgASgIEhEKCXByb2Nlc3NlZBgCIAEoAxINCgV0b3RhbBgDIAEoAxIPCgd1cGRhdGVkGAQgASgDEg4KBnN0YXR1cxgFIAEoCSIuCh5FcGhlbWVyYWxDbGFzc2lmeVNhZmV0eVJlcXVlc3QSDAoEcGF0aBgBIAEoCSL/AQodRXBoZW1lcmFsQ2xhc3NpZnlTYWZldHlSZXN1bHQSDAoEcGF0aBgBIAEoCRIXCgpzYWZlX3Njb3JlGAIgASgCSACIAQESGQoMaGVudGFpX3Njb3JlGAMgASgCSAGIAQESFwoKcG9ybl9zY29yZRgEIAEoAkgCiAEBEhcKCnNleHlfc2NvcmUYBSABKAJIA4gBARIaCg1kcmF3aW5nX3Njb3JlGAYgASgCSASIAQFCDQoLX3NhZmVfc2NvcmVCDwoNX2hlbnRhaV9zY29yZUINCgtfcG9ybl9zY29yZUINCgtfc2V4eV9zY29yZUIQCg5fZHJhd2luZ19zY29yZTKxBgoNSW1wb3J0U2VydmljZRJPCgtJbXBvcnRJbWFnZRIiLmN1cmF0b3IuaW1wb3J0LkltcG9ydEltYWdlUmVxdWVzdBocLmN1cmF0b3IuaW1wb3J0LkltcG9ydFJlc3VsdBJTChJHZXRJbXBvcnRlZEZvbGRlcnMSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaJS5jdXJhdG9yLmltcG9ydC5JbXBvcnRlZEZvbGRlcnNSZXN1bHQSTgoUQmFja2ZpbGxJbWFnZUZvbGRlcnMSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaHi5jdXJhdG9yLmltcG9ydC5CYWNrZmlsbFJlc3VsdBJcChVCYWNrZmlsbE1lZGlhTWV0YWRhdGESFi5nb29nbGUucHJvdG9idWYuRW1wdHkaKy5jdXJhdG9yLmltcG9ydC5NZWRpYU1ldGFkYXRhQmFja2ZpbGxSZXN1bHQSVwoMUmVzY2FuRm9sZGVyEiMuY3VyYXRvci5pbXBvcnQuUmVzY2FuRm9sZGVyUmVxdWVzdBoiLmN1cmF0b3IuaW1wb3J0LlJlc2NhbkZvbGRlclJlc3VsdBJUCgtJbmRleEZvbGRlchIiLmN1cmF0b3IuaW1wb3J0LkluZGV4Rm9sZGVyUmVxdWVzdBohLmN1cmF0b3IuaW1wb3J0LkluZGV4Rm9sZGVyUmVzdWx0EkoKDFJlc2NhblNhZmV0eRIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRoiLmN1cmF0b3IuaW1wb3J0LlJlc2NhblNhZmV0eVJlc3VsdBJXChdHZXRTYWZldHlSZXNjYW5Qcm9ncmVzcxIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRokLmN1cmF0b3IuaW1wb3J0LlNhZmV0eVJlc2NhblByb2dyZXNzEngKF0VwaGVtZXJhbENsYXNzaWZ5U2FmZXR5Ei4uY3VyYXRvci5pbXBvcnQuRXBoZW1lcmFsQ2xhc3NpZnlTYWZldHlSZXF1ZXN0Gi0uY3VyYXRvci5pbXBvcnQuRXBoZW1lcmFsQ2xhc3NpZnlTYWZldHlSZXN1bHRiBnByb3RvMw", [file_google_protobuf_empty, file_common]);
 
 /**
  * @generated from message curator.import.ImportImageRequest
@@ -283,6 +283,81 @@ export const SafetyRescanProgressSchema: GenMessage<SafetyRescanProgress> = /*@_
   messageDesc(file_import, 10);
 
 /**
+ * Ephemeral (library-agnostic) safety classification of an arbitrary image
+ * file, used by the Image Toolbox. Nothing is written to the database.
+ *
+ * @generated from message curator.import.EphemeralClassifySafetyRequest
+ */
+export type EphemeralClassifySafetyRequest = Message<"curator.import.EphemeralClassifySafetyRequest"> & {
+  /**
+   * @generated from field: string path = 1;
+   */
+  path: string;
+};
+
+/**
+ * Describes the message curator.import.EphemeralClassifySafetyRequest.
+ * Use `create(EphemeralClassifySafetyRequestSchema)` to create a new message.
+ */
+export const EphemeralClassifySafetyRequestSchema: GenMessage<EphemeralClassifySafetyRequest> = /*@__PURE__*/
+  messageDesc(file_import, 11);
+
+/**
+ * @generated from message curator.import.EphemeralClassifySafetyResult
+ */
+export type EphemeralClassifySafetyResult = Message<"curator.import.EphemeralClassifySafetyResult"> & {
+  /**
+   * @generated from field: string path = 1;
+   */
+  path: string;
+
+  /**
+   * Per-class content-safety probabilities (nsfw-detection-2-mini softmax).
+   * Always present on success; the browser derives NSFW/SFW aggregates.
+   *
+   * softmax[0]
+   *
+   * @generated from field: optional float safe_score = 2;
+   */
+  safeScore?: number | undefined;
+
+  /**
+   * softmax[1]
+   *
+   * @generated from field: optional float hentai_score = 3;
+   */
+  hentaiScore?: number | undefined;
+
+  /**
+   * softmax[2]
+   *
+   * @generated from field: optional float porn_score = 4;
+   */
+  pornScore?: number | undefined;
+
+  /**
+   * softmax[3]
+   *
+   * @generated from field: optional float sexy_score = 5;
+   */
+  sexyScore?: number | undefined;
+
+  /**
+   * softmax[4]
+   *
+   * @generated from field: optional float drawing_score = 6;
+   */
+  drawingScore?: number | undefined;
+};
+
+/**
+ * Describes the message curator.import.EphemeralClassifySafetyResult.
+ * Use `create(EphemeralClassifySafetyResultSchema)` to create a new message.
+ */
+export const EphemeralClassifySafetyResultSchema: GenMessage<EphemeralClassifySafetyResult> = /*@__PURE__*/
+  messageDesc(file_import, 12);
+
+/**
  * @generated from service curator.import.ImportService
  */
 export const ImportService: GenService<{
@@ -349,6 +424,14 @@ export const ImportService: GenService<{
     methodKind: "unary";
     input: typeof EmptySchema;
     output: typeof SafetyRescanProgressSchema;
+  },
+  /**
+   * @generated from rpc curator.import.ImportService.EphemeralClassifySafety
+   */
+  ephemeralClassifySafety: {
+    methodKind: "unary";
+    input: typeof EphemeralClassifySafetyRequestSchema;
+    output: typeof EphemeralClassifySafetyResultSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_import, 0);

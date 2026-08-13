@@ -142,6 +142,15 @@ pub async fn call_typed(
             let resp = client.get_safety_rescan_progress(()).await.map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
+        "ImportService.EphemeralClassifySafety" => {
+            let req = decode::<import_pb::EphemeralClassifySafetyRequest>(request_bytes)?;
+            let mut client = ImportServiceClient::new(channel);
+            let resp = client
+                .ephemeral_classify_safety(req)
+                .await
+                .map_err(status_err)?;
+            Ok(resp.into_inner().encode_to_vec())
+        }
 
         // ---- GalleryService ----
         "GalleryService.GetImage" => {

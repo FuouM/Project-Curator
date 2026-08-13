@@ -14,6 +14,7 @@ service ImportService {
   rpc IndexFolder (IndexFolderRequest) returns (IndexFolderResult);
   rpc RescanSafety (google.protobuf.Empty) returns (RescanSafetyResult);
   rpc GetSafetyRescanProgress (google.protobuf.Empty) returns (SafetyRescanProgress);
+  rpc EphemeralClassifySafety (EphemeralClassifySafetyRequest) returns (EphemeralClassifySafetyResult);
 }
 
 message ImportImageRequest {
@@ -74,4 +75,21 @@ message SafetyRescanProgress {
   int64 total = 3;
   int64 updated = 4;  // rows whose per-class scores changed
   string status = 5;  // "idle" | "scanning" | "complete" | "failed"
+}
+
+// Ephemeral (library-agnostic) safety classification of an arbitrary image
+// file, used by the Image Toolbox. Nothing is written to the database.
+message EphemeralClassifySafetyRequest {
+  string path = 1;
+}
+
+message EphemeralClassifySafetyResult {
+  string path = 1;
+  // Per-class content-safety probabilities (nsfw-detection-2-mini softmax).
+  // Always present on success; the browser derives NSFW/SFW aggregates.
+  optional float safe_score = 2;    // softmax[0]
+  optional float hentai_score = 3;  // softmax[1]
+  optional float porn_score = 4;    // softmax[2]
+  optional float sexy_score = 5;    // softmax[3]
+  optional float drawing_score = 6; // softmax[4]
 }

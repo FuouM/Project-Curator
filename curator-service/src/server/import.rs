@@ -2,9 +2,10 @@ use crate::handlers;
 use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::import::{
-    import_service_server::ImportService, BackfillResult, ImportImageRequest, ImportResult,
-    ImportedFoldersResult, IndexFolderRequest, IndexFolderResult, MediaMetadataBackfillResult,
-    RescanFolderRequest, RescanFolderResult, RescanSafetyResult, SafetyRescanProgress,
+    import_service_server::ImportService, BackfillResult, EphemeralClassifySafetyRequest,
+    EphemeralClassifySafetyResult, ImportImageRequest, ImportResult, ImportedFoldersResult,
+    IndexFolderRequest, IndexFolderResult, MediaMetadataBackfillResult, RescanFolderRequest,
+    RescanFolderResult, RescanSafetyResult, SafetyRescanProgress,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
@@ -160,5 +161,26 @@ impl ImportService for ImportServiceImpl {
     ) -> Result<TonicResponse<SafetyRescanProgress>, Status> {
         let progress = self.ctx.safety.rescan_progress().await;
         Ok(TonicResponse::new(progress))
+    }
+
+    async fn ephemeral_classify_safety(
+        &self,
+        request: TonicRequest<EphemeralClassifySafetyRequest>,
+    ) -> Result<TonicResponse<EphemeralClassifySafetyResult>, Status> {
+        let req = request.into_inner();
+        let c = self
+            .ctx
+            .safety
+            .classify_path(&req.path)
+            .await
+            .map_err(internal_status)?;
+        Ok(TonicResponse::new(EphemeralClassifySafetyResult {
+            path: req.path,
+            safe_score: Some(c.safe_score),
+            hentai_score: Some(c.hentai_score),
+            porn_score: Some(c.porn_score),
+            sexy_score: Some(c.sexy_score),
+            drawing_score: Some(c.drawing_score),
+        }))
     }
 }

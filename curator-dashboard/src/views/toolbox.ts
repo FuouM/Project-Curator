@@ -5,6 +5,7 @@ import { tagSummaryFromProto } from "../proto-adapters";
 import { EphemeralTagImageRequestSchema, EphemeralTagResultSchema } from "../gen/tagging_pb";
 import { EphemeralRunOcrRequestSchema, EphemeralOcrResultSchema } from "../gen/ocr_pb";
 import { EphemeralDetectCharactersRequestSchema, EphemeralDetectionResultSchema, CharacterIdentitiesListSchema } from "../gen/characters_pb";
+import { EphemeralClassifySafetyRequestSchema, EphemeralClassifySafetyResultSchema } from "../gen/import_pb";
 import { TaggerModel } from "../gen/common_pb";
 import type { EphemeralOcrDetection, StoredDetection, BubbleBoxResult } from "../gen/common_pb";
 import { maskPath, renderTagPill, SafeHtml, html, type TagSummary } from "../components";
@@ -12,6 +13,8 @@ import { navigateToView } from "./navigation";
 import { buildOcrLabelSvg } from "../ocr-text";
 import { logJS, setStatusMessage, escapeHtml } from "../utils";
 import { formatCopiedTags } from "../state";
+import { nsfwScore } from "../proto-adapters";
+import { loadNsfwPrefs } from "../nsfw";
 
 const IDENTITY_COLORS = [
   "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6",
@@ -98,9 +101,12 @@ function resetResults() {
   const ocrList = el("toolbox-ocr-list");
   const detList = el("toolbox-detect-list");
   const tagList = el("toolbox-tag-list");
+  const safetyResult = el("toolbox-safety-result");
   if (ocrList) ocrList.innerHTML = "";
   if (detList) detList.innerHTML = "";
   if (tagList) tagList.innerHTML = "";
+  if (safetyResult) safetyResult.innerHTML = "";
+  hideSafetySummary();
   const ocrOverlay = el("toolbox-overlay-ocr");
   const detOverlay = el("toolbox-overlay-detect");
   if (ocrOverlay) { ocrOverlay.innerHTML = ""; ocrOverlay.style.display = "none"; }
@@ -453,6 +459,93 @@ async function runDetection() {
   }
 }
 
+// ── Safety Classification ─────────────────────────────────────────────
+
+/// Render the per-class NSFW probabilities in a two-column layout sized for the
+/// narrow toolbox column: safe categories (Safe, Drawing) on the left, unsafe
+/// categories (Hentai, Porn, Sexy) on the right. The NSFW/SFW totals live next
+/// to the Classify button (see `setSafetySummary`) to save vertical space.
+function renderSafetyHtml(s: { safe_score?: number; hentai_score?: number; porn_score?: number; sexy_score?: number; drawing_score?: number }): string {
+  const threshold = loadNsfwPrefs().threshold;
+  const bar = (label: string, icon: string, value: number): string => {
+    const pct = Math.round(value * 1000) / 10;
+    const danger = label !== "Safe" && label !== "Drawing" && value >= threshold;
+    const safeHighlight = (label === "Safe" || label === "Drawing") && value >= threshold;
+    const bg = danger ? "background:#f8d7da;" : safeHighlight ? "background:#d1e7dd;" : "";
+    return '<div style="display:flex;align-items:center;gap:6px;font-size:11px;padding:3px 6px;' + bg + '">' +
+      '<i class="bi ' + icon + '" style="color:#666;width:14px;"></i>' +
+      '<span style="width:52px;font-weight:600;">' + label + '</span>' +
+      '<div class="prob-bar" style="flex:1;min-width:0;"><div style="height:100%;width:' + pct + '%;background:var(--sys-accent,#0078d7);"></div></div>' +
+      '<span style="width:40px;text-align:right;color:#333;">' + pct + '%</span>' +
+      '</div>';
+  };
+  const col = (rows: string): string =>
+    '<div style="display:flex;flex-direction:column;gap:4px;min-width:0;">' + rows + '</div>';
+  return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+    col(bar("Safe", "bi-shield-check", s.safe_score ?? 0) + bar("Drawing", "bi-palette", s.drawing_score ?? 0)) +
+    col(
+      bar("Hentai", "bi-exclamation-triangle", s.hentai_score ?? 0) +
+      bar("Porn", "bi-exclamation-triangle", s.porn_score ?? 0) +
+      bar("Sexy", "bi-emoji-sunglasses", s.sexy_score ?? 0)
+    ) +
+    '</div>';
+}
+
+function setSafetySummary(ns: number, sf: number) {
+  const summary = el("toolbox-safety-summary");
+  if (!summary) return;
+  summary.innerHTML =
+    '<span style="color:#842029;">NSFW ' + (ns * 1000 / 10).toFixed(1) + '%</span>' +
+    '<span style="color:#2e7d32;margin-left:10px;">SFW ' + (sf * 1000 / 10).toFixed(1) + '%</span>';
+  summary.style.display = "inline-flex";
+}
+
+function hideSafetySummary() {
+  const summary = el("toolbox-safety-summary");
+  if (summary) summary.style.display = "none";
+}
+
+async function runSafety() {
+  if (!requirePath()) return;
+
+  const btn = el<HTMLButtonElement>("toolbox-safety-btn");
+  const status = el("toolbox-safety-status");
+  const resultBox = el("toolbox-safety-result");
+  if (!status || !resultBox) return;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise animate-spin"></i> Classifying...';
+  }
+  setStatusMessage(status, "Running NSFW classification...", "loading");
+
+  try {
+    const resp = await typedCall("ImportService.EphemeralClassifySafety", EphemeralClassifySafetyRequestSchema, {
+      path: currentPath as string,
+    }, EphemeralClassifySafetyResultSchema);
+    const scores = {
+      safe_score: resp.safeScore,
+      hentai_score: resp.hentaiScore,
+      porn_score: resp.pornScore,
+      sexy_score: resp.sexyScore,
+      drawing_score: resp.drawingScore,
+    };
+    resultBox.innerHTML = renderSafetyHtml(scores);
+    setSafetySummary(nsfwScore(scores), (scores.safe_score ?? 0) + (scores.drawing_score ?? 0));
+    setStatusMessage(status, "Classification complete.", "success");
+  } catch (e: any) {
+    logJS("toolbox safety error: " + (e?.message || e));
+    resultBox.innerHTML = "";
+    hideSafetySummary();
+    setStatusMessage(status, `IPC error: ${e?.message || e}`, "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-shield-check"></i> Classify Safety';
+    }
+  }
+}
+
 // ── Fullscreen Preview ────────────────────────────────────────────────
 
 function openFullscreen() {
@@ -569,6 +662,7 @@ export function setupToolbox() {
   el("toolbox-copy-tags-btn")?.addEventListener("click", copyTags);
   el("toolbox-ocr-btn")?.addEventListener("click", runOcr);
   el("toolbox-detect-btn")?.addEventListener("click", runDetection);
+  el("toolbox-safety-btn")?.addEventListener("click", runSafety);
 
   el("toolbox-fullscreen-btn")?.addEventListener("click", openFullscreen);
   const fullscreenOverlay = el("toolbox-fullscreen-overlay");
@@ -727,6 +821,16 @@ export function renderToolboxHtml(): SafeHtml {
           </div>
           <p id="toolbox-detect-status" style="font-size: 11px; color: var(--sys-text-subtle); min-height: 16px; margin: 6px 0 0 0;"></p>
           <div id="toolbox-detect-list" class="toolbox-output" style="display: flex; flex-direction: column; gap: 4px; padding: 4px;"></div>
+        </div>
+
+        <div class="group-box toolbox-panel">
+          <div class="group-box-title"><i class="bi bi-shield-check"></i> Safety Rating</div>
+          <div class="form-group" style="margin-top: 6px; flex-wrap: wrap;">
+            <button type="button" class="win-button" id="toolbox-safety-btn"><i class="bi bi-shield-check"></i> Classify Safety</button>
+            <span id="toolbox-safety-summary" style="display: none; font-size: 11px; font-weight: 600; white-space: nowrap;"></span>
+          </div>
+          <p id="toolbox-safety-status" style="font-size: 11px; color: var(--sys-text-subtle); min-height: 16px; margin: 6px 0 0 0;"></p>
+          <div id="toolbox-safety-result" class="toolbox-output" style="padding: 4px;"></div>
         </div>
       </div>
     </div>
