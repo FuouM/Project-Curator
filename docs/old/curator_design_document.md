@@ -1,5 +1,7 @@
 # Project Curator: Technical Design Document
 
+> **Note (Archival)**: This is the initial foundational technical design document for Project Curator, preserved here for historical and architectural reference. Active specifications and rules are maintained in [`docs/`](../README.md) and [`AGENTS.md`](../../AGENTS.md).
+
 - [Project Curator: Technical Design Document](#project-curator-technical-design-document)
   - [1. Vision \& Guiding Principles](#1-vision--guiding-principles)
   - [2. Core Architecture: The Single-Writer Service Model](#2-core-architecture-the-single-writer-service-model)

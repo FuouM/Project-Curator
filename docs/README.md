@@ -1,29 +1,34 @@
-# Project Curator Documentation
+# Project Curator Documentation Hub
 
-Welcome to the Project Curator technical documentation hub.
+Welcome to the Project Curator technical documentation directory.
 
 ---
 
 ## 🏛️ Architecture & System Design
 
 - [**Workspace & Runtime Architecture**](architecture/workspace_and_runtime.md) — Rust workspace structure, single-writer background daemon, typed binary gRPC IPC bus, storage philosophy.
-- [**Design Document (Reference)**](old/curator_design_document.md) — Core architectural specification and engine subsystem breakdown.
+- [**Initial Design Document (Archival Reference)**](old/curator_design_document.md) — Initial foundational architecture blueprint and subsystem breakdown, preserved for historical reference.
 
 ---
 
 ## 🧠 Machine Learning & Inference Pipelines
 
-- [**ML Models, Preprocessing & Tokenization**](ml/inference_pipelines.md) — Supported models, CLIP/MobileCLIP 77-token zero-padding rules, tensor normalization, and hardware execution providers.
-- [**ML Porting Guide**](old/porting_ml_inference_guide.md) — Porting models, ONNX Runtime execution providers, tensor shapes.
-- [**Image Processing Guide**](old/IMAGE_PROCESSING_FOR_AGENTS.md) — TurboJPEG, WebP, GIF, video thumbnails, and crop caching.
+- [**ML Models, Preprocessing & Tokenization**](ml/inference_pipelines.md) — Supported model pipelines, CLIP/MobileCLIP 77-token zero-padding rules, tensor normalization, and hardware execution providers.
+- [**ML Inference Porting Field Guide**](ml/porting_guide.md) — Deep-dive guide for porting Python ONNX/Safetensors models to Rust `ort`, covering all 9 production pitfalls and step-by-step debugging.
 
 ---
 
-## 🛠️ Development & Engineering
+## 🖼️ Media Engine & Image Processing
 
-- [**Development Workflows & Runtime Constraints**](development/workflows_and_constraints.md) — PowerShell toolchain setup, dev server, ORT DirectML DLLs, CLIP tokenization, IPC latency, double-compilation prevention.
+- [**High-Performance Media & Tensor Preprocessing**](media/image_and_video_processing.md) — Fast native decoding (`turbojpeg`, `libwebp`, `png`), SIMD resizing (`fast_image_resize`), contiguous slice NCHW tensor projection, and video probing.
+
+---
+
+## 🛠️ Development & Engineering Mandates
+
+- [**Development Workflows & Runtime Constraints**](development/workflows_and_constraints.md) — PowerShell toolchain setup, dev server, ORT DirectML DLLs, typed binary IPC transport, and double-compilation prevention.
 - [**Data Integrity & Design System**](rules/data_integrity_and_design_system.md) — SQLite migrations, query performance, vector integrity, WinForms desktop control aesthetic tokens.
-- [**Code Style & Safety Mandates**](rules/code_style_and_safety_mandates.md) — 16 core safety mandates, filesystem preservation, git workflow, self-adversarial audits.
+- [**Code Style & Safety Mandates**](rules/code_style_and_safety_mandates.md) — 16 core safety mandates, filesystem preservation, git workflows, analytical grounding, and action-first protocol.
 
 ---
 

@@ -247,10 +247,9 @@ npx tsc --project tsconfig.json                 # type-check the workspace
 
 ## Documentation
 
-- [`docs/README.md`](docs/README.md) — Documentation index and reference guides
+- [`docs/README.md`](docs/README.md) — Authoritative documentation index and technical reference hub
 - [`AGENTS.md`](AGENTS.md) — Repository architecture, development workflows, and safety mandates
 - [`PLUGINS_FOR_AGENTS.md`](PLUGINS_FOR_AGENTS.md) — Plugin development architecture and API blueprint
-- [`docs/old/curator_design_document.md`](docs/old/curator_design_document.md) — Architecture & design spec
-- [`docs/old/IMAGE_PROCESSING_FOR_AGENTS.md`](docs/old/IMAGE_PROCESSING_FOR_AGENTS.md) — Image decode/preprocess pipeline guide
-- [`docs/old/porting_ml_inference_guide.md`](docs/old/porting_ml_inference_guide.md) — ML inference porting guide
-
+- [`docs/old/curator_design_document.md`](docs/old/curator_design_document.md) — Initial technical design document (preserved for archival reference)
+- [`docs/ml/porting_guide.md`](docs/ml/porting_guide.md) — ML inference porting field guide and debugging workflows
+- [`docs/media/image_and_video_processing.md`](docs/media/image_and_video_processing.md) — Fast media decoding and tensor preprocessing guide
