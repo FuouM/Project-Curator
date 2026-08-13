@@ -21,6 +21,7 @@ export interface GalleryCardViewData {
   width?: number;
   height?: number;
   safety?: SafetyScores;
+  keepLoaded?: boolean;
 }
 
 export function formatDuration(ms: number): string {
@@ -121,7 +122,7 @@ export function renderGalleryCardHtml(img: GalleryCardViewData): SafeHtml {
         <i class="bi ${img.isFavorite ? 'bi-star-fill' : 'bi-star'}"></i>
       </div>
       <div class="${previewClass}" ${img.width && img.height ? `style="aspect-ratio: ${img.width} / ${img.height};"` : ''}>
-        <img data-thumb-id="${img.id}" data-filepath="${img.filepath}" data-is-video="${img.video ? '1' : '0'}" data-pending="${isPending ? '1' : '0'}" ${srcAttr} alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" class="${imgClass}" />
+        <img data-thumb-id="${img.id}" data-filepath="${img.filepath}" data-is-video="${img.video ? '1' : '0'}" data-pending="${isPending ? '1' : '0'}" ${img.keepLoaded ? 'data-keep-loaded="1"' : ''} ${srcAttr} alt="Image Preview" style="width: 100%; height: 100%; object-fit: cover;" class="${imgClass}" />
         <span style="display: none;"><i class="bi bi-image"></i></span>
         ${missingBadge}
         ${videoBadge}

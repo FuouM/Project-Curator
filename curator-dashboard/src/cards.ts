@@ -306,7 +306,10 @@ const lazyObserver = new IntersectionObserver((entries) => {
         }
       }
     } else {
-      // Unload if scrolled out of view and has a loaded src that is a blob URL
+      // Unload if scrolled out of view and has a loaded src that is a blob URL.
+      // Small deterministic grids (dashboard latest imports) set keep-loaded so
+      // their images are never unloaded/re-fetched on scroll.
+      if (img.dataset.keepLoaded === "1") continue;
       const src = img.getAttribute("src");
       if (src && src.startsWith("blob:")) {
         img.removeAttribute("src");
@@ -727,7 +730,7 @@ function handleInfoClick(imageId: number) {
 
 // --- Card Rendering (no per-card event handlers) ---
 
-export function renderCards(cards: CardImageData[], grid: HTMLElement, append = false) {
+export function renderCards(cards: CardImageData[], grid: HTMLElement, append = false, keepLoaded = false) {
   if (!append) {
     clearObservedThumbs();
     grid.innerHTML = "";
@@ -770,6 +773,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement, append = 
       width: img.width ?? undefined,
       height: img.height ?? undefined,
       safety: img.safety,
+      keepLoaded,
     };
 
     // Render pure element string, convert to HTML, and append
@@ -806,7 +810,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement, append = 
   updateThumbProgress();
 }
 
-export function renderImages(images: ImageDetails[], gridId: string, append = false) {
+export function renderImages(images: ImageDetails[], gridId: string, append = false, keepLoaded = false) {
   const grid = document.getElementById(gridId);
   if (!grid) return;
 
@@ -841,7 +845,7 @@ export function renderImages(images: ImageDetails[], gridId: string, append = fa
     },
   }));
 
-  renderCards(cards, grid, append);
+  renderCards(cards, grid, append, keepLoaded);
 }
 
 export function renderSearchResults(matches: SearchMatch[]) {

@@ -142,7 +142,7 @@ async function loadDashboardImages(image_count: number) {
   if (featuredResp.featuredImages.length > 0) {
     renderFeaturedDay(imageDetailsFromProto(featuredResp.featuredImages[0]));
   }
-  renderImages(latestResp.images.map(imageDetailsFromProto), "latest-imports-grid");
+  renderImages(latestResp.images.map(imageDetailsFromProto), "latest-imports-grid", false, true);
 }
 
 export function renderFeaturedDay(featured: ImageDetails) {

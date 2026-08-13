@@ -197,7 +197,7 @@ function init() {
     });
 
     if (d.featuredImages.length > 0) renderFeaturedDay(imageDetailsFromProto(d.featuredImages[0]));
-    renderImages(d.latestImages.map(imageDetailsFromProto), "latest-imports-grid");
+    renderImages(d.latestImages.map(imageDetailsFromProto), "latest-imports-grid", false, true);
   }).catch(() => {});
 
   startStatusPolling();
