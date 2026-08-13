@@ -19,6 +19,8 @@ let pollInterval: number | null = null;
 let activeConversionModelId: string | null = null;
 let activeConversionPollInterval: any = null;
 
+const actionsNormalizer = document.createElement("div");
+
 interface ConversionConsoleState {
   modelId: string;
   logs: string;
@@ -156,7 +158,10 @@ export async function refreshModelStatus() {
 
     renderModelsList(parsedModels, modelPrecisions);
 
-    if (scrollParent) {
+    // Restoring scrollTop scrolls the tab page, which closes any open native
+    // <select> popup in the models panel. Defer the restore until no select
+    // inside the panel is focused (i.e. no dropdown is open).
+    if (scrollParent && !isModelsSelectPopupOpen()) {
       scrollParent.scrollTop = savedScrollTop;
     }
 
@@ -167,6 +172,25 @@ export async function refreshModelStatus() {
   } catch (e: any) {
     container.innerHTML = `<div style="color: #a80000; padding: 8px;">Error: ${e.message || e}</div>`;
   }
+}
+
+/// True when `document.activeElement` is inside the models panel and is a
+/// `<select>` — i.e. a native variant dropdown is open (or the select is
+/// focused). Used to avoid re-render/scroll work that would close the popup.
+function isModelsSelectPopupOpen(): boolean {
+  const ae = document.activeElement as HTMLElement | null;
+  return (
+    !!ae &&
+    ae.tagName === "SELECT" &&
+    !!ae.closest("#settings-models")
+  );
+}
+
+/// True when `el` (or a descendant) currently holds focus.
+function isElementFocused(el: Element | null): boolean {
+  if (!el) return false;
+  const ae = document.activeElement as HTMLElement | null;
+  return !!ae && el.contains(ae);
 }
 
 function getStatusIconHtml(m: ModelStatusInfo): string {
@@ -260,7 +284,17 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
 
       if (fileStatusEl) fileStatusEl.textContent = getFileStatusText(m);
       if (statusIconEl) statusIconEl.innerHTML = getStatusIconHtml(m);
-      if (actionsEl) actionsEl.innerHTML = renderModelActionsHtml(m, modelPrecisions);
+      // Defer replacing the actions row while any of its own <select> elements
+      // is focused (an open native dropdown): destroying a focused select node
+      // closes the popup and swallows the pending click. The state change is
+      // applied by the next refresh once focus leaves the element.
+      if (actionsEl && !isElementFocused(actionsEl)) {
+        const newActionsHtml = renderModelActionsHtml(m, modelPrecisions);
+        actionsNormalizer.innerHTML = newActionsHtml;
+        if (actionsEl.innerHTML !== actionsNormalizer.innerHTML) {
+          actionsEl.innerHTML = newActionsHtml;
+        }
+      }
 
       const consoleState = activeConsoleLogs[m.id];
       if (logContainerEl) {

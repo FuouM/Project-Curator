@@ -205,6 +205,16 @@
         }
       ],
       "quantizable": [],
+      "convert": {
+        "script": "convert_to_onnx.py",
+        "repo": "ashen-sensored/wd-eva02-tagger-2026-canary",
+        "outputs": [
+          {
+            "path": "wd-eva02-tagger-2026-canary/wd-eva02-tagger-2026-canary.onnx",
+            "variant": "onnx"
+          }
+        ]
+      },
       "required_by": []
     },
     {
@@ -232,6 +242,16 @@
         }
       ],
       "quantizable": ["fp16"],
+      "convert": {
+        "script": "convert_nsfw_to_onnx.py",
+        "repo": "viddexa/nsfw-detection-2-mini",
+        "outputs": [
+          {
+            "path": "nsfw-detection-2-mini/onnx/nsfw-detection-2-mini.onnx",
+            "variant": "onnx"
+          }
+        ]
+      },
       "required_by": []
     }
   ]

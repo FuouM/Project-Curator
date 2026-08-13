@@ -112,6 +112,10 @@ struct ModelManifestEntry {
     quantizable: Vec<String>,
     #[serde(default)]
     required_by: Vec<String>,
+    /// Optional in-app Safetensors -> ONNX conversion spec. `None` means the
+    /// model has no convert step.
+    #[serde(default)]
+    convert: Option<ConvertSpec>,
 }
 
 #[derive(serde::Deserialize)]
@@ -119,6 +123,28 @@ struct ManifestFileEntry {
     url: String,
     dest: String,
     sha256: String,
+}
+
+/// Declares how a downloaded Safetensors model is converted to ONNX inside the
+/// app (mirrors `convert_to_onnx.py` / `convert_nsfw_to_onnx.py`).
+#[derive(serde::Deserialize)]
+struct ConvertSpec {
+    #[serde(default)]
+    script: String,
+    #[serde(default)]
+    repo: String,
+    #[serde(default)]
+    outputs: Vec<ConvertOutput>,
+}
+
+/// A single artifact produced by conversion. `path` is relative to the model
+/// dir and `variant` is reported in `quantized_variants` when present (e.g.
+/// "onnx" for the exported FP32 graph).
+#[derive(serde::Deserialize)]
+struct ConvertOutput {
+    path: String,
+    #[serde(default)]
+    variant: String,
 }
 
 /// Get download status for all models.
@@ -147,45 +173,59 @@ pub async fn get_model_status(
             }
         }
 
-        // Check for quantized variants
-        let mut quantized_variants = Vec::new();
-        for format in &entry.quantizable {
-            let mut all_exist = true;
-            let mut has_any = false;
-            for file in &entry.files {
-                if file.dest.ends_with(".onnx") {
-                    has_any = true;
-                    let input_path = model_dir.join(&file.dest);
-                    if let Some(file_name) = input_path.file_name().and_then(|f| f.to_str()) {
-                        let output_name = file_name.replace(".onnx", &format!("_{}.onnx", format));
-                        let output_path = input_path.parent().unwrap().join(output_name);
-                        if !output_path.exists() {
-                            all_exist = false;
-                            break;
-                        }
-                    } else {
-                        all_exist = false;
+        // Collect base ONNX files: declared .onnx sources plus conversion
+        // outputs (a converted Safetensors tagger's ONNX artifact is not a
+        // manifest download file).
+        let mut onnx_bases: Vec<PathBuf> = Vec::new();
+        for file in &entry.files {
+            if file.dest.ends_with(".onnx") {
+                let input_path = model_dir.join(&file.dest);
+                if input_path.exists() {
+                    onnx_bases.push(input_path);
+                }
+            }
+        }
+        if let Some(convert) = &entry.convert {
+            for out in &convert.outputs {
+                if out.path.ends_with(".onnx") {
+                    let input_path = model_dir.join(&out.path);
+                    if input_path.exists() {
+                        onnx_bases.push(input_path);
                     }
                 }
             }
-            if has_any && all_exist {
+        }
+
+        // Check for quantized variants: every base ONNX must have a sibling
+        // "<name>_<format>.onnx" produced by the quantize step.
+        let mut quantized_variants = Vec::new();
+        for format in &entry.quantizable {
+            let all_exist = onnx_bases.iter().all(|input_path| {
+                input_path
+                    .file_name()
+                    .and_then(|f| f.to_str())
+                    .map(|file_name| {
+                        let output_name =
+                            file_name.replace(".onnx", &format!("_{}.onnx", format));
+                        input_path
+                            .parent()
+                            .unwrap()
+                            .join(output_name)
+                            .exists()
+                    })
+                    .unwrap_or(false)
+            });
+            if !onnx_bases.is_empty() && all_exist {
                 quantized_variants.push(format.clone());
             }
         }
 
-        if entry.id == "wd-eva02-tagger-2026-canary" {
-            let onnx_path = model_dir.join("wd-eva02-tagger-2026-canary").join("wd-eva02-tagger-2026-canary.onnx");
-            if onnx_path.exists() {
-                quantized_variants.push("onnx".to_string());
-            }
-        }
-        if entry.id == "nsfw-detection-2-mini" {
-            let onnx_dir = model_dir.join("nsfw-detection-2-mini").join("onnx");
-            if onnx_dir.join("nsfw-detection-2-mini.onnx").exists() {
-                quantized_variants.push("onnx".to_string());
-            }
-            if onnx_dir.join("nsfw-detection-2-mini_fp16.onnx").exists() || onnx_dir.join("nsfw-detection-2-mini-fp16.onnx").exists() {
-                quantized_variants.push("fp16".to_string());
+        // Conversion-produced variants (e.g. the ONNX export of a Safetensors tagger).
+        if let Some(convert) = &entry.convert {
+            for out in &convert.outputs {
+                if model_dir.join(&out.path).exists() {
+                    quantized_variants.push(out.variant.clone());
+                }
             }
         }
 
@@ -1007,14 +1047,14 @@ pub async fn quantize_model(
             }
         }
     }
-    if entry.id == "nsfw-detection-2-mini" {
-        let onnx_dir = model_dir.join("nsfw-detection-2-mini").join("onnx");
-        let fp16_path = onnx_dir.join("nsfw-detection-2-mini-fp16.onnx");
-        let fp32_path = onnx_dir.join("nsfw-detection-2-mini.onnx");
-        if fp32_path.exists() {
-            onnx_paths.push(fp32_path);
-        } else if fp16_path.exists() {
-            onnx_paths.push(fp16_path);
+    if let Some(convert) = &entry.convert {
+        for out in &convert.outputs {
+            if out.path.ends_with(".onnx") {
+                let input_path = model_dir.join(&out.path);
+                if input_path.exists() {
+                    onnx_paths.push(input_path);
+                }
+            }
         }
     }
 
@@ -1068,50 +1108,68 @@ pub async fn quantize_model(
 pub static CONVERSION_RUNNING_MODEL: OnceLock<std::sync::Mutex<Option<String>>> = OnceLock::new();
 pub static CONVERSION_LOGS: OnceLock<std::sync::Mutex<std::collections::HashMap<String, String>>> = OnceLock::new();
 
-/// In-app conversion of a downloaded Safetensors tagger to ONNX.
+/// In-app conversion of a downloaded Safetensors model to ONNX.
 ///
-/// Mirrors `quantize_model`: discovers scripts/venv and runs
-/// `convert_to_onnx.py --skip-download` (the manifest already downloaded the
-/// source files into the model dir). Fails fast with captured output on error.
+/// Driven entirely by the model manifest's `convert` spec: discovers the
+/// declared conversion script and runs it with `--skip-download` (the manifest
+/// already downloaded the source files into the model dir). Fails fast with
+/// captured output on error.
 pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActionOutcome> {
-    if model_id != "wd-eva02-tagger-2026-canary" && model_id != "nsfw-detection-2-mini" {
+    let data_dir = model_dir.parent().unwrap_or(model_dir);
+    let entries = read_manifest(data_dir)?;
+
+    let entry = match entries.iter().find(|e| e.id == model_id) {
+        Some(e) => e,
+        None => {
+            return Ok(ModelActionOutcome {
+                success: false,
+                message: format!("Model '{}' not found in manifest", model_id),
+            });
+        }
+    };
+
+    let convert = match &entry.convert {
+        Some(c) => c,
+        None => {
+            return Ok(ModelActionOutcome {
+                success: false,
+                message: format!(
+                    "Model '{}' does not require conversion (no 'convert' spec in manifest)",
+                    model_id
+                ),
+            });
+        }
+    };
+
+    if convert.script.is_empty() {
         return Ok(ModelActionOutcome {
             success: false,
-            message: format!(
-                "Model '{}' does not require conversion",
-                model_id
-            ),
+            message: format!("Model '{}' manifest 'convert' spec has no script", model_id),
         });
     }
 
     let model_out = model_dir.join(model_id);
-    let source_files_ok = if model_id == "wd-eva02-tagger-2026-canary" {
-        model_out.join("model.safetensors").exists()
-            && model_out.join("selected_tags.csv").exists()
-            && model_out.join("config.json").exists()
-    } else {
-        model_out.join("model.safetensors").exists()
-            && model_out.join("config.json").exists()
-    };
-    if !source_files_ok {
+    let missing: Vec<String> = entry
+        .files
+        .iter()
+        .filter(|f| !model_dir.join(&f.dest).exists())
+        .map(|f| f.dest.clone())
+        .collect();
+    if !missing.is_empty() {
         return Ok(ModelActionOutcome {
             success: false,
             message: format!(
-                "Source files for '{}' not fully downloaded into {:?}. Download the model first.",
-                model_id, model_out
+                "Source files for '{}' not fully downloaded into {:?}. Missing: {}. Download the model first.",
+                model_id,
+                model_out,
+                missing.join(", ")
             ),
         });
     }
 
-    let script_filename = if model_id == "nsfw-detection-2-mini" {
-        "convert_nsfw_to_onnx.py"
-    } else {
-        "convert_to_onnx.py"
-    };
-
-    let project_root = find_script_root(script_filename, model_dir.to_path_buf());
+    let project_root = find_script_root(&convert.script, model_dir.to_path_buf());
     let venv_python = project_root.join("scripts").join("venv").join("Scripts").join("python.exe");
-    let script = project_root.join("scripts").join(script_filename);
+    let script = project_root.join("scripts").join(&convert.script);
 
     if !venv_python.exists() || !script.exists() {
         return Ok(ModelActionOutcome {
@@ -1139,16 +1197,12 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
     let logs_mutex = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
     logs_mutex.lock().unwrap().insert(model_id.to_string(), "Starting conversion process...\n".to_string());
 
-    let repo_arg = if model_id == "nsfw-detection-2-mini" {
-        "viddexa/nsfw-detection-2-mini"
-    } else {
-        "ashen-sensored/wd-eva02-tagger-2026-canary"
-    };
+    let repo_arg = convert.repo.clone();
 
     let target_model_id = model_id.to_string();
     let mut cmd = tokio::process::Command::new(&venv_python);
     cmd.arg(script.to_str().unwrap())
-        .args(["--repo", repo_arg])
+        .args(["--repo", &repo_arg])
         .args(["--out-dir", out_dir_abs.to_str().unwrap()])
         .args(["--skip-download"])
         .stdout(std::process::Stdio::piped())
