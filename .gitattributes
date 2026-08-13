@@ -5,6 +5,10 @@
 # Rust source files
 *.rs text eol=lf
 
+# Protobuf sources (buf copies comments verbatim into generated TS/Rust,
+# so CRLF here would leak into the LF-normalized gen output)
+*.proto text eol=lf
+
 # PowerShell scripts
 *.ps1 text eol=crlf
 
