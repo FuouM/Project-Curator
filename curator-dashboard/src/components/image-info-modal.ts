@@ -202,6 +202,9 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
     parsedHtml +
     mediaHtml +
     safetyHtml +
+    '<div style="margin-top:8px;display:flex;gap:4px;align-items:center;">' +
+    '<button class="win-button" id="info-send-toolbox" title="Open this image in the Image Toolbox" style="font-size:11px;"><i class="bi bi-tools"></i> Send to Image Toolbox</button>' +
+    '</div>' +
     detectionsHtml;
 
   // --- Notes Handling ---
@@ -305,6 +308,16 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
     }
   } catch (e) {
     console.error("Plugin metadata renderer failed:", e);
+  }
+
+  // --- Send to Image Toolbox ---
+  const sendToolboxBtn = body.querySelector("#info-send-toolbox") as HTMLButtonElement;
+  if (sendToolboxBtn) {
+    sendToolboxBtn.addEventListener("click", () => {
+      const modal = document.getElementById("image-info-modal");
+      if (modal) modal.classList.remove("active");
+      import("../views/toolbox").then((m) => m.openToolboxWithImage(img.current_filepath));
+    });
   }
 
   // --- Copy SHA-256 ---

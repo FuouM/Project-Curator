@@ -166,6 +166,19 @@ function requirePath(): boolean {
   return true;
 }
 
+/// Load an image file into the toolbox by path and switch to the toolbox view.
+/// Used by external surfaces (e.g. the Image Details modal) to hand an asset
+/// over to the toolbox without touching the library.
+export function openToolboxWithImage(path: string) {
+  const input = el<HTMLInputElement>("toolbox-image-path-input");
+  if (input) {
+    input.value = path;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  loadImage(path);
+  navigateToView("toolbox");
+}
+
 // ── Reverse Image Search (jump to General Search) ─────────────────────
 
 function runReverseSearch() {
