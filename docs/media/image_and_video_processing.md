@@ -7,6 +7,7 @@ This document outlines the optimization strategy, implementation architecture, a
 ## 1. Architectural Overview & Bottleneck Elimination
 
 Generic image processing in Rust typically introduces performance bottlenecks:
+
 1. **Redundant Intermediate Allocations**: Decoding images to intermediate heap structures (`DynamicImage`), converting to RGB8, and reallocating during resizing.
 2. **Non-SIMD Resizing**: Standard scalar resize algorithms lack hardware SIMD vectorization.
 3. **Inefficient Tensor Projection**: Converting pixel byte buffers into normalized NCHW tensors (`Array4<f32>`) with multi-dimensional strided index math.
@@ -18,6 +19,7 @@ Generic image processing in Rust typically introduces performance bottlenecks:
 ### Phase A: Accelerated Formats & Fast Native Decoding
 
 The `curator-media` engine routes image formats to optimized native decoders:
+
 - **JPEG**: Handled via `turbojpeg` (wrapping SIMD-accelerated `libjpeg-turbo`).
 - **PNG**: Decoded via the `png` crate with `zlib-rs` hardware acceleration.
 - **WebP**: Native `webp` crate wrapping Google's `libwebp` C library for zero-copy raw pixel buffer decoding.
@@ -27,12 +29,14 @@ The `curator-media` engine routes image formats to optimized native decoders:
 ### Phase B: SIMD-Accelerated Resizing
 
 We leverage the `fast_image_resize` crate, utilizing CPU SIMD extensions (AVX2, SSE4.1, NEON):
+
 - SIMD-accelerated Bilinear and Lanczos3 interpolation.
 - Buffer reuse across chunked parallel batch preprocessing to eliminate allocation spikes.
 
 ### Phase C: Optimized NCHW Tensor Projection
 
 Tensor projection in `curator-ml/src/preprocess.rs`:
+
 - **Block Memory Fills**: Standardized normalization values for letterbox padding are precalculated and filled using `slice.fill()`.
 - **Contiguous Slice Access**: Replaced multidimensional `tensor[[batch, channel, y, x]]` indexing with direct pointer offset writes over a flat, contiguous 1D slice representation of the tensor, maximizing CPU cache locality and enabling LLVM auto-vectorization.
 
