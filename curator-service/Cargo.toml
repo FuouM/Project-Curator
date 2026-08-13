@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 curator-core = { path = "../curator-core" }
+curator-db = { path = "../curator-db" }
 curator-ml = { path = "../curator-ml" }
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -20,7 +21,7 @@ bytemuck = "1"
 sqlx = { workspace = true }
 ureq = { workspace = true }
 tonic = { workspace = true }
-tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-stream = { workspace = true }
 tokio-util = "0.7"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sysinfo = { version = "0.33.0" }

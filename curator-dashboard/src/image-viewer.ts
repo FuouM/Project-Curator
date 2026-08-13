@@ -112,6 +112,8 @@ export function openImageViewer(filepath: string, _imageId?: number) {
       video.style.display = "none";
     }
   }
+  // NOTE: The fullscreen viewer intentionally shows the original, unfiltered image.
+  // NSFW blur/hide only applies to grid/dashboard thumbnails (see applyNsfwToCard).
   if (img && !isVideo) img.src = convertFileSrc(filepath);
   modal.classList.add("active");
 

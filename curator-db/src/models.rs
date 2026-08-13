@@ -31,6 +31,17 @@ pub struct Image {
     pub video_frame_path: Option<String>,
     #[sqlx(default)]
     pub note: Option<String>,
+    /// NSFW safety per-class probabilities; `None` = not yet classified.
+    #[sqlx(default)]
+    pub safe_score: Option<f32>,
+    #[sqlx(default)]
+    pub hentai_score: Option<f32>,
+    #[sqlx(default)]
+    pub porn_score: Option<f32>,
+    #[sqlx(default)]
+    pub sexy_score: Option<f32>,
+    #[sqlx(default)]
+    pub drawing_score: Option<f32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]

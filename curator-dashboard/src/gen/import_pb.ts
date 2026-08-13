@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file import.proto.
  */
 export const file_import: GenFile = /*@__PURE__*/
-  fileDesc("CgxpbXBvcnQucHJvdG8SDmN1cmF0b3IuaW1wb3J0IiIKEkltcG9ydEltYWdlUmVxdWVzdBIMCgRwYXRoGAEgASgJIm4KDEltcG9ydFJlc3VsdBIQCghpbWFnZV9pZBgBIAEoAxIOCgZzaGEyNTYYAiABKAkSFgoOaW1wb3J0ZWRfY291bnQYAyABKA0SFgoJZm9sZGVyX2lkGAQgASgDSACIAQFCDAoKX2ZvbGRlcl9pZCJHChVJbXBvcnRlZEZvbGRlcnNSZXN1bHQSLgoHZm9sZGVycxgBIAMoCzIdLmN1cmF0b3IuY29tbW9uLkZvbGRlckRldGFpbHMiKwoOQmFja2ZpbGxSZXN1bHQSGQoRaW1hZ2VzX2JhY2tmaWxsZWQYASABKAMiQQobTWVkaWFNZXRhZGF0YUJhY2tmaWxsUmVzdWx0EhEKCXByb2Nlc3NlZBgBIAEoAxIPCgd1cGRhdGVkGAIgASgDIigKE1Jlc2NhbkZvbGRlclJlcXVlc3QSEQoJZm9sZGVyX2lkGAEgASgDIkgKElJlc2NhbkZvbGRlclJlc3VsdBIRCglmb2xkZXJfaWQYASABKAMSEAoIaW1wb3J0ZWQYAiABKAMSDQoFZm91bmQYAyABKAMiJwoSSW5kZXhGb2xkZXJSZXF1ZXN0EhEKCWZvbGRlcl9pZBgBIAEoAyI2ChFJbmRleEZvbGRlclJlc3VsdBIRCglmb2xkZXJfaWQYASABKAMSDgoGcXVldWVkGAIgASgDMpIECg1JbXBvcnRTZXJ2aWNlEk8KC0ltcG9ydEltYWdlEiIuY3VyYXRvci5pbXBvcnQuSW1wb3J0SW1hZ2VSZXF1ZXN0GhwuY3VyYXRvci5pbXBvcnQuSW1wb3J0UmVzdWx0ElMKEkdldEltcG9ydGVkRm9sZGVycxIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRolLmN1cmF0b3IuaW1wb3J0LkltcG9ydGVkRm9sZGVyc1Jlc3VsdBJOChRCYWNrZmlsbEltYWdlRm9sZGVycxIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRoeLmN1cmF0b3IuaW1wb3J0LkJhY2tmaWxsUmVzdWx0ElwKFUJhY2tmaWxsTWVkaWFNZXRhZGF0YRIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRorLmN1cmF0b3IuaW1wb3J0Lk1lZGlhTWV0YWRhdGFCYWNrZmlsbFJlc3VsdBJXCgxSZXNjYW5Gb2xkZXISIy5jdXJhdG9yLmltcG9ydC5SZXNjYW5Gb2xkZXJSZXF1ZXN0GiIuY3VyYXRvci5pbXBvcnQuUmVzY2FuRm9sZGVyUmVzdWx0ElQKC0luZGV4Rm9sZGVyEiIuY3VyYXRvci5pbXBvcnQuSW5kZXhGb2xkZXJSZXF1ZXN0GiEuY3VyYXRvci5pbXBvcnQuSW5kZXhGb2xkZXJSZXN1bHRiBnByb3RvMw", [file_google_protobuf_empty, file_common]);
+  fileDesc("CgxpbXBvcnQucHJvdG8SDmN1cmF0b3IuaW1wb3J0IiIKEkltcG9ydEltYWdlUmVxdWVzdBIMCgRwYXRoGAEgASgJIm4KDEltcG9ydFJlc3VsdBIQCghpbWFnZV9pZBgBIAEoAxIOCgZzaGEyNTYYAiABKAkSFgoOaW1wb3J0ZWRfY291bnQYAyABKA0SFgoJZm9sZGVyX2lkGAQgASgDSACIAQFCDAoKX2ZvbGRlcl9pZCJHChVJbXBvcnRlZEZvbGRlcnNSZXN1bHQSLgoHZm9sZGVycxgBIAMoCzIdLmN1cmF0b3IuY29tbW9uLkZvbGRlckRldGFpbHMiKwoOQmFja2ZpbGxSZXN1bHQSGQoRaW1hZ2VzX2JhY2tmaWxsZWQYASABKAMiQQobTWVkaWFNZXRhZGF0YUJhY2tmaWxsUmVzdWx0EhEKCXByb2Nlc3NlZBgBIAEoAxIPCgd1cGRhdGVkGAIgASgDIigKE1Jlc2NhbkZvbGRlclJlcXVlc3QSEQoJZm9sZGVyX2lkGAEgASgDIkgKElJlc2NhbkZvbGRlclJlc3VsdBIRCglmb2xkZXJfaWQYASABKAMSEAoIaW1wb3J0ZWQYAiABKAMSDQoFZm91bmQYAyABKAMiJwoSSW5kZXhGb2xkZXJSZXF1ZXN0EhEKCWZvbGRlcl9pZBgBIAEoAyI2ChFJbmRleEZvbGRlclJlc3VsdBIRCglmb2xkZXJfaWQYASABKAMSDgoGcXVldWVkGAIgASgDIkcKElJlc2NhblNhZmV0eVJlc3VsdBIPCgdzdGFydGVkGAEgASgIEg8KB3BlbmRpbmcYAiABKAMSDwoHbWVzc2FnZRgDIAEoCSJqChRTYWZldHlSZXNjYW5Qcm9ncmVzcxIPCgdydW5uaW5nGAEgASgIEhEKCXByb2Nlc3NlZBgCIAEoAxINCgV0b3RhbBgDIAEoAxIPCgd1cGRhdGVkGAQgASgDEg4KBnN0YXR1cxgFIAEoCTK3BQoNSW1wb3J0U2VydmljZRJPCgtJbXBvcnRJbWFnZRIiLmN1cmF0b3IuaW1wb3J0LkltcG9ydEltYWdlUmVxdWVzdBocLmN1cmF0b3IuaW1wb3J0LkltcG9ydFJlc3VsdBJTChJHZXRJbXBvcnRlZEZvbGRlcnMSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaJS5jdXJhdG9yLmltcG9ydC5JbXBvcnRlZEZvbGRlcnNSZXN1bHQSTgoUQmFja2ZpbGxJbWFnZUZvbGRlcnMSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaHi5jdXJhdG9yLmltcG9ydC5CYWNrZmlsbFJlc3VsdBJcChVCYWNrZmlsbE1lZGlhTWV0YWRhdGESFi5nb29nbGUucHJvdG9idWYuRW1wdHkaKy5jdXJhdG9yLmltcG9ydC5NZWRpYU1ldGFkYXRhQmFja2ZpbGxSZXN1bHQSVwoMUmVzY2FuRm9sZGVyEiMuY3VyYXRvci5pbXBvcnQuUmVzY2FuRm9sZGVyUmVxdWVzdBoiLmN1cmF0b3IuaW1wb3J0LlJlc2NhbkZvbGRlclJlc3VsdBJUCgtJbmRleEZvbGRlchIiLmN1cmF0b3IuaW1wb3J0LkluZGV4Rm9sZGVyUmVxdWVzdBohLmN1cmF0b3IuaW1wb3J0LkluZGV4Rm9sZGVyUmVzdWx0EkoKDFJlc2NhblNhZmV0eRIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRoiLmN1cmF0b3IuaW1wb3J0LlJlc2NhblNhZmV0eVJlc3VsdBJXChdHZXRTYWZldHlSZXNjYW5Qcm9ncmVzcxIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRokLmN1cmF0b3IuaW1wb3J0LlNhZmV0eVJlc2NhblByb2dyZXNzYgZwcm90bzM", [file_google_protobuf_empty, file_common]);
 
 /**
  * @generated from message curator.import.ImportImageRequest
@@ -211,6 +211,78 @@ export const IndexFolderResultSchema: GenMessage<IndexFolderResult> = /*@__PURE_
   messageDesc(file_import, 8);
 
 /**
+ * @generated from message curator.import.RescanSafetyResult
+ */
+export type RescanSafetyResult = Message<"curator.import.RescanSafetyResult"> & {
+  /**
+   * false when a rescan is already running
+   *
+   * @generated from field: bool started = 1;
+   */
+  started: boolean;
+
+  /**
+   * images queued for classification
+   *
+   * @generated from field: int64 pending = 2;
+   */
+  pending: bigint;
+
+  /**
+   * @generated from field: string message = 3;
+   */
+  message: string;
+};
+
+/**
+ * Describes the message curator.import.RescanSafetyResult.
+ * Use `create(RescanSafetyResultSchema)` to create a new message.
+ */
+export const RescanSafetyResultSchema: GenMessage<RescanSafetyResult> = /*@__PURE__*/
+  messageDesc(file_import, 9);
+
+/**
+ * @generated from message curator.import.SafetyRescanProgress
+ */
+export type SafetyRescanProgress = Message<"curator.import.SafetyRescanProgress"> & {
+  /**
+   * @generated from field: bool running = 1;
+   */
+  running: boolean;
+
+  /**
+   * @generated from field: int64 processed = 2;
+   */
+  processed: bigint;
+
+  /**
+   * @generated from field: int64 total = 3;
+   */
+  total: bigint;
+
+  /**
+   * rows whose per-class scores changed
+   *
+   * @generated from field: int64 updated = 4;
+   */
+  updated: bigint;
+
+  /**
+   * "idle" | "scanning" | "complete" | "failed"
+   *
+   * @generated from field: string status = 5;
+   */
+  status: string;
+};
+
+/**
+ * Describes the message curator.import.SafetyRescanProgress.
+ * Use `create(SafetyRescanProgressSchema)` to create a new message.
+ */
+export const SafetyRescanProgressSchema: GenMessage<SafetyRescanProgress> = /*@__PURE__*/
+  messageDesc(file_import, 10);
+
+/**
  * @generated from service curator.import.ImportService
  */
 export const ImportService: GenService<{
@@ -261,6 +333,22 @@ export const ImportService: GenService<{
     methodKind: "unary";
     input: typeof IndexFolderRequestSchema;
     output: typeof IndexFolderResultSchema;
+  },
+  /**
+   * @generated from rpc curator.import.ImportService.RescanSafety
+   */
+  rescanSafety: {
+    methodKind: "unary";
+    input: typeof EmptySchema;
+    output: typeof RescanSafetyResultSchema;
+  },
+  /**
+   * @generated from rpc curator.import.ImportService.GetSafetyRescanProgress
+   */
+  getSafetyRescanProgress: {
+    methodKind: "unary";
+    input: typeof EmptySchema;
+    output: typeof SafetyRescanProgressSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_import, 0);

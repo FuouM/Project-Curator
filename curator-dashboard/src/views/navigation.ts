@@ -9,7 +9,7 @@ import { refreshFolders } from "./folders";
 import { refreshComponentStylesheet } from "./components-view";
 import { refreshBatchPreview } from "./filename-parser";
 import { refreshCharacters, setupCharactersView } from "./characters";
-import { refreshModelStatus } from "./models";
+import { refreshModelStatus, clearCompletedModelsConsoleLogs } from "./models";
 import { reobserveUnloadedThumbnails, processVisibleFullImages } from "../cards";
 
 const subtitles: Record<string, { title: string; sub: string }> = {
@@ -159,6 +159,9 @@ export function setupNavigation() {
 
     if (view !== "logs") {
       clearLogsFrontendDom();
+    }
+    if (view !== "models") {
+      clearCompletedModelsConsoleLogs();
     }
 
     if (view === "dashboard") {

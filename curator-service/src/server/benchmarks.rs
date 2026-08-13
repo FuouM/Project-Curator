@@ -55,6 +55,9 @@ fn detection_response(outcome: handlers::benchmarks::DetectionBenchmarkOutcome) 
         manga_bubble_cpu_time_ms: outcome.manga_bubble_cpu_time_ms,
         manga_bubble_gpu_time_ms: outcome.manga_bubble_gpu_time_ms,
         manga_bubble_gpu_error: outcome.manga_bubble_gpu_error,
+        safety_cpu_time_ms: outcome.safety_cpu_time_ms,
+        safety_gpu_time_ms: outcome.safety_gpu_time_ms,
+        safety_gpu_error: outcome.safety_gpu_error,
         has_gpu: outcome.has_gpu,
     }
 }
@@ -169,5 +172,12 @@ impl BenchmarksService for BenchmarksServiceImpl {
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<DetectionBenchmarkResult>, Status> {
         detection(handlers::benchmarks::DetectionBenchmarkKind::MangaBubble, &self.ctx).await
+    }
+
+    async fn run_safety_benchmark(
+        &self,
+        _request: TonicRequest<()>,
+    ) -> Result<TonicResponse<DetectionBenchmarkResult>, Status> {
+        detection(handlers::benchmarks::DetectionBenchmarkKind::Safety, &self.ctx).await
     }
 }

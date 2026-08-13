@@ -132,6 +132,16 @@ pub async fn call_typed(
             let resp = client.index_folder(req).await.map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
+        "ImportService.RescanSafety" => {
+            let mut client = ImportServiceClient::new(channel);
+            let resp = client.rescan_safety(()).await.map_err(status_err)?;
+            Ok(resp.into_inner().encode_to_vec())
+        }
+        "ImportService.GetSafetyRescanProgress" => {
+            let mut client = ImportServiceClient::new(channel);
+            let resp = client.get_safety_rescan_progress(()).await.map_err(status_err)?;
+            Ok(resp.into_inner().encode_to_vec())
+        }
 
         // ---- GalleryService ----
         "GalleryService.GetImage" => {
@@ -643,6 +653,11 @@ pub async fn call_typed(
         "BenchmarksService.RunMangaBubbleBenchmark" => {
             let mut client = BenchmarksServiceClient::new(channel);
             let resp = client.run_manga_bubble_benchmark(()).await.map_err(status_err)?;
+            Ok(resp.into_inner().encode_to_vec())
+        }
+        "BenchmarksService.RunSafetyBenchmark" => {
+            let mut client = BenchmarksServiceClient::new(channel);
+            let resp = client.run_safety_benchmark(()).await.map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
 

@@ -2,6 +2,7 @@ import { html, SafeHtml, ComponentMeta } from './_shared';
 import { maskPath } from './path-utils';
 import { TagSummary } from './tag-pill';
 import { renderCardTagsContainerHtml, renderParsedMetadataHtml, renderIdentityListHtml, ParsedMetadata } from './card-tags';
+import { SafetyScores } from '../types';
 
 export interface GalleryCardViewData {
   id: number;
@@ -19,6 +20,7 @@ export interface GalleryCardViewData {
   badgeHtml?: string;
   width?: number;
   height?: number;
+  safety?: SafetyScores;
 }
 
 export function formatDuration(ms: number): string {
@@ -126,6 +128,7 @@ export function renderGalleryCardHtml(img: GalleryCardViewData): SafeHtml {
         ${img.badgeHtml || ""}
         <div class="copy-btn" title="Copy image to clipboard"><i class="bi bi-clipboard"></i></div>
         <div class="info-btn" title="View image details" data-id="${img.id}"><i class="bi bi-info-circle"></i></div>
+        <div class="nsfw-blackout" aria-hidden="true"></div>
       </div>
       <div class="image-info">
         <div class="image-path-row">

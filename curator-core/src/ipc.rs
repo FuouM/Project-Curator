@@ -94,6 +94,17 @@ pub struct SearchMatch {
     pub favorite: bool,
     #[serde(default)]
     pub is_missing: bool,
+    /// NSFW safety per-class probabilities (optional; `None` = unclassified).
+    #[serde(default)]
+    pub safe_score: Option<f32>,
+    #[serde(default)]
+    pub hentai_score: Option<f32>,
+    #[serde(default)]
+    pub porn_score: Option<f32>,
+    #[serde(default)]
+    pub sexy_score: Option<f32>,
+    #[serde(default)]
+    pub drawing_score: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,6 +138,17 @@ pub struct ImageDetails {
     pub video: Option<VideoSummary>,
     #[serde(default)]
     pub note: Option<String>,
+    /// NSFW safety per-class probabilities (optional; `None` = unclassified).
+    #[serde(default)]
+    pub safe_score: Option<f32>,
+    #[serde(default)]
+    pub hentai_score: Option<f32>,
+    #[serde(default)]
+    pub porn_score: Option<f32>,
+    #[serde(default)]
+    pub sexy_score: Option<f32>,
+    #[serde(default)]
+    pub drawing_score: Option<f32>,
 }
 
 /// Animated media details (present only for animated files, e.g. GIF).

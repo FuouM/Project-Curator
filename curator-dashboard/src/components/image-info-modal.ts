@@ -3,6 +3,8 @@ import { html } from "./_shared";
 import { renderTagPill } from "./tag-pill";
 import { formatDuration } from "./gallery-card";
 import { ImageDetails, CharacterDetection, CharacterIdentity } from "../types";
+import { isClassified, nsfwScore } from "../proto-adapters";
+import { loadNsfwPrefs } from "../nsfw";
 import { showErrorAlert } from "../alert";
 import { attachAutocomplete } from "../autocomplete";
 import { refreshCharacters } from "../views/characters";
@@ -107,6 +109,42 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
       '</tbody></table></div>'
     : "";
 
+  const safetyHtml = isClassified(img)
+    ? (() => {
+        const threshold = loadNsfwPrefs().threshold;
+        const ns = nsfwScore(img);
+        const sf = (img.safe_score ?? 0) + (img.drawing_score ?? 0);
+        const rows: { label: string; icon: string; value: number }[] = [
+          { label: "Safe", icon: "bi-shield-check", value: img.safe_score ?? 0 },
+          { label: "Hentai", icon: "bi-exclamation-triangle", value: img.hentai_score ?? 0 },
+          { label: "Porn", icon: "bi-exclamation-triangle", value: img.porn_score ?? 0 },
+          { label: "Sexy", icon: "bi-emoji-sunglasses", value: img.sexy_score ?? 0 },
+          { label: "Drawing", icon: "bi-palette", value: img.drawing_score ?? 0 },
+        ];
+        const rowHtml = rows.map((r) => {
+          const pct = Math.round(r.value * 1000) / 10;
+          const danger = r.label !== "Safe" && r.label !== "Drawing" && r.value >= threshold;
+          const safeHighlight = (r.label === "Safe" || r.label === "Drawing") && r.value >= threshold;
+          const bg = danger ? "background:#f8d7da;" : safeHighlight ? "background:#d1e7dd;" : "";
+          return '<div style="display:flex;align-items:center;gap:6px;font-size:11px;padding:3px 6px;' + bg + '">' +
+            '<i class="bi ' + r.icon + '" style="color:#666;width:14px;"></i>' +
+            '<span style="width:64px;font-weight:600;">' + r.label + '</span>' +
+            '<div class="prob-bar" style="flex:1;"><div style="height:100%;width:' + pct + '%;background:var(--sys-accent,#0078d7);"></div></div>' +
+            '<span style="width:48px;text-align:right;color:#333;">' + pct + '%</span>' +
+            '</div>';
+        }).join("");
+        const nsPct = (ns * 1000 / 10).toFixed(1);
+        const sfPct = (sf * 1000 / 10).toFixed(1);
+        return '<div class="group-box" style="margin-top:8px;"><div class="group-box-title"><i class="bi bi-shield-check"></i> Safety Classification</div>' +
+          '<div style="display:flex;gap:16px;font-size:11px;font-weight:600;margin-bottom:6px;">' +
+          '<span style="color:#842029;">NSFW ' + nsPct + '%</span>' +
+          '<span style="color:#2e7d32;">SFW ' + sfPct + '%</span>' +
+          '</div>' +
+          '<div style="display:flex;flex-direction:column;gap:4px;">' + rowHtml + '</div>' +
+          '</div>';
+      })()
+    : "";
+
   const catBreakdown = Object.entries(tagCategories).map(([cat, count]) => `${cat}: ${count}`).join(", ");
   const tagsHtml = img.tags?.length
     ? img.tags.map(t => renderTagPill(t)).join(" ")
@@ -163,6 +201,7 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
     notesHtml +
     parsedHtml +
     mediaHtml +
+    safetyHtml +
     detectionsHtml;
 
   // --- Notes Handling ---

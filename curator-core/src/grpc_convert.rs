@@ -85,6 +85,11 @@ impl From<ImageDetails> for commonpb::ImageDetails {
             animation: v.animation.map(Into::into),
             video: v.video.map(Into::into),
             note: v.note,
+            safe_score: v.safe_score,
+            hentai_score: v.hentai_score,
+            porn_score: v.porn_score,
+            sexy_score: v.sexy_score,
+            drawing_score: v.drawing_score,
         }
     }
 }
@@ -105,6 +110,11 @@ impl From<SearchMatch> for commonpb::SearchMatch {
             video: v.video.map(Into::into),
             favorite: v.favorite,
             is_missing: v.is_missing,
+            safe_score: v.safe_score,
+            hentai_score: v.hentai_score,
+            porn_score: v.porn_score,
+            sexy_score: v.sexy_score,
+            drawing_score: v.drawing_score,
         }
     }
 }

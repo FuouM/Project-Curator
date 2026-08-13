@@ -12,6 +12,8 @@ service ImportService {
   rpc BackfillMediaMetadata (google.protobuf.Empty) returns (MediaMetadataBackfillResult);
   rpc RescanFolder (RescanFolderRequest) returns (RescanFolderResult);
   rpc IndexFolder (IndexFolderRequest) returns (IndexFolderResult);
+  rpc RescanSafety (google.protobuf.Empty) returns (RescanSafetyResult);
+  rpc GetSafetyRescanProgress (google.protobuf.Empty) returns (SafetyRescanProgress);
 }
 
 message ImportImageRequest {
@@ -58,4 +60,18 @@ message IndexFolderResult {
   int64 folder_id = 1;
   // Media files newly queued for vectorization.
   int64 queued = 2;
+}
+
+message RescanSafetyResult {
+  bool started = 1;   // false when a rescan is already running
+  int64 pending = 2;  // images queued for classification
+  string message = 3;
+}
+
+message SafetyRescanProgress {
+  bool running = 1;
+  int64 processed = 2;
+  int64 total = 3;
+  int64 updated = 4;  // rows whose per-class scores changed
+  string status = 5;  // "idle" | "scanning" | "complete" | "failed"
 }

@@ -4,6 +4,7 @@ import { maskPath, SafeHtml, html } from "../components";
 import { renderImages, attachCardEventHandlers } from "../cards";
 import { renderParsedMetadataHtml, renderCardTagsContainerHtml, renderIdentityListHtml } from "../components/card-tags";
 import { findSimilar } from "./concepts";
+import { applyNsfwToCard, loadNsfwPrefs } from "../nsfw";
 import { imageDetailsFromProto, taggerStatusInfoFromProto } from "../proto-adapters";
 import { ImageDetails } from "../types";
 import { StatusResultSchema, DashboardInitResultSchema, type StatusResult } from "../gen/system_pb";
@@ -170,6 +171,7 @@ export function renderFeaturedDay(featured: ImageDetails) {
           <img src="${srcUrl}" alt="Featured Image" style="width: 100%; height: 100%; object-fit: cover;" />
           <div class="vector-badge ${badgeClass}">${featured.vector_state}</div>
           <div class="featured-badge-overlay"><i class="bi bi-stars"></i> Feature of the Day</div>
+          <div class="nsfw-blackout" aria-hidden="true"></div>
           <div class="copy-btn" title="Copy image to clipboard"><i class="bi bi-clipboard"></i></div>
           <div class="info-btn" title="View image details" data-id="${featured.id}"><i class="bi bi-info-circle"></i></div>
         </div>
@@ -201,6 +203,18 @@ export function renderFeaturedDay(featured: ImageDetails) {
   `;
 
   featuredCardCleanup = attachCardEventHandlers(container, featured.id, featured.current_filepath, featured, ".featured-preview", true);
+
+  const featuredCardEl = container.querySelector(".featured-card") as HTMLElement | null;
+  if (featuredCardEl) {
+    featuredCardEl.dataset.nsfw = JSON.stringify({
+      safe_score: featured.safe_score,
+      hentai_score: featured.hentai_score,
+      porn_score: featured.porn_score,
+      sexy_score: featured.sexy_score,
+      drawing_score: featured.drawing_score,
+    });
+    applyNsfwToCard(featuredCardEl, featured, loadNsfwPrefs());
+  }
 
   const tagList = container.querySelector(".featured-details .tag-list") as HTMLElement;
   const card = container.querySelector(".featured-card") as HTMLElement;

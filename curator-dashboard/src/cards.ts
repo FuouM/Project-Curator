@@ -17,6 +17,7 @@ import {
   SetFavoriteRequestSchema,
 } from "./gen/gallery_pb";
 import { imageDetailsFromProto } from "./proto-adapters";
+import { applyNsfwToCard, loadNsfwPrefs } from "./nsfw";
 
 // --- Thumbnail Queue ---
 const MAX_CONCURRENT = 2;
@@ -768,12 +769,18 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement, append = 
       badgeHtml: img.badgeHtml,
       width: img.width ?? undefined,
       height: img.height ?? undefined,
+      safety: img.safety,
     };
 
     // Render pure element string, convert to HTML, and append
     const host = document.createElement("div");
     host.innerHTML = renderGalleryCardHtml(viewData).trim();
     const cardNode = host.firstElementChild as HTMLElement;
+
+    if (img.safety) {
+      cardNode.dataset.nsfw = JSON.stringify(img.safety);
+      applyNsfwToCard(cardNode, img.safety, loadNsfwPrefs());
+    }
 
     // Observe new image elements before appending (appending empties the fragment)
     cardNode.querySelectorAll<HTMLImageElement>("img[data-thumb-id]").forEach(imgEl => {
@@ -825,6 +832,13 @@ export function renderImages(images: ImageDetails[], gridId: string, append = fa
     video: img.video,
     width: img.width ?? undefined,
     height: img.height ?? undefined,
+    safety: {
+      safe_score: img.safe_score,
+      hentai_score: img.hentai_score,
+      porn_score: img.porn_score,
+      sexy_score: img.sexy_score,
+      drawing_score: img.drawing_score,
+    },
   }));
 
   renderCards(cards, grid, append);
@@ -859,6 +873,13 @@ export function renderSearchResults(matches: SearchMatch[]) {
       video: m.video,
       width: m.width ?? undefined,
       height: m.height ?? undefined,
+      safety: {
+        safe_score: m.safe_score,
+        hentai_score: m.hentai_score,
+        porn_score: m.porn_score,
+        sexy_score: m.sexy_score,
+        drawing_score: m.drawing_score,
+      },
     };
   });
 

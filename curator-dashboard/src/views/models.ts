@@ -19,6 +19,29 @@ let pollInterval: number | null = null;
 let activeConversionModelId: string | null = null;
 let activeConversionPollInterval: any = null;
 
+interface ConversionConsoleState {
+  modelId: string;
+  logs: string;
+  statusText: string;
+  isRunning: boolean;
+}
+
+const activeConsoleLogs: Record<string, ConversionConsoleState> = {};
+const dismissedConsoleLogs = new Set<string>();
+
+export function clearCompletedModelsConsoleLogs() {
+  for (const [modelId, state] of Object.entries(activeConsoleLogs)) {
+    if (!state.isRunning) {
+      delete activeConsoleLogs[modelId];
+      dismissedConsoleLogs.add(modelId);
+      const logContainer = document.getElementById(`conversion-log-container-${modelId}`);
+      if (logContainer) {
+        logContainer.style.display = "none";
+      }
+    }
+  }
+}
+
 // Expose actions to window so that inline buttons/event handlers can access them
 (window as any).downloadModel = downloadModel;
 (window as any).cancelDownload = cancelDownload;
@@ -59,11 +82,13 @@ function downloadProgressFromProto(p: PDownloadProgress): DownloadProgress {
   };
 }
 
-function modelPrecisionsFromProto(map: { [key: string]: ModelPrecision } | undefined): Record<string, "original" | "int8"> {
-  const out: Record<string, "original" | "int8"> = {};
+function modelPrecisionsFromProto(map: { [key: string]: ModelPrecision } | undefined): Record<string, "original" | "fp16" | "int8"> {
+  const out: Record<string, "original" | "fp16" | "int8"> = {};
   if (!map) return out;
   for (const [k, v] of Object.entries(map)) {
-    out[k] = v === ModelPrecision.INT8 ? "int8" : "original";
+    if (v === ModelPrecision.INT8) out[k] = "int8";
+    else if (v === ModelPrecision.FP16) out[k] = "fp16";
+    else out[k] = "original";
   }
   return out;
 }
@@ -86,17 +111,54 @@ export async function refreshModelStatus() {
   const container = document.getElementById("settings-models");
   if (!container) return;
 
-  container.innerHTML = `<div style="padding: 8px; text-align: center;"><i class="bi bi-arrow-repeat spin"></i> Loading models status...</div>`;
+  const scrollParent = container.closest(".tab-page") || container.closest("#view-settings") || container.parentElement || document.documentElement;
+  const savedScrollTop = scrollParent ? scrollParent.scrollTop : 0;
+
+  if (container.children.length === 0) {
+    container.innerHTML = `<div style="padding: 8px; text-align: center;"><i class="bi bi-arrow-repeat spin"></i> Loading models status...</div>`;
+  }
 
   try {
     const resp = await typedCall("ModelsService.GetModelStatus", null, null, ModelStatusResultSchema);
 
-    let modelPrecisions: Record<string, "original" | "int8"> = {};
+    let modelPrecisions: Record<string, "original" | "fp16" | "int8"> = {};
     try {
       const settingsResp = await typedCall("SystemService.GetSettings", null, null, SettingsResultSchema);
       modelPrecisions = modelPrecisionsFromProto(settingsResp.modelPrecisions);
     } catch (se) {}
-    renderModelsList(resp.models.map(modelStatusInfoFromProto), modelPrecisions);
+    // Check conversion logs for models that support conversion to sync background completions
+    const parsedModels = resp.models.map(modelStatusInfoFromProto);
+    for (const m of parsedModels) {
+      if (m.files.some((f) => f.dest.endsWith(".safetensors"))) {
+        try {
+          const logResp = await typedCall("ModelsService.GetConversionLogs", ModelIdRequestSchema, { modelId: m.id }, ConversionLogsResultSchema);
+          if (logResp.logs && logResp.logs.trim().length > 0) {
+            const isSuccess = logResp.logs.includes("successfully") || logResp.logs.includes("conversion complete");
+            const statusText = logResp.isRunning ? "Converting..." : (isSuccess ? "Completed" : "Failed");
+
+            // Only track if not dismissed, OR if currently running
+            if (logResp.isRunning || (!dismissedConsoleLogs.has(m.id) && (activeConsoleLogs[m.id] || isSuccess))) {
+              activeConsoleLogs[m.id] = {
+                modelId: m.id,
+                logs: logResp.logs,
+                statusText,
+                isRunning: logResp.isRunning,
+              };
+              if (logResp.isRunning) {
+                dismissedConsoleLogs.delete(m.id);
+                resumeConversionPolling(m.id);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    renderModelsList(parsedModels, modelPrecisions);
+
+    if (scrollParent) {
+      scrollParent.scrollTop = savedScrollTop;
+    }
 
     const progResp = await typedCall("ModelsService.GetDownloadProgress", null, null, DownloadProgressResultSchema);
     if (progResp.downloads.length > 0) {
@@ -107,12 +169,104 @@ export async function refreshModelStatus() {
   }
 }
 
-function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<string, "original" | "int8">) {
+function getStatusIconHtml(m: ModelStatusInfo): string {
+  return m.status === "downloaded"
+    ? '<span style="color: #2e7d32; font-weight: bold;"><i class="bi bi-check-circle-fill"></i> Installed</span>'
+    : m.status === "partial"
+      ? '<span style="color: #b78103; font-weight: bold;"><i class="bi bi-exclamation-circle-fill"></i> Partial</span>'
+      : '<span style="color: #666666;"><i class="bi bi-circle"></i> Not Installed</span>';
+}
+
+function getFileStatusText(m: ModelStatusInfo): string {
+  const filesCount = m.files.length;
+  const downloadedFilesCount = m.downloaded_files.length;
+  const sizeStr = m.total_size > 0
+    ? ` (${formatBytes(m.downloaded_size)} / ${formatBytes(m.total_size)})`
+    : m.downloaded_size > 0
+      ? ` (${formatBytes(m.downloaded_size)})`
+      : "";
+  return `${downloadedFilesCount}/${filesCount} files ready${sizeStr}`;
+}
+
+function renderModelActionsHtml(m: ModelStatusInfo, modelPrecisions: Record<string, "original" | "fp16" | "int8">): string {
+  let actionsHtml = "";
+  if (m.status !== "downloaded") {
+    actionsHtml += `<button class="win-button primary" onclick="downloadModel('${m.id}')"><i class="bi bi-download"></i> Download</button>`;
+  } else {
+    actionsHtml += `<button class="win-button danger" onclick="removeModel('${m.id}')"><i class="bi bi-trash"></i> Delete</button>`;
+  }
+
+  const needsConversion = m.files.some(f => f.dest.endsWith(".safetensors"));
+  if (m.status === "downloaded" && needsConversion) {
+    const isConverted = m.quantized_variants.includes("onnx");
+    if (isConverted) {
+      actionsHtml += `<span style="margin-left: 12px; color: #2e7d32; padding: 2px 4px; border: 1px solid #a5d6a7; background: #e8f5e9; border-radius: 2px; font-size: 11px;"><i class="bi bi-check"></i> ONNX Converted</span>`;
+    } else {
+      actionsHtml += `<button class="win-button" style="margin-left: 12px; font-weight: bold; background-color: #2b5797; color: white;" id="convert-btn-${m.id}" onclick="convertModel('${m.id}')"><i class="bi bi-gear-fill"></i> Convert to ONNX</button>`;
+    }
+  }
+
+  if (m.status === "downloaded" && m.quantizable && m.quantizable.length > 0) {
+    actionsHtml += `<span style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; font-size: 11px;">`;
+    actionsHtml += `Quantize:`;
+    for (const fmt of m.quantizable) {
+      const isDone = m.quantized_variants.includes(fmt);
+      if (isDone) {
+        actionsHtml += `<span style="color: #2e7d32; padding: 2px 4px; border: 1px solid #a5d6a7; background: #e8f5e9; border-radius: 2px;">${fmt.toUpperCase()} (Done)</span>`;
+      } else {
+        actionsHtml += `<button class="win-button" style="padding: 2px 6px; height: 18px; font-size: 10px;" onclick="quantizeModel('${m.id}', '${fmt}')">${fmt.toUpperCase()}</button>`;
+      }
+    }
+    actionsHtml += `</span>`;
+  }
+
+  if (m.status === "downloaded" && m.quantizable && m.quantizable.length > 0) {
+    const currentPrec = modelPrecisions[m.id] || "original";
+    actionsHtml += `<span style="margin-left: 12px; display: inline-flex; align-items: center; gap: 4px; font-size: 11px;">`;
+    actionsHtml += `Active Variant:`;
+    actionsHtml += `<select class="input-field" style="padding: 1px 4px; height: 20px; font-size: 11px; width: 100px;" onchange="updateModelPrecision('${m.id}', this.value)">`;
+    actionsHtml += `<option value="original" ${currentPrec === "original" ? "selected" : ""}>Original</option>`;
+    for (const fmt of m.quantizable) {
+      const isDone = m.quantized_variants.includes(fmt);
+      actionsHtml += `<option value="${fmt}" ${currentPrec === fmt ? "selected" : ""} ${!isDone ? "disabled" : ""}>${fmt.toUpperCase()}</option>`;
+    }
+    actionsHtml += `</select>`;
+    actionsHtml += `</span>`;
+  }
+
+  return actionsHtml;
+}
+
+function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<string, "original" | "fp16" | "int8">) {
   const container = document.getElementById("settings-models");
   if (!container) return;
 
   if (models.length === 0) {
     container.innerHTML = `<div style="padding: 8px; color: #666;">No models defined in manifest.</div>`;
+    return;
+  }
+
+  // If model cards already exist in the DOM, perform targeted in-place element updates without replacing card DOM nodes
+  const existingCards = container.querySelectorAll("[id^='model-card-']");
+  if (existingCards.length > 0 && container.children.length > 0) {
+    for (const m of models) {
+      const card = document.getElementById(`model-card-${m.id}`);
+      if (!card) continue;
+
+      const actionsEl = document.getElementById(`model-actions-${m.id}`);
+      const fileStatusEl = document.getElementById(`file-status-${m.id}`);
+      const statusIconEl = document.getElementById(`status-icon-${m.id}`);
+      const logContainerEl = document.getElementById(`conversion-log-container-${m.id}`);
+
+      if (fileStatusEl) fileStatusEl.textContent = getFileStatusText(m);
+      if (statusIconEl) statusIconEl.innerHTML = getStatusIconHtml(m);
+      if (actionsEl) actionsEl.innerHTML = renderModelActionsHtml(m, modelPrecisions);
+
+      const consoleState = activeConsoleLogs[m.id];
+      if (logContainerEl) {
+        logContainerEl.style.display = consoleState ? "block" : "none";
+      }
+    }
     return;
   }
 
@@ -143,66 +297,9 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
     `;
 
     for (const m of categories[cat]) {
-      const statusIcon = m.status === "downloaded"
-        ? '<span style="color: #2e7d32; font-weight: bold;"><i class="bi bi-check-circle-fill"></i> Installed</span>'
-        : m.status === "partial"
-          ? '<span style="color: #b78103; font-weight: bold;"><i class="bi bi-exclamation-circle-fill"></i> Partial</span>'
-          : '<span style="color: #666666;"><i class="bi bi-circle"></i> Not Installed</span>';
-
-      const filesCount = m.files.length;
-      const downloadedFilesCount = m.downloaded_files.length;
-
-      const sizeStr = m.total_size > 0
-        ? ` (${formatBytes(m.downloaded_size)} / ${formatBytes(m.total_size)})`
-        : m.downloaded_size > 0
-          ? ` (${formatBytes(m.downloaded_size)})`
-          : "";
-
-      const fileStatusText = `${downloadedFilesCount}/${filesCount} files ready${sizeStr}`;
-
-      let actionsHtml = "";
-      if (m.status !== "downloaded") {
-        actionsHtml += `<button class="win-button primary" onclick="downloadModel('${m.id}')"><i class="bi bi-download"></i> Download</button>`;
-      } else {
-        actionsHtml += `<button class="win-button danger" onclick="removeModel('${m.id}')"><i class="bi bi-trash"></i> Delete</button>`;
-      }
-
-      if (m.status === "downloaded" && m.id === "wd-eva02-tagger-2026-canary") {
-        const isConverted = m.quantized_variants.includes("onnx");
-        if (isConverted) {
-          actionsHtml += `<span style="margin-left: 12px; color: #2e7d32; padding: 2px 4px; border: 1px solid #a5d6a7; background: #e8f5e9; border-radius: 2px; font-size: 11px;"><i class="bi bi-check"></i> ONNX Converted</span>`;
-        } else {
-          actionsHtml += `<button class="win-button" style="margin-left: 12px; font-weight: bold; background-color: #2b5797; color: white;" id="convert-btn-${m.id}" onclick="convertModel('${m.id}')"><i class="bi bi-gear-fill"></i> Convert to ONNX</button>`;
-        }
-      }
-
-      if (m.status === "downloaded" && m.quantizable && m.quantizable.length > 0) {
-        actionsHtml += `<span style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; font-size: 11px;">`;
-        actionsHtml += `Quantize:`;
-        for (const fmt of m.quantizable) {
-          const isDone = m.quantized_variants.includes(fmt);
-          if (isDone) {
-            actionsHtml += `<span style="color: #2e7d32; padding: 2px 4px; border: 1px solid #a5d6a7; background: #e8f5e9; border-radius: 2px;">${fmt.toUpperCase()} (Done)</span>`;
-          } else {
-            actionsHtml += `<button class="win-button" style="padding: 2px 6px; height: 18px; font-size: 10px;" onclick="quantizeModel('${m.id}', '${fmt}')">${fmt.toUpperCase()}</button>`;
-          }
-        }
-        actionsHtml += `</span>`;
-      }
-
-      if (m.status === "downloaded" && m.quantizable && m.quantizable.length > 0) {
-        const currentPrec = modelPrecisions[m.id] || "original";
-        actionsHtml += `<span style="margin-left: 12px; display: inline-flex; align-items: center; gap: 4px; font-size: 11px;">`;
-        actionsHtml += `Active Variant:`;
-        actionsHtml += `<select class="input-field" style="padding: 1px 4px; height: 20px; font-size: 11px; width: 100px;" onchange="updateModelPrecision('${m.id}', this.value)">`;
-        actionsHtml += `<option value="original" ${currentPrec === "original" ? "selected" : ""}>Original</option>`;
-        for (const fmt of m.quantizable) {
-          const isDone = m.quantized_variants.includes(fmt);
-          actionsHtml += `<option value="${fmt}" ${currentPrec === fmt ? "selected" : ""} ${!isDone ? "disabled" : ""}>${fmt.toUpperCase()}</option>`;
-        }
-        actionsHtml += `</select>`;
-        actionsHtml += `</span>`;
-      }
+      const statusIcon = getStatusIconHtml(m);
+      const fileStatusText = getFileStatusText(m);
+      const actionsHtml = renderModelActionsHtml(m, modelPrecisions);
 
       const reqLabel = m.required_by.length > 0
         ? `<div style="font-size: 10px; color: #666; margin-top: 2px;">Required by: ${m.required_by.join(", ")}</div>`
@@ -212,6 +309,11 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
         ? `<span style="font-size: 9px; padding: 1px 4px; border: 1px solid #b8daff; background: #cce5ff; color: #004085; margin-left: 6px; font-weight: normal; vertical-align: middle;">Optional</span>`
         : "";
 
+      const consoleState = activeConsoleLogs[m.id];
+      const isConsoleVisible = !!consoleState;
+      const logContent = consoleState ? consoleState.logs : "";
+      const logStatusText = consoleState ? consoleState.statusText : "Converting...";
+
       htmlResult += `
         <div id="model-card-${m.id}" style="padding-bottom: 12px; border-bottom: 1px solid #e0e0e0; display: flex; flex-direction: column; gap: 4px;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -219,23 +321,23 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
               <strong style="font-size: 13px;">${m.name}</strong> ${optLabel}
               <div style="font-size: 11px; color: #555; margin-top: 2px;">${m.description}</div>
               ${m.url ? `<div style="font-size: 10px; margin-top: 2px;"><a href="${m.url}" target="_blank" rel="noopener" style="color: #2b5797; text-decoration: none;">${m.url} <i class="bi bi-box-arrow-up-right" style="font-size: 9px;"></i></a></div>` : ""}
-              <div style="font-size: 11px; color: #777; margin-top: 2px;">${fileStatusText}</div>
+              <div id="file-status-${m.id}" style="font-size: 11px; color: #777; margin-top: 2px;">${fileStatusText}</div>
               ${reqLabel}
             </div>
             <div style="text-align: right; font-size: 11px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
-              <div>Status: ${statusIcon}</div>
+              <div>Status: <span id="status-icon-${m.id}">${statusIcon}</span></div>
               <div style="display: flex; gap: 6px;" id="model-actions-${m.id}">
                 ${actionsHtml}
               </div>
             </div>
           </div>
           <div id="progress-${m.id}" class="model-progress" style="display: none;"></div>
-          <div id="conversion-log-container-${m.id}" style="display: ${m.id === activeConversionModelId ? 'block' : 'none'}; margin-top: 8px; border: 1px solid var(--sys-border-dark, #b0b0b0); background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', monospace; font-size: 11px; padding: 6px; border-radius: 2px; box-sizing: border-box;">
+          <div id="conversion-log-container-${m.id}" style="display: ${isConsoleVisible ? 'block' : 'none'}; margin-top: 8px; border: 1px solid var(--sys-border-dark, #b0b0b0); background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', monospace; font-size: 11px; padding: 6px; border-radius: 2px; box-sizing: border-box;">
             <div style="font-weight: bold; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; color: #858585;">
               <span>CONVERSION CONSOLE LOGS</span>
-              <span id="conversion-status-${m.id}">Converting...</span>
+              <span id="conversion-status-${m.id}">${logStatusText}</span>
             </div>
-            <pre id="conversion-log-text-${m.id}" style="margin: 0; max-height: 150px; overflow-y: auto; white-space: pre-wrap; font-family: inherit; line-height: 1.4; color: #a9b7c6; text-align: left;"></pre>
+            <pre id="conversion-log-text-${m.id}" style="margin: 0; max-height: 150px; overflow-y: auto; white-space: pre-wrap; font-family: inherit; line-height: 1.4; color: #a9b7c6; text-align: left;">${logContent}</pre>
           </div>
         </div>
       `;
@@ -283,10 +385,40 @@ export function stopModelDownloadPolling() {
 }
 
 function updateProgressBars(downloads: DownloadProgress[]) {
+  const activeIds = new Set(downloads.map((d) => d.model_id));
+
+  // Hide progress bar and restore actions for any model not in the active downloads list
+  const allProgressEls = document.querySelectorAll("[id^='progress-']");
+  allProgressEls.forEach((el) => {
+    const modelId = el.id.replace("progress-", "");
+    if (!activeIds.has(modelId)) {
+      (el as HTMLElement).style.display = "none";
+      const actionsEl = document.getElementById(`model-actions-${modelId}`);
+      if (actionsEl) actionsEl.style.display = "flex";
+    }
+  });
+
   for (const dl of downloads) {
     const el = document.getElementById(`progress-${dl.model_id}`);
     const actionsEl = document.getElementById(`model-actions-${dl.model_id}`);
     if (!el) continue;
+
+    if (dl.status === "failed") {
+      el.style.display = "flex";
+      if (actionsEl) actionsEl.style.display = "flex";
+      el.innerHTML = `
+        <div style="color: #d32f2f; font-size: 11px; font-weight: bold; display: flex; align-items: center; gap: 6px;">
+          <i class="bi bi-exclamation-triangle-fill"></i> Download Failed: ${dl.error || "Unknown download error"}
+        </div>
+      `;
+      continue;
+    }
+
+    if (dl.status === "completed") {
+      el.style.display = "none";
+      if (actionsEl) actionsEl.style.display = "flex";
+      continue;
+    }
 
     el.style.display = "flex";
 
@@ -407,6 +539,16 @@ function resumeConversionPolling(modelId: string) {
       const logResp = await typedCall("ModelsService.GetConversionLogs", ModelIdRequestSchema, { modelId }, ConversionLogsResultSchema);
       const { logs, isRunning } = logResp;
 
+      const isSuccess = logs.includes("successfully") || logs.includes("conversion complete");
+      const statusText = isRunning ? "Converting..." : (isSuccess ? "Completed" : "Failed");
+
+      activeConsoleLogs[modelId] = {
+        modelId,
+        logs,
+        statusText,
+        isRunning,
+      };
+
       if (logText) {
         logText.textContent = logs;
         logText.scrollTop = logText.scrollHeight;
@@ -415,9 +557,9 @@ function resumeConversionPolling(modelId: string) {
         logContainer.style.display = "block";
       }
       if (logStatus) {
-        logStatus.textContent = isRunning ? "Converting..." : "Completed";
+        logStatus.textContent = statusText;
       }
-      if (btn) {
+      if (btn && isRunning) {
         btn.disabled = true;
         btn.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> Converting...`;
       }
@@ -426,22 +568,32 @@ function resumeConversionPolling(modelId: string) {
         clearInterval(activeConversionPollInterval);
         activeConversionPollInterval = null;
         activeConversionModelId = null;
-        if (logStatus) logStatus.textContent = "Completed";
         if (btn) {
-          btn.style.display = "none";
+          btn.disabled = false;
+          if (isSuccess) {
+            btn.style.display = "none";
+          } else {
+            btn.innerHTML = `<i class="bi bi-gear-fill"></i> Convert to ONNX`;
+          }
         }
-        refreshModelStatus();
+        if (isSuccess) {
+          refreshModelStatus();
+        }
       }
     } catch (err: any) {
       clearInterval(activeConversionPollInterval);
       activeConversionPollInterval = null;
       if (logStatus) logStatus.textContent = "Failed";
-      if (btn) btn.disabled = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="bi bi-gear-fill"></i> Convert to ONNX`;
+      }
     }
   }, 500);
 }
 
 async function convertModel(modelId: string) {
+  dismissedConsoleLogs.delete(modelId);
   const btn = document.getElementById(`convert-btn-${modelId}`) as HTMLButtonElement;
   if (btn) {
     btn.disabled = true;
@@ -457,7 +609,20 @@ async function convertModel(modelId: string) {
   if (logStatus) logStatus.textContent = "Converting...";
 
   try {
-    await typedCall("ModelsService.ConvertModel", ModelIdRequestSchema, { modelId }, ConversionStatusUpdateSchema);
+    const firstUpdate = await typedCall("ModelsService.ConvertModel", ModelIdRequestSchema, { modelId }, ConversionStatusUpdateSchema);
+    if (firstUpdate && firstUpdate.complete) {
+      if (logText) logText.textContent = firstUpdate.logs;
+      const isSuccess = firstUpdate.logs.includes("successfully") || firstUpdate.logs.includes("conversion complete");
+      if (logStatus) logStatus.textContent = isSuccess ? "Completed" : "Failed";
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="bi bi-gear-fill"></i> Convert to ONNX`;
+      }
+      if (!isSuccess) {
+        showErrorAlert("Conversion Failed:\n" + firstUpdate.logs);
+      }
+      return;
+    }
     activeConversionModelId = modelId;
     resumeConversionPolling(modelId);
   } catch (e: any) {
@@ -493,7 +658,9 @@ async function quantizeModel(modelId: string, format: string) {
     const settingsResp = await typedCall("SystemService.GetSettings", null, null, SettingsResultSchema);
 
     const precs: { [key: string]: ModelPrecision } = { ...settingsResp.modelPrecisions };
-    precs[modelId] = precision === "int8" ? ModelPrecision.INT8 : ModelPrecision.ORIGINAL;
+    if (precision === "int8") precs[modelId] = ModelPrecision.INT8;
+    else if (precision === "fp16") precs[modelId] = ModelPrecision.FP16;
+    else precs[modelId] = ModelPrecision.ORIGINAL;
 
     await typedCall("SystemService.UpdateSettings", UpdateSettingsRequestSchema, {
       clipDevice: settingsResp.clipDevice,

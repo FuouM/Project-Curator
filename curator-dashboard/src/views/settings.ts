@@ -1,11 +1,14 @@
-﻿import { html, SafeHtml } from "../components";
+import { html, SafeHtml } from "../components";
 import { initStorageStats } from "./settings/storage-stats";
 import { bindOcrPreviewControls, renderOcrPreview, setupOcrDragListeners } from "./settings/ocr-preview";
 import { refreshFfmpegStatus, setupFfmpegListeners } from "./settings/ffmpeg-status";
 import { bindSettingsForm } from "./settings/settings-form";
+import { loadNsfwPrefs, saveNsfwPrefs, NsfwAction, refreshAllNsfw, DEFAULT_NSFW_PREFS } from "../nsfw";
+import { getSafetyRescanProgress, triggerSafetyRescan } from "../ipc";
 
 export function setupSettings() {
   bindSettingsForm();
+  bindNsfwPreferences();
 
   const previewContainer = document.getElementById("settings-ocr-preview");
   const ffmpegStatusRow = document.getElementById("ffmpeg-status-row");
@@ -24,6 +27,114 @@ export function setupSettings() {
 
   refreshFfmpegStatus();
   initStorageStats();
+}
+
+const NSFW_ACTIONS: { value: NsfwAction; label: string; icon: string; hint: string }[] = [
+  { value: "none", label: "Do Nothing", icon: "bi-eye", hint: "Show all content unmodified (default)." },
+  { value: "blur", label: "Blur NSFW Content", icon: "bi-eye-slash", hint: "Blur redacted thumbnails; hover to preview." },
+  { value: "pixelate", label: "Pixelate NSFW Content", icon: "bi-grid", hint: "Pixelate redacted thumbnails; hover to preview." },
+  { value: "hide", label: "Hide NSFW Content", icon: "bi-check2-circle", hint: "Cover thumbnails with a solid black rectangle; no hover preview." },
+];
+
+function bindNsfwPreferences() {
+  const prefs = loadNsfwPrefs();
+
+  const radios = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="nsfw-action"]'));
+  radios.forEach((radio) => {
+    if (radio.value === prefs.action) radio.checked = true;
+    radio.addEventListener("change", () => {
+      if (!radio.checked) return;
+      const action = radio.value as NsfwAction;
+      saveNsfwPrefs({ ...loadNsfwPrefs(), action });
+      updateNsfwHint(action);
+      refreshAllNsfw();
+    });
+  });
+
+  const slider = document.getElementById("nsfw-threshold") as HTMLInputElement | null;
+  const sliderReadout = document.getElementById("nsfw-threshold-value");
+  if (slider && sliderReadout) {
+    slider.value = String(prefs.threshold);
+    sliderReadout.textContent = `${Math.round(prefs.threshold * 100)}%`;
+    slider.addEventListener("change", () => {
+      const threshold = parseFloat(slider.value);
+      if (isNaN(threshold)) return;
+      saveNsfwPrefs({ ...loadNsfwPrefs(), threshold });
+      refreshAllNsfw();
+    });
+    slider.addEventListener("input", () => {
+      sliderReadout.textContent = `${Math.round(parseFloat(slider.value) * 100)}%`;
+    });
+
+    const resetBtn = document.getElementById("nsfw-threshold-reset") as HTMLButtonElement | null;
+    if (resetBtn) {
+      resetBtn.addEventListener("click", () => {
+        const defaultThreshold = DEFAULT_NSFW_PREFS.threshold;
+        slider.value = String(defaultThreshold);
+        sliderReadout.textContent = `${Math.round(defaultThreshold * 100)}%`;
+        saveNsfwPrefs({ ...loadNsfwPrefs(), threshold: defaultThreshold });
+        refreshAllNsfw();
+      });
+    }
+  }
+
+  const scanBtn = document.getElementById("nsfw-scan-btn") as HTMLButtonElement | null;
+  const progressWrap = document.getElementById("nsfw-scan-progress-wrap");
+  const progressBar = document.getElementById("nsfw-scan-progress") as HTMLElement | null;
+  const statusText = document.getElementById("nsfw-scan-status");
+
+  if (scanBtn && progressWrap && progressBar && statusText) {
+    const setScanState = (running: boolean, processed: number, total: number, updated: number, status: string) => {
+      scanBtn.disabled = running;
+      progressWrap.style.display = running ? "flex" : "none";
+      const percent = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+      progressBar.style.width = `${percent}%`;
+      statusText.textContent = running
+        ? `Scanning library: ${processed}/${total} images (${updated} updated)…`
+        : `Last scan: ${processed} images, ${updated} updated. ${status}`;
+    };
+
+    scanBtn.addEventListener("click", async () => {
+      scanBtn.disabled = true;
+      try {
+        const res = await triggerSafetyRescan();
+        if (!res.started) {
+          statusText.textContent = res.message || "A safety scan is already running.";
+          return;
+        }
+        const poll = window.setInterval(async () => {
+          try {
+            const prog = await getSafetyRescanProgress();
+            setScanState(prog.running, Number(prog.processed), Number(prog.total), Number(prog.updated), prog.status || "");
+            if (!prog.running) {
+              window.clearInterval(poll);
+              scanBtn.disabled = false;
+              if (refreshAllPendingNsfw) refreshAllPendingNsfw();
+            }
+          } catch {
+            window.clearInterval(poll);
+            scanBtn.disabled = false;
+          }
+        }, 500);
+      } catch (err: any) {
+        statusText.textContent = "Failed to start safety scan: " + (err?.message || err);
+        scanBtn.disabled = false;
+      }
+    });
+  }
+
+  updateNsfwHint(prefs.action);
+}
+
+function updateNsfwHint(action: NsfwAction) {
+  const hint = document.getElementById("nsfw-action-hint");
+  if (!hint) return;
+  const meta = NSFW_ACTIONS.find((a) => a.value === action);
+  hint.textContent = meta ? meta.hint : "";
+}
+
+function refreshAllPendingNsfw() {
+  refreshAllNsfw();
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +186,44 @@ export function renderSettingsHtml(): SafeHtml {
         <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;" title="Disabling full resolution image load in Zen mode guarantees maximum smooth, 60fps scrolling performance">
           <input type="checkbox" id="settings-zen-mode-full-images"> Load full resolution images in Zen Mode (uncheck for maximum 60fps scroll smoothness)
         </label>
+      </div>
+    </div>
+
+    <!-- Content Safety & Privacy Filter -->
+    <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+      <div class="group-box-title"><i class="bi bi-shield-check"></i> Content Safety &amp; Privacy Filter</div>
+      <p style="font-size: 11px; color: #333333; margin: 0;">Decide how NSFW-rated images appear in the gallery, search results, and favorites. Thresholding happens locally in the browser; no re-inference needed.</p>
+      <div class="form-group" style="flex-direction: column; align-items: flex-start; gap: 6px;">
+        <label style="font-weight: 600; min-width: 120px;">Display Mode:</label>
+        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+          ${NSFW_ACTIONS.map((a) => `
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="radio" name="nsfw-action" value="${a.value}">
+              <i class="bi ${a.icon}" style="color: var(--sys-text-subtle);"></i> ${a.label}
+            </label>
+          `).join("")}
+          <span id="nsfw-action-hint" style="font-size: 11px; color: #666666; margin-left: 22px;"></span>
+        </div>
+      </div>
+      <div class="form-group" style="flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 8px;">
+        <label style="font-weight: 600; min-width: 120px; display: flex; justify-content: space-between; width: 100%; align-items: center;">
+          <span>Sensitivity Threshold:</span>
+          <span style="display: flex; gap: 8px; align-items: center;">
+            <button class="win-button" id="nsfw-threshold-reset" style="font-size: 10px; padding: 2px 6px; font-weight: normal; line-height: 1;">Reset to Default</button>
+            <span id="nsfw-threshold-value" style="color: var(--sys-accent, #0078d7); font-weight: 700;"></span>
+          </span>
+        </label>
+        <input type="range" id="nsfw-threshold" min="0.10" max="0.99" step="0.01" value="0.91" style="width: 100%;" />
+        <span style="font-size: 11px; color: #666666;">Lower = block more aggressively; values apply to all already-scanned images instantly, no re-inference.</span>
+      </div>
+      <div style="border-top: 1px solid #e5e7eb; margin: 4px 0; padding-top: 8px;">
+        <label style="font-weight: 600; display: block; margin-bottom: 4px;">Library Scan</label>
+        <p style="font-size: 11px; color: #333333; margin: 0 0 8px;">Analyze all existing images and store their per-class safety probabilities. Newly imported images are classified automatically.</p>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <button class="win-button" id="nsfw-scan-btn"><i class="bi bi-search"></i> Scan Existing Library for Safety Ratings</button>
+          <div class="progress-bar" id="nsfw-scan-progress-wrap" style="flex: 1; max-width: 240px; display: none;"><div class="progress-fill" id="nsfw-scan-progress" style="width: 0%;"></div></div>
+        </div>
+        <span id="nsfw-scan-status" style="font-size: 11px; min-height: 16px; display: block; margin-top: 4px;"></span>
       </div>
     </div>
 

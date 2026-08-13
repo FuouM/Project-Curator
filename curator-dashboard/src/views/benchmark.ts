@@ -171,6 +171,18 @@ export function setupBenchmark() {
       },
     },
     {
+      key: "safety",
+      label: "NSFW Safety Classifier",
+      cpuEl: getEl("benchmark-safety-cpu"),
+      gpuEl: getEl("benchmark-safety-gpu"),
+      speedupEl: getEl("benchmark-safety-speedup"),
+      run: () => typedCall("BenchmarksService.RunSafetyBenchmark", null, null, DetectionBenchmarkResultSchema).catch((e: any) => ({ Error: { message: e.message } })),
+      extractResult: (resp) => {
+        if (resp == null || resp.safetyCpuTimeMs == null) return null;
+        return { cpuMs: resp.safetyCpuTimeMs, gpuMs: resp.safetyGpuTimeMs ?? null, gpuErr: resp.safetyGpuError ?? null };
+      },
+    },
+    {
       key: "ccip-feat",
       label: "CCIP Feature Extraction",
       cpuEl: getEl("benchmark-ccip-feat-cpu"),
@@ -520,6 +532,7 @@ const BENCHMARK_CARDS: BenchmarkCardDef[] = [
   { key: "tagger",       label: "Camie Tagger v2",             size: "512x512"   },
   { key: "tagger-wd",    label: "WD EVA02 Tagger",             size: "448x448"   },
   { key: "yolo",         label: "YOLO Person Detection",       size: "640x640"   },
+  { key: "safety",       label: "NSFW Safety Classifier",       size: "380x380"   },
   { key: "ccip-feat",    label: "CCIP Feature Extraction",     size: "384x384"   },
   { key: "ccip-metrics", label: "CCIP Metrics",                size: "16x768"    },
   { key: "ocr-det",      label: "OCR Text Detection",          size: "960x960"   },

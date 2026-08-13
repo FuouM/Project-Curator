@@ -21,6 +21,7 @@ pub enum ModelPrecision {
     #[default]
     Original,
     Int8,
+    Fp16,
 }
 
 /// Supported embedding models.

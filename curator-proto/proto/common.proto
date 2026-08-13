@@ -20,6 +20,7 @@ enum ModelPrecision {
   MODEL_PRECISION_UNSPECIFIED = 0;
   MODEL_PRECISION_ORIGINAL = 1;
   MODEL_PRECISION_INT8 = 2;
+  MODEL_PRECISION_FP16 = 3;
 }
 
 // Supported embedding models.
@@ -126,6 +127,13 @@ message ImageDetails {
   optional AnimationSummary animation = 16;
   optional VideoSummary video = 17;
   optional string note = 18;
+  // Per-class content-safety probabilities (nsfw-detection-2-mini softmax output).
+  // Unset = not yet classified. Aggregates are derived in the browser, never stored.
+  optional float safe_score = 19;    // softmax[0]
+  optional float hentai_score = 20;  // softmax[1]
+  optional float porn_score = 21;    // softmax[2]
+  optional float sexy_score = 22;    // softmax[3]
+  optional float drawing_score = 23; // softmax[4]
 }
 
 // A search result match.
@@ -143,6 +151,13 @@ message SearchMatch {
   optional VideoSummary video = 11;
   bool favorite = 12;
   bool is_missing = 13;
+  // Per-class content-safety probabilities. `None` = not yet classified.
+  // See ImageDetails for semantics.
+  optional float safe_score = 14;
+  optional float hentai_score = 15;
+  optional float porn_score = 16;
+  optional float sexy_score = 17;
+  optional float drawing_score = 18;
 }
 
 // Serialized status snapshot for one tagger engine.
