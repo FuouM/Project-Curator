@@ -167,6 +167,22 @@ export function renderFeaturedDay(featured: ImageDetails) {
     ? `<div class="ocr-block" data-action="toggle-ocr"><i class="bi bi-file-earmark-text ocr-icon"></i><span class="ocr-block-text">${featured.ocr_text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span></div>`
     : "";
 
+  // Preserve the preview media element across re-renders of the same featured
+  // image. renderFeaturedDay is re-invoked on every dashboard refresh (e.g.
+  // switching views), and innerHTML below would otherwise destroy and recreate
+  // a playing <video> (or animated WebP), restarting it jarringly. Moving the
+  // same element does not disturb media playback state.
+  let preservedMedia: HTMLElement | null = null;
+  const existingCard = container.querySelector(".featured-card") as HTMLElement | null;
+  if (existingCard && existingCard.dataset.imageId === String(featured.id)) {
+    const existingMedia = container.querySelector(".featured-preview img, .featured-preview video") as HTMLElement | null;
+    if (existingMedia) {
+      if (existingMedia.tagName === "VIDEO" || (existingMedia as HTMLImageElement).src) {
+        preservedMedia = existingMedia;
+      }
+    }
+  }
+
   container.innerHTML = html`
     <div class="featured-layout">
       <div class="image-card featured-card" data-image-id="${featured.id}">
@@ -210,11 +226,19 @@ export function renderFeaturedDay(featured: ImageDetails) {
 
   featuredCardCleanup = attachCardEventHandlers(container, featured.id, featured.current_filepath, featured, ".featured-preview", true);
 
+  // Restore the preserved media element (still-playing <video> or loaded WebP
+  // thumbnail) into the freshly rendered card.
+  if (preservedMedia) {
+    const freshImg = container.querySelector(".featured-preview img") as HTMLElement | null;
+    if (freshImg) freshImg.replaceWith(preservedMedia);
+  }
+
   // Videos are thumbnailed as animated WebP previews upstream; fetch that
   // thumbnail and swap it into the featured <img> once available. If the
   // thumbnail cannot be produced, fall back to a <video> element so the card
-  // still shows the actual clip.
-  if (isVideo) {
+  // still shows the actual clip. Skip entirely when the media element was
+  // preserved from the previous render.
+  if (isVideo && !preservedMedia) {
     invoke("get_thumbnail", { imageId: featured.id })
       .then((data: any) => {
         if (!data) return;
