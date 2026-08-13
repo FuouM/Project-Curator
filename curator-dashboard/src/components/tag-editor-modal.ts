@@ -114,7 +114,19 @@ export async function openTagModal(imgId: number, path: string) {
   }
 
   await refreshModalTags(imgId);
-  modal?.classList.add("active");
+
+  if (modal) {
+    modal.classList.add("active");
+
+    // Close when clicking the modal backdrop (outside the dialog content).
+    const onBackdropClick = (e: MouseEvent) => {
+      if (e.target === modal) {
+        modal.classList.remove("active");
+        modal.removeEventListener("click", onBackdropClick);
+      }
+    };
+    modal.addEventListener("click", onBackdropClick);
+  }
 }
 
 export async function refreshModalTags(imgId: number) {
