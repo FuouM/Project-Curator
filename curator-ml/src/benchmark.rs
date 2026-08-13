@@ -257,14 +257,39 @@ pub fn run_onnx_benchmark(
         .commit_from_file(model_path)
         .context("Failed to load benchmark model on CPU")?;
 
+    let input_name = cpu_session
+        .inputs()
+        .first()
+        .map(|i| i.name().to_string())
+        .unwrap_or_else(|| "image".to_string());
+
+    let is_f16 = cpu_session.inputs().first().map_or(false, |i| {
+        matches!(
+            i.dtype(),
+            ort::value::ValueType::Tensor {
+                ty: ort::tensor::TensorElementType::Float16,
+                ..
+            }
+        )
+    });
+
     let dummy_input = Array4::<f32>::zeros((1, 3, img_size, img_size));
 
-    let _ = cpu_session.run(inputs![TensorRef::from_array_view(&dummy_input)?])?;
+    let run_session = |session: &mut Session| -> Result<(), ort::Error> {
+        if is_f16 {
+            let dummy_f16 = dummy_input.mapv(half::f16::from_f32);
+            session.run(inputs![input_name.as_str() => TensorRef::from_array_view(&dummy_f16)?]).map(|_| ())
+        } else {
+            session.run(inputs![input_name.as_str() => TensorRef::from_array_view(&dummy_input)?]).map(|_| ())
+        }
+    };
+
+    run_session(&mut cpu_session).context("CPU benchmark run failed")?;
 
     let runs = 5;
     let start = Instant::now();
     for _ in 0..runs {
-        let _ = cpu_session.run(inputs![TensorRef::from_array_view(&dummy_input)?])?;
+        run_session(&mut cpu_session).context("CPU benchmark run loop failed")?;
     }
     let cpu_time = start.elapsed().as_secs_f64() * 1000.0 / (runs as f64);
 
@@ -352,17 +377,11 @@ pub fn run_onnx_benchmark(
         if provider_registered {
             match builder.commit_from_file(model_path) {
                 Ok(mut gpu_session) => {
-                    if gpu_session
-                        .run(inputs![TensorRef::from_array_view(&dummy_input)?])
-                        .is_ok()
-                    {
+                    if run_session(&mut gpu_session).is_ok() {
                         let start = Instant::now();
                         let mut success = true;
                         for _ in 0..runs {
-                            if gpu_session
-                                .run(inputs![TensorRef::from_array_view(&dummy_input)?])
-                                .is_err()
-                            {
+                            if run_session(&mut gpu_session).is_err() {
                                 success = false;
                                 break;
                             }
@@ -547,14 +566,39 @@ pub fn run_onnx_benchmark_4d(
         .commit_from_file(model_path)
         .context("Failed to load benchmark model on CPU")?;
 
+    let input_name = cpu_session
+        .inputs()
+        .first()
+        .map(|i| i.name().to_string())
+        .unwrap_or_else(|| "image".to_string());
+
+    let is_f16 = cpu_session.inputs().first().map_or(false, |i| {
+        matches!(
+            i.dtype(),
+            ort::value::ValueType::Tensor {
+                ty: ort::tensor::TensorElementType::Float16,
+                ..
+            }
+        )
+    });
+
     let dummy_input = Array4::<f32>::zeros((1, 3, height, width));
 
-    let _ = cpu_session.run(inputs![TensorRef::from_array_view(&dummy_input)?])?;
+    let run_session = |session: &mut Session| -> Result<(), ort::Error> {
+        if is_f16 {
+            let dummy_f16 = dummy_input.mapv(half::f16::from_f32);
+            session.run(inputs![input_name.as_str() => TensorRef::from_array_view(&dummy_f16)?]).map(|_| ())
+        } else {
+            session.run(inputs![input_name.as_str() => TensorRef::from_array_view(&dummy_input)?]).map(|_| ())
+        }
+    };
+
+    run_session(&mut cpu_session).context("CPU benchmark run failed")?;
 
     let runs = 5;
     let start = Instant::now();
     for _ in 0..runs {
-        let _ = cpu_session.run(inputs![TensorRef::from_array_view(&dummy_input)?])?;
+        run_session(&mut cpu_session).context("CPU benchmark run loop failed")?;
     }
     let cpu_time = start.elapsed().as_secs_f64() * 1000.0 / (runs as f64);
 
@@ -642,17 +686,11 @@ pub fn run_onnx_benchmark_4d(
         if provider_registered {
             match builder.commit_from_file(model_path) {
                 Ok(mut gpu_session) => {
-                    if gpu_session
-                        .run(inputs![TensorRef::from_array_view(&dummy_input)?])
-                        .is_ok()
-                    {
+                    if run_session(&mut gpu_session).is_ok() {
                         let start = Instant::now();
                         let mut success = true;
                         for _ in 0..runs {
-                            if gpu_session
-                                .run(inputs![TensorRef::from_array_view(&dummy_input)?])
-                                .is_err()
-                            {
+                            if run_session(&mut gpu_session).is_err() {
                                 success = false;
                                 break;
                             }

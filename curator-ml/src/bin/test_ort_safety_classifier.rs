@@ -23,21 +23,20 @@ fn main() -> anyhow::Result<()> {
 
     let staged = vec![
         (
-            "nsfw-detection-2-mini fp16 (canonical)",
-            "nsfw-detection-2-mini-fp16.onnx",
+            "Reference fp16",
+            workspace.join("reference/nsfw-detection-2-mini/onnx/nsfw-detection-2-mini_fp16.onnx"),
         ),
         (
-            "nsfw-detection-2-mini fp32",
-            "nsfw-detection-2-mini.onnx",
+            "Converted fp16",
+            workspace.join(".curator/models/nsfw-detection-2-mini/onnx/nsfw-detection-2-mini_fp16.onnx"),
+        ),
+        (
+            "Converted fp32",
+            workspace.join(".curator/models/nsfw-detection-2-mini/onnx/nsfw-detection-2-mini.onnx"),
         ),
     ];
 
-    for (label, filename) in staged {
-        let path = workspace
-            .join("reference")
-            .join("nsfw-detection-2-mini")
-            .join("onnx")
-            .join(filename);
+    for (label, path) in staged {
         if !path.exists() {
             println!("Skipping {:?}: ONNX file not found at {:?}", label, path);
             continue;
@@ -158,6 +157,15 @@ fn verify_variant(workspace: &Path, onnx_path: &Path) -> anyhow::Result<()> {
         let fps = iterations as f64 / elapsed.as_secs_f64();
         println!("  Average latency: {:.2} ms / image", avg_ms);
         println!("  Throughput     : {:.2} images / second (FPS)", fps);
+    }
+
+    println!("\n=== 5. Dynamic run_onnx_benchmark ===");
+    let (cpu, gpu, gpu_err) = curator_ml::benchmark_safety_classifier(onnx_path)?;
+    println!("  CPU benchmark latency: {:.2} ms", cpu);
+    if let Some(gpu_time) = gpu {
+        println!("  GPU benchmark latency: {:.2} ms", gpu_time);
+    } else {
+        println!("  GPU benchmark skipped/failed: {:?}", gpu_err);
     }
 
     println!("\nModel variant PASSED.");

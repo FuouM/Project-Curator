@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+
 use std::sync::{Arc, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use anyhow::Result;
 use curator_core::ipc::{
     DownloadProgress, ManifestFileInfo, ModelStatusInfo,
@@ -167,6 +167,15 @@ pub async fn get_model_status(
             let onnx_path = model_dir.join("wd-eva02-tagger-2026-canary").join("wd-eva02-tagger-2026-canary.onnx");
             if onnx_path.exists() {
                 quantized_variants.push("onnx".to_string());
+            }
+        }
+        if entry.id == "nsfw-detection-2-mini" {
+            let onnx_dir = model_dir.join("nsfw-detection-2-mini").join("onnx");
+            if onnx_dir.join("nsfw-detection-2-mini.onnx").exists() {
+                quantized_variants.push("onnx".to_string());
+            }
+            if onnx_dir.join("nsfw-detection-2-mini_fp16.onnx").exists() || onnx_dir.join("nsfw-detection-2-mini-fp16.onnx").exists() {
+                quantized_variants.push("fp16".to_string());
             }
         }
 
@@ -336,14 +345,22 @@ pub async fn download_model(
 
             // Download
             info!("Downloading {} -> {:?}", url, dest_path);
-            let agent = ureq::Agent::new_with_defaults();
-            let mut response = match agent.get(url).call() {
+            let config = ureq::config::Config::builder()
+                .max_redirects(10)
+                .timeout_global(Some(Duration::from_secs(60)))
+                .build();
+            let agent = config.new_agent();
+            let mut response = match agent.get(url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Curator/1.0")
+                .call() {
                 Ok(r) => r,
                 Err(e) => {
+                    let err_msg = format!("Download failed for {}: {}", url, e);
+                    error!("{}", err_msg);
                     let mut progress = progress_map_clone.lock().await;
                     if let Some(p) = progress.get_mut(&model_id_owned) {
                         p.status = "failed".to_string();
-                        p.error = Some(format!("Download failed: {}", e));
+                        p.error = Some(err_msg);
                     }
                     return;
                 }
@@ -441,14 +458,13 @@ pub async fn download_model(
                 hasher.update(&content);
                 let hash = format!("{:x}", hasher.finalize());
                 if hash != *expected_sha {
+                    let err_msg = format!("Checksum mismatch for {}: expected {}, got {}", dest, expected_sha, hash);
+                    error!("{}", err_msg);
                     let _ = std::fs::remove_file(&temp_path);
                     let mut progress = progress_map_clone.lock().await;
                     if let Some(p) = progress.get_mut(&model_id_owned) {
                         p.status = "failed".to_string();
-                        p.error = Some(format!(
-                            "Checksum mismatch: expected {}, got {}",
-                            expected_sha, hash
-                        ));
+                        p.error = Some(err_msg);
                     }
                     return;
                 }
@@ -456,11 +472,13 @@ pub async fn download_model(
 
             // Move temp file to final destination
             if let Err(e) = std::fs::rename(&temp_path, &dest_path) {
+                let err_msg = format!("Failed to move temp file to {:?}: {}", dest_path, e);
+                error!("{}", err_msg);
                 let _ = std::fs::remove_file(&temp_path);
                 let mut progress = progress_map_clone.lock().await;
                 if let Some(p) = progress.get_mut(&model_id_owned) {
                     p.status = "failed".to_string();
-                    p.error = Some(format!("Failed to move file: {}", e));
+                    p.error = Some(err_msg);
                 }
                 return;
             }
@@ -587,7 +605,11 @@ pub async fn download_ffmpeg(
         let temp_path = zip_path.with_extension("tmp");
 
         // ── 1. Download zip (streamed, byte-progress reported) ─────────────
-        let agent = ureq::Agent::new_with_defaults();
+        let config = ureq::config::Config::builder()
+            .max_redirects(10)
+            .timeout_global(Some(Duration::from_secs(60)))
+            .build();
+        let agent = config.new_agent();
         let mut response = match agent.get(FFMPEG_DOWNLOAD_URL).call() {
             Ok(r) => r,
             Err(e) => {
@@ -876,11 +898,13 @@ pub async fn remove_model(model_dir: &Path, model_id: &str) -> Result<ModelActio
         }
     }
 
-    // Remove quantized variants if they exist
-    let quant_dir = model_dir.join(model_id).join("quantized");
-    if quant_dir.exists() {
-        if let Err(e) = std::fs::remove_dir_all(&quant_dir) {
-            warn!("Failed to remove quantized dir {:?}: {}", quant_dir, e);
+    // Remove model directory and all converted/quantized subdirectories if it exists
+    let model_folder = model_dir.join(model_id);
+    if model_folder.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&model_folder) {
+            warn!("Failed to remove model directory {:?}: {}", model_folder, e);
+        } else {
+            info!("Removed model directory {:?}", model_folder);
         }
     }
 
@@ -964,16 +988,28 @@ pub async fn quantize_model(
         });
     }
 
-    let mut quantized_count = 0;
+    let mut onnx_paths = Vec::new();
     for file in &entry.files {
-        if !file.dest.ends_with(".onnx") {
-            continue;
+        if file.dest.ends_with(".onnx") {
+            let input_path = model_dir.join(&file.dest);
+            if input_path.exists() {
+                onnx_paths.push(input_path);
+            }
         }
-        let input_path = model_dir.join(&file.dest);
-        if !input_path.exists() {
-            continue;
+    }
+    if entry.id == "nsfw-detection-2-mini" {
+        let onnx_dir = model_dir.join("nsfw-detection-2-mini").join("onnx");
+        let fp16_path = onnx_dir.join("nsfw-detection-2-mini-fp16.onnx");
+        let fp32_path = onnx_dir.join("nsfw-detection-2-mini.onnx");
+        if fp32_path.exists() {
+            onnx_paths.push(fp32_path);
+        } else if fp16_path.exists() {
+            onnx_paths.push(fp16_path);
         }
+    }
 
+    let mut quantized_count = 0;
+    for input_path in onnx_paths {
         let file_name = input_path.file_name().unwrap().to_str().unwrap();
         let output_name = file_name.replace(".onnx", &format!("_{}.onnx", format));
         let output_path = input_path.parent().unwrap().join(output_name);
@@ -997,14 +1033,14 @@ pub async fn quantize_model(
                     success: false,
                     message: format!(
                         "Quantization failed for {}: exit code {:?}.\nStderr: {}\nStdout: {}",
-                        file.dest, out.status.code(), stderr.trim(), stdout.trim()
+                        input_path.display(), out.status.code(), stderr.trim(), stdout.trim()
                     ),
                 });
             }
             Err(e) => {
                 return Ok(ModelActionOutcome {
                     success: false,
-                    message: format!("Failed to run quantization command for {}: {}", file.dest, e),
+                    message: format!("Failed to run quantization command for {}: {}", input_path.display(), e),
                 });
             }
         }
@@ -1019,8 +1055,8 @@ pub async fn quantize_model(
     })
 }
 
-pub static CONVERSION_RUNNING: AtomicBool = AtomicBool::new(false);
-pub static CONVERSION_LOGS: OnceLock<std::sync::Mutex<String>> = OnceLock::new();
+pub static CONVERSION_RUNNING_MODEL: OnceLock<std::sync::Mutex<Option<String>>> = OnceLock::new();
+pub static CONVERSION_LOGS: OnceLock<std::sync::Mutex<std::collections::HashMap<String, String>>> = OnceLock::new();
 
 /// In-app conversion of a downloaded Safetensors tagger to ONNX.
 ///
@@ -1028,21 +1064,25 @@ pub static CONVERSION_LOGS: OnceLock<std::sync::Mutex<String>> = OnceLock::new()
 /// `convert_to_onnx.py --skip-download` (the manifest already downloaded the
 /// source files into the model dir). Fails fast with captured output on error.
 pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActionOutcome> {
-    // Only the WD tagger is Safetensors-distributed and needs conversion.
-    if model_id != "wd-eva02-tagger-2026-canary" {
+    if model_id != "wd-eva02-tagger-2026-canary" && model_id != "nsfw-detection-2-mini" {
         return Ok(ModelActionOutcome {
             success: false,
             message: format!(
-                "Model '{}' does not require conversion (only wd-eva02-tagger-2026-canary does)",
+                "Model '{}' does not require conversion",
                 model_id
             ),
         });
     }
 
-    let model_out = model_dir.join("wd-eva02-tagger-2026-canary");
-    let source_files_ok = ["model.safetensors", "selected_tags.csv", "config.json"]
-        .iter()
-        .all(|f| model_out.join(f).exists());
+    let model_out = model_dir.join(model_id);
+    let source_files_ok = if model_id == "wd-eva02-tagger-2026-canary" {
+        model_out.join("model.safetensors").exists()
+            && model_out.join("selected_tags.csv").exists()
+            && model_out.join("config.json").exists()
+    } else {
+        model_out.join("model.safetensors").exists()
+            && model_out.join("config.json").exists()
+    };
     if !source_files_ok {
         return Ok(ModelActionOutcome {
             success: false,
@@ -1053,13 +1093,15 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
         });
     }
 
-    let project_root = find_script_root(
-        "convert_to_onnx.py",
-        model_dir.parent().unwrap_or(model_dir).to_path_buf(),
-    );
+    let script_filename = if model_id == "nsfw-detection-2-mini" {
+        "convert_nsfw_to_onnx.py"
+    } else {
+        "convert_to_onnx.py"
+    };
 
-    let venv_python = project_root.join("scripts/venv/Scripts/python.exe");
-    let script = project_root.join("scripts/convert_to_onnx.py");
+    let project_root = find_script_root(script_filename, model_dir.to_path_buf());
+    let venv_python = project_root.join("scripts").join("venv").join("Scripts").join("python.exe");
+    let script = project_root.join("scripts").join(script_filename);
 
     if !venv_python.exists() || !script.exists() {
         return Ok(ModelActionOutcome {
@@ -1071,21 +1113,32 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
         });
     }
 
-    if CONVERSION_RUNNING.load(Ordering::SeqCst) {
-        return Ok(ModelActionOutcome {
-            success: false,
-            message: "Another conversion process is already running.".to_string(),
-        });
+    let running_mutex = CONVERSION_RUNNING_MODEL.get_or_init(|| std::sync::Mutex::new(None));
+    {
+        let mut active = running_mutex.lock().unwrap();
+        if active.is_some() {
+            return Ok(ModelActionOutcome {
+                success: false,
+                message: "Another conversion process is already running.".to_string(),
+            });
+        }
+        *active = Some(model_id.to_string());
     }
 
     let out_dir_abs = model_out.to_path_buf();
-    CONVERSION_RUNNING.store(true, Ordering::SeqCst);
-    let logs_mutex = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
-    *logs_mutex.lock().unwrap() = "Starting conversion process...\n".to_string();
+    let logs_mutex = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    logs_mutex.lock().unwrap().insert(model_id.to_string(), "Starting conversion process...\n".to_string());
 
+    let repo_arg = if model_id == "nsfw-detection-2-mini" {
+        "viddexa/nsfw-detection-2-mini"
+    } else {
+        "ashen-sensored/wd-eva02-tagger-2026-canary"
+    };
+
+    let target_model_id = model_id.to_string();
     let mut cmd = tokio::process::Command::new(&venv_python);
     cmd.arg(script.to_str().unwrap())
-        .args(["--repo", "ashen-sensored/wd-eva02-tagger-2026-canary"])
+        .args(["--repo", repo_arg])
         .args(["--out-dir", out_dir_abs.to_str().unwrap()])
         .args(["--skip-download"])
         .stdout(std::process::Stdio::piped())
@@ -1095,6 +1148,7 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
         Ok(mut child) => {
             let stdout = child.stdout.take().unwrap();
             let stderr = child.stderr.take().unwrap();
+            let model_id_clone = target_model_id.clone();
 
             tokio::spawn(async move {
                 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -1106,50 +1160,62 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
                     tokio::select! {
                         line_opt = stdout_reader.next_line() => {
                             if let Ok(Some(line)) = line_opt {
-                                let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
-                                let mut logs = logs_m.lock().unwrap();
-                                logs.push_str(&line);
-                                logs.push('\n');
+                                let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+                                let mut map = logs_m.lock().unwrap();
+                                let entry = map.entry(model_id_clone.clone()).or_insert_with(String::new);
+                                entry.push_str(&line);
+                                entry.push('\n');
                             }
                         }
                         line_opt = stderr_reader.next_line() => {
                             if let Ok(Some(line)) = line_opt {
-                                let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
-                                let mut logs = logs_m.lock().unwrap();
-                                logs.push_str(&line);
-                                logs.push('\n');
+                                let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+                                let mut map = logs_m.lock().unwrap();
+                                let entry = map.entry(model_id_clone.clone()).or_insert_with(String::new);
+                                entry.push_str(&line);
+                                entry.push('\n');
                             }
                         }
                         status = child.wait() => {
-                            let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
-                            let mut logs = logs_m.lock().unwrap();
+                            let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+                            let mut map = logs_m.lock().unwrap();
+                            let entry = map.entry(model_id_clone.clone()).or_insert_with(String::new);
                             match status {
                                 Ok(s) if s.success() => {
-                                    logs.push_str("\nConversion finished successfully.\n");
-                                    info!("Background conversion of wd-eva02-tagger-2026-canary succeeded.");
+                                    entry.push_str("\nConversion finished successfully.\n");
+                                    info!("Background conversion of {} succeeded.", model_id_clone);
                                 }
                                 Ok(s) => {
-                                    logs.push_str(&format!("\nConversion failed with exit status: {:?}\n", s.code()));
-                                    error!("Background conversion of wd-eva02-tagger-2026-canary failed with code: {:?}", s.code());
+                                    entry.push_str(&format!("\nConversion failed with exit status: {:?}\n", s.code()));
+                                    error!("Background conversion of {} failed with code: {:?}", model_id_clone, s.code());
                                 }
                                 Err(e) => {
-                                    logs.push_str(&format!("\nError waiting for conversion child: {}\n", e));
-                                    error!("Error waiting for background conversion child: {}", e);
+                                    entry.push_str(&format!("\nError waiting for conversion child: {}\n", e));
+                                    error!("Error waiting for background conversion child for {}: {}", model_id_clone, e);
                                 }
                             }
                             break;
                         }
                     }
                 }
-                CONVERSION_RUNNING.store(false, Ordering::SeqCst);
+                let running_m = CONVERSION_RUNNING_MODEL.get_or_init(|| std::sync::Mutex::new(None));
+                let mut active = running_m.lock().unwrap();
+                if active.as_deref() == Some(&model_id_clone) {
+                    *active = None;
+                }
             });
         }
         Err(e) => {
-            let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
-            let mut logs = logs_m.lock().unwrap();
-            logs.push_str(&format!("Failed to spawn conversion command: {}\n", e));
-            error!("Failed to spawn background conversion command: {}", e);
-            CONVERSION_RUNNING.store(false, Ordering::SeqCst);
+            let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+            let mut map = logs_m.lock().unwrap();
+            let entry = map.entry(target_model_id.clone()).or_insert_with(String::new);
+            entry.push_str(&format!("Failed to spawn conversion command: {}\n", e));
+            error!("Failed to spawn background conversion command for {}: {}", target_model_id, e);
+            let running_m = CONVERSION_RUNNING_MODEL.get_or_init(|| std::sync::Mutex::new(None));
+            let mut active = running_m.lock().unwrap();
+            if active.as_deref() == Some(&target_model_id) {
+                *active = None;
+            }
         }
     }
 
@@ -1159,11 +1225,15 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
     })
 }
 
-pub async fn get_conversion_logs(_model_dir: &Path, _model_id: &str) -> Result<ConversionLogs> {
-    let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(String::new()));
-    let logs = logs_m.lock().unwrap().clone();
+pub async fn get_conversion_logs(_model_dir: &Path, model_id: &str) -> Result<ConversionLogs> {
+    let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let logs = logs_m.lock().unwrap().get(model_id).cloned().unwrap_or_default();
+
+    let running_m = CONVERSION_RUNNING_MODEL.get_or_init(|| std::sync::Mutex::new(None));
+    let is_running = running_m.lock().unwrap().as_deref() == Some(model_id);
+
     Ok(ConversionLogs {
         logs,
-        is_running: CONVERSION_RUNNING.load(Ordering::SeqCst),
+        is_running,
     })
 }

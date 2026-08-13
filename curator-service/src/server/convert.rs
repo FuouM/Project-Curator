@@ -29,6 +29,7 @@ pub(crate) fn device_from_proto(v: i32) -> DevicePreference {
 pub(crate) fn precision_to_proto(v: &ModelPrecision) -> i32 {
     match v {
         ModelPrecision::Int8 => commonpb::ModelPrecision::Int8 as i32,
+        ModelPrecision::Fp16 => commonpb::ModelPrecision::Fp16 as i32,
         ModelPrecision::Original => commonpb::ModelPrecision::Original as i32,
     }
 }
@@ -36,6 +37,8 @@ pub(crate) fn precision_to_proto(v: &ModelPrecision) -> i32 {
 pub(crate) fn precision_from_proto(v: i32) -> ModelPrecision {
     if v == commonpb::ModelPrecision::Int8 as i32 {
         ModelPrecision::Int8
+    } else if v == commonpb::ModelPrecision::Fp16 as i32 {
+        ModelPrecision::Fp16
     } else {
         ModelPrecision::Original
     }

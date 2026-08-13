@@ -20,6 +20,7 @@ enum ModelPrecision {
   MODEL_PRECISION_UNSPECIFIED = 0;
   MODEL_PRECISION_ORIGINAL = 1;
   MODEL_PRECISION_INT8 = 2;
+  MODEL_PRECISION_FP16 = 3;
 }
 
 // Supported embedding models.

@@ -12,7 +12,7 @@ use crate::onnx::ManagedSession;
 
 pub const SAFETY_MODEL_ID: &str = "nsfw-detection-2-mini";
 pub const SAFETY_MODEL_FILENAME_FP32: &str = "nsfw-detection-2-mini.onnx";
-pub const SAFETY_MODEL_FILENAME_FP16: &str = "nsfw-detection-2-mini-fp16.onnx";
+pub const SAFETY_MODEL_FILENAME_FP16: &str = "nsfw-detection-2-mini_fp16.onnx";
 pub const MINI_INPUT_SIZE: u32 = 380;
 
 /// Mean and Std for nsfw-detection-2-mini preprocessing.

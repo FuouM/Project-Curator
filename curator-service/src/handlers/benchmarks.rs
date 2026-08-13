@@ -575,16 +575,37 @@ pub async fn run_detection_benchmark_logic(
             ))
         }
         DetectionBenchmarkKind::Safety => {
-            let det_dir = det_dir.join("nsfw-detection-2-mini/onnx");
-            let fp16 = det_dir.join("nsfw-detection-2-mini-fp16.onnx");
-            let fp32 = det_dir.join("nsfw-detection-2-mini.onnx");
-            let path = if fp16.exists() {
-                fp16
-            } else if fp32.exists() {
-                fp32
-            } else {
-                bail!("Safety model file not found.");
+            let nsfw_dir = det_dir.join("nsfw-detection-2-mini/onnx");
+            let precision = model_precisions
+                .get("nsfw-detection-2-mini")
+                .copied()
+                .unwrap_or(ModelPrecision::Original);
+
+            let path = match precision {
+                ModelPrecision::Fp16 => {
+                    let fp16_1 = nsfw_dir.join("nsfw-detection-2-mini_fp16.onnx");
+                    let fp16_2 = nsfw_dir.join("nsfw-detection-2-mini-fp16.onnx");
+                    if fp16_1.exists() {
+                        fp16_1
+                    } else if fp16_2.exists() {
+                        fp16_2
+                    } else {
+                        nsfw_dir.join("nsfw-detection-2-mini.onnx")
+                    }
+                }
+                ModelPrecision::Int8 => {
+                    let int8 = nsfw_dir.join("nsfw-detection-2-mini_int8.onnx");
+                    if int8.exists() {
+                        int8
+                    } else {
+                        nsfw_dir.join("nsfw-detection-2-mini.onnx")
+                    }
+                }
+                ModelPrecision::Original => nsfw_dir.join("nsfw-detection-2-mini.onnx"),
             };
+            if !path.exists() {
+                bail!("Safety model file not found at {:?}", path);
+            }
             info!("RunSafetyBenchmark request: path={:?}", path);
             let (cpu, gpu, err) = curator_ml::benchmark_safety_classifier(&path)
                 .map_err(|e| anyhow::anyhow!("Safety benchmark failed: {:?}", e))?;
