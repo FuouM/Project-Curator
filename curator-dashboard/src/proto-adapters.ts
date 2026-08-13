@@ -85,8 +85,34 @@ export function videoSummaryFromProto(p: PVideoSummary): VideoSummary {
   };
 }
 
+/** NSFW probability derived from the per-class scores (never stored). */
+export function nsfwScore(m: { hentai_score?: number; porn_score?: number; sexy_score?: number }): number {
+  return (m.hentai_score ?? 0) + (m.porn_score ?? 0) + (m.sexy_score ?? 0);
+}
+
+export function isClassified(s: { safe_score?: number; hentai_score?: number }): boolean {
+  return s.hentai_score !== undefined && s.safe_score !== undefined;
+}
+
+function safetyScoresFromProto(p: {
+  safeScore?: number | undefined;
+  hentaiScore?: number | undefined;
+  pornScore?: number | undefined;
+  sexyScore?: number | undefined;
+  drawingScore?: number | undefined;
+}) {
+  return {
+    safe_score: p.safeScore,
+    hentai_score: p.hentaiScore,
+    porn_score: p.pornScore,
+    sexy_score: p.sexyScore,
+    drawing_score: p.drawingScore,
+  };
+}
+
 export function imageDetailsFromProto(p: PImageDetails): ImageDetails {
   return {
+    ...safetyScoresFromProto(p),
     id: n(p.id),
     sha256: p.sha256,
     current_filepath: p.currentFilepath,
@@ -109,6 +135,7 @@ export function imageDetailsFromProto(p: PImageDetails): ImageDetails {
 
 export function searchMatchFromProto(p: PSearchMatch): SearchMatch {
   return {
+    ...safetyScoresFromProto(p),
     id: n(p.id),
     filepath: p.filepath,
     score: p.score,

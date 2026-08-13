@@ -590,6 +590,11 @@ pub async fn search_logic(
             video: details.video.clone(),
             favorite: details.favorite,
             is_missing: details.is_missing,
+            safe_score: details.safe_score,
+            hentai_score: details.hentai_score,
+            porn_score: details.porn_score,
+            sexy_score: details.sexy_score,
+            drawing_score: details.drawing_score,
         });
     }
 

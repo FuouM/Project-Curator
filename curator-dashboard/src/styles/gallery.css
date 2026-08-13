@@ -258,6 +258,22 @@ body.hide-favorite-btn .image-card:hover .star-btn.favorite {
 .image-preview img.loaded {
   opacity: 1;
 }
+
+/* Generic privacy-filter effects (applied by src/media-filter.ts) */
+.image-card.media-filter-blur img { filter: blur(18px); }
+.image-card.media-filter-pixelate img { filter: url(#pixelate-filter); }
+.image-card.media-filter-blur:hover img,
+.image-card.media-filter-pixelate:hover img { filter: none; }
+
+/* Hide = solid black rectangle over the thumbnail (card stays in the grid) */
+.image-card .nsfw-blackout { display: none; }
+.image-card.nsfw-blackout .nsfw-blackout {
+  display: block;
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: #000;
+}
 .image-preview.thumb-loading::after {
   content: "";
   position: absolute;

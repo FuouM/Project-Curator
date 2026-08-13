@@ -820,4 +820,14 @@ async fn benchmark_image(
     })
 }
 
+/// CPU/GPU latency for the canonical safety model at its 380x380 input.
+/// Batch size is 1 (per-image latency), matching every other benchmark card —
+/// the production path batches (16) for throughput; the benchmark keeps parity
+/// for apples-to-apples comparison. Returns (cpu_ms, gpu_ms, gpu_err).
+pub fn benchmark_safety_classifier(model_path: &Path) -> Result<(f64, Option<f64>, Option<String>)> {
+    use crate::safety::MINI_INPUT_SIZE;
+    let (cpu, gpu, gpu_err, _has_gpu) = run_onnx_benchmark(model_path, MINI_INPUT_SIZE as usize)?;
+    Ok((cpu, gpu, gpu_err))
+}
+
 

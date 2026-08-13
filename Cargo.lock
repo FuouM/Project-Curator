@@ -1217,6 +1217,7 @@ dependencies = [
  "curator-media",
  "curator-proto",
  "fast_image_resize",
+ "half",
  "image",
  "ndarray",
  "ort",
@@ -1258,6 +1259,7 @@ dependencies = [
  "chrono",
  "clap",
  "curator-core",
+ "curator-db",
  "curator-ml",
  "image",
  "serde",
@@ -3924,6 +3926,7 @@ version = "2.0.0-rc.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5df903c0d2c07b56950f1058104ab0c8557159f2741782223704de9be73c3c"
 dependencies = [
+ "half",
  "libloading 0.9.0",
  "ndarray",
  "ort-sys",

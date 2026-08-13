@@ -7,6 +7,7 @@ pub mod device;
 pub mod detection;
 pub mod tagger;
 pub mod benchmark;
+pub mod safety;
 
 pub use onnx::ManagedSession;
 pub use model_manager::ModelManager;
@@ -20,4 +21,9 @@ pub use tagger::{TagPrediction, TaggerEngine, TaggerManager, TaggerModelSpec, CA
 pub use benchmark::{
     benchmark_preprocess, run_onnx_benchmark, run_onnx_benchmark_2d, run_onnx_benchmark_4d,
     get_benchmark_images, run_single_image_benchmark, SingleImageBenchmarkResult,
+    benchmark_safety_classifier,
+};
+pub use safety::{
+    SafetyClassifier, SafetyClassification, preprocess_mini_image, SAFETY_MODEL_ID,
+    SAFETY_MODEL_FILENAME_FP16, MINI_INPUT_SIZE,
 };

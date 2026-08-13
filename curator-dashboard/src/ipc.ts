@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { create, fromBinary, toBinary, type Message, type MessageInitShape } from "@bufbuild/protobuf";
 import type { GenMessage } from "@bufbuild/protobuf/codegenv2";
 import { logJS } from "./utils";
+import { RescanSafetyResultSchema, SafetyRescanProgressSchema, RescanSafetyResult, SafetyRescanProgress } from "./gen/import_pb";
 
 /**
  * Invoke a typed protobuf gRPC method over the shared Named Pipe bridge.
@@ -39,4 +40,12 @@ export async function typedCall<Resp extends Message, Req extends Message = Mess
     logJS(`typedCall ${method} exception: ` + (err.message || err));
     throw err;
   }
+}
+
+export async function triggerSafetyRescan(): Promise<RescanSafetyResult> {
+  return typedCall("ImportService.RescanSafety", null, null, RescanSafetyResultSchema);
+}
+
+export async function getSafetyRescanProgress(): Promise<SafetyRescanProgress> {
+  return typedCall("ImportService.GetSafetyRescanProgress", null, null, SafetyRescanProgressSchema);
 }

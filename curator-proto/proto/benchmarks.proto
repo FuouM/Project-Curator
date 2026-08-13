@@ -16,6 +16,7 @@ service BenchmarksService {
   rpc RunOcrRecBenchmark (google.protobuf.Empty) returns (DetectionBenchmarkResult);
   rpc RunOcrClsBenchmark (google.protobuf.Empty) returns (DetectionBenchmarkResult);
   rpc RunMangaBubbleBenchmark (google.protobuf.Empty) returns (DetectionBenchmarkResult);
+  rpc RunSafetyBenchmark (google.protobuf.Empty) returns (DetectionBenchmarkResult);
 }
 
 message RunBenchmarkRequest {
@@ -71,5 +72,8 @@ message DetectionBenchmarkResult {
   optional double manga_bubble_cpu_time_ms = 19;
   optional double manga_bubble_gpu_time_ms = 20;
   optional string manga_bubble_gpu_error = 21;
+  optional double safety_cpu_time_ms = 23;
+  optional double safety_gpu_time_ms = 24;
+  optional string safety_gpu_error = 25;
   bool has_gpu = 22;
 }

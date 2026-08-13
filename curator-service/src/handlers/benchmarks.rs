@@ -315,6 +315,7 @@ pub enum DetectionBenchmarkKind {
     OcrRec,
     OcrCls,
     MangaBubble,
+    Safety,
 }
 
 pub struct DetectionBenchmarkOutcome {
@@ -339,6 +340,9 @@ pub struct DetectionBenchmarkOutcome {
     pub manga_bubble_cpu_time_ms: Option<f64>,
     pub manga_bubble_gpu_time_ms: Option<f64>,
     pub manga_bubble_gpu_error: Option<String>,
+    pub safety_cpu_time_ms: Option<f64>,
+    pub safety_gpu_time_ms: Option<f64>,
+    pub safety_gpu_error: Option<String>,
     pub has_gpu: bool,
 }
 
@@ -350,6 +354,7 @@ fn detection_outcome(
     ocr_rec: Option<(f64, Option<f64>, Option<String>)>,
     ocr_cls: Option<(f64, Option<f64>, Option<String>)>,
     manga_bubble: Option<(f64, Option<f64>, Option<String>)>,
+    safety: Option<(f64, Option<f64>, Option<String>)>,
     has_gpu: bool,
 ) -> DetectionBenchmarkOutcome {
     let field = |opt: Option<(f64, Option<f64>, Option<String>)>| {
@@ -363,6 +368,7 @@ fn detection_outcome(
     let (ocr_rec_cpu, ocr_rec_gpu, ocr_rec_err) = field(ocr_rec);
     let (ocr_cls_cpu, ocr_cls_gpu, ocr_cls_err) = field(ocr_cls);
     let (manga_cpu, manga_gpu, manga_err) = field(manga_bubble);
+    let (safety_cpu, safety_gpu, safety_err) = field(safety);
     DetectionBenchmarkOutcome {
         yolo_cpu_time_ms: yolo_cpu,
         yolo_gpu_time_ms: yolo_gpu,
@@ -385,6 +391,9 @@ fn detection_outcome(
         manga_bubble_cpu_time_ms: manga_cpu,
         manga_bubble_gpu_time_ms: manga_gpu,
         manga_bubble_gpu_error: manga_err,
+        safety_cpu_time_ms: safety_cpu,
+        safety_gpu_time_ms: safety_gpu,
+        safety_gpu_error: safety_err,
         has_gpu,
     }
 }
@@ -427,6 +436,7 @@ pub async fn run_detection_benchmark_logic(
                 None,
                 None,
                 None,
+                None,
                 has_gpu,
             ))
         }
@@ -441,6 +451,7 @@ pub async fn run_detection_benchmark_logic(
             Ok(detection_outcome(
                 None,
                 Some((cpu, gpu, err)),
+                None,
                 None,
                 None,
                 None,
@@ -461,6 +472,7 @@ pub async fn run_detection_benchmark_logic(
                 None,
                 None,
                 Some((cpu, gpu, err)),
+                None,
                 None,
                 None,
                 None,
@@ -489,6 +501,7 @@ pub async fn run_detection_benchmark_logic(
                 None,
                 None,
                 None,
+                None,
                 has_gpu,
             ))
         }
@@ -513,6 +526,7 @@ pub async fn run_detection_benchmark_logic(
                 Some((cpu, gpu, err)),
                 None,
                 None,
+                None,
                 has_gpu,
             ))
         }
@@ -530,6 +544,7 @@ pub async fn run_detection_benchmark_logic(
                 None,
                 None,
                 Some((cpu, gpu, err)),
+                None,
                 None,
                 has_gpu,
             ))
@@ -555,7 +570,34 @@ pub async fn run_detection_benchmark_logic(
                 None,
                 None,
                 Some((cpu, gpu, err)),
+                None,
                 has_gpu,
+            ))
+        }
+        DetectionBenchmarkKind::Safety => {
+            let det_dir = det_dir.join("nsfw-detection-2-mini/onnx");
+            let fp16 = det_dir.join("nsfw-detection-2-mini-fp16.onnx");
+            let fp32 = det_dir.join("nsfw-detection-2-mini.onnx");
+            let path = if fp16.exists() {
+                fp16
+            } else if fp32.exists() {
+                fp32
+            } else {
+                bail!("Safety model file not found.");
+            };
+            info!("RunSafetyBenchmark request: path={:?}", path);
+            let (cpu, gpu, err) = curator_ml::benchmark_safety_classifier(&path)
+                .map_err(|e| anyhow::anyhow!("Safety benchmark failed: {:?}", e))?;
+            Ok(detection_outcome(
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some((cpu, gpu, err)),
+                gpu.is_some(),
             ))
         }
     }

@@ -4,7 +4,7 @@ use crate::ClientContext;
 use curator_core::grpc::import::{
     import_service_server::ImportService, BackfillResult, ImportImageRequest, ImportResult,
     ImportedFoldersResult, IndexFolderRequest, IndexFolderResult, MediaMetadataBackfillResult,
-    RescanFolderRequest, RescanFolderResult,
+    RescanFolderRequest, RescanFolderResult, RescanSafetyResult, SafetyRescanProgress,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
@@ -49,6 +49,7 @@ impl ImportService for ImportServiceImpl {
                 active,
                 ffmpeg.as_deref(),
                 &self.ctx.data_dir,
+                &self.ctx.safety,
             )
             .await
             .map_err(internal_status)?;
@@ -113,6 +114,7 @@ impl ImportService for ImportServiceImpl {
             active,
             ffmpeg.as_deref(),
             &self.ctx.data_dir,
+            &self.ctx.safety,
         )
         .await
         .map_err(internal_status)?;
@@ -137,5 +139,26 @@ impl ImportService for ImportServiceImpl {
             folder_id: req.folder_id,
             queued,
         }))
+    }
+
+    async fn rescan_safety(
+        &self,
+        _request: TonicRequest<()>,
+    ) -> Result<TonicResponse<RescanSafetyResult>, Status> {
+        let result = self
+            .ctx
+            .safety
+            .start_rescan(self.ctx.db.clone())
+            .await
+            .map_err(internal_status)?;
+        Ok(TonicResponse::new(result))
+    }
+
+    async fn get_safety_rescan_progress(
+        &self,
+        _request: TonicRequest<()>,
+    ) -> Result<TonicResponse<SafetyRescanProgress>, Status> {
+        let progress = self.ctx.safety.rescan_progress().await;
+        Ok(TonicResponse::new(progress))
     }
 }

@@ -8,6 +8,7 @@ use std::path::Path;
 use tracing::{info, warn};
 
 use super::common::resolve_source_id;
+use super::safety::SafetyService;
 
 /// Best-effort media metadata extracted from a file header.
 /// Extraction failures are logged and stored as `None`, matching the phash
@@ -322,6 +323,7 @@ pub async fn import_single_image(
     folder_id: Option<i64>,
     ffmpeg: Option<&Path>,
     data_dir: &Path,
+    safety: &SafetyService,
 ) -> Result<(i64, String)> {
     let path = Path::new(path_str);
     if !path.exists() {
@@ -381,6 +383,14 @@ pub async fn import_single_image(
     upsert_video_metadata(&mut tx, id, &item.media).await?;
     tx.commit().await?;
 
+    // Coalescing safety queue: videos classify their extracted poster frame.
+    let classify_path = item
+        .media
+        .video_frame_path
+        .clone()
+        .unwrap_or_else(|| path_str.to_string());
+    safety.enqueue_import(db.clone(), id, classify_path).await;
+
     Ok((id, sha256))
 }
 
@@ -390,6 +400,7 @@ pub async fn import_image_logic(
     active: EmbeddingModel,
     ffmpeg: Option<&Path>,
     data_dir: &Path,
+    safety: &SafetyService,
 ) -> Result<(i64, String, usize, Option<i64>)> {
     let path = Path::new(path_str);
     if !path.exists() {
@@ -537,6 +548,14 @@ pub async fn import_image_logic(
             upsert_animation_metadata(&mut tx, img_id, &item.media).await?;
             upsert_video_metadata(&mut tx, img_id, &item.media).await?;
 
+            // Coalescing safety queue: videos classify their extracted poster frame.
+            let classify_path = item
+                .media
+                .video_frame_path
+                .clone()
+                .unwrap_or_else(|| item.path_str.clone());
+            safety.enqueue_import(db.clone(), img_id, classify_path).await;
+
             if !imported_any {
                 first_id = img_id;
                 first_sha = item.sha256;
@@ -559,8 +578,16 @@ pub async fn import_image_logic(
             .and_then(|p| p.to_str())
             .unwrap_or(path_str);
         let folder_id = get_or_create_folder(parent_dir, db).await?;
-        let (id, sha) =
-            import_single_image(path_str, db, active, Some(folder_id), ffmpeg, data_dir).await?;
+        let (id, sha) = import_single_image(
+            path_str,
+            db,
+            active,
+            Some(folder_id),
+            ffmpeg,
+            data_dir,
+            safety,
+        )
+        .await?;
         Ok((id, sha, 1, Some(folder_id)))
     }
 }
@@ -825,6 +852,7 @@ pub async fn rescan_folder_logic(
     active: EmbeddingModel,
     ffmpeg: Option<&Path>,
     data_dir: &Path,
+    safety: &SafetyService,
 ) -> Result<(i64, i64)> {
     let folder_path: Option<String> =
         sqlx::query_scalar("SELECT path FROM folders WHERE id = ?")
@@ -851,7 +879,7 @@ pub async fn rescan_folder_logic(
     .await?;
 
     let (_id, _sha, found, _folder_id) =
-        import_image_logic(&path, db, active, ffmpeg, data_dir).await?;
+        import_image_logic(&path, db, active, ffmpeg, data_dir, safety).await?;
 
     let after: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM images WHERE folder_id = ? AND deleted_at IS NULL",

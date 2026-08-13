@@ -25,7 +25,16 @@ export interface BatchPreviewItem {
   match_result?: ParsedMetadata;
 }
 
-export interface SearchMatch {
+/** Per-class probabilities from the safety classifier (undefined = not yet classified). */
+export interface SafetyScores {
+  safe_score?: number;
+  hentai_score?: number;
+  porn_score?: number;
+  sexy_score?: number;
+  drawing_score?: number;
+}
+
+export interface SearchMatch extends SafetyScores {
   id: number;
   filepath: string;
   score: number;
@@ -43,7 +52,7 @@ export interface SearchMatch {
   height?: number;
 }
 
-export interface ImageDetails {
+export interface ImageDetails extends SafetyScores {
   id: number;
   sha256: string;
   current_filepath: string;
@@ -200,6 +209,7 @@ export interface CardImageData {
   video?: VideoSummary | null;
   width?: number;
   height?: number;
+  safety?: SafetyScores;
 }
 
 export interface OcrResult {

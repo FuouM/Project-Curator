@@ -511,12 +511,42 @@ pub async fn get_image_logic(
         animation,
         video,
         note: img.note,
+        safe_score: img.safe_score,
+        hentai_score: img.hentai_score,
+        porn_score: img.porn_score,
+        sexy_score: img.sexy_score,
+        drawing_score: img.drawing_score,
     })
 }
 
 /// Fetch full details for a batch of image IDs in a single round trip for the
 /// image/tag rows plus scoped sub-queries for the remaining metadata.
 /// List/search/concept callers share this one implementation.
+/// Row projection for `batch_get_images_logic` (tag rows repeat per image).
+#[derive(sqlx::FromRow)]
+struct BatchImageRow {
+    id: i64,
+    sha256: String,
+    current_filepath: String,
+    mtime: i64,
+    created_at: String,
+    favorite: bool,
+    is_missing: bool,
+    width: Option<i64>,
+    height: Option<i64>,
+    safe_score: Option<f32>,
+    hentai_score: Option<f32>,
+    porn_score: Option<f32>,
+    sexy_score: Option<f32>,
+    drawing_score: Option<f32>,
+    note: Option<String>,
+    tag_name: Option<String>,
+    tag_category: Option<String>,
+    confidence: Option<f32>,
+    source_name: Option<String>,
+    is_blacklisted: bool,
+}
+
 pub async fn batch_get_images_logic(
     ids: &[i64],
     preferred_source: &str,
@@ -532,8 +562,10 @@ pub async fn batch_get_images_logic(
     let sql = format!(
         r#"
         SELECT i.id, i.sha256, i.current_filepath, i.mtime, i.created_at, i.favorite, i.is_missing,
-               i.width, i.height, i.note,
-               t.name, t.category, it.confidence, s.name as source_name, COALESCE(it.is_blacklisted, 0)
+               i.width, i.height,
+               i.safe_score, i.hentai_score, i.porn_score, i.sexy_score, i.drawing_score,
+               i.note,
+               t.name AS tag_name, t.category AS tag_category, it.confidence, s.name as source_name, COALESCE(it.is_blacklisted, 0) AS is_blacklisted
         FROM images i
         LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0 AND it.source_id = {source_id}
         LEFT JOIN tags t ON it.tag_id = t.id
@@ -544,7 +576,7 @@ pub async fn batch_get_images_logic(
         placeholders,
         source_id = source_id
     );
-    let mut q = sqlx::query_as::<_, (i64, String, String, i64, String, bool, bool, Option<i64>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<f32>, Option<String>, bool)>(&sql);
+    let mut q = sqlx::query_as::<_, BatchImageRow>(&sql);
     for id in ids {
         q = q.bind(id);
     }
@@ -553,24 +585,30 @@ pub async fn batch_get_images_logic(
     let mut image_order: Vec<i64> = Vec::new();
     let mut image_map: std::collections::HashMap<i64, ImageDetails> =
         std::collections::HashMap::new();
-    for (
-        id,
-        sha256,
-        current_filepath,
-        mtime,
-        created_at,
-        favorite,
-        is_missing,
-        width,
-        height,
-        note,
-        tag_name,
-        tag_category,
-        confidence,
-        source_name,
-        is_blacklisted,
-    ) in rows
+    for r in rows
     {
+        let BatchImageRow {
+            id,
+            sha256,
+            current_filepath,
+            mtime,
+            created_at,
+            favorite,
+            is_missing,
+            width,
+            height,
+            safe_score,
+            hentai_score,
+            porn_score,
+            sexy_score,
+            drawing_score,
+            note,
+            tag_name,
+            tag_category,
+            confidence,
+            source_name,
+            is_blacklisted,
+        } = r;
         if !image_map.contains_key(&id) {
             image_order.push(id);
         }
@@ -593,6 +631,11 @@ pub async fn batch_get_images_logic(
             animation: None,
             video: None,
             note,
+            safe_score,
+            hentai_score,
+            porn_score,
+            sexy_score,
+            drawing_score,
         });
         if let (Some(name), Some(category)) = (tag_name, tag_category) {
             if source_name.as_deref() != Some("filename_parser") {
@@ -913,5 +956,52 @@ pub async fn get_storage_stats_logic(
 
     Ok(curator_core::ipc::StorageStats { stats })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_batch_get_images_logic() -> Result<()> {
+        let options = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(":memory:")
+            .create_if_missing(true);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await?;
+        sqlx::migrate!("../curator-db/migrations").run(&pool).await?;
+
+        // Insert a test image
+        sqlx::query(
+            "INSERT INTO images (id, sha256, current_filepath, mtime, created_at) VALUES (101, 'testsha', 'C:/test.png', 1000, '2026-08-13')",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Insert default source
+        sqlx::query("INSERT INTO sources (id, name, type) VALUES (1, 'user', 'user')")
+            .execute(&pool)
+            .await?;
+
+        // Insert tag and image_tag
+        sqlx::query("INSERT INTO tags (id, name, category) VALUES (201, 'testtag', 'general')")
+            .execute(&pool)
+            .await?;
+        sqlx::query("INSERT INTO image_tags (image_id, tag_id, source_id, confidence, is_blacklisted) VALUES (101, 201, 1, 0.95, 0)")
+            .execute(&pool)
+            .await?;
+
+        let details = batch_get_images_logic(&[101], "user", &pool).await?;
+        assert_eq!(details.len(), 1);
+        assert_eq!(details[0].id, 101);
+        assert_eq!(details[0].tags.len(), 1);
+        assert_eq!(details[0].tags[0].tag, "testtag");
+        assert_eq!(details[0].tags[0].category, "general");
+
+        Ok(())
+    }
+}
+
 
 

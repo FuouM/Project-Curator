@@ -57,6 +57,8 @@ struct ClientContext {
     cancel_tokens: handlers::models::CancelTokens,
     benchmark_progress: handlers::BenchmarkProgressMap,
     transcode_progress: handlers::transcode::TranscodeProgressMap,
+    /// Service-side safety classifier and its coalescing import batch queue.
+    safety: handlers::safety::SafetyService,
     /// Serializes folder scan/import write bursts. gRPC handles every RPC in
     /// its own tokio task, but SQLite permits a single writer, so concurrent
     /// bulk scan/import operations would otherwise collide and fail with
@@ -359,6 +361,9 @@ async fn main() -> Result<(), Error> {
     let transcode_progress: handlers::transcode::TranscodeProgressMap =
         Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
 
+    let data_dir_arc = Arc::new(data_dir);
+    let safety = handlers::safety::SafetyService::new((*data_dir_arc).clone());
+
     let ctx = Arc::new(ClientContext {
         db,
         model_manager,
@@ -366,13 +371,14 @@ async fn main() -> Result<(), Error> {
         taggers,
         detection,
         ocr,
-        data_dir: Arc::new(data_dir),
+        data_dir: data_dir_arc,
         settings: settings_arc,
         thumbnail_cache,
         download_progress,
         cancel_tokens,
         benchmark_progress,
         transcode_progress,
+        safety,
         import_lock: tokio::sync::Mutex::new(()),
     });
 
