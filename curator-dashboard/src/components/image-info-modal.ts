@@ -124,7 +124,9 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
         const rowHtml = rows.map((r) => {
           const pct = Math.round(r.value * 1000) / 10;
           const danger = r.label !== "Safe" && r.label !== "Drawing" && r.value >= threshold;
-          return '<div style="display:flex;align-items:center;gap:6px;font-size:11px;' + (danger ? 'background:#f8d7da;padding:3px 6px;border-radius:2px;' : '') + '">' +
+          const safeHighlight = (r.label === "Safe" || r.label === "Drawing") && r.value >= threshold;
+          const bg = danger ? "background:#f8d7da;" : safeHighlight ? "background:#d1e7dd;" : "";
+          return '<div style="display:flex;align-items:center;gap:6px;font-size:11px;padding:3px 6px;' + bg + '">' +
             '<i class="bi ' + r.icon + '" style="color:#666;width:14px;"></i>' +
             '<span style="width:64px;font-weight:600;">' + r.label + '</span>' +
             '<div class="prob-bar" style="flex:1;"><div style="height:100%;width:' + pct + '%;background:var(--sys-accent,#0078d7);"></div></div>' +
