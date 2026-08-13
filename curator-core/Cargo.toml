@@ -21,6 +21,15 @@ turbojpeg = "1"
 png = { version = "0.18", features = ["zlib-rs"] }
 webp = "0.3"
 
+# Align workspace dependency features to prevent cache invalidation between target compilation graphs
+tokio-stream = { workspace = true }
+url = { workspace = true }
+bitflags = { workspace = true }
+indexmap = { workspace = true }
+stable_deref_trait = { workspace = true }
+bit-set = { workspace = true }
+foldhash = { workspace = true }
+
 [dev-dependencies]
 tempfile = "3"
 ndarray = "0.17"
