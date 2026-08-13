@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
+use anyhow::Context;
 use anyhow::Result;
 use curator_core::ipc::{
     DownloadProgress, ManifestFileInfo, ModelStatusInfo,
@@ -69,9 +70,18 @@ fn find_script_root(script_name: &str, cwd_fallback: PathBuf) -> PathBuf {
     project_root
 }
 
-/// Read the model manifest from disk.
+/// Read the git-tracked model manifest from the workspace root. The manifest
+/// is authored by the repository maintainers, so it lives at
+/// `<workspace_root>/model_manifest.json` and is resolved as
+/// `data_dir.parent().join("model_manifest.json")` (the same convention used
+/// to resolve the workspace-root `plugins/` directory). Fails fast when
+/// `data_dir` has no parent.
 fn read_manifest(data_dir: &Path) -> Result<Vec<ModelManifestEntry>> {
-    let manifest_path = data_dir.join("model_manifest.json");
+    let workspace_root = data_dir.parent().context(format!(
+        "data_dir {:?} has no parent; cannot resolve workspace-root model_manifest.json",
+        data_dir
+    ))?;
+    let manifest_path = workspace_root.join("model_manifest.json");
     if !manifest_path.exists() {
         anyhow::bail!("Model manifest not found at {:?}", manifest_path);
     }

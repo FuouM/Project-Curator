@@ -1,0 +1,238 @@
+{
+  "models": [
+    {
+      "id": "clip-vit-b32",
+      "name": "CLIP ViT-B/32",
+      "description": "Image and text embedding model (512-d vectors)",
+      "category": "embedding",
+      "url": "https://huggingface.co/Xenova/clip-vit-base-patch32",
+      "files": [
+        {
+          "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model.onnx",
+          "dest": "clip-vit-b32/vision_model.onnx",
+          "sha256": "fd6e1402a588279d1723c7534d4bcba5bc0b14b47dfab0e46f8c47b8270d7d40"
+        },
+        {
+          "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/text_model.onnx",
+          "dest": "clip-vit-b32/text_model.onnx",
+          "sha256": "3f6571f5bad13a97c469c1622e1cfc4d9aef78b79fdbfcff804ca357bfada8cc"
+        },
+        {
+          "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/tokenizer.json",
+          "dest": "clip-vit-b32/tokenizer.json",
+          "sha256": "f7f3b7af117d467b58374797691a6438d3e6b9e9cef800dfd5dced7f697a90cd"
+        }
+      ],
+      "quantizable": [],
+      "required_by": ["embedding"]
+    },
+    {
+      "id": "mobileclip-s2",
+      "name": "MobileCLIP S2",
+      "description": "Fast mobile embedding model (512-d vectors)",
+      "category": "embedding",
+      "url": "https://huggingface.co/Xenova/mobileclip_s2",
+      "files": [
+        {
+          "url": "https://huggingface.co/Xenova/mobileclip_s2/resolve/main/onnx/vision_model.onnx",
+          "dest": "mobileclip-s2/onnx/vision_model.onnx",
+          "sha256": "d28b92d7a3a6ba99bd000cce5c91678c0e279dc934c887a3785908a811872a6c"
+        },
+        {
+          "url": "https://huggingface.co/Xenova/mobileclip_s2/resolve/main/onnx/text_model.onnx",
+          "dest": "mobileclip-s2/onnx/text_model.onnx",
+          "sha256": "ff82e945c6c652c51df687e10f102a8e43c87d37c9108ff692468be3732f3710"
+        },
+        {
+          "url": "https://huggingface.co/Xenova/mobileclip_s2/resolve/main/tokenizer.json",
+          "dest": "mobileclip-s2/tokenizer.json",
+          "sha256": "72ed5c96db5729294468543e4bc75fce14ca63f58e37300290189ba1c1e52b85"
+        }
+      ],
+      "quantizable": [],
+      "required_by": ["embedding"]
+    },
+    {
+      "id": "camie-tagger-v2",
+      "name": "Camie Tagger v2",
+      "description": "Multi-label image auto-tagger",
+      "category": "tagging",
+      "url": "https://huggingface.co/Camais03/camie-tagger-v2",
+      "files": [
+        {
+          "url": "https://huggingface.co/Camais03/camie-tagger-v2/resolve/main/camie-tagger-v2.onnx",
+          "dest": "camie-tagger-v2/camie-tagger-v2.onnx",
+          "sha256": "ab0aaf253e3d546090001bec9bebc776c354ab6800f442ab9167af87b4a953ac"
+        },
+        {
+          "url": "https://huggingface.co/Camais03/camie-tagger-v2/resolve/main/camie-tagger-v2-metadata.json",
+          "dest": "camie-tagger-v2/camie-tagger-v2-metadata.json",
+          "sha256": "de9f962eb0fd86b7e30d0af4e8c7990205200d70e955d8ecae60f87d14eae66b"
+        }
+      ],
+      "quantizable": [],
+      "required_by": ["tagging"]
+    },
+    {
+      "id": "yolo-person",
+      "name": "YOLO Person Detector",
+      "description": "Anime person detection (YOLOv8)",
+      "category": "detection",
+      "url": "https://huggingface.co/deepghs/anime_person_detection",
+      "files": [
+        {
+          "url": "https://huggingface.co/deepghs/anime_person_detection/resolve/main/person_detect_v1.1_s/model.onnx",
+          "dest": "yolo-person/model.onnx",
+          "sha256": "02972c0401cd77e1a5f05eee480d9e6455e14fafd8df50f4b80ecaf47263f1de"
+        }
+      ],
+      "quantizable": ["int8"],
+      "required_by": ["detection"]
+    },
+    {
+      "id": "ccip",
+      "name": "CCIP Character ID",
+      "description": "Character identification and similarity matching",
+      "category": "detection",
+      "url": "https://huggingface.co/deepghs/ccip_onnx",
+      "files": [
+        {
+          "url": "https://huggingface.co/deepghs/ccip_onnx/resolve/main/ccip-caformer-24-randaug-pruned/model_feat.onnx",
+          "dest": "ccip/model_feat.onnx",
+          "sha256": "4ea118d16496274f4f6e08d3afc768cc592389e8f7f32f8732ce2215c228ac5f"
+        },
+        {
+          "url": "https://huggingface.co/deepghs/ccip_onnx/resolve/main/ccip-caformer-24-randaug-pruned/model_metrics.onnx",
+          "dest": "ccip/model_metrics.onnx",
+          "sha256": "7e4646fdfbe369ad485b227ec47ac4092c98b8deef3af44e19fdbd8ba7bc25c1"
+        }
+      ],
+      "quantizable": [],
+      "required_by": ["detection"]
+    },
+    {
+      "id": "pp-ocrv6-medium",
+      "name": "PP-OCRv6 Medium",
+      "description": "Text detection and recognition (PaddleOCR)",
+      "category": "ocr",
+      "url": "https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_det_onnx",
+      "files": [
+        {
+          "url": "https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_det_onnx/resolve/main/inference.onnx",
+          "dest": "pp-ocrv6-medium/det/inference.onnx",
+          "sha256": "eb13b44b25bb36f89528b68720af8a61d9cf381176107f465db1757b65d086e1"
+        },
+        {
+          "url": "https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_det_onnx/resolve/main/inference.yml",
+          "dest": "pp-ocrv6-medium/det/inference.yml",
+          "sha256": "7298d5ead546584af2504d03355f881ac7a7bc0eb1e282d3e159277c1d0af871"
+        },
+        {
+          "url": "https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_rec_onnx/resolve/main/inference.onnx",
+          "dest": "pp-ocrv6-medium/rec/inference.onnx",
+          "sha256": "9c09abf0957f7968c7586464b7397b84ad2387a0497a351af40e9acc71b673ba"
+        },
+        {
+          "url": "https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_rec_onnx/resolve/main/inference.yml",
+          "dest": "pp-ocrv6-medium/rec/inference.yml",
+          "sha256": "991b700facf5b50a7de193468207d5f4255b538dde0d312ae3b7c7a9b6873129"
+        }
+      ],
+      "quantizable": ["int8"],
+      "required_by": ["ocr"]
+    },
+    {
+      "id": "pp-lcnet-cls",
+      "name": "PP-LCNet Textline Orientation",
+      "description": "Textline orientation classifier (0/180 degrees). Optional - improves OCR accuracy for upside-down text.",
+      "category": "ocr",
+      "optional": true,
+      "url": "https://huggingface.co/PaddlePaddle/PP-LCNet_x1_0_textline_ori_onnx",
+      "files": [
+        {
+          "url": "https://huggingface.co/PaddlePaddle/PP-LCNet_x1_0_textline_ori_onnx/resolve/main/inference.onnx",
+          "dest": "pp-lcnet-cls/inference.onnx",
+          "sha256": "38aa97cd4be591e0ad304e659f07ba30d946f27a63315433f6659c69c8778345"
+        },
+        {
+          "url": "https://huggingface.co/PaddlePaddle/PP-LCNet_x1_0_textline_ori_onnx/resolve/main/inference.yml",
+          "dest": "pp-lcnet-cls/inference.yml",
+          "sha256": "8d5120d0e1a30a9df7ed46aa9119da3796ed066777089d1c1d705f132d5e90f9"
+        }
+      ],
+      "quantizable": [],
+      "required_by": []
+    },
+    {
+      "id": "manga-bubble-yolo",
+      "name": "Manga Bubble Detector",
+      "description": "Manga text bubble detection (YOLO26). Currently running a quantized variant - if bubble detection is slow, the model likely hasn't been quantized yet.",
+      "category": "ocr",
+      "optional": true,
+      "url": "https://huggingface.co/Kiuyha/Manga-Bubble-YOLO",
+      "files": [
+        {
+          "url": "https://huggingface.co/Kiuyha/Manga-Bubble-YOLO/resolve/main/onnx/yolo26n.onnx",
+          "dest": "manga-bubble-yolo/yolo26n.onnx",
+          "sha256": "b45c2e12cf0c3c1d2abfbbb9123c9f96f040f2ac36a0842382ecd9d859c851c7"
+        }
+      ],
+      "quantizable": ["int8"],
+      "required_by": []
+    },
+    {
+      "id": "wd-eva02-tagger-2026-canary",
+      "name": "WD EVA02 Tagger 2026 Canary",
+      "description": "State-of-the-art anime image auto-tagger. Safetensors weights are converted to ONNX locally.",
+      "category": "tagging",
+      "optional": true,
+      "url": "https://huggingface.co/ashen-sensored/wd-eva02-tagger-2026-canary",
+      "files": [
+        {
+          "url": "https://huggingface.co/ashen-sensored/wd-eva02-tagger-2026-canary/resolve/main/model.safetensors",
+          "dest": "wd-eva02-tagger-2026-canary/model.safetensors",
+          "sha256": "85b3e260415826ecee98b1619cccf37560937b431633791361ebc28fad02d351"
+        },
+        {
+          "url": "https://huggingface.co/ashen-sensored/wd-eva02-tagger-2026-canary/resolve/main/selected_tags.csv",
+          "dest": "wd-eva02-tagger-2026-canary/selected_tags.csv",
+          "sha256": "3f78c28ee0d50779edb320733f76aeaf4184694cbd09c631deef6889865f9178"
+        },
+        {
+          "url": "https://huggingface.co/ashen-sensored/wd-eva02-tagger-2026-canary/resolve/main/config.json",
+          "dest": "wd-eva02-tagger-2026-canary/config.json",
+          "sha256": "38366122ec9f9e8e604ad73d4a292edae32e2bf2471be7baa8266bd1e990dadd"
+        }
+      ],
+      "quantizable": [],
+      "required_by": []
+    },
+    {
+      "id": "nsfw-detection-2-mini",
+      "name": "NSFW Detection 2 Mini (5-class, 380x380)",
+      "description": "EfficientNet-based image safety classifier.",
+      "category": "safety",
+      "optional": true,
+      "url": "https://huggingface.co/viddexa/nsfw-detection-2-mini",
+      "files": [
+        {
+          "url": "https://huggingface.co/viddexa/nsfw-detection-2-mini/resolve/main/model.safetensors",
+          "dest": "nsfw-detection-2-mini/model.safetensors",
+          "sha256": "b77f531d1d90bc8268f6ec18bd6dee7b2ba19277f53267f17cfebc12626f49a4"
+        },
+        {
+          "url": "https://huggingface.co/viddexa/nsfw-detection-2-mini/resolve/main/config.json",
+          "dest": "nsfw-detection-2-mini/config.json",
+          "sha256": "3248bae9dae0230a7bac5878322b637dc26dd427cf17b8224aaeeb8fc9c62903"
+        },
+        {
+          "url": "https://huggingface.co/viddexa/nsfw-detection-2-mini/resolve/main/preprocessor_config.json",
+          "dest": "nsfw-detection-2-mini/preprocessor_config.json",
+          "sha256": "249d72557e900bad1ce5ed790e3aa628cbbe96484ee6ec67991a03d29609b392"
+        }
+      ],
+      "quantizable": ["fp16"],
+      "required_by": []
+    }
+  ]
+}
