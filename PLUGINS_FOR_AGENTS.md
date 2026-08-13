@@ -3,6 +3,50 @@
 > **Authoritative Technical Blueprint & Design Mandate for Building Project Curator Plugins**
 > *This document provides AI agents and human developers with the complete architecture, API reference, performance patterns, design system rules, and architectural insights extracted from official core plugins.*
 
+- [PLUGINS\_FOR\_AGENTS.MD](#plugins_for_agentsmd)
+  - [1. Plugin Architecture \& System Overview](#1-plugin-architecture--system-overview)
+    - [Key Architectural Constraints](#key-architectural-constraints)
+    - [1.1. Portable Distribution \& Directory Resolution](#11-portable-distribution--directory-resolution)
+    - [1.2. Core Plugin Development Philosophy](#12-core-plugin-development-philosophy)
+  - [2. Directory \& Workspace Structure](#2-directory--workspace-structure)
+    - [Single-file plugins (legacy / simple)](#single-file-plugins-legacy--simple)
+    - [Multi-file TypeScript plugins (preferred for new work)](#multi-file-typescript-plugins-preferred-for-new-work)
+    - [Downloaded/On-Demand Runtime Plugins (`install.json` variant)](#downloadedon-demand-runtime-plugins-installjson-variant)
+    - [Build commands](#build-commands)
+  - [3. Manifest Declaration (`manifest.json`)](#3-manifest-declaration-manifestjson)
+    - [Field Specifications](#field-specifications)
+  - [4. PluginHost API Reference (`window.PluginHost`)](#4-pluginhost-api-reference-windowpluginhost)
+    - [TypeScript Interface Specification](#typescript-interface-specification)
+    - [API Capabilities Breakdown](#api-capabilities-breakdown)
+      - [1. Sidebar Navigation Tab Registration (`registerTab`)](#1-sidebar-navigation-tab-registration-registertab)
+      - [2. Local Asset Path Conversion (`convertFileSrc`)](#2-local-asset-path-conversion-convertfilesrc)
+      - [3. IPC Core Service Requests (`callService`)](#3-ipc-core-service-requests-callservice)
+      - [4. Selection Context Queries (`getSelectionAssetContexts`)](#4-selection-context-queries-getselectionassetcontexts)
+      - [5. Image Info Modal Section Injector (`registerMetadataRenderer`)](#5-image-info-modal-section-injector-registermetadatarenderer)
+      - [6. Grid Toolbar \& Context Menu Actions](#6-grid-toolbar--context-menu-actions)
+  - [5. UI \& Design System Guidelines (WinForms Desktop Control Mandate)](#5-ui--design-system-guidelines-winforms-desktop-control-mandate)
+    - [Strict Design Rules](#strict-design-rules)
+  - [6. Native Tauri v2 Drag \& Drop Integration](#6-native-tauri-v2-drag--drop-integration)
+    - [Recommended Native Drop Listener Template](#recommended-native-drop-listener-template)
+  - [7. Performance \& GPU Compositing Patterns](#7-performance--gpu-compositing-patterns)
+    - [1. Zero DOM Rebuild Interaction Loops](#1-zero-dom-rebuild-interaction-loops)
+    - [2. Smooth Layer Clipping (No Image Decoder Texture Flicker)](#2-smooth-layer-clipping-no-image-decoder-texture-flicker)
+    - [3. Screen-Space Overlay Positioning](#3-screen-space-overlay-positioning)
+  - [8. Critical Lessons \& Architectural Patterns Learned from Existing Core Plugins](#8-critical-lessons--architectural-patterns-learned-from-existing-core-plugins)
+    - [Pattern 1: Non-Destructive File Collision Resolution](#pattern-1-non-destructive-file-collision-resolution)
+    - [Pattern 2: Native Folder Picker Dialog Invocation](#pattern-2-native-folder-picker-dialog-invocation)
+    - [Pattern 3: Asynchronous Long-Running Task Polling (`GetTranscodeProgress`)](#pattern-3-asynchronous-long-running-task-polling-gettranscodeprogress)
+    - [Pattern 4: Fast Queue Deduplication \& Filename Disambiguation](#pattern-4-fast-queue-deduplication--filename-disambiguation)
+    - [Pattern 5: Embedded Diagnostic Terminal Log Box](#pattern-5-embedded-diagnostic-terminal-log-box)
+    - [Pattern 6: Deferred Mounting Initializer (`setTimeout(fn, 0)`)](#pattern-6-deferred-mounting-initializer-settimeoutfn-0)
+    - [Pattern 7: Seamless Cross-Tab Navigation \& Modal Closure](#pattern-7-seamless-cross-tab-navigation--modal-closure)
+    - [Pattern 8: Settings Persistence via Browser `localStorage`](#pattern-8-settings-persistence-via-browser-localstorage)
+    - [Pattern 9: Full-Height Plugin Tabs (`.view-section` Height Collapse)](#pattern-9-full-height-plugin-tabs-view-section-height-collapse)
+    - [Pattern 10: Surfacing Console Errors from a Cross-Origin iframe](#pattern-10-surfacing-console-errors-from-a-cross-origin-iframe)
+    - [Pattern 11: Fixing `willReadFrequently` Canvas Readback Lag in Embedded Editors](#pattern-11-fixing-willreadfrequently-canvas-readback-lag-in-embedded-editors)
+  - [9. Complete Working Reference Implementation (`plugins/example-plugin/index.js`)](#9-complete-working-reference-implementation-pluginsexample-pluginindexjs)
+  - [10. Verification Checklist Before Committing](#10-verification-checklist-before-committing)
+
 ---
 
 ## 1. Plugin Architecture & System Overview
@@ -20,19 +64,20 @@ Project Curator Runtime
 
 ### Key Architectural Constraints
 
-* **Isolated Script Execution**: Plugins are authored as zero-dependency ES5/ES6 JavaScript IIFEs (`index.js`). They are read via IPC (`ReadPluginFile`) and executed in global webview scope via script tags.
-* **No Direct File Mutations**: Source media files must **never** be overwritten or mutated. Generated or converted artifacts are exported to specified output folders.
-* **Core API Gateway**: All interactions with the library, SQLite database, ONNX inference engine, and asset file conversion occur via `window.PluginHost`.
+- **Isolated Script Execution**: Plugins are authored as zero-dependency ES5/ES6 JavaScript IIFEs (`index.js`). They are read via IPC (`ReadPluginFile`) and executed in global webview scope via script tags.
+- **No Direct File Mutations**: Source media files must **never** be overwritten or mutated. Generated or converted artifacts are exported to specified output folders.
+- **Core API Gateway**: All interactions with the library, SQLite database, ONNX inference engine, and asset file conversion occur via `window.PluginHost`.
 
 ### 1.1. Portable Distribution & Directory Resolution
 
 Because Project Curator is packaged as a **portable desktop application**, the Rust binaries are statically compiled and cannot be modified at runtime. Dynamic plugin integration is achieved as follows:
 
-* **Adjacent Directory Layout**: In both development and production portable releases, the `plugins/` folder must reside **adjacent** to the `.curator/` data directory.
-* **Runtime Resolution**: The backend service resolves the root of the plugins directory portably using:
+- **Adjacent Directory Layout**: In both development and production portable releases, the `plugins/` folder must reside **adjacent** to the `.curator/` data directory.
+- **Runtime Resolution**: The backend service resolves the root of the plugins directory portably using:
   `plugin_root = data_dir.parent().join("plugins")`
   This dynamically resolves by seeking developer workspace markers (`Cargo.toml` or `.git` up the folder tree), respecting the `CURATOR_DATA_DIR` override, or falling back directly to the folder adjacent to the running executable. This ensures portable releases run immediately on double-click without requiring any environment variables or developer files.
-* **Portable Release Structure**: A distributed portable package consists of:
+- **Portable Release Structure**: A distributed portable package consists of:
+
   ```bash
   ProjectCurator/
   ├── curator-dashboard.exe
@@ -41,7 +86,8 @@ Because Project Curator is packaged as a **portable desktop application**, the R
   ├── .curator/             # SQLite, vector index, and ONNX models
   └── plugins/              # Dynamic JS/TS plugins (git-ignored runtimes)
   ```
-* **Implication**: Developers and users do not recompile Rust to install plugins. They simply drop the plugin's folder containing `manifest.json` into the `plugins/` directory. The static Rust backend handles manifest validation, file reading, and serves the UI scripts dynamically into the webview.
+
+- **Implication**: Developers and users do not recompile Rust to install plugins. They simply drop the plugin's folder containing `manifest.json` into the `plugins/` directory. The static Rust backend handles manifest validation, file reading, and serves the UI scripts dynamically into the webview.
 
 ### 1.2. Core Plugin Development Philosophy
 
@@ -49,7 +95,7 @@ To maintain a secure, stable, and highly performant desktop ecosystem, Project C
 
 1. **First-Party Integration**: Pinned first-party or canonical contributor plugins are integrated directly into the workspace codebase for maximum compiler optimization and stability. These first-party implementations (such as `image-converter`, `ffmpeg-transcoder`, and `minipaint`) serve as the authoritative reference designs and structural templates for future developers.
 2. **Security Hardening (Static Backend Engine)**: Unlike nodes-based applications like ComfyUI (which compile and load custom Python/C++ modules directly into the host process at runtime), Project Curator utilizes a strictly static Rust backend. Plugins are not permitted to load, compile, or inject arbitrary backend code at runtime. Instead, plugins run entirely as sandboxed frontend scripts inside the WebView, and can only perform backend tasks by calling the host's predefined, secure Rust endpoints.
-   * *Planned Subprocess Scripting*: To support custom Python operations, we plan to allow plugins to invoke external Python scripts. Similar to how model conversion and quantization are implemented, these scripts will be executed out-of-process by spawning subprocesses using the project's isolated virtual environment (`scripts/venv/Scripts/python.exe`), maintaining container safety.
+   - *Planned Subprocess Scripting*: To support custom Python operations, we plan to allow plugins to invoke external Python scripts. Similar to how model conversion and quantization are implemented, these scripts will be executed out-of-process by spawning subprocesses using the project's isolated virtual environment (`scripts/venv/Scripts/python.exe`), maintaining container safety.
 3. **Generic Backend Reuse**: To allow frontend flexibility without custom Rust changes, the backend exposes rich, **general-purpose helper endpoints** (e.g., `PathExists`, `EphemeralConvertImages`, directory pickers, file-size queries). We deliberately tackle the most complex/difficult plugin use-cases early in first-party development so that these generic handlers are designed and exposed in the core system early on, paving the way for future plugin creators to work purely in JavaScript/TypeScript.
 4. **Minimal Rust Footprint**: Custom additions to the Rust backend must be kept to an absolute minimum. Ideally, a plugin creator should not touch Rust at all, implementing 100% of their plugin in front-end TypeScript/JavaScript.
 5. **Bare-Metal Exceptions**: New Rust/Tauri commands should only be introduced when raw bare-metal execution performance is strictly required. Examples include writing multi-megabyte canvas buffers directly to disk (bypassing Named Pipe sockets), performing video stream analysis, or scheduling neural network tasks.
@@ -307,14 +353,14 @@ All plugin interfaces **must strictly adhere to Section 5 of `AGENTS.md`**.
 ### Strict Design Rules
 
 1. **Zero Web Abstractions**:
-   * **NEVER** use flashy gradients (`linear-gradient`), neon glows (`box-shadow: 0 0 10px...`), floating rounded web cards, or radial background blobs.
-   * **NEVER** override system window backgrounds with ad-hoc colors when displaying empty state containers.
+   - **NEVER** use flashy gradients (`linear-gradient`), neon glows (`box-shadow: 0 0 10px...`), floating rounded web cards, or radial background blobs.
+   - **NEVER** override system window backgrounds with ad-hoc colors when displaying empty state containers.
 2. **Official Bootstrap Icons Exclusively**:
-   * **NO Unicode Emojis** (`✨`, `●`, `▶`, `📁`).
-   * **ALWAYS** use official Bootstrap Icon markup (`<i class="bi bi-folder2-open"></i>`, `<i class="bi bi-stars"></i>`).
+   - **NO Unicode Emojis** (`✨`, `●`, `▶`, `📁`).
+   - **ALWAYS** use official Bootstrap Icon markup (`<i class="bi bi-folder2-open"></i>`, `<i class="bi bi-stars"></i>`).
 3. **Native Control Classes**:
-   * Buttons: `.win-button`, `.win-button.primary`, `.win-button.danger`.
-   * Group Boxes: Native fieldset grouping containers with titles:
+   - Buttons: `.win-button`, `.win-button.primary`, `.win-button.danger`.
+   - Group Boxes: Native fieldset grouping containers with titles:
 
      ```html
      <div class="group-box">
@@ -323,9 +369,9 @@ All plugin interfaces **must strictly adhere to Section 5 of `AGENTS.md`**.
      </div>
      ```
 
-   * Tag Pills: Standard rank taxonomy classes: `.tag-pill.custom-concept` (Custom Concept), `.tag-pill.tag-character` (Character), `.tag-pill.tag-copyright` (Copyright), `.tag-pill.tag-meta` (Meta).
+   - Tag Pills: Standard rank taxonomy classes: `.tag-pill.custom-concept` (Custom Concept), `.tag-pill.tag-character` (Character), `.tag-pill.tag-copyright` (Copyright), `.tag-pill.tag-meta` (Meta).
 4. **App Drop Zones**:
-   * Use native `.toolbox-drop-zone`, `.toolbox-drop-icon`, and `.toolbox-drop-active` classes directly from `layout.css`.
+   - Use native `.toolbox-drop-zone`, `.toolbox-drop-icon`, and `.toolbox-drop-active` classes directly from `layout.css`.
 
 ---
 
@@ -606,8 +652,8 @@ if (!document.getElementById("my-plugin-styles")) {
 }
 ```
 
-* Prefer `flex: 1; min-height: 0` over the legacy `calc(100vh - Npx)` approach — it tracks the panel's real height and avoids magic numbers (AGENTS.md §6.6).
-* Reference implementations: `plugins/minipaint/src/index.ts` (minipaint styles) and `plugins/gif-maker/src/ui.ts` `injectStyles()`.
+- Prefer `flex: 1; min-height: 0` over the legacy `calc(100vh - Npx)` approach — it tracks the panel's real height and avoids magic numbers (AGENTS.md §6.6).
+- Reference implementations: `plugins/minipaint/src/index.ts` (minipaint styles) and `plugins/gif-maker/src/ui.ts` `injectStyles()`.
 
 ---
 
@@ -645,10 +691,10 @@ if (d.type === "minipaint:console-error") {
 }
 ```
 
-* Combine with an injected `<script src="...">` for any encoder/worker library (e.g. gif.js) that
+- Combine with an injected `<script src="...">` for any encoder/worker library (e.g. gif.js) that
   the host cannot reach through module scope — load it early, poll for the global, and fail loud
   if it never appears.
-* Reference implementation: `plugins/minipaint/curator-bridge.js` +
+- Reference implementation: `plugins/minipaint/curator-bridge.js` +
   `plugins/minipaint/src/editor.ts`.
 
 ---
@@ -683,11 +729,11 @@ init creates any canvases, and force the flag for `"2d"` contexts:
 })();
 ```
 
-* Ordering matters: the bridge tag must be injected before the editor creates its first canvas
+- Ordering matters: the bridge tag must be injected before the editor creates its first canvas
   (miniPaint's app init runs on `window.load`, and the bridge is injected before `</body>`, so
   the patch wins). Preserve any options object the caller already passed (`alpha`, etc.).
-* Only patch `"2d"` — leave `"webgl"`/`"webgl2"` contexts untouched.
-* Reference implementation: `plugins/minipaint/curator-bridge.js`.
+- Only patch `"2d"` — leave `"webgl"`/`"webgl2"` contexts untouched.
+- Reference implementation: `plugins/minipaint/curator-bridge.js`.
 
 ---
 
@@ -760,13 +806,13 @@ Below is a complete, self-contained template for creating a new plugin:
 
 When authoring or modifying a plugin, verify the following points:
 
-* [ ] `manifest.json` specifies `"ui:inject"` under `permissions` and points to `"index.js"`.
-* [ ] Script bundle is wrapped in a self-executing IIFE `(function () { ... })();`.
-* [ ] Local asset file paths are converted using `PluginHost.convertFileSrc(path)` before assignment to `src`.
-* [ ] Interface strictly uses WinForms Desktop Control controls (`.group-box`, `.win-button`, `.toolbox-drop-zone`).
-* [ ] No emojis are present; official Bootstrap Icon markup `<i class="bi bi-..."></i>` is used throughout.
-* [ ] Drag-and-drop handles Tauri v2 native drops via `window.__TAURI__.webview.getCurrentWebview().onDragDropEvent`.
-* [ ] High-frequency interactions (zooming, panning, sliding) run via `requestAnimationFrame` with zero DOM reconstruction.
-* [ ] Long-running background jobs use non-destructive collision resolution (`getUniqueOutputPath`) and async status polling.
-* [ ] Post-mount DOM initializers run inside `setTimeout(fn, 0)`.
-* [ ] Frontend build test passes (`cd curator-dashboard; npm run build` exits with code 0).
+- [ ] `manifest.json` specifies `"ui:inject"` under `permissions` and points to `"index.js"`.
+- [ ] Script bundle is wrapped in a self-executing IIFE `(function () { ... })();`.
+- [ ] Local asset file paths are converted using `PluginHost.convertFileSrc(path)` before assignment to `src`.
+- [ ] Interface strictly uses WinForms Desktop Control controls (`.group-box`, `.win-button`, `.toolbox-drop-zone`).
+- [ ] No emojis are present; official Bootstrap Icon markup `<i class="bi bi-..."></i>` is used throughout.
+- [ ] Drag-and-drop handles Tauri v2 native drops via `window.__TAURI__.webview.getCurrentWebview().onDragDropEvent`.
+- [ ] High-frequency interactions (zooming, panning, sliding) run via `requestAnimationFrame` with zero DOM reconstruction.
+- [ ] Long-running background jobs use non-destructive collision resolution (`getUniqueOutputPath`) and async status polling.
+- [ ] Post-mount DOM initializers run inside `setTimeout(fn, 0)`.
+- [ ] Frontend build test passes (`cd curator-dashboard; npm run build` exits with code 0).
