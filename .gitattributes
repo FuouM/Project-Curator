@@ -26,3 +26,7 @@ assets/test_images/*.jpg binary
 assets/test_images/*.jpeg binary
 assets/test_images/*.png binary
 assets/test_images/*.webp binary
+
+# Tauri app icons & favicon — binary (regenerated from source PNG via `tauri icon`)
+curator-dashboard/src-tauri/icons/** binary
+curator-dashboard/public/*.png binary
