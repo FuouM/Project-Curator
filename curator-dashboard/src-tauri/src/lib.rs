@@ -83,6 +83,8 @@ fn spawn_service() {
                         .spawn()
                     {
                         Ok(child) => {
+                            #[cfg(windows)]
+                            assign_child_to_kill_on_close_job(&child);
                             log_dashboard_event(&format!(
                                 "Successfully spawned curator-service. Child PID: {}",
                                 child.id()
@@ -111,6 +113,79 @@ fn spawn_service() {
         let err_msg = "CRITICAL ERROR: Failed to fetch current_exe path";
         log_dashboard_event(err_msg);
         panic!("{}", err_msg);
+    }
+}
+
+#[cfg(windows)]
+fn assign_child_to_kill_on_close_job(child: &std::process::Child) {
+    use std::os::windows::io::AsRawHandle;
+    type HANDLE = *mut std::ffi::c_void;
+    type BOOL = i32;
+    type DWORD = u32;
+
+    #[repr(C)]
+    struct IO_COUNTERS {
+        read_operation_count: u64,
+        write_operation_count: u64,
+        other_operation_count: u64,
+        read_transfer_count: u64,
+        write_transfer_count: u64,
+        other_transfer_count: u64,
+    }
+
+    #[repr(C)]
+    struct JOBOBJECT_BASIC_LIMIT_INFORMATION {
+        per_process_user_time_limit: i64,
+        per_job_user_time_limit: i64,
+        limit_flags: DWORD,
+        minimum_working_set_size: usize,
+        maximum_working_set_size: usize,
+        active_process_limit: DWORD,
+        affinity: usize,
+        priority_class: DWORD,
+        scheduling_class: DWORD,
+    }
+
+    #[repr(C)]
+    struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+        basic_limit_information: JOBOBJECT_BASIC_LIMIT_INFORMATION,
+        io_info: IO_COUNTERS,
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory_used: usize,
+        peak_job_memory_used: usize,
+    }
+
+    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: DWORD = 0x00002000;
+    const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
+
+    unsafe extern "system" {
+        fn CreateJobObjectW(lpJobAttributes: *const std::ffi::c_void, lpName: *const u16) -> HANDLE;
+        fn SetInformationJobObject(
+            hJob: HANDLE,
+            JobObjectInformationClass: i32,
+            lpJobObjectInformation: *const std::ffi::c_void,
+            cbJobObjectInformationLength: DWORD,
+        ) -> BOOL;
+        fn AssignProcessToJobObject(hJob: HANDLE, hProcess: HANDLE) -> BOOL;
+    }
+
+    unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if !job.is_null() {
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            info.basic_limit_information.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            SetInformationJobObject(
+                job,
+                JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                &info as *const _ as *const _,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as DWORD,
+            );
+            AssignProcessToJobObject(job, child.as_raw_handle() as HANDLE);
+            // Keep the job handle open for the entire process duration without closing it.
+            // When this process exits, Windows OS automatically terminates all processes in the job.
+            let _ = job;
+        }
     }
 }
 
@@ -162,13 +237,32 @@ static IMAGES_DB: OnceCell<SqlitePool> = OnceCell::const_new();
 #[tauri::command]
 async fn send_to_service_typed(method: String, request_bytes: Vec<u8>) -> Result<tauri::ipc::Response, String> {
     let channel = ensure_channel().await?;
-    let resp_bytes = typed_bridge::call_typed(channel, &method, &request_bytes)
-        .await
-        .map_err(|e| {
-            log_dashboard_event(&format!("send_to_service_typed {} failed: {}", method, e));
-            e
-        })?;
-    Ok(tauri::ipc::Response::new(resp_bytes))
+    match typed_bridge::call_typed(channel, &method, &request_bytes).await {
+        Ok(resp_bytes) => Ok(tauri::ipc::Response::new(resp_bytes)),
+        Err(first_err) => {
+            // Channel may be stale if curator-service was restarted by the watcher. Invalidate & retry once.
+            log_dashboard_event(&format!(
+                "send_to_service_typed {} failed ({}), invalidating channel and retrying...",
+                method, first_err
+            ));
+            {
+                let mutex = get_grpc_channel();
+                let mut guard = mutex.lock().await;
+                *guard = None;
+            }
+            let new_channel = ensure_channel().await.map_err(|e| {
+                log_dashboard_event(&format!("send_to_service_typed {} re-connect failed: {}", method, e));
+                first_err.clone()
+            })?;
+            let resp_bytes = typed_bridge::call_typed(new_channel, &method, &request_bytes)
+                .await
+                .map_err(|e| {
+                    log_dashboard_event(&format!("send_to_service_typed {} retry failed: {}", method, e));
+                    e
+                })?;
+            Ok(tauri::ipc::Response::new(resp_bytes))
+        }
+    }
 }
 
 #[tauri::command]

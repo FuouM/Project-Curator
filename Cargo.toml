@@ -61,7 +61,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [profile.dev]
 opt-level = 0
 debug = 1
-incremental = false
 
 
 

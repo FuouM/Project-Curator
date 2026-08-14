@@ -1,4 +1,6 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("cargo:rerun-if-changed=proto");
+    println!("cargo:rerun-if-changed=build.rs");
     let protos: Vec<String> = std::fs::read_dir("proto")?
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())

@@ -12,7 +12,6 @@ if ($env:PATH -notlike "*$BinPath*") {
 $env:RUSTC_WRAPPER = "$BinPath\sccache.exe"
 $env:SCCACHE_DIR = "$RootPath\.rust\.sccache"
 $env:SCCACHE_CONF = "$RootPath\.rust\sccache.toml"
-$env:CARGO_INCREMENTAL = "0"
 
 Write-Host "Project-Curator local Rust environment loaded." -ForegroundColor Green
 Write-Host "RUSTUP_HOME:        $env:RUSTUP_HOME"

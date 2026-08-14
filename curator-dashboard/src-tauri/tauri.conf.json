@@ -7,7 +7,16 @@
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
+    "frontendDist": "../dist",
+    "additionalWatchFolders": [
+      "../../curator-service/src",
+      "../../curator-core/src",
+      "../../curator-db/src",
+      "../../curator-ml/src",
+      "../../curator-media/src",
+      "../../curator-filename-parser/src",
+      "../../curator-proto/proto"
+    ]
   },
   "app": {
     "withGlobalTauri": true,
