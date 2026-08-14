@@ -22,14 +22,14 @@ try {
     Pop-Location
 }
 
-# 2. Build curator-service daemon and curator-dashboard
-Write-Host "Building curator-service and curator-dashboard..." -ForegroundColor Cyan
-cargo build -p curator-service -p curator-dashboard --no-default-features
+# 2. Build curator-service daemon
+Write-Host "Building curator-service..." -ForegroundColor Cyan
+cargo build -p curator-service
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Workspace build failed!" -ForegroundColor Red
+    Write-Host "Service build failed!" -ForegroundColor Red
     exit 1
 }
-Write-Host "Workspace build OK." -ForegroundColor Green
+Write-Host "Service build OK." -ForegroundColor Green
 
 # 3. Launch Tauri dev server
 $prevDir = $PWD.Path
