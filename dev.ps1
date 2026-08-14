@@ -24,7 +24,7 @@ try {
 
 # 2. Build curator-service daemon and curator-dashboard
 Write-Host "Building curator-service and curator-dashboard..." -ForegroundColor Cyan
-cargo build -p curator-service -p curator-dashboard
+cargo build -p curator-service -p curator-dashboard --no-default-features
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Workspace build failed!" -ForegroundColor Red
     exit 1
