@@ -10,8 +10,8 @@ use percent_encoding::percent_decode_str;
 
 mod typed_bridge;
 
-use curator_core::thumbnail::ThumbnailCache;
-use curator_core::constants::resolve_data_dir;
+use curator_media::thumbnail::ThumbnailCache;
+use curator_proto::constants::resolve_data_dir;
 
 /// Resolved once at first use; all functions reference this.
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -128,7 +128,7 @@ async fn ensure_channel() -> Result<Channel, String> {
     let mutex = get_grpc_channel();
     let mut guard = mutex.lock().await;
     if guard.is_none() {
-        match curator_core::ipc::grpc_helper::connect_ipc().await {
+        match curator_proto::ipc::connect_ipc().await {
             Ok(channel) => {
                 *guard = Some(channel);
             }
@@ -137,7 +137,7 @@ async fn ensure_channel() -> Result<Channel, String> {
                 let start = std::time::Instant::now();
                 let mut connected = false;
                 while start.elapsed() < std::time::Duration::from_secs(3) {
-                    if let Ok(channel) = curator_core::ipc::grpc_helper::connect_ipc().await {
+                    if let Ok(channel) = curator_proto::ipc::connect_ipc().await {
                         *guard = Some(channel);
                         connected = true;
                         break;
@@ -443,7 +443,7 @@ async fn get_thumbnail(
         ThumbnailCache::open(db_path).await.expect("Failed to open thumbnail cache")
     }).await;
 
-    let target_kind = kind.unwrap_or(curator_core::thumbnail::THUMB_KIND_STATIC);
+    let target_kind = kind.unwrap_or(curator_media::thumbnail::THUMB_KIND_STATIC);
 
     // 1. Short-circuit: If mtime was passed by frontend, check cache FIRST
     if let Some(m) = mtime {
@@ -481,11 +481,11 @@ async fn get_thumbnail(
     let (filepath, db_mtime, video_frame_path) = row.ok_or("Image not found")?;
 
     // Cache is keyed on (image_id, width, mtime, kind)
-    let is_vid = curator_core::video::is_video(std::path::Path::new(&filepath));
+    let is_vid = curator_media::video::is_video(std::path::Path::new(&filepath));
     let derived_kind = if is_vid {
-        curator_core::thumbnail::THUMB_KIND_ANIMATED
+        curator_media::thumbnail::THUMB_KIND_ANIMATED
     } else {
-        curator_core::thumbnail::THUMB_KIND_STATIC
+        curator_media::thumbnail::THUMB_KIND_STATIC
     };
     if let Some(data) = cache.get(image_id, 200, db_mtime, derived_kind).await {
         return Ok(tauri::ipc::Response::new(data));
@@ -493,11 +493,11 @@ async fn get_thumbnail(
 
     let webp_bytes = if is_vid {
         let data_dir = data_dir();
-        let ffmpeg_res = curator_core::video::resolve_ffmpeg_path(&data_dir, None);
+        let ffmpeg_res = curator_media::video::resolve_ffmpeg_path(&data_dir, None);
         let vid_path = std::path::PathBuf::from(&filepath);
         tokio::task::spawn_blocking(move || {
             if let Ok(ffmpeg) = ffmpeg_res {
-                if let Ok(animated) = curator_core::thumbnail::generate_video_preview(&vid_path, &ffmpeg, 200, 12, 65) {
+                if let Ok(animated) = curator_media::thumbnail::generate_video_preview(&vid_path, &ffmpeg, 200, 12, 65) {
                     return Ok(animated);
                 }
             }
@@ -505,14 +505,14 @@ async fn get_thumbnail(
                 Some(ref frame) if std::path::Path::new(frame).exists() => std::path::PathBuf::from(frame),
                 _ => std::path::PathBuf::from(&filepath),
             };
-            curator_core::thumbnail::generate_thumbnail(&thumb_src, 200)
+            curator_media::thumbnail::generate_thumbnail(&thumb_src, 200)
         })
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?
     } else {
         let thumb_src = std::path::PathBuf::from(&filepath);
-        tokio::task::spawn_blocking(move || curator_core::thumbnail::generate_thumbnail(&thumb_src, 200))
+        tokio::task::spawn_blocking(move || curator_media::thumbnail::generate_thumbnail(&thumb_src, 200))
             .await
             .map_err(|e| e.to_string())?
             .map_err(|e| e.to_string())?

@@ -8,11 +8,8 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "curator_dashboard_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { workspace = true }
@@ -22,7 +19,8 @@ tauri = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-curator-core = { path = "../../curator-core" }
+curator-proto = { path = "../../curator-proto" }
+curator-media = { path = "../../curator-media" }
 tokio = { workspace = true }
 chrono = { workspace = true }
 rfd = { workspace = true }
