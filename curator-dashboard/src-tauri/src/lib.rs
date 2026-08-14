@@ -160,14 +160,15 @@ static THUMB_CACHE: OnceCell<Arc<ThumbnailCache>> = OnceCell::const_new();
 static IMAGES_DB: OnceCell<SqlitePool> = OnceCell::const_new();
 
 #[tauri::command]
-async fn send_to_service_typed(method: String, request_bytes: Vec<u8>) -> Result<Vec<u8>, String> {
+async fn send_to_service_typed(method: String, request_bytes: Vec<u8>) -> Result<tauri::ipc::Response, String> {
     let channel = ensure_channel().await?;
-    typed_bridge::call_typed(channel, &method, &request_bytes)
+    let resp_bytes = typed_bridge::call_typed(channel, &method, &request_bytes)
         .await
         .map_err(|e| {
             log_dashboard_event(&format!("send_to_service_typed {} failed: {}", method, e));
             e
-        })
+        })?;
+    Ok(tauri::ipc::Response::new(resp_bytes))
 }
 
 #[tauri::command]
@@ -432,11 +433,26 @@ async fn read_image_bytes(path: String) -> Result<Vec<u8>, String> {
 }
 
 #[tauri::command]
-async fn get_thumbnail(image_id: i64) -> Result<Vec<u8>, String> {
+async fn get_thumbnail(
+    image_id: i64,
+    mtime: Option<i64>,
+    kind: Option<u8>,
+) -> Result<tauri::ipc::Response, String> {
     let cache = THUMB_CACHE.get_or_init(|| async {
         let db_path = THUMB_DB_PATH.get().expect("THUMB_DB_PATH not set");
         ThumbnailCache::open(db_path).await.expect("Failed to open thumbnail cache")
     }).await;
+
+    let target_kind = kind.unwrap_or(curator_core::thumbnail::THUMB_KIND_STATIC);
+
+    // 1. Short-circuit: If mtime was passed by frontend, check cache FIRST
+    if let Some(m) = mtime {
+        if m > 0 {
+            if let Some(data) = cache.get(image_id, 200, m, target_kind).await {
+                return Ok(tauri::ipc::Response::new(data));
+            }
+        }
+    }
 
     // Cache miss — generate locally (after fetching mtime so the cache key is accurate)
     let db = IMAGES_DB.get_or_init(|| async {
@@ -462,23 +478,19 @@ async fn get_thumbnail(image_id: i64) -> Result<Vec<u8>, String> {
     .await
     .map_err(|e| e.to_string())?;
 
-    let (filepath, mtime, video_frame_path) = row.ok_or("Image not found")?;
+    let (filepath, db_mtime, video_frame_path) = row.ok_or("Image not found")?;
 
-    // Cache is keyed on (image_id, width, mtime, kind) to avoid stale thumbnails
-    // when a file is replaced, wrong-size blobs across width changes, and stale
-    // static single-frame thumbs for videos (which now render animated WebP).
+    // Cache is keyed on (image_id, width, mtime, kind)
     let is_vid = curator_core::video::is_video(std::path::Path::new(&filepath));
-    let kind = if is_vid {
+    let derived_kind = if is_vid {
         curator_core::thumbnail::THUMB_KIND_ANIMATED
     } else {
         curator_core::thumbnail::THUMB_KIND_STATIC
     };
-    if let Some(data) = cache.get(image_id, 200, mtime, kind).await {
-        return Ok(data);
+    if let Some(data) = cache.get(image_id, 200, db_mtime, derived_kind).await {
+        return Ok(tauri::ipc::Response::new(data));
     }
 
-    // For videos, generate a lightweight 2-second animated WebP preview thumbnail
-    // via FFmpeg. Fall back to static thumbnail of extracted first-frame PNG if FFmpeg fails.
     let webp_bytes = if is_vid {
         let data_dir = data_dir();
         let ffmpeg_res = curator_core::video::resolve_ffmpeg_path(&data_dir, None);
@@ -489,7 +501,6 @@ async fn get_thumbnail(image_id: i64) -> Result<Vec<u8>, String> {
                     return Ok(animated);
                 }
             }
-            // Fallback to static thumbnail of first frame if preview generation fails
             let thumb_src = match video_frame_path {
                 Some(ref frame) if std::path::Path::new(frame).exists() => std::path::PathBuf::from(frame),
                 _ => std::path::PathBuf::from(&filepath),
@@ -507,8 +518,8 @@ async fn get_thumbnail(image_id: i64) -> Result<Vec<u8>, String> {
             .map_err(|e| e.to_string())?
     };
 
-    let _ = cache.put(image_id, 200, mtime, kind, &webp_bytes).await;
-    Ok(webp_bytes)
+    let _ = cache.put(image_id, 200, db_mtime, derived_kind, &webp_bytes).await;
+    Ok(tauri::ipc::Response::new(webp_bytes))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

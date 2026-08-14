@@ -654,95 +654,109 @@ pub async fn batch_get_images_logic(
     if !img_ids.is_empty() {
         let ph = img_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
 
-        let vq = format!(
-            "SELECT image_id, vector_state FROM image_vectors WHERE image_id IN ({})",
-            ph
-        );
-        let mut vq = sqlx::query_as::<_, (i64, String)>(&vq);
-        for id in &img_ids {
-            vq = vq.bind(id);
-        }
-        if let Ok(vrows) = vq.fetch_all(db).await {
-            for (vid, state) in vrows {
-                if let Some(img) = image_map.get_mut(&vid) {
-                    img.vector_state = state;
-                }
+        let vq_future = async {
+            let vq = format!(
+                "SELECT image_id, vector_state FROM image_vectors WHERE image_id IN ({})",
+                ph
+            );
+            let mut q = sqlx::query_as::<_, (i64, String)>(&vq);
+            for id in &img_ids {
+                q = q.bind(id);
+            }
+            q.fetch_all(db).await.unwrap_or_default()
+        };
+
+        let pm_future = async {
+            let pm_query = format!(
+                "SELECT image_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags, raw_matched
+                 FROM image_parsed_metadata WHERE image_id IN ({})",
+                ph
+            );
+            let mut q = sqlx::query_as::<_, (i64, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, String, String)>(&pm_query);
+            for id in &img_ids {
+                q = q.bind(id);
+            }
+            q.fetch_all(db).await.unwrap_or_default()
+        };
+
+        let ci_future = async {
+            let ci_query = format!(
+                "SELECT DISTINCT cd.image_id, ci.id, ci.name
+                 FROM character_detections cd
+                 JOIN character_identities ci ON cd.identity_id = ci.id
+                 WHERE cd.image_id IN ({}) AND cd.identity_id IS NOT NULL",
+                ph
+            );
+            let mut q = sqlx::query_as::<_, (i64, i64, String)>(&ci_query);
+            for id in &img_ids {
+                q = q.bind(id);
+            }
+            q.fetch_all(db).await.unwrap_or_default()
+        };
+
+        let ocr_future = async {
+            let ocr_query = format!(
+                "SELECT image_id, GROUP_CONCAT(text, CHAR(10)) FROM image_ocr_detections WHERE image_id IN ({}) GROUP BY image_id",
+                ph
+            );
+            let mut q = sqlx::query_as::<_, (i64, String)>(&ocr_query);
+            for id in &img_ids {
+                q = q.bind(id);
+            }
+            q.fetch_all(db).await.unwrap_or_default()
+        };
+
+        let anim_future = fetch_animation_metadata_batch(&img_ids, db);
+        let video_future = fetch_video_metadata_batch(&img_ids, db);
+
+        let (vrows, pm_rows, ci_rows, ocr_rows, anim_rows, video_rows) =
+            tokio::join!(vq_future, pm_future, ci_future, ocr_future, anim_future, video_future);
+
+        for (vid, state) in vrows {
+            if let Some(img) = image_map.get_mut(&vid) {
+                img.vector_state = state;
             }
         }
 
-        let pm_query = format!(
-            "SELECT image_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags, raw_matched
-             FROM image_parsed_metadata WHERE image_id IN ({})",
-            ph
-        );
-        let mut pm_q = sqlx::query_as::<_, (i64, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, String, String)>(&pm_query);
-        for id in &img_ids {
-            pm_q = pm_q.bind(id);
-        }
-        if let Ok(pm_rows) = pm_q.fetch_all(db).await {
-            for (img_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags_json, raw_matched) in pm_rows {
-                if let Some(img) = image_map.get_mut(&img_id) {
-                    let extracted_tags: Vec<String> = serde_json::from_str(&extracted_tags_json).unwrap_or_default();
-                    img.parsed_metadata = Some(curator_core::ipc::ParsedMetadata {
-                        match_type,
-                        artist,
-                        pixiv_id,
-                        twitter_id,
-                        timestamp_4chan,
-                        datetime_iso,
-                        extracted_tags,
-                        raw_matched,
-                        partial: false,
-                    });
-                }
+        for (img_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags_json, raw_matched) in pm_rows {
+            if let Some(img) = image_map.get_mut(&img_id) {
+                let extracted_tags: Vec<String> = serde_json::from_str(&extracted_tags_json).unwrap_or_default();
+                img.parsed_metadata = Some(curator_core::ipc::ParsedMetadata {
+                    match_type,
+                    artist,
+                    pixiv_id,
+                    twitter_id,
+                    timestamp_4chan,
+                    datetime_iso,
+                    extracted_tags,
+                    raw_matched,
+                    partial: false,
+                });
             }
         }
 
-        let ci_query = format!(
-            "SELECT DISTINCT cd.image_id, ci.id, ci.name
-             FROM character_detections cd
-             JOIN character_identities ci ON cd.identity_id = ci.id
-             WHERE cd.image_id IN ({}) AND cd.identity_id IS NOT NULL",
-            ph
-        );
-        let mut ci_q = sqlx::query_as::<_, (i64, i64, String)>(&ci_query);
-        for id in &img_ids {
-            ci_q = ci_q.bind(id);
-        }
-        if let Ok(ci_rows) = ci_q.fetch_all(db).await {
-            for (img_id, identity_id, identity_name) in ci_rows {
-                if let Some(img) = image_map.get_mut(&img_id) {
-                    img.character_identities.push(curator_core::ipc::CharacterIdentitySummary {
-                        id: identity_id,
-                        name: identity_name,
-                    });
-                }
+        for (img_id, identity_id, identity_name) in ci_rows {
+            if let Some(img) = image_map.get_mut(&img_id) {
+                img.character_identities.push(curator_core::ipc::CharacterIdentitySummary {
+                    id: identity_id,
+                    name: identity_name,
+                });
             }
         }
 
-        let ocr_query = format!(
-            "SELECT image_id, GROUP_CONCAT(text, CHAR(10)) FROM image_ocr_detections WHERE image_id IN ({}) GROUP BY image_id",
-            ph
-        );
-        let mut ocr_q = sqlx::query_as::<_, (i64, String)>(&ocr_query);
-        for id in &img_ids {
-            ocr_q = ocr_q.bind(id);
-        }
-        if let Ok(ocr_rows) = ocr_q.fetch_all(db).await {
-            for (img_id, text) in ocr_rows {
-                if let Some(img) = image_map.get_mut(&img_id) {
-                    img.ocr_text = Some(text);
-                }
+        for (img_id, text) in ocr_rows {
+            if let Some(img) = image_map.get_mut(&img_id) {
+                img.ocr_text = Some(text);
             }
         }
 
-        for (img_id, animation) in fetch_animation_metadata_batch(&img_ids, db).await {
+        for (img_id, animation) in anim_rows {
             if let Some(img) = image_map.get_mut(&img_id) {
                 img.animation = Some(animation);
             }
         }
 
-        for (img_id, video) in fetch_video_metadata_batch(&img_ids, db).await {
+        for (img_id, video) in video_rows {
             if let Some(img) = image_map.get_mut(&img_id) {
                 img.video = Some(video);
             }
@@ -762,9 +776,22 @@ pub async fn batch_get_images_logic(
 pub async fn get_thumbnail_logic(
     image_id: i64,
     width: u32,
+    mtime: Option<i64>,
+    kind: Option<u8>,
     cache: &ThumbnailCache,
     db: &SqlitePool,
 ) -> Result<(Option<Vec<u8>>, bool)> {
+    let target_kind = kind.unwrap_or(thumbnail::THUMB_KIND_STATIC);
+
+    // 1. Short-circuit: Check thumbnail cache FIRST using provided mtime
+    if let Some(m) = mtime {
+        if m > 0 {
+            if let Some(cached) = cache.get(image_id, width, m, target_kind).await {
+                return Ok((Some(cached), false));
+            }
+        }
+    }
+
     let row: Option<(String, i64, bool, Option<String>)> = sqlx::query_as(
         "SELECT current_filepath, mtime, is_missing, video_frame_path FROM images WHERE id = ? AND deleted_at IS NULL",
     )
@@ -772,7 +799,7 @@ pub async fn get_thumbnail_logic(
     .fetch_optional(db)
     .await?;
 
-    let (filepath, mtime, is_missing, video_frame_path) = match row {
+    let (filepath, db_mtime, is_missing, video_frame_path) = match row {
         Some(r) => r,
         None => return Ok((None, true)),
     };
@@ -781,10 +808,10 @@ pub async fn get_thumbnail_logic(
         return Ok((None, true));
     }
 
-    // Cache is keyed on (image_id, width, mtime) so a replaced file with the
+    // Cache is keyed on (image_id, width, mtime, kind) so a replaced file with the
     // same path never serves a stale thumbnail and a width change never serves
     // a wrong-size blob.
-    if let Some(cached) = cache.get(image_id, width, mtime, thumbnail::THUMB_KIND_STATIC).await {
+    if let Some(cached) = cache.get(image_id, width, db_mtime, target_kind).await {
         return Ok((Some(cached), false));
     }
 
@@ -799,7 +826,7 @@ pub async fn get_thumbnail_logic(
     {
         Ok(Ok(webp_bytes)) => {
             let _ = cache
-                .put(image_id, width, mtime, thumbnail::THUMB_KIND_STATIC, &webp_bytes)
+                .put(image_id, width, db_mtime, target_kind, &webp_bytes)
                 .await;
             Ok((Some(webp_bytes), false))
         }

@@ -50,6 +50,7 @@ export interface SearchMatch extends SafetyScores {
   is_missing?: boolean;
   width?: number;
   height?: number;
+  mtime?: number;
 }
 
 export interface ImageDetails extends SafetyScores {
@@ -209,6 +210,7 @@ export interface CardImageData {
   video?: VideoSummary | null;
   width?: number;
   height?: number;
+  mtime?: number;
   safety?: SafetyScores;
 }
 

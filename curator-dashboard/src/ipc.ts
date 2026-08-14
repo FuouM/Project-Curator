@@ -31,11 +31,12 @@ export async function typedCall<Resp extends Message, Req extends Message = Mess
   }
 
   try {
-    const respBytes: number[] = await invoke("send_to_service_typed", {
+    const resp = await invoke<ArrayBuffer | Uint8Array | number[]>("send_to_service_typed", {
       method,
-      requestBytes: Array.from(requestBytes),
+      requestBytes,
     });
-    return fromBinary(respSchema, new Uint8Array(respBytes));
+    const bytes = resp instanceof Uint8Array ? resp : new Uint8Array(resp);
+    return fromBinary(respSchema, bytes);
   } catch (err: any) {
     logJS(`typedCall ${method} exception: ` + (err.message || err));
     throw err;

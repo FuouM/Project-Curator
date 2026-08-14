@@ -47,6 +47,8 @@ message SetNoteRequest {
 message GetThumbnailRequest {
   int64 image_id = 1;
   uint32 width = 2;
+  optional int64 mtime = 3;
+  optional uint32 kind = 4;
 }
 
 message ThumbnailResult {

@@ -40,6 +40,8 @@ export function invalidateThumbnailCache() {
 
 interface ThumbJob {
   imageId: number;
+  mtime?: number;
+  isVideo?: boolean;
   img: HTMLImageElement;
   preview: HTMLElement;
   gen: number;
@@ -95,9 +97,13 @@ function invokeThumbnail(job: ThumbJob) {
     return;
   }
 
-  invoke("get_thumbnail", { imageId: job.imageId }).then((data: any) => {
+  invoke<ArrayBuffer | Uint8Array>("get_thumbnail", {
+    imageId: job.imageId,
+    mtime: job.mtime,
+    kind: job.isVideo ? 1 : 0,
+  }).then((data: any) => {
     if (!data) return;
-    const bytes = new Uint8Array(data);
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
     const blob = new Blob([bytes], { type: "image/webp" });
     const url = URL.createObjectURL(blob);
     cacheThumbnail(job.imageId, url);
@@ -315,7 +321,9 @@ const lazyObserver = new IntersectionObserver((entries) => {
           } else {
             if (thumbLoadPaused) continue;
             if (preview) preview.classList.add("thumb-loading");
-            queue.push({ imageId, img, preview, gen: generation });
+            const mtime = parseInt(img.dataset.mtime || "0", 10);
+            const isVideo = img.dataset.isVideo === "1";
+            queue.push({ imageId, mtime: mtime > 0 ? mtime : undefined, isVideo, img, preview, gen: generation });
             processQueue();
           }
         }
@@ -787,6 +795,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement, append = 
       badgeHtml: img.badgeHtml,
       width: img.width ?? undefined,
       height: img.height ?? undefined,
+      mtime: img.mtime,
       safety: img.safety,
       keepLoaded,
     };
@@ -851,6 +860,7 @@ export function renderImages(images: ImageDetails[], gridId: string, append = fa
     video: img.video,
     width: img.width ?? undefined,
     height: img.height ?? undefined,
+    mtime: img.mtime,
     safety: {
       safe_score: img.safe_score,
       hentai_score: img.hentai_score,
@@ -892,6 +902,7 @@ export function renderSearchResults(matches: SearchMatch[]) {
       video: m.video,
       width: m.width ?? undefined,
       height: m.height ?? undefined,
+      mtime: m.mtime,
       safety: {
         safe_score: m.safe_score,
         hentai_score: m.hentai_score,

@@ -84,10 +84,16 @@ impl GalleryService for GalleryServiceImpl {
         request: TonicRequest<GetThumbnailRequest>,
     ) -> Result<TonicResponse<ThumbnailResult>, Status> {
         let req = request.into_inner();
-        let (data, is_missing) =
-            handlers::image::get_thumbnail_logic(req.image_id, req.width, &self.ctx.thumbnail_cache, &self.ctx.db)
-                .await
-                .map_err(internal_status)?;
+        let (data, is_missing) = handlers::image::get_thumbnail_logic(
+            req.image_id,
+            req.width,
+            req.mtime,
+            req.kind.map(|k| k as u8),
+            &self.ctx.thumbnail_cache,
+            &self.ctx.db,
+        )
+        .await
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(ThumbnailResult { data, is_missing }))
     }
 
