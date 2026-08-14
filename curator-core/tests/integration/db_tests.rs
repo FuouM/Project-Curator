@@ -74,16 +74,12 @@ fn test_ocr_image_transcription_extraction() {
     let models_dir = workspace_root.join(".curator").join("models");
     let ref_dir = workspace_root.join("reference");
     
-    // Dynamically copy models if not present in the .curator/models directory (mimics backend download_detection_models)
+    // Dynamically copy medium models if not present in the .curator/models directory (mimics backend manifest downloads)
     let ocr_files = [
-        ("PP-OCRv6_small_det_onnx/inference.onnx", "PP-OCRv6_small_det_onnx/inference.onnx"),
-        ("PP-OCRv6_small_det_onnx/inference.yml", "PP-OCRv6_small_det_onnx/inference.yml"),
-        ("PP-OCRv6_small_rec_onnx/inference.onnx", "PP-OCRv6_small_rec_onnx/inference.onnx"),
-        ("PP-OCRv6_small_rec_onnx/inference.yml", "PP-OCRv6_small_rec_onnx/inference.yml"),
-        ("PP-OCRv6_medium_det_onnx/inference.onnx", "PP-OCRv6_medium_det_onnx/inference.onnx"),
-        ("PP-OCRv6_medium_det_onnx/inference.yml", "PP-OCRv6_medium_det_onnx/inference.yml"),
-        ("PP-OCRv6_medium_rec_onnx/inference.onnx", "PP-OCRv6_medium_rec_onnx/inference.onnx"),
-        ("PP-OCRv6_medium_rec_onnx/inference.yml", "PP-OCRv6_medium_rec_onnx/inference.yml"),
+        ("pp-ocrv6-medium/det/inference.onnx", "PP-OCRv6_medium_det_onnx/inference.onnx"),
+        ("pp-ocrv6-medium/det/inference.yml", "PP-OCRv6_medium_det_onnx/inference.yml"),
+        ("pp-ocrv6-medium/rec/inference.onnx", "PP-OCRv6_medium_rec_onnx/inference.onnx"),
+        ("pp-ocrv6-medium/rec/inference.yml", "PP-OCRv6_medium_rec_onnx/inference.yml"),
     ];
     for (dest_rel, ref_rel) in &ocr_files {
         let dest = models_dir.join(dest_rel);

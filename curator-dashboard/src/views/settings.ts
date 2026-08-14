@@ -427,7 +427,7 @@ export function renderSettingsHtml(): SafeHtml {
         <!-- OCR Device -->
         <div class="device-card">
           <div class="device-card-title"><i class="bi bi-fonts"></i> OCR Text Recognition</div>
-          <p class="device-card-desc">Powers Optical Character Recognition and text box detection (PP-OCRv6 small).</p>
+          <p class="device-card-desc">Powers Optical Character Recognition and text box detection (PP-OCRv6 medium).</p>
           <div class="device-card-row">
             <label>OCR Device:</label>
             <select class="input-field" id="settings-ocr-device" style="width: 150px;">

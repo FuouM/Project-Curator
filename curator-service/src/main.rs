@@ -316,7 +316,7 @@ async fn main() -> Result<(), Error> {
         prefer_quantized_ocr,
         prefer_quantized_bubble,
     ));
-    info!("OCR detector configured (PP-OCRv6 small, models load on first use)");
+    info!("OCR detector configured (PP-OCRv6 medium, models load on first use)");
 
     let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone());
     worker.start();
