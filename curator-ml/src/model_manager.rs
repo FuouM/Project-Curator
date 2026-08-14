@@ -445,24 +445,24 @@ impl ModelManager {
                         let slice = input_array.as_slice_mut().unwrap();
                         let batch_offset = batch_idx * 3 * 224 * 224;
                         for c in 0..3 {
-                            let m = mean[c];
-                            let sd = std[c];
+                            let inv_scale = 1.0 / (std[c] * 255.0);
+                            let sub = mean[c] / std[c];
                             let channel_offset = batch_offset + c * 224 * 224;
                             let c_slice = &mut slice[channel_offset..channel_offset + 224 * 224];
                             for idx in 0..224 * 224 {
-                                let val = resized_buf[idx * 3 + c] as f32 / 255.0;
-                                c_slice[idx] = (val - m) / sd;
+                                c_slice[idx] = (resized_buf[idx * 3 + c] as f32) * inv_scale - sub;
                             }
                         }
                     }
                     EmbeddingModel::MobileClipS2 => {
                         let slice = input_array.as_slice_mut().unwrap();
                         let batch_offset = batch_idx * 3 * 256 * 256;
+                        let inv_scale = 1.0 / 255.0;
                         for c in 0..3 {
                             let channel_offset = batch_offset + c * 256 * 256;
                             let c_slice = &mut slice[channel_offset..channel_offset + 256 * 256];
                             for idx in 0..256 * 256 {
-                                c_slice[idx] = resized_buf[idx * 3 + c] as f32 / 255.0;
+                                c_slice[idx] = (resized_buf[idx * 3 + c] as f32) * inv_scale;
                             }
                         }
                     }
