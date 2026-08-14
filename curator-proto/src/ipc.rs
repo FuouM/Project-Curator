@@ -78,9 +78,7 @@ impl<T: AsyncWrite + Unpin> AsyncWrite for IpcStream<T> {
 
 impl<T: Send + Sync + 'static> Connected for IpcStream<T> {
     type ConnectInfo = ();
-    fn connect_info(&self) -> Self::ConnectInfo {
-        ()
-    }
+    fn connect_info(&self) -> Self::ConnectInfo {}
 }
 
 /// Incoming connections stream for the gRPC Server

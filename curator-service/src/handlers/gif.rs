@@ -110,26 +110,35 @@ async fn run_ffmpeg_job(
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct CreateGifOptions {
+    pub frame_rate: Option<f32>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub loop_count: Option<i32>,
+}
+
 /// Create a GIF or Video from multiple images (with custom delays)
 pub async fn create_gif_from_images(
     job_id: String,
     image_pattern: String,
-    frame_rate: f32,
     output_path: String,
-    width: Option<u32>,
-    height: Option<u32>,
-    loop_count: Option<i32>,
     target_format: String,
+    opts: CreateGifOptions,
     ffmpeg_path: &Path,
     progress_map: &TranscodeProgressMap,
 ) -> anyhow::Result<()> {
+    let CreateGifOptions { frame_rate, width, height, loop_count } = opts;
     if image_pattern.is_empty() {
         anyhow::bail!("No image sequence pattern provided");
     }
 
     start_job(&job_id, &output_path, progress_map).await;
 
-    let fps = if frame_rate > 0.0 { frame_rate } else { 10.0 };
+    let fps = match frame_rate {
+        Some(fr) if fr > 0.0 => fr,
+        _ => 10.0,
+    };
 
     let mut cmd = tokio::process::Command::new(ffmpeg_path);
     cmd.arg("-hide_banner")
@@ -185,36 +194,64 @@ pub async fn create_gif_from_images(
     Ok(())
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct GifEffectsOptions {
+    pub crop: Option<String>,
+    pub scale: Option<String>,
+    pub speed_multiplier: Option<f32>,
+    pub reverse: bool,
+    pub bounce: bool,
+    pub rotate: Option<String>,
+    pub brightness: Option<f32>,
+    pub contrast: Option<f32>,
+    pub saturation: Option<f32>,
+    pub grayscale: bool,
+    pub invert: bool,
+    pub caption_image_base64: Option<String>,
+    pub caption_image_height: Option<u32>,
+    pub caption_style: Option<String>,
+    pub max_colors: Option<u32>,
+    pub dither_type: Option<String>,
+    pub drop_frames_factor: Option<u32>,
+    pub loop_count: Option<i32>,
+    pub fps: Option<u32>,
+    pub trim_start: Option<f64>,
+    pub trim_end: Option<f64>,
+}
+
 /// Apply editing, captions, and effects to a GIF or Video
 pub async fn process_gif_effects(
     job_id: String,
     input_path: String,
     output_path: String,
-    crop: Option<String>,
-    scale: Option<String>,
-    speed_multiplier: Option<f32>,
-    reverse: bool,
-    bounce: bool,
-    rotate: Option<String>,
-    brightness: Option<f32>,
-    contrast: Option<f32>,
-    saturation: Option<f32>,
-    grayscale: bool,
-    invert: bool,
-    caption_image_base64: Option<String>,
-    caption_image_height: Option<u32>,
-    caption_style: Option<String>,
-    max_colors: Option<u32>,
-    dither_type: Option<String>,
-    drop_frames_factor: Option<u32>,
     target_format: String,
-    loop_count: Option<i32>,
-    fps: Option<u32>,
-    trim_start: Option<f64>,
-    trim_end: Option<f64>,
+    opts: GifEffectsOptions,
     ffmpeg_path: &Path,
     progress_map: &TranscodeProgressMap,
 ) -> anyhow::Result<()> {
+    let GifEffectsOptions {
+        crop,
+        scale,
+        speed_multiplier,
+        reverse,
+        bounce,
+        rotate,
+        brightness,
+        contrast,
+        saturation,
+        grayscale,
+        invert,
+        caption_image_base64,
+        caption_image_height,
+        caption_style,
+        max_colors,
+        dither_type,
+        drop_frames_factor,
+        loop_count,
+        fps,
+        trim_start,
+        trim_end,
+    } = opts;
     if !Path::new(&input_path).is_file() {
         anyhow::bail!("Input file not found: {}", input_path);
     }
@@ -236,7 +273,7 @@ pub async fn process_gif_effects(
             match base64::engine::general_purpose::STANDARD.decode(clean_base64) {
                 Ok(bytes) => {
                     let temp_file_path = std::env::temp_dir().join(format!("caption_{}.png", job_id));
-                    if let Ok(_) = std::fs::write(&temp_file_path, bytes) {
+                    if std::fs::write(&temp_file_path, bytes).is_ok() {
                         caption_file = Some(temp_file_path);
                         caption_height = caption_image_height.unwrap_or(0);
                     } else {

@@ -75,8 +75,7 @@ pub fn build_tensor(
     ];
 
     // Pre-fill each channel with its respective pad value directly
-    for c in 0..3 {
-        let pad_val = pad_vals[c];
+    for (c, &pad_val) in pad_vals.iter().enumerate() {
         let dst_base = c * s * s;
         slice[dst_base..dst_base + s * s].fill(pad_val);
     }

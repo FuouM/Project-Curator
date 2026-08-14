@@ -1,10 +1,14 @@
 import { typedCall } from "../ipc";
 import { SafeHtml, html } from "../components";
-import { isSelectMode, selectedImageIds, galleryInfiniteScroll, galleryZenMode, galleryFullImages, getGalleryInfiniteScroll, getGalleryZenMode, getGalleryPage, getFavoritesPage, getGalleryTotalCount, getFavoritesTotalCount, setGalleryPage } from "../state";
+import { isSelectMode, selectedImageIds, galleryInfiniteScroll, galleryZenMode, galleryFullImages, getGalleryInfiniteScroll, getGalleryZenMode, getGalleryPage, getFavoritesPage, getGalleryTotalCount, getFavoritesTotalCount, setGalleryPage, onGalleryRefresh, onFavoritesRefresh, onSelectionChange } from "../state";
 import { getImagesPerPage, setGalleryTotalCount, setFavoritesTotalCount } from "../state";
 import { renderImages } from "../cards";
 import { imageDetailsFromProto } from "../proto-adapters";
 import { ListImagesRequestSchema, ListResultSchema } from "../gen/gallery_pb";
+
+onGalleryRefresh(refreshGallery);
+onFavoritesRefresh(refreshFavorites);
+onSelectionChange(updateSelectionUI);
 
 export let isGalleryLoading = false;
 

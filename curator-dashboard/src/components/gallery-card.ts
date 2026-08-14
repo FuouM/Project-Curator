@@ -53,6 +53,31 @@ export function renderOcrBlockHtml(ocrText: string): SafeHtml {
   `;
 }
 
+export function refreshCardOcr(imageId: number, ocrText: string) {
+  const cards = document.querySelectorAll(`[data-image-id="${imageId}"]`);
+  cards.forEach(card => {
+    const info = card.querySelector<HTMLElement>(".image-info, .featured-details");
+    if (!info) return;
+
+    const existing = info.querySelector(".ocr-block");
+    if (ocrText) {
+      const blockHtml = renderOcrBlockHtml(ocrText);
+      if (existing) {
+        existing.outerHTML = blockHtml.toString();
+      } else {
+        const anchor = info.querySelector(".identity-list") ?? info.querySelector(".card-tags-container");
+        if (anchor) {
+          anchor.insertAdjacentHTML("beforebegin", blockHtml.toString());
+        } else {
+          info.insertAdjacentHTML("beforeend", blockHtml.toString());
+        }
+      }
+    } else if (existing) {
+      existing.remove();
+    }
+  });
+}
+
 export function renderGalleryCardHtml(img: GalleryCardViewData): SafeHtml {
   let sizeClass = "";
   if (img.width) {

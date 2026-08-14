@@ -100,3 +100,39 @@ export function setTagCopyReplaceUnderscores(v: boolean) {
 export function formatCopiedTags(text: string): string {
   return getTagCopyReplaceUnderscores() ? text.replace(/_/g, " ") : text;
 }
+
+// --- UI Event Dispatchers ---
+type UIListener = () => void;
+const selectionListeners: UIListener[] = [];
+const galleryRefreshListeners: UIListener[] = [];
+const dashboardRefreshListeners: UIListener[] = [];
+const favoritesRefreshListeners: UIListener[] = [];
+
+export function onSelectionChange(cb: UIListener) { selectionListeners.push(cb); }
+export function notifySelectionChange() {
+  for (const cb of selectionListeners) {
+    try { cb(); } catch (e) { console.error("selection listener error:", e); }
+  }
+}
+
+export function onGalleryRefresh(cb: UIListener) { galleryRefreshListeners.push(cb); }
+export function requestGalleryRefresh() {
+  for (const cb of galleryRefreshListeners) {
+    try { cb(); } catch (e) { console.error("gallery refresh listener error:", e); }
+  }
+}
+
+export function onDashboardRefresh(cb: UIListener) { dashboardRefreshListeners.push(cb); }
+export function requestDashboardRefresh() {
+  for (const cb of dashboardRefreshListeners) {
+    try { cb(); } catch (e) { console.error("dashboard refresh listener error:", e); }
+  }
+}
+
+export function onFavoritesRefresh(cb: UIListener) { favoritesRefreshListeners.push(cb); }
+export function requestFavoritesRefresh() {
+  for (const cb of favoritesRefreshListeners) {
+    try { cb(); } catch (e) { console.error("favorites refresh listener error:", e); }
+  }
+}
+

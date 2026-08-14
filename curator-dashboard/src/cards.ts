@@ -1,10 +1,11 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { renderGalleryCardHtml, renderOcrBlockHtml } from "./components/gallery-card";
+import { renderGalleryCardHtml, refreshCardOcr } from "./components/gallery-card";
+export { refreshCardOcr };
 import type { GalleryCardViewData } from "./components/gallery-card";
 import { openImageInfoModal } from "./components/image-info-modal";
 import { CardImageData, ImageDetails, SearchMatch } from "./types";
 import { imageBytesToPngBlob } from "./utils";
-import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId, formatCopiedTags, getGalleryFullImages } from "./state";
+import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId, formatCopiedTags, getGalleryFullImages, notifySelectionChange, requestFavoritesRefresh } from "./state";
 import { openImageViewer } from "./image-viewer";
 import { typedCall } from "./ipc";
 import { openTagModal } from "./components/tag-editor-modal";
@@ -566,7 +567,7 @@ export function setupGridDelegation(grid: HTMLElement) {
         card.classList.add("selected");
         if (checkbox) checkbox.checked = true;
       }
-      import("./views/gallery").then(m => m.updateSelectionUI());
+      notifySelectionChange();
     }
   });
 
@@ -584,7 +585,7 @@ export function setupGridDelegation(grid: HTMLElement) {
       selectedImageIds.delete(imageId);
       card.classList.remove("selected");
     }
-    import("./views/gallery").then(m => m.updateSelectionUI());
+    notifySelectionChange();
   });
 }
 
@@ -718,7 +719,7 @@ function handleStarClick(card: HTMLElement, imageId: number) {
     });
     const activeNav = document.querySelector(".nav-item.active");
     if (activeNav && activeNav.getAttribute("data-view") === "favorites" && !newFav) {
-      import("./views/gallery").then(m => m.refreshFavorites());
+      requestFavoritesRefresh();
     }
   }).catch(() => {});
 }
@@ -932,27 +933,4 @@ export function setupBrowseButton(btnId: string, targetInput: HTMLInputElement, 
   });
 }
 
-export function refreshCardOcr(imageId: number, ocrText: string) {
-  const cards = document.querySelectorAll(`[data-image-id="${imageId}"]`);
-  cards.forEach(card => {
-    const info = card.querySelector<HTMLElement>(".image-info, .featured-details");
-    if (!info) return;
 
-    const existing = info.querySelector(".ocr-block");
-    if (ocrText) {
-      const html = renderOcrBlockHtml(ocrText);
-      if (existing) {
-        existing.outerHTML = html;
-      } else {
-        const anchor = info.querySelector(".identity-list") ?? info.querySelector(".card-tags-container");
-        if (anchor) {
-          anchor.insertAdjacentHTML("beforebegin", html);
-        } else {
-          info.insertAdjacentHTML("beforeend", html);
-        }
-      }
-    } else if (existing) {
-      existing.remove();
-    }
-  });
-}

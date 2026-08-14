@@ -204,11 +204,9 @@ impl OcrDetector {
         // 3. Extract bounding box polygons from the probability map
         let quads = extract_boxes_from_map(
             &pred_data,
-            map_w, map_h,
-            0.3,
-            0.6,
-            1.5,
-            orig_w, orig_h,
+            (map_w, map_h),
+            (orig_w, orig_h),
+            DbPostProcessParams::default(),
         )?;
 
         // Sort boxes top-to-bottom, left-to-right, then merge fragmented boxes
@@ -397,7 +395,7 @@ pub fn preprocess_det(image: &RgbImage) -> Result<(Array4<f32>, usize, usize)> {
             // CHW channel 0 = B (BGR index 0), channel 1 = G, channel 2 = R
             let pix_idx = y * resize_w + x;
             slice[pix_idx] = (b - mean_bgr[0]) / std_bgr[0]; // B channel
-            slice[1 * px_stride + pix_idx] = (g - mean_bgr[1]) / std_bgr[1]; // G channel
+            slice[px_stride + pix_idx] = (g - mean_bgr[1]) / std_bgr[1]; // G channel
             slice[2 * px_stride + pix_idx] = (r - mean_bgr[2]) / std_bgr[2]; // R channel
         }
     }
@@ -440,7 +438,7 @@ pub fn preprocess_rec(image: &RgbImage) -> Result<Array4<f32>> {
             let pix_idx = y * target_w + x;
             // CHW: channel 0=B(BGR order), channel 1=G, channel 2=R
             slice[pix_idx] = (b - 0.5) / 0.5;
-            slice[1 * px_stride + pix_idx] = (g - 0.5) / 0.5;
+            slice[px_stride + pix_idx] = (g - 0.5) / 0.5;
             slice[2 * px_stride + pix_idx] = (r - 0.5) / 0.5;
         }
     }
@@ -478,7 +476,7 @@ pub fn preprocess_cls(image: &RgbImage) -> Result<Array4<f32>> {
             let pix_idx = y * target_w + x;
             // BGR order: channel 0=B, 1=G, 2=R
             slice[pix_idx] = (b - 0.485) / 0.229;
-            slice[1 * px_stride + pix_idx] = (g - 0.456) / 0.224;
+            slice[px_stride + pix_idx] = (g - 0.456) / 0.224;
             slice[2 * px_stride + pix_idx] = (r - 0.406) / 0.225;
         }
     }
@@ -497,16 +495,33 @@ pub fn preprocess_cls(image: &RgbImage) -> Result<Array4<f32>> {
 /// 4. Score the box against the float probability map
 /// 5. Apply unclip expansion
 /// 6. Scale coordinates back to original image dimensions
+#[derive(Debug, Clone, Copy)]
+pub struct DbPostProcessParams {
+    pub thresh: f32,
+    pub box_thresh: f32,
+    pub unclip_ratio: f32,
+}
+
+impl Default for DbPostProcessParams {
+    fn default() -> Self {
+        Self {
+            thresh: 0.3,
+            box_thresh: 0.6,
+            unclip_ratio: 1.5,
+        }
+    }
+}
+
 fn extract_boxes_from_map(
     pred: &[f32],
-    map_w: usize,
-    map_h: usize,
-    thresh: f32,
-    box_thresh: f32,
-    unclip_ratio: f32,
-    orig_w: usize,
-    orig_h: usize,
+    (map_w, map_h): (usize, usize),
+    (orig_w, orig_h): (usize, usize),
+    params: DbPostProcessParams,
 ) -> Result<Vec<[[i32; 2]; 4]>> {
+    let thresh = params.thresh;
+    let box_thresh = params.box_thresh;
+    let unclip_ratio = params.unclip_ratio;
+
     // 1. Threshold to binary
     let mut binary = vec![false; map_w * map_h];
     for i in 0..(map_w * map_h) {
@@ -860,8 +875,15 @@ fn solve_linear_system(mut a: [[f32; 8]; 8], mut b: [f32; 8]) -> Result<[f32; 8]
         for j in (i + 1)..n {
             let factor = a[j][i] / a[i][i];
             b[j] -= factor * b[i];
-            for k in i..n {
-                a[j][k] -= factor * a[i][k];
+            let (row_i, row_j) = if i < j {
+                let (left, right) = a.split_at_mut(j);
+                (&left[i], &mut right[0])
+            } else {
+                let (left, right) = a.split_at_mut(i);
+                (&right[0], &mut left[j])
+            };
+            for (aj_val, &ai_val) in row_j[i..n].iter_mut().zip(&row_i[i..n]) {
+                *aj_val -= factor * ai_val;
             }
         }
     }
@@ -905,17 +927,62 @@ fn decode_ctc(data: &[f32], seq_len: usize, num_classes: usize, dict: &[String])
         // Reference: preds_prob = preds.max(axis=2) â€” raw max value is the confidence
         let prob = max_val;
 
-        // Skip blank (0) and duplicates â€” reference: is_remove_duplicate=True, ignored_tokens=[0]
-        if max_idx != 0 && max_idx != prev_idx {
-            if max_idx < dict.len() && dict[max_idx] != "blank" {
-                text.push_str(&dict[max_idx]);
-                total_prob += prob;
-                count += 1;
-            }
+        // Skip blank (0) and duplicates — reference: is_remove_duplicate=True, ignored_tokens=[0]
+        if max_idx != 0 && max_idx != prev_idx && max_idx < dict.len() && dict[max_idx] != "blank" {
+            text.push_str(&dict[max_idx]);
+            total_prob += prob;
+            count += 1;
         }
         prev_idx = max_idx;
     }
 
     let confidence = if count > 0 { total_prob / count as f32 } else { 0.0 };
     (text, confidence)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_ctc_collapsing_and_confidence() {
+        let dict = vec![
+            "blank".to_string(),
+            "H".to_string(),
+            "E".to_string(),
+            "L".to_string(),
+            "O".to_string(),
+        ];
+        let num_classes = dict.len(); // 5
+        // Sequence: [H, H, E, blank, L, L, blank, O] -> "HELO"
+        let mut data = Vec::new();
+        let add_step = |d: &mut Vec<f32>, target_idx: usize, conf: f32| {
+            let mut step = vec![0.0f32; num_classes];
+            step[target_idx] = conf;
+            d.extend_from_slice(&step);
+        };
+
+        add_step(&mut data, 1, 0.90); // H
+        add_step(&mut data, 1, 0.80); // H (duplicate, collapsed)
+        add_step(&mut data, 2, 0.95); // E
+        add_step(&mut data, 0, 0.99); // blank
+        add_step(&mut data, 3, 0.85); // L
+        add_step(&mut data, 3, 0.88); // L (duplicate, collapsed)
+        add_step(&mut data, 0, 0.99); // blank
+        add_step(&mut data, 4, 0.92); // O
+
+        let seq_len = 8;
+        let (text, conf) = decode_ctc(&data, seq_len, num_classes, &dict);
+        assert_eq!(text, "HELO");
+        // Non-collapsed tokens: H(0.90), E(0.95), L(0.85), O(0.92) -> mean = 3.62 / 4 = 0.905
+        assert!((conf - 0.905).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_db_post_process_params_default() {
+        let params = DbPostProcessParams::default();
+        assert_eq!(params.thresh, 0.3);
+        assert_eq!(params.box_thresh, 0.6);
+        assert_eq!(params.unclip_ratio, 1.5);
+    }
 }

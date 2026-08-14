@@ -3,27 +3,323 @@ use tempfile::NamedTempFile;
 
 #[tokio::test]
 async fn test_db_initialization_and_migrations() {
-    // Create a temporary file path for the SQLite database
     let temp_file = NamedTempFile::new().unwrap();
     let db_path = temp_file.path();
 
-    // Initialize database (which runs migrations programmatically)
     let pool = init_db(db_path)
         .await
         .expect("Failed to initialize database");
 
-    // Verify migrations by querying one of the created tables
+    // Verify all essential tables are created by migrations
+    let expected_tables = [
+        "sources",
+        "images",
+        "tags",
+        "image_tags",
+        "image_parsed_metadata",
+        "character_identities",
+        "character_detections",
+        "custom_concepts",
+        "custom_concept_samples",
+        "custom_concept_vectors",
+        "image_ocr_detections",
+        "image_ocr_fts",
+    ];
+
     let tables: Vec<(String,)> =
-        sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table' AND name='sources'")
+        sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table'")
             .fetch_all(&pool)
             .await
             .expect("Failed to query database schema");
 
-    assert_eq!(
-        tables.len(),
-        1,
-        "The 'sources' table was not created by migrations"
-    );
+    let table_names: Vec<String> = tables.into_iter().map(|(n,)| n).collect();
+    for expected in &expected_tables {
+        assert!(
+            table_names.contains(&expected.to_string()),
+            "Expected table '{}' was not found in schema. Present tables: {:?}",
+            expected,
+            table_names
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_cascade_deletions_and_foreign_keys() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+    let pool = init_db(db_path).await.unwrap();
+
+    // Enable foreign keys
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 1. Insert base image and source
+    sqlx::query("INSERT INTO sources (id, name, type) VALUES (1, 'user', 'builtin')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    sqlx::query(
+        "INSERT INTO images (id, sha256, current_filepath, mtime) VALUES (10, 'sha_test_10', 'path_10.jpg', 1000)"
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 2. Insert tag and link in image_tags
+    sqlx::query("INSERT INTO tags (id, name, category) VALUES (100, '1girl', 'general')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    sqlx::query(
+        "INSERT INTO image_tags (image_id, tag_id, source_id, confidence, is_deleted) VALUES (10, 100, 1, 0.99, 0)"
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 3. Insert parsed metadata
+    sqlx::query(
+        "INSERT INTO image_parsed_metadata (image_id, match_type, artist, extracted_tags, raw_matched) VALUES (10, 'pixiv_id', 'artist_test', '[\"1girl\"]', 'raw')"
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 4. Insert character detection
+    sqlx::query(
+        "INSERT INTO character_detections (id, image_id, x0, y0, x1, y1, confidence) VALUES (500, 10, 10, 20, 100, 150, 0.95)"
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Verify records exist before deletion
+    let (tag_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM image_tags WHERE image_id = 10")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(tag_count, 1);
+
+    let (meta_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM image_parsed_metadata WHERE image_id = 10")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(meta_count, 1);
+
+    let (det_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM character_detections WHERE image_id = 10")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(det_count, 1);
+
+    // 5. Delete image
+    sqlx::query("DELETE FROM images WHERE id = 10")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Verify cascading cleanup
+    let (tag_count_after,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM image_tags WHERE image_id = 10")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(tag_count_after, 0, "image_tags was not cleaned up on image deletion");
+
+    let (meta_count_after,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM image_parsed_metadata WHERE image_id = 10")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(meta_count_after, 0, "image_parsed_metadata was not cleaned up on image deletion");
+
+    let (det_count_after,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM character_detections WHERE image_id = 10")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(det_count_after, 0, "character_detections was not cleaned up on image deletion");
+}
+
+#[tokio::test]
+async fn test_tag_taxonomy_and_conflict_resolution() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+    let pool = init_db(db_path).await.unwrap();
+
+    // Insert tags across taxonomy categories
+    let tags_to_insert = [
+        ("hatsune_miku", "character"),
+        ("kantoku", "artist"),
+        ("vocaloid", "copyright"),
+        ("solo", "general"),
+        ("highres", "meta"),
+    ];
+
+    for (name, category) in &tags_to_insert {
+        sqlx::query("INSERT INTO tags (name, category) VALUES (?, ?)")
+            .bind(name)
+            .bind(category)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    // Verify duplicate tag insertion with ON CONFLICT DO NOTHING
+    let res = sqlx::query("INSERT INTO tags (name, category) VALUES ('hatsune_miku', 'character') ON CONFLICT(name) DO NOTHING")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(res.rows_affected(), 0, "Duplicate tag insertion should affect 0 rows with ON CONFLICT DO NOTHING");
+
+    let (total_tags,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM tags")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(total_tags, 5);
+}
+
+#[tokio::test]
+async fn test_character_identities_and_detections_crud() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+    let pool = init_db(db_path).await.unwrap();
+
+    // Create image
+    sqlx::query("INSERT INTO images (id, sha256, current_filepath, mtime) VALUES (1, 'hash_1', 'img1.png', 0)")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Create identity
+    sqlx::query("INSERT INTO character_identities (id, name, created_at) VALUES (1, 'Chitanda Eru', '2026-08-14 00:00:00')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Insert detection with coordinates
+    sqlx::query(
+        "INSERT INTO character_detections (id, image_id, identity_id, x0, y0, x1, y1, confidence) VALUES (10, 1, 1, 50, 60, 200, 300, 0.98)"
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Query joined detection and identity
+    let row: (i64, i64, String, i32, i32, i32, i32, f32) = sqlx::query_as(
+        "SELECT d.id, d.image_id, i.name, d.x0, d.y0, d.x1, d.y1, d.confidence \
+         FROM character_detections d \
+         JOIN character_identities i ON d.identity_id = i.id \
+         WHERE d.id = 10"
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(row.0, 10);
+    assert_eq!(row.1, 1);
+    assert_eq!(row.2, "Chitanda Eru");
+    assert_eq!(row.3, 50);
+    assert_eq!(row.4, 60);
+    assert_eq!(row.5, 200);
+    assert_eq!(row.6, 300);
+    assert!((row.7 - 0.98).abs() < 1e-4);
+
+    // Unassign identity (set identity_id to NULL)
+    sqlx::query("UPDATE character_detections SET identity_id = NULL WHERE id = 10")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (assigned_id,): (Option<i64>,) = sqlx::query_as("SELECT identity_id FROM character_detections WHERE id = 10")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(assigned_id, None);
+}
+
+#[tokio::test]
+async fn test_custom_concepts_and_samples_crud() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+    let pool = init_db(db_path).await.unwrap();
+
+    sqlx::query("INSERT INTO images (id, sha256, current_filepath, mtime) VALUES (1, 'h1', 'p1.jpg', 0)")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 1. Create concept
+    sqlx::query("INSERT INTO custom_concepts (id, name, category, threshold) VALUES (1, 'goth_aesthetic', 'general', 0.65)")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 2. Add sample association
+    sqlx::query("INSERT INTO custom_concept_samples (concept_id, image_id, is_negative) VALUES (1, 1, 0)")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 3. Add prototype vector (dummy 4 floats as bytes)
+    sqlx::query("INSERT INTO sources (id, name, type) VALUES (1, 'user', 'builtin')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let dummy_embedding: [f32; 4] = [0.5, 0.5, 0.5, 0.5];
+    let embedding_bytes: Vec<u8> = dummy_embedding.iter().flat_map(|f| f.to_le_bytes()).collect();
+
+    sqlx::query("INSERT INTO custom_concept_vectors (concept_id, source_id, vector) VALUES (1, 1, ?)")
+        .bind(&embedding_bytes)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 4. Verify sample and vector lookup
+    let sample_row: (i64, i32) = sqlx::query_as("SELECT image_id, is_negative FROM custom_concept_samples WHERE concept_id = 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(sample_row.0, 1);
+    assert_eq!(sample_row.1, 0);
+
+    let vector_row: (Vec<u8>,) = sqlx::query_as("SELECT vector FROM custom_concept_vectors WHERE concept_id = 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(vector_row.0.len(), 16);
+
+    // 5. Update threshold
+    sqlx::query("UPDATE custom_concepts SET threshold = 0.72 WHERE id = 1")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (th,): (f32,) = sqlx::query_as("SELECT threshold FROM custom_concepts WHERE id = 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!((th - 0.72).abs() < 1e-4);
+
+    // 6. Delete concept and verify cascading cleanup
+    sqlx::query("DELETE FROM custom_concepts WHERE id = 1")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (sample_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM custom_concept_samples WHERE concept_id = 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(sample_count, 0);
+
+    let (vector_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM custom_concept_vectors WHERE concept_id = 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(vector_count, 0);
 }
 
 #[tokio::test]
@@ -63,7 +359,6 @@ async fn test_ocr_db_schema() {
 
 #[test]
 fn test_ocr_detector_sanity() {
-    // Basic structural checks of OcrDetector instantiation
     let detector = curator_core::OcrDetector::new("../.curator/models", curator_core::DevicePreference::Cpu, false, false);
     assert!(!detector.is_loaded());
 }
@@ -107,26 +402,8 @@ fn test_ocr_image_transcription_extraction() {
         println!("[{}] \"{}\" (conf: {:.2}, bubble: {})", idx, det.text, det.confidence, det.is_from_bubble);
     }
 
-    // Direct inspect detection probability map values if 0 text blocks were found
-    if results.is_empty() {
-        let (det_tensor, det_w, det_h) = curator_core::detection::ocr::preprocess_det(&img).unwrap();
-        let (shape, data) = detector.det_session.with_session(|det_session| {
-            let outputs = det_session.run(ort::inputs![ort::value::TensorRef::from_array_view(&det_tensor).unwrap()]).unwrap();
-            let out_tensor = outputs.get("fetch_name_0").or_else(|| outputs.get("maps")).unwrap();
-            let (shape, data) = out_tensor.try_extract_tensor::<f32>().unwrap();
-            Ok((shape.to_owned(), data.to_vec()))
-        }).unwrap();
-        let mut max_val = 0.0f32;
-        let mut count_above = 0;
-        for v in data {
-            if v > max_val { max_val = v; }
-            if v > 0.2 { count_above += 1; }
-        }
-        println!("DEBUG DET MAP: resize={}x{}, shape={:?}, max_val={:.4}, count_above_0.2={}", det_w, det_h, shape, max_val, count_above);
-    }
-
-    // Verify we found some texts and check typical OTAKU keyword
     assert!(!results.is_empty(), "No texts extracted from the reference image");
     let joined_texts = results.iter().map(|d| d.text.to_uppercase()).collect::<Vec<_>>().join(" ");
     assert!(joined_texts.contains("FREEDOM") || joined_texts.contains("DILEMMA") || joined_texts.contains("BOCCHI") || joined_texts.contains("PRETTY"), "Expected OCR results to contain key transcription keywords");
 }
+

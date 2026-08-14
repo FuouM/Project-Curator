@@ -63,21 +63,24 @@ impl ToolsService for ToolsServiceImpl {
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
             .map_err(internal_status)?;
+        let opts = handlers::transcode::TranscodeOptions {
+            vcodec: req.vcodec,
+            acodec: req.acodec,
+            crf: req.crf,
+            video_bitrate: req.video_bitrate,
+            preset: req.preset,
+            target_size_mb: req.target_size_mb,
+            audio_bitrate: req.audio_bitrate,
+            mixdown: req.mixdown,
+            sample_rate: req.sample_rate,
+            custom_args: req.custom_args,
+        };
         handlers::transcode::start_transcode(
             &req.job_id,
             &req.input_path,
             &req.output_path,
             &req.target_format,
-            req.vcodec,
-            req.acodec,
-            req.crf,
-            req.video_bitrate,
-            req.preset,
-            req.target_size_mb,
-            req.audio_bitrate,
-            req.mixdown,
-            req.sample_rate,
-            req.custom_args,
+            opts,
             &ffmpeg,
             &self.ctx.transcode_progress,
         )
@@ -122,15 +125,18 @@ impl ToolsService for ToolsServiceImpl {
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
             .map_err(internal_status)?;
+        let opts = handlers::gif::CreateGifOptions {
+            frame_rate: Some(req.frame_rate),
+            width: req.width,
+            height: req.height,
+            loop_count: req.loop_count,
+        };
         handlers::gif::create_gif_from_images(
             req.job_id,
             resolved_pattern,
-            req.frame_rate,
             resolved_output,
-            req.width,
-            req.height,
-            req.loop_count,
             req.target_format,
+            opts,
             &ffmpeg,
             &self.ctx.transcode_progress,
         )
@@ -149,32 +155,35 @@ impl ToolsService for ToolsServiceImpl {
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
             .map_err(internal_status)?;
+        let opts = handlers::gif::GifEffectsOptions {
+            crop: req.crop,
+            scale: req.scale,
+            speed_multiplier: req.speed_multiplier,
+            reverse: req.reverse,
+            bounce: req.bounce,
+            rotate: req.rotate,
+            brightness: req.brightness,
+            contrast: req.contrast,
+            saturation: req.saturation,
+            grayscale: req.grayscale,
+            invert: req.invert,
+            caption_image_base64: req.caption_image_base64,
+            caption_image_height: req.caption_image_height,
+            caption_style: req.caption_style,
+            max_colors: req.max_colors,
+            dither_type: req.dither_type,
+            drop_frames_factor: req.drop_frames_factor,
+            loop_count: req.loop_count,
+            fps: req.fps,
+            trim_start: req.trim_start,
+            trim_end: req.trim_end,
+        };
         handlers::gif::process_gif_effects(
             req.job_id,
             resolved_input,
             resolved_output,
-            req.crop,
-            req.scale,
-            req.speed_multiplier,
-            req.reverse,
-            req.bounce,
-            req.rotate,
-            req.brightness,
-            req.contrast,
-            req.saturation,
-            req.grayscale,
-            req.invert,
-            req.caption_image_base64,
-            req.caption_image_height,
-            req.caption_style,
-            req.max_colors,
-            req.dither_type,
-            req.drop_frames_factor,
             req.target_format,
-            req.loop_count,
-            req.fps,
-            req.trim_start,
-            req.trim_end,
+            opts,
             &ffmpeg,
             &self.ctx.transcode_progress,
         )

@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { typedCall } from "./ipc";
+import { closeImageViewer } from "./image-viewer";
 import { getPluginViewKeys, registerPluginView, removePluginView } from "./views/navigation";
 import { AssetContext, ImageDetails, PluginInfo, TagContext } from "./types";
 import { selectedImageIds } from "./state";
@@ -139,7 +140,7 @@ const pluginHost: PluginHostApi = {
     return convertFileSrc(filePath);
   },
   closeImageViewer() {
-    import("./image-viewer").then((m) => m.closeImageViewer());
+    closeImageViewer();
   },
   getAssetContext,
   getAssetContextFromCard,

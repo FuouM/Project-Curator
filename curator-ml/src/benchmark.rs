@@ -263,7 +263,7 @@ pub fn run_onnx_benchmark(
         .map(|i| i.name().to_string())
         .unwrap_or_else(|| "image".to_string());
 
-    let is_f16 = cpu_session.inputs().first().map_or(false, |i| {
+    let is_f16 = cpu_session.inputs().first().is_some_and(|i| {
         matches!(
             i.dtype(),
             ort::value::ValueType::Tensor {
@@ -572,7 +572,7 @@ pub fn run_onnx_benchmark_4d(
         .map(|i| i.name().to_string())
         .unwrap_or_else(|| "image".to_string());
 
-    let is_f16 = cpu_session.inputs().first().map_or(false, |i| {
+    let is_f16 = cpu_session.inputs().first().is_some_and(|i| {
         matches!(
             i.dtype(),
             ort::value::ValueType::Tensor {
@@ -816,12 +816,13 @@ async fn benchmark_image(
     let start_tagger_pre = Instant::now();
     let _ = crate::tagger::preprocess::preprocess_image_from_rgb(
         img.as_raw(),
-        width,
-        height,
-        tagger_spec.input_size,
-        &tagger_spec.mean,
-        &tagger_spec.std,
-        &tagger_spec.pad_color,
+        (width, height),
+        &crate::tagger::preprocess::TaggerPreprocessConfig {
+            img_size: tagger_spec.input_size,
+            mean: &tagger_spec.mean,
+            std: &tagger_spec.std,
+            pad_color: &tagger_spec.pad_color,
+        },
         &mut resizer,
     );
     let tagger_preprocess_time_ms = start_tagger_pre.elapsed().as_secs_f64() * 1000.0;

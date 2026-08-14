@@ -70,9 +70,10 @@ fn ffprobe_exe() -> &'static str {
 }
 
 /// Resolve the FFmpeg executable with the project's fail-fast policy:
-///  1. the explicitly configured path (validated), then
-///  2. `<data_dir>/bin/ffmpeg(.exe)`, then
-///  3. `ffmpeg(.exe)` on `PATH`.
+/// 1. the explicitly configured path (validated), then
+/// 2. `<data_dir>/bin/ffmpeg(.exe)`, then
+/// 3. `ffmpeg(.exe)` on `PATH`.
+///
 /// Errors loudly when nothing resolves — never silently falls back.
 pub fn resolve_ffmpeg_path(data_dir: &Path, explicit: Option<&Path>) -> Result<PathBuf> {
     if let Some(p) = explicit {
@@ -306,7 +307,7 @@ fn parse_ffmpeg_i_stderr(path: &Path, ffmpeg_path: &Path) -> Result<VideoInfo> {
             let bits = rest
                 .split("bitrate:")
                 .nth(1)
-                .and_then(|s| s.trim().split_whitespace().next())
+                .and_then(|s| s.split_whitespace().next())
                 .and_then(|v| v.parse::<f64>().ok());
             if let Some(kb) = bits {
                 bitrate = Some((kb * 1000.0) as i64);
@@ -316,7 +317,6 @@ fn parse_ffmpeg_i_stderr(path: &Path, ffmpeg_path: &Path) -> Result<VideoInfo> {
             if let Some(v) = rest.find("Video:") {
                 let after = &rest[v + "Video:".len()..];
                 let codec = after
-                    .trim_start()
                     .split_whitespace()
                     .next()
                     .unwrap_or("unknown")
@@ -536,6 +536,10 @@ mod tests {
         assert_eq!(parse_ratio("30/1"), 30.0);
         assert_eq!(parse_ratio("0/0"), 0.0);
         assert!((parse_ratio("29.97") - 29.97).abs() < 1e-9);
+        assert!((parse_ratio("24000/1001") - 23.976023976).abs() < 1e-6);
+        assert!((parse_ratio("30000/1001") - 29.97002997).abs() < 1e-6);
+        assert!((parse_ratio("60000/1001") - 59.94005994).abs() < 1e-6);
+        assert_eq!(parse_ratio("invalid"), 0.0);
     }
 
     #[test]
@@ -544,6 +548,14 @@ mod tests {
         assert_eq!(h, 0.0);
         assert_eq!(m, 1.0);
         assert!((s - 24.5).abs() < 1e-9);
+
+        let (h2, m2, s2) = parse_duration_hms("02:15:30.25").unwrap();
+        assert_eq!(h2, 2.0);
+        assert_eq!(m2, 15.0);
+        assert!((s2 - 30.25).abs() < 1e-9);
+
+        assert!(parse_duration_hms("invalid:duration").is_none());
+        assert!(parse_duration_hms("not:a:number").is_none());
     }
 
     #[test]

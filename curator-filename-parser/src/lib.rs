@@ -127,6 +127,37 @@ mod tests {
     }
 
     #[test]
+    fn test_tagged_string_extractor() {
+        let res = presets::test_preset("[Kantoku] Shizuku (1girl solo blue_eyes)", "tagged_string").unwrap();
+        assert_eq!(res.match_type, "tagged_string");
+        assert_eq!(res.artist.as_deref(), Some("Kantoku"));
+        assert!(res.extracted_tags.contains(&"artist:Kantoku".to_string()));
+        assert!(res.extracted_tags.contains(&"1girl".to_string()));
+        assert!(res.extracted_tags.contains(&"solo".to_string()));
+        assert!(res.extracted_tags.contains(&"blue_eyes".to_string()));
+    }
+
+    #[test]
+    fn test_twitter_snowflake_extractor() {
+        let res = presets::test_preset("status_artist_handle-165244823700012345", "twitter_key").unwrap();
+        assert_eq!(res.match_type, "twitter_key");
+        assert_eq!(
+            res.twitter_id.as_deref(),
+            Some("status_artist_handle-165244823700012345")
+        );
+        assert!(res.extracted_tags.contains(&"twitter:status_artist_handle-165244823700012345".to_string()));
+    }
+
+    #[test]
+    fn test_unmatched_filename_returns_none() {
+        let res = presets::test_preset("just_a_random_filename", "pixiv_id");
+        assert!(res.is_none());
+
+        let res_tw = presets::test_preset("just_a_random_filename", "twitter_key");
+        assert!(res_tw.is_none());
+    }
+
+    #[test]
     fn test_token_builder_compiler() {
         let blocks = vec![
             TokenBlock {
@@ -175,16 +206,12 @@ mod tests {
                 1 => filenames.push(format!("illust_{}_20230513_212357.jpg", 10000000 + i)),
                 2 => filenames.push(format!("media_FR{}d0XWUAImXfA.jpg", i)),
                 3 => filenames.push(format!("__some_tags_and_more__{:032x}.jpg", i)),
-                4 => filenames.push(format!(
-                    "[Artist Name] Title (tag1 tag2 tag3).png"
-                )),
+                4 => filenames.push("[Artist Name] Title (tag1 tag2 tag3).png".to_string()),
                 5 => filenames.push(format!("{}.png", 1652448237 + i)),
                 6 => filenames.push(format!("random_filename_no_match_{}.jpg", i)),
                 7 => filenames.push(format!("illust_{}.png", 10000000 + i)),
                 8 => filenames.push(format!("__danbooru_test_tags__{:032x}.png", i)),
-                9 => filenames.push(format!(
-                    "[Cool Artist] Amazing Artwork (landscape wallpaper).png"
-                )),
+                9 => filenames.push("[Cool Artist] Amazing Artwork (landscape wallpaper).png".to_string()),
                 _ => unreachable!(),
             }
         }

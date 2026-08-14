@@ -493,7 +493,7 @@ async fn get_thumbnail(
 
     let webp_bytes = if is_vid {
         let data_dir = data_dir();
-        let ffmpeg_res = curator_media::video::resolve_ffmpeg_path(&data_dir, None);
+        let ffmpeg_res = curator_media::video::resolve_ffmpeg_path(data_dir, None);
         let vid_path = std::path::PathBuf::from(&filepath);
         tokio::task::spawn_blocking(move || {
             if let Ok(ffmpeg) = ffmpeg_res {

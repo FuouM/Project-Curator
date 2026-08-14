@@ -49,6 +49,7 @@ fn decode<M: Message + Default>(bytes: &[u8]) -> Result<M, String> {
 /// For the four server-streaming RPCs, the bridge reads the first stream item and
 /// returns it, then drops the stream. The dashboard relies on unary progress-poll
 /// RPCs for the remainder of each job.
+#[allow(clippy::unit_arg)]
 pub async fn call_typed(
     channel: Channel,
     method: &str,

@@ -10,6 +10,7 @@ import { html, SafeHtml, ComponentMeta } from "./_shared";
 import { maskPath } from "./path-utils";
 import { getTagPillHtml } from "./card-tags";
 import { refreshCardTags } from "../views/tags";
+import { openTeachConceptModal } from "../views/concepts";
 
 export function renderTagEditorModalHtml(imageId: number, filepath: string): SafeHtml {
   return html`
@@ -288,7 +289,6 @@ export function setupTagEditorModal() {
     } else if (action === "teach-concept") {
       const idInput = document.getElementById("tag-image-id") as HTMLInputElement | null;
       if (idInput && idInput.value) {
-        const { openTeachConceptModal } = await import("../views/concepts");
         openTeachConceptModal();
       }
     } else if (action === "close-modal") {

@@ -1226,7 +1226,7 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
                             if let Ok(Some(line)) = line_opt {
                                 let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
                                 let mut map = logs_m.lock().unwrap();
-                                let entry = map.entry(model_id_clone.clone()).or_insert_with(String::new);
+                                let entry = map.entry(model_id_clone.clone()).or_default();
                                 entry.push_str(&line);
                                 entry.push('\n');
                             }
@@ -1235,7 +1235,7 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
                             if let Ok(Some(line)) = line_opt {
                                 let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
                                 let mut map = logs_m.lock().unwrap();
-                                let entry = map.entry(model_id_clone.clone()).or_insert_with(String::new);
+                                let entry = map.entry(model_id_clone.clone()).or_default();
                                 entry.push_str(&line);
                                 entry.push('\n');
                             }
@@ -1243,7 +1243,7 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
                         status = child.wait() => {
                             let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
                             let mut map = logs_m.lock().unwrap();
-                            let entry = map.entry(model_id_clone.clone()).or_insert_with(String::new);
+                            let entry = map.entry(model_id_clone.clone()).or_default();
                             match status {
                                 Ok(s) if s.success() => {
                                     entry.push_str("\nConversion finished successfully.\n");
@@ -1272,7 +1272,7 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
         Err(e) => {
             let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
             let mut map = logs_m.lock().unwrap();
-            let entry = map.entry(target_model_id.clone()).or_insert_with(String::new);
+            let entry = map.entry(target_model_id.clone()).or_default();
             entry.push_str(&format!("Failed to spawn conversion command: {}\n", e));
             error!("Failed to spawn background conversion command for {}: {}", target_model_id, e);
             let running_m = CONVERSION_RUNNING_MODEL.get_or_init(|| std::sync::Mutex::new(None));
