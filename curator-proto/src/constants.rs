@@ -9,84 +9,74 @@ pub const SOURCE_USER: &str = "user";
 /// Named pipe path for IPC communication between service, CLI, and dashboard.
 pub const PIPE_NAME: &str = r"\\.\pipe\curator_ipc";
 
-/// Resolve the curator data directory portably, without any hardcoded paths.
+/// Resolve the curator data directory portably and deterministically based on
+/// self-contained project assets, with no reliance on environment variables,
+/// `.git`, or `Cargo.toml`.
 ///
 /// Resolution order:
-/// 1. `CURATOR_DATA_DIR` environment variable (explicit override).
-/// 2. Walk up from the current executable's directory looking for `.curator/`
-///    adjacent to a `Cargo.toml` or `.git` marker (workspace root detection).
-/// 3. Walk up from the current working directory with the same marker check.
-///
-/// Panics if no suitable location is found, so callers get a clear error
-/// rather than silently using a wrong path.
+/// 1. Check if the current executable's folder (or its ancestors during dev)
+///    contains Curator domain markers (`model_manifest.json` or `plugins/`).
+/// 2. Check if the current working directory or its ancestors contain the markers.
+/// 3. Fallback: adjacent `.curator` folder next to the current executable.
 pub fn resolve_data_dir() -> std::path::PathBuf {
-    use std::path::PathBuf;
-
-    // 1. Explicit environment variable override.
-    if let Ok(env_val) = std::env::var("CURATOR_DATA_DIR") {
-        if !env_val.is_empty() {
-            return PathBuf::from(env_val);
-        }
-    }
-
-    // 2. Walk up from the current executable.
+    // 1. Walk up from the current executable.
     let exe_path = std::env::current_exe().ok();
     if let Some(ref exe) = exe_path {
-        if let Some(root) = find_workspace_root(exe.as_path()) {
+        if let Some(root) = find_app_root(exe.as_path()) {
             return root.join(".curator");
         }
     }
 
-    // 3. Walk up from the current working directory.
+    // 2. Walk up from the current working directory.
     if let Ok(cwd) = std::env::current_dir() {
-        if let Some(root) = find_workspace_root(cwd.as_path()) {
+        if let Some(root) = find_app_root(cwd.as_path()) {
             return root.join(".curator");
         }
     }
 
-    // 4. Production Portable Fallback: If no workspace markers (Cargo.toml/git) are found
-    //    (e.g., in a compiled portable release folder), default to a `.curator` directory
-    //    adjacent to the running executable itself.
+    // 3. Fallback: directly adjacent to the running executable.
     if let Some(ref exe) = exe_path {
         if let Some(parent) = exe.parent() {
             return parent.join(".curator");
         }
     }
 
-    panic!(
-        "Could not locate the Project Curator workspace root or executable parent directory. \
-         Set the CURATOR_DATA_DIR environment variable to the `.curator` data directory path."
-    );
+    std::path::PathBuf::from(".curator")
 }
 
-/// Walk up from `start` (a file or directory) looking for a directory that
-/// contains a workspace `Cargo.toml` (with `[workspace]`) or `.git`. Returns that directory when found.
-fn find_workspace_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
+/// Checks if a directory is the Project Curator application/workspace root
+/// by inspecting Curator-specific assets rather than generic VCS/build files.
+fn is_app_root(dir: &std::path::Path) -> bool {
+    // `model_manifest.json` is the authoritative Project Curator model manifest
+    if dir.join("model_manifest.json").is_file() {
+        return true;
+    }
+    // Alternatively, a folder containing both `plugins` and `.curator`
+    if dir.join("plugins").is_dir() && dir.join(".curator").is_dir() {
+        return true;
+    }
+    false
+}
+
+/// Walk up from `start` (a file or directory) looking for the Project Curator
+/// root directory.
+fn find_app_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut current = if start.is_file() {
         start.parent()?.to_path_buf()
     } else {
         start.to_path_buf()
     };
 
-    loop {
-        if is_workspace_root(&current) {
-            return Some(current);
-        }
-        current = current.parent()?.to_path_buf();
+    if is_app_root(&current) {
+        return Some(current);
     }
-}
 
-fn is_workspace_root(dir: &std::path::Path) -> bool {
-    if dir.join(".git").exists() {
-        return true;
-    }
-    let cargo_toml = dir.join("Cargo.toml");
-    if cargo_toml.is_file() {
-        if let Ok(content) = std::fs::read_to_string(&cargo_toml) {
-            if content.contains("[workspace]") {
-                return true;
-            }
+    while let Some(parent) = current.parent() {
+        if is_app_root(parent) {
+            return Some(parent.to_path_buf());
         }
+        current = parent.to_path_buf();
     }
-    false
+
+    None
 }
