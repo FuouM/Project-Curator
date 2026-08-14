@@ -60,6 +60,8 @@ impl ToolsService for ToolsServiceImpl {
         request: TonicRequest<TranscodeVideoRequest>,
     ) -> Result<TonicResponse<()>, Status> {
         let req = request.into_inner();
+        let resolved_input = handlers::resolve_relative_path(&self.ctx.data_dir, &req.input_path);
+        let resolved_output = handlers::resolve_relative_path(&self.ctx.data_dir, &req.output_path);
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
             .map_err(internal_status)?;
@@ -77,8 +79,8 @@ impl ToolsService for ToolsServiceImpl {
         };
         handlers::transcode::start_transcode(
             &req.job_id,
-            &req.input_path,
-            &req.output_path,
+            &resolved_input,
+            &resolved_output,
             &req.target_format,
             opts,
             &ffmpeg,

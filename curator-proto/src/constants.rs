@@ -60,7 +60,7 @@ pub fn resolve_data_dir() -> std::path::PathBuf {
 }
 
 /// Walk up from `start` (a file or directory) looking for a directory that
-/// contains `Cargo.toml` or `.git`. Returns that directory when found.
+/// contains a workspace `Cargo.toml` (with `[workspace]`) or `.git`. Returns that directory when found.
 fn find_workspace_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut current = if start.is_file() {
         start.parent()?.to_path_buf()
@@ -69,9 +69,24 @@ fn find_workspace_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
     };
 
     loop {
-        if current.join("Cargo.toml").exists() || current.join(".git").exists() {
+        if is_workspace_root(&current) {
             return Some(current);
         }
         current = current.parent()?.to_path_buf();
     }
+}
+
+fn is_workspace_root(dir: &std::path::Path) -> bool {
+    if dir.join(".git").exists() {
+        return true;
+    }
+    let cargo_toml = dir.join("Cargo.toml");
+    if cargo_toml.is_file() {
+        if let Ok(content) = std::fs::read_to_string(&cargo_toml) {
+            if content.contains("[workspace]") {
+                return true;
+            }
+        }
+    }
+    false
 }

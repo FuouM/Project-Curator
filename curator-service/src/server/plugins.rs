@@ -27,10 +27,11 @@ async fn dispatch_plugin_command(
 ) -> Result<serde_json::Value, Status> {
     match command {
         "PathExists" => {
-            let path = params["path"]
+            let raw_path = params["path"]
                 .as_str()
                 .ok_or_else(|| Status::invalid_argument("missing path"))?;
-            let exists = handlers::misc::path_exists(path)
+            let path = handlers::resolve_relative_path(&ctx.data_dir, raw_path);
+            let exists = handlers::misc::path_exists(&path)
                 .await
                 .map_err(internal_status)?;
             Ok(serde_json::json!({
@@ -84,7 +85,9 @@ async fn dispatch_plugin_command(
             let mut conversions = Vec::new();
             for item in conversions_array {
                 if let (Some(src), Some(dst)) = (item[0].as_str(), item[1].as_str()) {
-                    conversions.push((src.to_string(), dst.to_string()));
+                    let resolved_src = handlers::resolve_relative_path(&ctx.data_dir, src);
+                    let resolved_dst = handlers::resolve_relative_path(&ctx.data_dir, dst);
+                    conversions.push((resolved_src, resolved_dst));
                 }
             }
             let converted = handlers::convert::convert_images(conversions, quality)
@@ -106,8 +109,14 @@ async fn dispatch_plugin_command(
         }
         "TranscodeVideo" => {
             let job_id = params["job_id"].as_str().unwrap_or_default();
-            let input_path = params["input_path"].as_str().unwrap_or_default();
-            let output_path = params["output_path"].as_str().unwrap_or_default();
+            let input_path = handlers::resolve_relative_path(
+                &ctx.data_dir,
+                params["input_path"].as_str().unwrap_or_default(),
+            );
+            let output_path = handlers::resolve_relative_path(
+                &ctx.data_dir,
+                params["output_path"].as_str().unwrap_or_default(),
+            );
             let target_format = params["target_format"].as_str().unwrap_or_default();
             let vcodec = params["vcodec"].as_str().map(|s| s.to_string());
             let acodec = params["acodec"].as_str().map(|s| s.to_string());
@@ -139,8 +148,8 @@ async fn dispatch_plugin_command(
 
             if let Err(e) = handlers::transcode::start_transcode(
                 job_id,
-                input_path,
-                output_path,
+                &input_path,
+                &output_path,
                 target_format,
                 opts,
                 &ffmpeg,
@@ -156,9 +165,15 @@ async fn dispatch_plugin_command(
         }
         "CreateGifFromImages" => {
             let job_id = params["job_id"].as_str().unwrap_or_default();
-            let image_pattern = params["image_pattern"].as_str().unwrap_or_default();
+            let image_pattern = handlers::resolve_relative_path(
+                &ctx.data_dir,
+                params["image_pattern"].as_str().unwrap_or_default(),
+            );
             let frame_rate = params["frame_rate"].as_f64().unwrap_or(10.0) as f32;
-            let output_path = params["output_path"].as_str().unwrap_or_default();
+            let output_path = handlers::resolve_relative_path(
+                &ctx.data_dir,
+                params["output_path"].as_str().unwrap_or_default(),
+            );
             let width = params["width"].as_u64().map(|v| v as u32);
             let height = params["height"].as_u64().map(|v| v as u32);
             let loop_count = params["loop_count"].as_i64().map(|v| v as i32);
@@ -177,8 +192,8 @@ async fn dispatch_plugin_command(
 
             if let Err(e) = handlers::gif::create_gif_from_images(
                 job_id.to_string(),
-                image_pattern.to_string(),
-                output_path.to_string(),
+                image_pattern,
+                output_path,
                 target_format.to_string(),
                 opts,
                 &ffmpeg,
@@ -194,8 +209,14 @@ async fn dispatch_plugin_command(
         }
         "ProcessGifEffects" => {
             let job_id = params["job_id"].as_str().unwrap_or_default();
-            let input_path = params["input_path"].as_str().unwrap_or_default();
-            let output_path = params["output_path"].as_str().unwrap_or_default();
+            let input_path = handlers::resolve_relative_path(
+                &ctx.data_dir,
+                params["input_path"].as_str().unwrap_or_default(),
+            );
+            let output_path = handlers::resolve_relative_path(
+                &ctx.data_dir,
+                params["output_path"].as_str().unwrap_or_default(),
+            );
             let crop = params["crop"].as_str().map(|s| s.to_string());
             let scale = params["scale"].as_str().map(|s| s.to_string());
             let speed_multiplier = params["speed_multiplier"].as_f64().map(|v| v as f32);
@@ -249,8 +270,8 @@ async fn dispatch_plugin_command(
 
             if let Err(e) = handlers::gif::process_gif_effects(
                 job_id.to_string(),
-                input_path.to_string(),
-                output_path.to_string(),
+                input_path,
+                output_path,
                 target_format.to_string(),
                 opts,
                 &ffmpeg,
@@ -266,8 +287,14 @@ async fn dispatch_plugin_command(
         }
         "SplitGif" => {
             let job_id = params["job_id"].as_str().unwrap_or_default();
-            let input_path = params["input_path"].as_str().unwrap_or_default();
-            let output_dir = params["output_dir"].as_str().unwrap_or_default();
+            let input_path = handlers::resolve_relative_path(
+                &ctx.data_dir,
+                params["input_path"].as_str().unwrap_or_default(),
+            );
+            let output_dir = handlers::resolve_relative_path(
+                &ctx.data_dir,
+                params["output_dir"].as_str().unwrap_or_default(),
+            );
 
             let ffmpeg = handlers::resolve_ffmpeg_path(&ctx.data_dir, &ctx.settings)
                 .await
@@ -275,8 +302,8 @@ async fn dispatch_plugin_command(
 
             if let Err(e) = handlers::gif::split_gif(
                 job_id.to_string(),
-                input_path.to_string(),
-                output_dir.to_string(),
+                input_path,
+                output_dir,
                 &ffmpeg,
                 &ctx.transcode_progress,
             )
