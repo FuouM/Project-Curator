@@ -187,7 +187,7 @@ impl SafetyClassifier {
                 .context("Failed to get probabilities/logits output tensor")?;
 
             let (shape, flat) = match output_tensor.try_extract_tensor::<f32>() {
-                Ok((shape, data)) => (shape, data.iter().copied().collect::<Vec<f32>>()),
+                Ok((shape, data)) => (shape, data.to_vec()),
                 Err(_) => {
                     let (shape, data) = output_tensor
                         .try_extract_tensor::<half::f16>()

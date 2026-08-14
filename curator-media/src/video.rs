@@ -70,9 +70,10 @@ fn ffprobe_exe() -> &'static str {
 }
 
 /// Resolve the FFmpeg executable with the project's fail-fast policy:
-///  1. the explicitly configured path (validated), then
-///  2. `<data_dir>/bin/ffmpeg(.exe)`, then
-///  3. `ffmpeg(.exe)` on `PATH`.
+/// 1. the explicitly configured path (validated), then
+/// 2. `<data_dir>/bin/ffmpeg(.exe)`, then
+/// 3. `ffmpeg(.exe)` on `PATH`.
+///
 /// Errors loudly when nothing resolves — never silently falls back.
 pub fn resolve_ffmpeg_path(data_dir: &Path, explicit: Option<&Path>) -> Result<PathBuf> {
     if let Some(p) = explicit {
@@ -306,7 +307,7 @@ fn parse_ffmpeg_i_stderr(path: &Path, ffmpeg_path: &Path) -> Result<VideoInfo> {
             let bits = rest
                 .split("bitrate:")
                 .nth(1)
-                .and_then(|s| s.trim().split_whitespace().next())
+                .and_then(|s| s.split_whitespace().next())
                 .and_then(|v| v.parse::<f64>().ok());
             if let Some(kb) = bits {
                 bitrate = Some((kb * 1000.0) as i64);
@@ -316,7 +317,6 @@ fn parse_ffmpeg_i_stderr(path: &Path, ffmpeg_path: &Path) -> Result<VideoInfo> {
             if let Some(v) = rest.find("Video:") {
                 let after = &rest[v + "Video:".len()..];
                 let codec = after
-                    .trim_start()
                     .split_whitespace()
                     .next()
                     .unwrap_or("unknown")

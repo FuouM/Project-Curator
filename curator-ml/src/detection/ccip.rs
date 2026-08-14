@@ -158,10 +158,7 @@ impl CCIPModel {
 
             // Output is [N, N] pairwise difference matrix. Row 0 is the query;
             // columns 1..N are the per-reference differences.
-            let mut diffs = Vec::with_capacity(n - 1);
-            for j in 1..n {
-                diffs.push(data[j]);
-            }
+            let diffs = data[1..n].to_vec();
             Ok(diffs)
         })?;
 
@@ -197,12 +194,7 @@ impl CCIPModel {
     }
 
     pub fn benchmark_metrics_once(&self, n_embeddings: usize) -> Result<f64> {
-        let mut input_vec = Vec::with_capacity(n_embeddings * CCIP_EMBEDDING_DIM);
-        for _ in 0..n_embeddings {
-            for _ in 0..CCIP_EMBEDDING_DIM {
-                input_vec.push(0.5f32);
-            }
-        }
+        let input_vec = vec![0.5f32; n_embeddings * CCIP_EMBEDDING_DIM];
 
         let input_array =
             Array2::from_shape_vec((n_embeddings, CCIP_EMBEDDING_DIM), input_vec)

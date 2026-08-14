@@ -236,7 +236,7 @@ pub async fn process_gif_effects(
             match base64::engine::general_purpose::STANDARD.decode(clean_base64) {
                 Ok(bytes) => {
                     let temp_file_path = std::env::temp_dir().join(format!("caption_{}.png", job_id));
-                    if let Ok(_) = std::fs::write(&temp_file_path, bytes) {
+                    if std::fs::write(&temp_file_path, bytes).is_ok() {
                         caption_file = Some(temp_file_path);
                         caption_height = caption_image_height.unwrap_or(0);
                     } else {

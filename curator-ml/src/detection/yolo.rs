@@ -209,7 +209,7 @@ fn postprocess_yolo(
 
     for i in 0..num_boxes {
         let cx = data[i];
-        let cy = data[1 * num_boxes + i];
+        let cy = data[num_boxes + i];
         let w = data[2 * num_boxes + i];
         let h = data[3 * num_boxes + i];
         let conf = data[4 * num_boxes + i];

@@ -175,16 +175,12 @@ mod tests {
                 1 => filenames.push(format!("illust_{}_20230513_212357.jpg", 10000000 + i)),
                 2 => filenames.push(format!("media_FR{}d0XWUAImXfA.jpg", i)),
                 3 => filenames.push(format!("__some_tags_and_more__{:032x}.jpg", i)),
-                4 => filenames.push(format!(
-                    "[Artist Name] Title (tag1 tag2 tag3).png"
-                )),
+                4 => filenames.push("[Artist Name] Title (tag1 tag2 tag3).png".to_string()),
                 5 => filenames.push(format!("{}.png", 1652448237 + i)),
                 6 => filenames.push(format!("random_filename_no_match_{}.jpg", i)),
                 7 => filenames.push(format!("illust_{}.png", 10000000 + i)),
                 8 => filenames.push(format!("__danbooru_test_tags__{:032x}.png", i)),
-                9 => filenames.push(format!(
-                    "[Cool Artist] Amazing Artwork (landscape wallpaper).png"
-                )),
+                9 => filenames.push("[Cool Artist] Amazing Artwork (landscape wallpaper).png".to_string()),
                 _ => unreachable!(),
             }
         }

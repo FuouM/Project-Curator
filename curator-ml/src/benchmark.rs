@@ -263,7 +263,7 @@ pub fn run_onnx_benchmark(
         .map(|i| i.name().to_string())
         .unwrap_or_else(|| "image".to_string());
 
-    let is_f16 = cpu_session.inputs().first().map_or(false, |i| {
+    let is_f16 = cpu_session.inputs().first().is_some_and(|i| {
         matches!(
             i.dtype(),
             ort::value::ValueType::Tensor {
@@ -572,7 +572,7 @@ pub fn run_onnx_benchmark_4d(
         .map(|i| i.name().to_string())
         .unwrap_or_else(|| "image".to_string());
 
-    let is_f16 = cpu_session.inputs().first().map_or(false, |i| {
+    let is_f16 = cpu_session.inputs().first().is_some_and(|i| {
         matches!(
             i.dtype(),
             ort::value::ValueType::Tensor {

@@ -1,6 +1,8 @@
 test_images
 !assets/test_images
 .plans
+PLAN_*.md
+REFACTOR_PLAN.md
 
 .curator/
 .curator_test/

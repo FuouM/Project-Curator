@@ -237,10 +237,7 @@ pub fn train_ridge_classifier_decision_boundary(
 
     for i in 0..n {
         for j in i..n {
-            let mut dot = 0.0f32;
-            for d in 0..dim {
-                dot += samples[i][d] * samples[j][d];
-            }
+            let dot: f32 = samples[i].iter().zip(samples[j].iter()).map(|(a, b)| a * b).sum();
             k[i][j] = dot;
             k[j][i] = dot;
         }
@@ -291,8 +288,15 @@ fn solve_linear_system(k: &mut [Vec<f32>], b: &[f32]) -> Vec<f32> {
 
         for j in (i + 1)..n {
             let factor = a[j][i] / pivot;
-            for col in i..=n {
-                a[j][col] -= factor * a[i][col];
+            let (row_i, row_j) = if i < j {
+                let (left, right) = a.split_at_mut(j);
+                (&left[i], &mut right[0])
+            } else {
+                let (left, right) = a.split_at_mut(i);
+                (&right[0], &mut left[j])
+            };
+            for (aj_val, &ai_val) in row_j[i..=n].iter_mut().zip(&row_i[i..=n]) {
+                *aj_val -= factor * ai_val;
             }
         }
     }
@@ -480,7 +484,7 @@ mod tests {
         // Online incremental calculation: S = \sum \tilde{e}_i
         let c1 = center_and_normalize_vector(&e1, Some(&global_mean));
         let c2 = center_and_normalize_vector(&e2, Some(&global_mean));
-        let mut sum = vec![0.0f32; 2];
+        let mut sum = [0.0f32; 2];
         for i in 0..2 {
             sum[i] += c1[i];
             sum[i] += c2[i];

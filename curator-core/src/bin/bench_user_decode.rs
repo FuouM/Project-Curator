@@ -47,17 +47,17 @@ fn main() -> anyhow::Result<()> {
                 cfg.quality = 80.0;
                 cfg.method = 0;
                 let t2b = Instant::now();
-                let webpM0 = encoder.encode_advanced(&cfg).unwrap();
+                let webp_m0 = encoder.encode_advanced(&cfg).unwrap();
                 let encode_m0_ms = t2b.elapsed().as_secs_f64() * 1000.0;
-                let sizeM0 = webpM0.len();
+                let size_m0 = webp_m0.len();
 
                 let mut cfg2 = webp::WebPConfig::new().unwrap();
                 cfg2.quality = 75.0;
                 cfg2.method = 2;
                 let t2c = Instant::now();
-                let webpM2 = encoder.encode_advanced(&cfg2).unwrap();
+                let webp_m2 = encoder.encode_advanced(&cfg2).unwrap();
                 let encode_m2_ms = t2c.elapsed().as_secs_f64() * 1000.0;
-                let sizeM2 = webpM2.len();
+                let size_m2 = webp_m2.len();
 
                 let t3 = Instant::now();
                 let mut d2 = fast_image_resize::images::Image::from_vec_u8(
@@ -92,7 +92,7 @@ fn main() -> anyhow::Result<()> {
                 n += 1;
                 println!(
                     "{:>6.1} dec | {:>4.1} res | {:>4.1}/{:>5}B | {:>4.1}/{:>5}B | {:>4.1}/{:>5}B | {:>5.1} 2stp | {:>6}x{:<5} {:5.2} MP  {}",
-                    decode_ms, resize_ms, encode_ms, size80, encode_m0_ms, sizeM0, encode_m2_ms, sizeM2, twostep_ms, w, h, (w as f64 * h as f64) / 1e6, p
+                    decode_ms, resize_ms, encode_ms, size80, encode_m0_ms, size_m0, encode_m2_ms, size_m2, twostep_ms, w, h, (w as f64 * h as f64) / 1e6, p
                 );
             }
             Err(e) => println!("ERR {}: {:?}", p, e),

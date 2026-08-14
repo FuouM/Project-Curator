@@ -110,7 +110,7 @@ fn main() -> Result<()> {
     println!();
 
     println!("--- Size vs. Quality matrix (2s clips) ---");
-    println!("{:>5} {:>4} {:>4} {:>9} {:>8} {:>7} {}", "width", "fps", "q:v", "bytes", "KB", "ms", "budget");
+    println!("{:>5} {:>4} {:>4} {:>9} {:>8} {:>7} budget", "width", "fps", "q:v", "bytes", "KB", "ms");
     let mut smallest = usize::MAX;
     let mut largest = 0usize;
     let mut worst_ms = 0u128;

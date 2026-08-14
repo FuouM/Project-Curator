@@ -89,7 +89,7 @@ impl MangaBubbleDetector {
                 let dst_x = x + pad_x;
                 let pix_idx = dst_y * input_size + dst_x;
                 slice[pix_idx] = r;
-                slice[1 * px_stride + pix_idx] = g;
+                slice[px_stride + pix_idx] = g;
                 slice[2 * px_stride + pix_idx] = b;
             }
         }
@@ -215,10 +215,10 @@ pub fn reorder_by_bubbles(
     // Sort within each bubble group
     for group in &mut bubble_groups {
         group.sort_by(|&a, &b| {
-            let ay = (db_quads[a][0][1] + db_quads[a][2][1]) as i32;
-            let ax = (db_quads[a][0][0] + db_quads[a][2][0]) as i32;
-            let by = (db_quads[b][0][1] + db_quads[b][2][1]) as i32;
-            let bx = (db_quads[b][0][0] + db_quads[b][2][0]) as i32;
+            let ay = db_quads[a][0][1] + db_quads[a][2][1];
+            let ax = db_quads[a][0][0] + db_quads[a][2][0];
+            let by = db_quads[b][0][1] + db_quads[b][2][1];
+            let bx = db_quads[b][0][0] + db_quads[b][2][0];
             ay.cmp(&by).then(ax.cmp(&bx))
         });
     }
@@ -227,9 +227,7 @@ pub fn reorder_by_bubbles(
     let mut result = Vec::new();
     let mut flags = Vec::new();
 
-    for (bi, group) in bubble_groups.iter().enumerate() {
-        // Sort bubbles by their top edge for group ordering
-        let _ = bi;
+    for group in &bubble_groups {
         for &idx in group {
             result.push(db_quads[idx]);
             flags.push(true);
@@ -263,10 +261,10 @@ pub fn reorder_by_bubbles(
 
     // Append orphan boxes (outside any bubble), sorted normally
     orphan_boxes.sort_by(|&a, &b| {
-        let ay = (db_quads[a][0][1] + db_quads[a][2][1]) as i32;
-        let ax = (db_quads[a][0][0] + db_quads[a][2][0]) as i32;
-        let by = (db_quads[b][0][1] + db_quads[b][2][1]) as i32;
-        let bx = (db_quads[b][0][0] + db_quads[b][2][0]) as i32;
+        let ay = db_quads[a][0][1] + db_quads[a][2][1];
+        let ax = db_quads[a][0][0] + db_quads[a][2][0];
+        let by = db_quads[b][0][1] + db_quads[b][2][1];
+        let bx = db_quads[b][0][0] + db_quads[b][2][0];
         ay.cmp(&by).then(ax.cmp(&bx))
     });
     for &idx in &orphan_boxes {

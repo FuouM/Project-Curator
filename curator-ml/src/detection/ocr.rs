@@ -397,7 +397,7 @@ pub fn preprocess_det(image: &RgbImage) -> Result<(Array4<f32>, usize, usize)> {
             // CHW channel 0 = B (BGR index 0), channel 1 = G, channel 2 = R
             let pix_idx = y * resize_w + x;
             slice[pix_idx] = (b - mean_bgr[0]) / std_bgr[0]; // B channel
-            slice[1 * px_stride + pix_idx] = (g - mean_bgr[1]) / std_bgr[1]; // G channel
+            slice[px_stride + pix_idx] = (g - mean_bgr[1]) / std_bgr[1]; // G channel
             slice[2 * px_stride + pix_idx] = (r - mean_bgr[2]) / std_bgr[2]; // R channel
         }
     }
@@ -440,7 +440,7 @@ pub fn preprocess_rec(image: &RgbImage) -> Result<Array4<f32>> {
             let pix_idx = y * target_w + x;
             // CHW: channel 0=B(BGR order), channel 1=G, channel 2=R
             slice[pix_idx] = (b - 0.5) / 0.5;
-            slice[1 * px_stride + pix_idx] = (g - 0.5) / 0.5;
+            slice[px_stride + pix_idx] = (g - 0.5) / 0.5;
             slice[2 * px_stride + pix_idx] = (r - 0.5) / 0.5;
         }
     }
@@ -478,7 +478,7 @@ pub fn preprocess_cls(image: &RgbImage) -> Result<Array4<f32>> {
             let pix_idx = y * target_w + x;
             // BGR order: channel 0=B, 1=G, 2=R
             slice[pix_idx] = (b - 0.485) / 0.229;
-            slice[1 * px_stride + pix_idx] = (g - 0.456) / 0.224;
+            slice[px_stride + pix_idx] = (g - 0.456) / 0.224;
             slice[2 * px_stride + pix_idx] = (r - 0.406) / 0.225;
         }
     }
@@ -860,8 +860,15 @@ fn solve_linear_system(mut a: [[f32; 8]; 8], mut b: [f32; 8]) -> Result<[f32; 8]
         for j in (i + 1)..n {
             let factor = a[j][i] / a[i][i];
             b[j] -= factor * b[i];
-            for k in i..n {
-                a[j][k] -= factor * a[i][k];
+            let (row_i, row_j) = if i < j {
+                let (left, right) = a.split_at_mut(j);
+                (&left[i], &mut right[0])
+            } else {
+                let (left, right) = a.split_at_mut(i);
+                (&right[0], &mut left[j])
+            };
+            for (aj_val, &ai_val) in row_j[i..n].iter_mut().zip(&row_i[i..n]) {
+                *aj_val -= factor * ai_val;
             }
         }
     }
@@ -905,13 +912,11 @@ fn decode_ctc(data: &[f32], seq_len: usize, num_classes: usize, dict: &[String])
         // Reference: preds_prob = preds.max(axis=2) â€” raw max value is the confidence
         let prob = max_val;
 
-        // Skip blank (0) and duplicates â€” reference: is_remove_duplicate=True, ignored_tokens=[0]
-        if max_idx != 0 && max_idx != prev_idx {
-            if max_idx < dict.len() && dict[max_idx] != "blank" {
-                text.push_str(&dict[max_idx]);
-                total_prob += prob;
-                count += 1;
-            }
+        // Skip blank (0) and duplicates — reference: is_remove_duplicate=True, ignored_tokens=[0]
+        if max_idx != 0 && max_idx != prev_idx && max_idx < dict.len() && dict[max_idx] != "blank" {
+            text.push_str(&dict[max_idx]);
+            total_prob += prob;
+            count += 1;
         }
         prev_idx = max_idx;
     }
