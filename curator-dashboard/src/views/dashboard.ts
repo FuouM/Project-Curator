@@ -4,6 +4,7 @@ import { maskPath, SafeHtml, html } from "../components";
 import { renderImages, attachCardEventHandlers } from "../cards";
 import { renderParsedMetadataHtml, renderCardTagsContainerHtml, renderIdentityListHtml } from "../components/card-tags";
 import { findSimilar } from "./concepts";
+import { updateBenchmarkModelHeader } from "./benchmark";
 import { applyNsfwToCard, loadNsfwPrefs } from "../nsfw";
 import { imageDetailsFromProto, taggerStatusInfoFromProto } from "../proto-adapters";
 import { ImageDetails } from "../types";
@@ -11,6 +12,9 @@ import { StatusResultSchema, DashboardInitResultSchema, type StatusResult } from
 import { TaggerStatusResultSchema, type TaggerStatusResult } from "../gen/tagging_pb";
 import { DevicePreference, EmbeddingModel, TaggerModel } from "../gen/common_pb";
 import { ListResultSchema, ListImagesRequestSchema } from "../gen/gallery_pb";
+import { onDashboardRefresh } from "../state";
+
+onDashboardRefresh(refreshDashboard);
 
 let featuredCardCleanup: (() => void) | null = null;
 
@@ -343,7 +347,7 @@ export function applySettingsToUI(s: SettingsUISnapshot) {
   if (idleSelect) idleSelect.value = s.idleTimeoutSecs.toString();
   if (embeddingSelect) {
     embeddingSelect.value = embeddingToString(s.embeddingModel);
-    import("./benchmark").then(m => m.updateBenchmarkModelHeader(embeddingToString(s.embeddingModel)));
+    updateBenchmarkModelHeader(embeddingToString(s.embeddingModel));
   }
   if (detDeviceSelect) detDeviceSelect.value = deviceToString(s.detectionDevice);
   if (detMetricsSelect) detMetricsSelect.value = deviceToString(s.detectionMetricsDevice);

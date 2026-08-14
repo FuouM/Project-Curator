@@ -1,5 +1,7 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { maskPath } from "./components";
+import { refreshCardOcr } from "./components/gallery-card";
+import { renderImageInfo } from "./components/image-info-modal";
 import { logJS } from "./utils";
 import { getImageClickAction } from "./state";
 import { typedCall } from "./ipc";
@@ -200,7 +202,6 @@ async function toggleInfoPanel() {
     const resp = await typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(currentViewerImageId) }, ImageResultSchema);
     if (!resp.image) return;
     const details = imageDetailsFromProto(resp.image);
-    const { renderImageInfo } = await import("./components/image-info-modal");
     renderImageInfo(details, body);
     infoPanelVisible = true;
     panel.classList.add("open");
@@ -247,7 +248,7 @@ async function toggleOcr() {
       bubbleBoxes = resp.bubbleBoxes;
       // Update card OCR text directly
       const ocrText = detections.map((d) => d.text).join("\n");
-      import("./cards").then(m => m.refreshCardOcr(currentViewerImageId!, ocrText));
+      refreshCardOcr(currentViewerImageId!, ocrText);
     }
 
     if (detections.length === 0) return;
@@ -571,7 +572,7 @@ export function setupImageViewer() {
       }
       // Update card OCR text directly
       const ocrText = detections.map((d) => d.text).join("\n");
-      import("./cards").then(m => m.refreshCardOcr(currentViewerImageId!, ocrText));
+      refreshCardOcr(currentViewerImageId!, ocrText);
     } catch (err) {
       console.error("Re-run OCR failed:", err);
     } finally {

@@ -1,7 +1,8 @@
 import { typedCall } from "../ipc";
 import { renderConceptCard, SafeHtml, html } from "../components";
-import { selectedImageIds } from "../state";
+import { selectedImageIds, requestGalleryRefresh } from "../state";
 import { renderImages } from "../cards";
+import { refreshModalTags } from "../components/tag-editor-modal";
 import { refreshDashboard } from "./dashboard";
 import { loadSearchConceptsDropdown } from "./search";
 import { setupSelectionToolbar } from "../selection-toolbar";
@@ -218,8 +219,7 @@ async function rescanConcept(conceptId: number) {
     showSuccessAlert(`Rescan complete! Tagged ${resp.taggedCount} matching image(s).`);
     refreshDashboard();
     if (document.getElementById("view-gallery")?.classList.contains("active")) {
-      const { refreshGallery } = await import("./gallery");
-      refreshGallery();
+      requestGalleryRefresh();
     }
   } catch (e: any) {
     showErrorAlert("Error rescanning concept:\n" + (e.message || e));
@@ -300,8 +300,7 @@ async function removeConceptSample(conceptId: number, imageId: number) {
 
     await viewConceptSamples(conceptId, "", true);
 
-    const { refreshModalTags } = await import("../components/tag-editor-modal");
-    refreshModalTags(imageId).catch(() => {});
+    await refreshModalTags(imageId).catch(() => {});
 
     refreshDashboard();
     loadSearchConceptsDropdown();
@@ -502,7 +501,6 @@ export function setupConcepts() {
           teachModal?.classList.remove("active");
           if (statusPanel) statusPanel.style.display = "none";
         }, 400);
-        const { refreshModalTags } = await import("../components/tag-editor-modal");
         if (sampleIds.length > 0) await refreshModalTags(sampleIds[0]);
         loadConceptsView();
         refreshDashboard();

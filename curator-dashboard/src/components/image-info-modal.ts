@@ -7,7 +7,9 @@ import { isClassified, nsfwScore } from "../proto-adapters";
 import { loadNsfwPrefs } from "../nsfw";
 import { showErrorAlert } from "../alert";
 import { attachAutocomplete } from "../autocomplete";
-import { refreshCharacters } from "../views/characters";
+import { refreshCharacters, getSuggestions } from "../views/characters";
+import { openToolboxWithImage } from "../views/toolbox";
+import { requestGalleryRefresh, requestDashboardRefresh } from "../state";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { EmptySchema } from "@bufbuild/protobuf/wkt";
@@ -257,7 +259,7 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
       img.note = newVal;
       renderNoteHtml(newVal);
       // Optional: refresh gallery elements if note status changes
-      import("../views/gallery").then(m => m.refreshGallery());
+      requestGalleryRefresh();
     } catch (err: any) {
       console.error("Save note failed:", err);
       statusDiv.textContent = "Save failed";
@@ -316,7 +318,7 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
     sendToolboxBtn.addEventListener("click", () => {
       const modal = document.getElementById("image-info-modal");
       if (modal) modal.classList.remove("active");
-      import("../views/toolbox").then((m) => m.openToolboxWithImage(img.current_filepath));
+      openToolboxWithImage(img.current_filepath);
     });
   }
 
@@ -346,8 +348,8 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
         await typedCall("CharactersService.DetectCharacters", ImageIdRequestSchema, { imageId: BigInt(img.id) }, DetectionResultSchema);
         await loadDetectionsForImage(img.id, body);
         await refreshCharacters();
-        import("../views/gallery").then(m => m.refreshGallery());
-        import("../views/dashboard").then(m => m.refreshDashboard());
+        requestGalleryRefresh();
+        requestDashboardRefresh();
       } catch (e: any) {
         console.error("Detection failed:", e);
       } finally {
@@ -365,8 +367,8 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
         m.openBBoxEditor(null, img.id, img.current_filepath, 0, 0, 0, 0, () => {
           loadDetectionsForImage(img.id, body);
           refreshCharacters();
-          import("../views/gallery").then(m => m.refreshGallery());
-          import("../views/dashboard").then(m => m.refreshDashboard());
+          requestGalleryRefresh();
+          requestDashboardRefresh();
         });
       });
     });
@@ -542,8 +544,8 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
         await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: undefined }, EmptySchema);
         await loadDetectionsForImage(imageId, scopeEl);
         await refreshCharacters();
-        import("../views/gallery").then(m => m.refreshGallery());
-        import("../views/dashboard").then(m => m.refreshDashboard());
+        requestGalleryRefresh();
+        requestDashboardRefresh();
       }
       return;
     }
@@ -564,8 +566,8 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
     }
     await loadDetectionsForImage(imageId, scopeEl);
     await refreshCharacters();
-    import("../views/gallery").then(m => m.refreshGallery());
-    import("../views/dashboard").then(m => m.refreshDashboard());
+    requestGalleryRefresh();
+    requestDashboardRefresh();
   };
 
   attachAutocomplete({
@@ -575,7 +577,6 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
       await handleAssign(selectedName);
     },
     fetchItems: async (query) => {
-      const { getSuggestions } = await import("../views/characters");
       const suggestions = await getSuggestions(query);
       return suggestions.map((s) => ({ name: s.name, count: s.count }));
     },
@@ -625,8 +626,8 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
       await typedCall("CharactersService.IdentifyDetection", IdentifyDetectionRequestSchema, { detectionId: BigInt(det.id) }, IdentifyDetectionResultSchema);
       loadDetectionsForImage(imageId, scopeEl);
       refreshCharacters();
-      import("../views/gallery").then(m => m.refreshGallery());
-      import("../views/dashboard").then(m => m.refreshDashboard());
+      requestGalleryRefresh();
+      requestDashboardRefresh();
     } catch (e: any) {
       showErrorAlert("Error trying to match identity:\n" + (e.message || e));
     } finally {
@@ -644,8 +645,8 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
             invalidateCropCache(det.id);
             await loadDetectionsForImage(imageId, scopeEl);
             refreshCharacters();
-            import("../views/gallery").then(m => m.refreshGallery());
-            import("../views/dashboard").then(m => m.refreshDashboard());
+            requestGalleryRefresh();
+            requestDashboardRefresh();
           });
         });
       }
@@ -657,8 +658,8 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
     await typedCall("CharactersService.DeleteDetection", DeleteDetectionRequestSchema, { detectionId: BigInt(det.id) }, EmptySchema);
     loadDetectionsForImage(imageId, scopeEl);
     refreshCharacters();
-    import("../views/gallery").then(m => m.refreshGallery());
-    import("../views/dashboard").then(m => m.refreshDashboard());
+    requestGalleryRefresh();
+    requestDashboardRefresh();
   });
 
   const select = detEl.querySelector(".detection-identity-select") as HTMLSelectElement;
@@ -668,8 +669,8 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
     await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: identityId !== null ? BigInt(identityId) : undefined }, EmptySchema);
     await loadDetectionsForImage(imageId, scopeEl);
     await refreshCharacters();
-    import("../views/gallery").then(m => m.refreshGallery());
-    import("../views/dashboard").then(m => m.refreshDashboard());
+    requestGalleryRefresh();
+    requestDashboardRefresh();
   });
 
   return detEl;

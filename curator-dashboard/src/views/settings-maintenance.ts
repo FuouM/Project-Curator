@@ -3,6 +3,7 @@ import { setStatusMessage } from "../utils";
 import { ClearThumbnailCacheResultSchema, PurgeResultSchema } from "../gen/gallery_pb";
 import { BackfillResultSchema, MediaMetadataBackfillResultSchema } from "../gen/import_pb";
 import { EmptySchema } from "@bufbuild/protobuf/wkt";
+import { clearAllCropCaches } from "../crop-cache";
 
 export function setupMaintenanceButtons() {
   // Clear entire thumbnail cache
@@ -83,7 +84,6 @@ export function setupMaintenanceButtons() {
     clearCropCacheBtn.setAttribute("disabled", "true");
     try {
       await typedCall("CharactersService.ClearCropCache", null, null, EmptySchema);
-      const { clearAllCropCaches } = await import("../crop-cache");
       clearAllCropCaches();
       setStatusMessage(clearCropCacheStatus, "Crop cache cleared successfully.", "success");
     } catch (e: any) {
