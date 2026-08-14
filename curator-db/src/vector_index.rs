@@ -119,3 +119,79 @@ impl VectorIndex {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_index_path() -> PathBuf {
+        std::env::temp_dir().join(format!("test_vector_index_{}.usearch", uuid::Uuid::new_v4()))
+    }
+
+    #[test]
+    fn test_vector_index_lifecycle_and_search() {
+        let path = temp_index_path();
+        let index = VectorIndex::new(&path, 4).expect("Failed to create index");
+
+        let v1 = [1.0f32, 0.0, 0.0, 0.0];
+        let v2 = [0.0f32, 1.0, 0.0, 0.0];
+        let v3 = [
+            std::f32::consts::FRAC_1_SQRT_2,
+            std::f32::consts::FRAC_1_SQRT_2,
+            0.0,
+            0.0,
+        ];
+
+        index.add(101, &v1).expect("Failed to add v1");
+        index.add(102, &v2).expect("Failed to add v2");
+        index.add(103, &v3).expect("Failed to add v3");
+
+        assert!(index.contains(101));
+        assert!(index.contains(102));
+        assert!(index.contains(103));
+        assert!(!index.contains(999));
+
+        // Query nearest to v1
+        let results = index.search(&v1, 3).expect("Search failed");
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0].0, 101, "v1 should be closest to itself");
+        assert!((results[0].1).abs() < 1e-4, "Self-cosine distance should be near 0");
+
+        // v3 is at 45 degrees, closer than v2 at 90 degrees
+        assert_eq!(results[1].0, 103);
+        assert_eq!(results[2].0, 102);
+
+        // Test save & reload
+        let mut loaded = VectorIndex::new(&path, 4).expect("Failed to open saved index");
+        loaded.load().expect("Failed to load");
+        assert!(loaded.contains(101));
+        let loaded_results = loaded.search(&v1, 1).expect("Search on reloaded failed");
+        assert_eq!(loaded_results[0].0, 101);
+
+        // Test clear
+        index.clear().expect("Failed to clear");
+        assert!(!index.contains(101));
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_vector_index_batch_insert() {
+        let path = temp_index_path();
+        let index = VectorIndex::new(&path, 3).expect("Failed to create index");
+
+        let v1 = [1.0f32, 0.0, 0.0];
+        let v2 = [0.0f32, 1.0, 0.0];
+        let items: Vec<(u64, &[f32])> = vec![(1, &v1), (2, &v2)];
+
+        index.add_batch(&items).expect("Batch insert failed");
+        assert!(index.contains(1));
+        assert!(index.contains(2));
+
+        let results = index.search(&v2, 1).expect("Search failed");
+        assert_eq!(results[0].0, 2);
+
+        let _ = fs::remove_file(&path);
+    }
+}
+

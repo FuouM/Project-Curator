@@ -939,3 +939,50 @@ fn decode_ctc(data: &[f32], seq_len: usize, num_classes: usize, dict: &[String])
     let confidence = if count > 0 { total_prob / count as f32 } else { 0.0 };
     (text, confidence)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_ctc_collapsing_and_confidence() {
+        let dict = vec![
+            "blank".to_string(),
+            "H".to_string(),
+            "E".to_string(),
+            "L".to_string(),
+            "O".to_string(),
+        ];
+        let num_classes = dict.len(); // 5
+        // Sequence: [H, H, E, blank, L, L, blank, O] -> "HELO"
+        let mut data = Vec::new();
+        let add_step = |d: &mut Vec<f32>, target_idx: usize, conf: f32| {
+            let mut step = vec![0.0f32; num_classes];
+            step[target_idx] = conf;
+            d.extend_from_slice(&step);
+        };
+
+        add_step(&mut data, 1, 0.90); // H
+        add_step(&mut data, 1, 0.80); // H (duplicate, collapsed)
+        add_step(&mut data, 2, 0.95); // E
+        add_step(&mut data, 0, 0.99); // blank
+        add_step(&mut data, 3, 0.85); // L
+        add_step(&mut data, 3, 0.88); // L (duplicate, collapsed)
+        add_step(&mut data, 0, 0.99); // blank
+        add_step(&mut data, 4, 0.92); // O
+
+        let seq_len = 8;
+        let (text, conf) = decode_ctc(&data, seq_len, num_classes, &dict);
+        assert_eq!(text, "HELO");
+        // Non-collapsed tokens: H(0.90), E(0.95), L(0.85), O(0.92) -> mean = 3.62 / 4 = 0.905
+        assert!((conf - 0.905).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_db_post_process_params_default() {
+        let params = DbPostProcessParams::default();
+        assert_eq!(params.thresh, 0.3);
+        assert_eq!(params.box_thresh, 0.6);
+        assert_eq!(params.unclip_ratio, 1.5);
+    }
+}

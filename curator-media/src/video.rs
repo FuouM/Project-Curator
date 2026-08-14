@@ -536,6 +536,10 @@ mod tests {
         assert_eq!(parse_ratio("30/1"), 30.0);
         assert_eq!(parse_ratio("0/0"), 0.0);
         assert!((parse_ratio("29.97") - 29.97).abs() < 1e-9);
+        assert!((parse_ratio("24000/1001") - 23.976023976).abs() < 1e-6);
+        assert!((parse_ratio("30000/1001") - 29.97002997).abs() < 1e-6);
+        assert!((parse_ratio("60000/1001") - 59.94005994).abs() < 1e-6);
+        assert_eq!(parse_ratio("invalid"), 0.0);
     }
 
     #[test]
@@ -544,6 +548,14 @@ mod tests {
         assert_eq!(h, 0.0);
         assert_eq!(m, 1.0);
         assert!((s - 24.5).abs() < 1e-9);
+
+        let (h2, m2, s2) = parse_duration_hms("02:15:30.25").unwrap();
+        assert_eq!(h2, 2.0);
+        assert_eq!(m2, 15.0);
+        assert!((s2 - 30.25).abs() < 1e-9);
+
+        assert!(parse_duration_hms("invalid:duration").is_none());
+        assert!(parse_duration_hms("not:a:number").is_none());
     }
 
     #[test]

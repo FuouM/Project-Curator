@@ -303,4 +303,28 @@ mod tests {
         let (w, h) = read_dimensions(f.path()).unwrap();
         assert_eq!((w, h), (1, 1));
     }
+
+    #[test]
+    fn test_sha256_file_known_hash() {
+        let f = write_temp(b"hello curator");
+        let hash = sha256_file(f.path()).expect("Failed to compute sha256");
+        assert_eq!(
+            hash,
+            "87814b0f50462e3f8d9e84914e80a7af8042925261771e0225d02d35454f354f"
+        );
+    }
+
+    #[test]
+    fn test_dimensions_png_fixture() {
+        let mut img = image::RgbImage::new(120, 80);
+        for pixel in img.pixels_mut() {
+            *pixel = image::Rgb([255, 128, 64]);
+        }
+        let temp_png = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+        img.save(temp_png.path()).unwrap();
+
+        let (w, h) = read_dimensions(temp_png.path()).expect("Failed to read PNG dimensions");
+        assert_eq!(w, 120);
+        assert_eq!(h, 80);
+    }
 }
