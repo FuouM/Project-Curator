@@ -103,7 +103,6 @@ pub struct TaggerStatusInfo {
 
 pub(crate) struct TaggerMetadata {
     pub(crate) img_size: u32,
-    pub(crate) idx_to_tag: HashMap<String, String>,
-    pub(crate) tag_to_category: HashMap<String, String>,
+    pub(crate) tags_by_index: Vec<(String, String)>,
     pub(crate) total_tags: usize,
 }

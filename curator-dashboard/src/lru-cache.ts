@@ -1,18 +1,11 @@
-function isBlobInUse(url: string): boolean {
-  if (typeof document === "undefined") return false;
-  const images = document.images;
-  for (let i = 0; i < images.length; i++) {
-    if (images[i].src === url) return true;
-  }
-  return false;
-}
-
 export class LruCache<V> {
   private map = new Map<number, V>();
   private maxSize: number;
+  private onEvict?: (key: number, value: V) => void;
 
-  constructor(maxSize: number) {
+  constructor(maxSize: number, onEvict?: (key: number, value: V) => void) {
     this.maxSize = maxSize;
+    this.onEvict = onEvict;
   }
 
   get(key: number): V | undefined {
@@ -25,7 +18,13 @@ export class LruCache<V> {
   }
 
   set(key: number, value: V): void {
-    this.map.delete(key);
+    if (this.map.has(key)) {
+      const prev = this.map.get(key);
+      this.map.delete(key);
+      if (prev !== value) {
+        this.evict(key, prev);
+      }
+    }
     this.map.set(key, value);
 
     if (this.map.size > this.maxSize) {
@@ -33,7 +32,7 @@ export class LruCache<V> {
       if (oldestKey !== undefined) {
         const oldValue = this.map.get(oldestKey);
         this.map.delete(oldestKey);
-        this.revoke(oldValue);
+        this.evict(oldestKey, oldValue);
       }
     }
   }
@@ -43,13 +42,15 @@ export class LruCache<V> {
   }
 
   delete(key: number): void {
-    const oldValue = this.map.get(key);
-    this.map.delete(key);
-    this.revoke(oldValue);
+    if (this.map.has(key)) {
+      const oldValue = this.map.get(key);
+      this.map.delete(key);
+      this.evict(key, oldValue);
+    }
   }
 
   clear(): void {
-    this.map.forEach((value) => this.revoke(value));
+    this.map.forEach((value, key) => this.evict(key, value));
     this.map.clear();
   }
 
@@ -61,14 +62,23 @@ export class LruCache<V> {
     return this.map.keys();
   }
 
+  private evict(key: number, value: V | undefined): void {
+    if (value === undefined) return;
+    if (this.onEvict) {
+      try {
+        this.onEvict(key, value);
+      } catch (_) {}
+    }
+    this.revoke(value);
+  }
+
   private revoke(value: V | undefined): void {
     if (typeof value === "string" && value.startsWith("blob:")) {
       try {
-        if (!isBlobInUse(value)) {
-          URL.revokeObjectURL(value);
-        }
+        URL.revokeObjectURL(value);
       } catch (_) {}
     }
   }
 }
+
 

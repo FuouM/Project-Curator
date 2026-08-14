@@ -44,8 +44,9 @@ impl VectorIndex {
         let size = self.index.size();
         let capacity = self.index.capacity();
         if size >= capacity {
+            let new_capacity = (capacity * 3 / 2).max(capacity + 5000);
             self.index
-                .reserve(capacity + 1000)
+                .reserve(new_capacity)
                 .map_err(|e| anyhow::anyhow!("Failed to expand capacity: {:?}", e))?;
         }
         self.index

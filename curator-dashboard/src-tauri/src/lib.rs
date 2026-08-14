@@ -446,6 +446,10 @@ async fn get_thumbnail(image_id: i64) -> Result<Vec<u8>, String> {
             .filename(&images_db_path)
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
             .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
+            .pragma("mmap_size", "268435456")
+            .pragma("cache_size", "-64000")
+            .pragma("temp_store", "2")
+            .busy_timeout(std::time::Duration::from_secs(5))
             .create_if_missing(false);
         SqlitePool::connect_with(opts).await.expect("Failed to open images DB")
     }).await;

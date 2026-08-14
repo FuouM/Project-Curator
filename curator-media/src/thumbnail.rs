@@ -31,7 +31,11 @@ impl ThumbnailCache {
             .filename(path)
             .create_if_missing(true)
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-            .synchronous(sqlx::sqlite::SqliteSynchronous::Normal);
+            .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
+            .pragma("mmap_size", "268435456")
+            .pragma("cache_size", "-64000")
+            .pragma("temp_store", "2")
+            .busy_timeout(std::time::Duration::from_secs(5));
 
         let db = SqlitePool::connect_with(options).await?;
 

@@ -114,10 +114,21 @@ impl TaggerEngine {
         let meta: MetadataRoot = serde_json::from_slice(&meta_bytes).context("Failed to parse metadata JSON")?;
 
         let total_tags = meta.dataset_info.tag_mapping.idx_to_tag.len();
+
+        // Pre-resolve (tag, category) pairs into a direct indexed Vec
+        let mut tags_by_index = Vec::with_capacity(total_tags);
+        for i in 0..total_tags {
+            let idx_str = i.to_string();
+            let tag = meta.dataset_info.tag_mapping.idx_to_tag.get(&idx_str).cloned()
+                .unwrap_or_else(|| format!("unknown-{}", i));
+            let category = meta.dataset_info.tag_mapping.tag_to_category.get(&tag).cloned()
+                .unwrap_or_else(|| "general".to_string());
+            tags_by_index.push((tag, category));
+        }
+
         let tagger_meta = Arc::new(TaggerMetadata {
             img_size: meta.model_info.img_size,
-            idx_to_tag: meta.dataset_info.tag_mapping.idx_to_tag,
-            tag_to_category: meta.dataset_info.tag_mapping.tag_to_category,
+            tags_by_index,
             total_tags,
         });
 
@@ -178,17 +189,11 @@ impl TaggerEngine {
         let mut predictions = Vec::new();
         for (idx, prob) in probs_iter.enumerate() {
             if prob >= threshold {
-                let idx_str = idx.to_string();
-                let tag = metadata
-                    .idx_to_tag
-                    .get(&idx_str)
-                    .cloned()
-                    .unwrap_or_else(|| format!("unknown-{}", idx));
-                let category = metadata
-                    .tag_to_category
-                    .get(&tag)
-                    .cloned()
-                    .unwrap_or_else(|| "general".to_string());
+                let (tag, category) = if let Some(entry) = metadata.tags_by_index.get(idx) {
+                    (entry.0.clone(), entry.1.clone())
+                } else {
+                    (format!("unknown-{}", idx), "general".to_string())
+                };
                 predictions.push(TagPrediction {
                     tag,
                     category,
