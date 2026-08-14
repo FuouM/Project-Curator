@@ -12,19 +12,19 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 clap = { workspace = true }
 sha2 = { workspace = true }
-bytemuck = "1"
+bytemuck = { workspace = true }
 sqlx = { workspace = true }
 ureq = { workspace = true }
 tonic = { workspace = true }
 tokio-stream = { workspace = true }
-tokio-util = "0.7"
-zip = { version = "2", default-features = false, features = ["deflate"] }
-sysinfo = { version = "0.33.0" }
+tokio-util = { workspace = true }
+zip = { workspace = true }
+sysinfo = { workspace = true }
 image = { workspace = true }
-base64 = "0.22"
+base64 = { workspace = true }
 

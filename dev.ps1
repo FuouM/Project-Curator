@@ -22,14 +22,14 @@ try {
     Pop-Location
 }
 
-# 2. Build curator-service daemon
-Write-Host "Building curator-service..." -ForegroundColor Cyan
-cargo build --manifest-path "$PSScriptRoot\curator-service\Cargo.toml"
+# 2. Build curator-service daemon and curator-dashboard
+Write-Host "Building curator-service and curator-dashboard..." -ForegroundColor Cyan
+cargo build -p curator-service -p curator-dashboard
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Service build failed!" -ForegroundColor Red
+    Write-Host "Workspace build failed!" -ForegroundColor Red
     exit 1
 }
-Write-Host "Service build OK." -ForegroundColor Green
+Write-Host "Workspace build OK." -ForegroundColor Green
 
 # 3. Launch Tauri dev server
 $prevDir = $PWD.Path

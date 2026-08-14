@@ -46,6 +46,16 @@ hyper-util = { version = "0.1", features = ["tokio", "client", "server", "servic
 dirs = "6"
 async-stream = "0.3"
 tonic-build = "0.12"
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-build = { version = "2" }
+tauri-plugin-opener = "2"
+rfd = "0.15"
+sysinfo = "0.33"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+bytemuck = "1"
+base64 = "0.22"
+tokio-util = "0.7"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 
 [profile.dev]
