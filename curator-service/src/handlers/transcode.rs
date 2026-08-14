@@ -300,6 +300,20 @@ fn build_custom_args(
     Ok(expanded)
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct TranscodeOptions {
+    pub vcodec: Option<String>,
+    pub acodec: Option<String>,
+    pub crf: Option<u32>,
+    pub video_bitrate: Option<u32>,
+    pub preset: Option<String>,
+    pub target_size_mb: Option<f64>,
+    pub audio_bitrate: Option<u32>,
+    pub mixdown: Option<String>,
+    pub sample_rate: Option<u32>,
+    pub custom_args: Option<String>,
+}
+
 /// Start an async FFmpeg transcode. Progress is streamed via `-progress
 /// pipe:1` and recorded into `map` under `job_id`; callers poll it with
 /// `get_transcode_progress`. Fails fast when the input file is missing.
@@ -308,19 +322,22 @@ pub async fn start_transcode(
     input_path: &str,
     output_path: &str,
     target_format: &str,
-    vcodec: Option<String>,
-    acodec: Option<String>,
-    crf: Option<u32>,
-    video_bitrate: Option<u32>,
-    preset: Option<String>,
-    target_size_mb: Option<f64>,
-    audio_bitrate: Option<u32>,
-    mixdown: Option<String>,
-    sample_rate: Option<u32>,
-    custom_args: Option<String>,
+    opts: TranscodeOptions,
     ffmpeg_path: &Path,
     map: &TranscodeProgressMap,
 ) -> anyhow::Result<()> {
+    let TranscodeOptions {
+        vcodec,
+        acodec,
+        crf,
+        video_bitrate,
+        preset,
+        target_size_mb,
+        audio_bitrate,
+        mixdown,
+        sample_rate,
+        custom_args,
+    } = opts;
     let input = Path::new(input_path);
     if !input.is_file() {
         anyhow::bail!("Input file not found: {}", input_path);

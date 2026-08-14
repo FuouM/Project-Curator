@@ -204,11 +204,9 @@ impl OcrDetector {
         // 3. Extract bounding box polygons from the probability map
         let quads = extract_boxes_from_map(
             &pred_data,
-            map_w, map_h,
-            0.3,
-            0.6,
-            1.5,
-            orig_w, orig_h,
+            (map_w, map_h),
+            (orig_w, orig_h),
+            DbPostProcessParams::default(),
         )?;
 
         // Sort boxes top-to-bottom, left-to-right, then merge fragmented boxes
@@ -497,16 +495,33 @@ pub fn preprocess_cls(image: &RgbImage) -> Result<Array4<f32>> {
 /// 4. Score the box against the float probability map
 /// 5. Apply unclip expansion
 /// 6. Scale coordinates back to original image dimensions
+#[derive(Debug, Clone, Copy)]
+pub struct DbPostProcessParams {
+    pub thresh: f32,
+    pub box_thresh: f32,
+    pub unclip_ratio: f32,
+}
+
+impl Default for DbPostProcessParams {
+    fn default() -> Self {
+        Self {
+            thresh: 0.3,
+            box_thresh: 0.6,
+            unclip_ratio: 1.5,
+        }
+    }
+}
+
 fn extract_boxes_from_map(
     pred: &[f32],
-    map_w: usize,
-    map_h: usize,
-    thresh: f32,
-    box_thresh: f32,
-    unclip_ratio: f32,
-    orig_w: usize,
-    orig_h: usize,
+    (map_w, map_h): (usize, usize),
+    (orig_w, orig_h): (usize, usize),
+    params: DbPostProcessParams,
 ) -> Result<Vec<[[i32; 2]; 4]>> {
+    let thresh = params.thresh;
+    let box_thresh = params.box_thresh;
+    let unclip_ratio = params.unclip_ratio;
+
     // 1. Threshold to binary
     let mut binary = vec![false; map_w * map_h];
     for i in 0..(map_w * map_h) {

@@ -124,11 +124,7 @@ async fn dispatch_plugin_command(
                 .await
                 .map_err(internal_status)?;
 
-            if let Err(e) = handlers::transcode::start_transcode(
-                job_id,
-                input_path,
-                output_path,
-                target_format,
+            let opts = handlers::transcode::TranscodeOptions {
                 vcodec,
                 acodec,
                 crf,
@@ -139,6 +135,14 @@ async fn dispatch_plugin_command(
                 mixdown,
                 sample_rate,
                 custom_args,
+            };
+
+            if let Err(e) = handlers::transcode::start_transcode(
+                job_id,
+                input_path,
+                output_path,
+                target_format,
+                opts,
                 &ffmpeg,
                 &ctx.transcode_progress,
             )
@@ -164,15 +168,19 @@ async fn dispatch_plugin_command(
                 .await
                 .map_err(internal_status)?;
 
-            if let Err(e) = handlers::gif::create_gif_from_images(
-                job_id.to_string(),
-                image_pattern.to_string(),
-                frame_rate,
-                output_path.to_string(),
+            let opts = handlers::gif::CreateGifOptions {
+                frame_rate: Some(frame_rate),
                 width,
                 height,
                 loop_count,
+            };
+
+            if let Err(e) = handlers::gif::create_gif_from_images(
+                job_id.to_string(),
+                image_pattern.to_string(),
+                output_path.to_string(),
                 target_format.to_string(),
+                opts,
                 &ffmpeg,
                 &ctx.transcode_progress,
             )
@@ -215,10 +223,7 @@ async fn dispatch_plugin_command(
                 .await
                 .map_err(internal_status)?;
 
-            if let Err(e) = handlers::gif::process_gif_effects(
-                job_id.to_string(),
-                input_path.to_string(),
-                output_path.to_string(),
+            let opts = handlers::gif::GifEffectsOptions {
                 crop,
                 scale,
                 speed_multiplier,
@@ -236,11 +241,18 @@ async fn dispatch_plugin_command(
                 max_colors,
                 dither_type,
                 drop_frames_factor,
-                target_format.to_string(),
                 loop_count,
                 fps,
                 trim_start,
                 trim_end,
+            };
+
+            if let Err(e) = handlers::gif::process_gif_effects(
+                job_id.to_string(),
+                input_path.to_string(),
+                output_path.to_string(),
+                target_format.to_string(),
+                opts,
                 &ffmpeg,
                 &ctx.transcode_progress,
             )

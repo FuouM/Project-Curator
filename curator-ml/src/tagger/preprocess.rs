@@ -3,6 +3,14 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use ndarray::Array4;
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TaggerPreprocessConfig<'a> {
+    pub img_size: u32,
+    pub mean: &'a [f32; 3],
+    pub std: &'a [f32; 3],
+    pub pad_color: &'a [u8; 3],
+}
+
 pub(crate) fn preprocess_image(
     path: &Path,
     img_size: u32,
@@ -12,19 +20,20 @@ pub(crate) fn preprocess_image(
     resizer: &mut fast_image_resize::Resizer,
 ) -> Result<Array4<f32>> {
     let (rgb_buf, orig_w, orig_h) = curator_media::decode::decode_rgb(path)?;
-    preprocess_image_from_rgb(&rgb_buf, orig_w, orig_h, img_size, mean, std, pad_color, resizer)
+    let cfg = TaggerPreprocessConfig { img_size, mean, std, pad_color };
+    preprocess_image_from_rgb(&rgb_buf, (orig_w, orig_h), &cfg, resizer)
 }
 
 pub(crate) fn preprocess_image_from_rgb(
     rgb_buf: &[u8],
-    orig_w: u32,
-    orig_h: u32,
-    img_size: u32,
-    mean: &[f32; 3],
-    std: &[f32; 3],
-    pad_color: &[u8; 3],
+    (orig_w, orig_h): (u32, u32),
+    cfg: &TaggerPreprocessConfig,
     resizer: &mut fast_image_resize::Resizer,
 ) -> Result<Array4<f32>> {
+    let img_size = cfg.img_size;
+    let mean = cfg.mean;
+    let std = cfg.std;
+    let pad_color = cfg.pad_color;
     let aspect = orig_w as f32 / orig_h as f32;
 
     let (new_w, new_h) = if aspect > 1.0 {

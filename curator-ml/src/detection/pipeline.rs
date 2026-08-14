@@ -14,6 +14,8 @@ use tracing::{info, warn};
 const CROP_THUMB_SIZE: u32 = 128;
 const WEBP_QUALITY: f32 = 80.0;
 
+type DetectionDbRow = (i64, i64, i32, i32, i32, i32, f32, Option<Vec<u8>>, Option<i64>);
+
 pub struct DetectionPipeline {
     pub yolo: YoloDetector,
     pub ccip: CCIPModel,
@@ -322,7 +324,7 @@ impl DetectionPipeline {
 
     /// Get all detections for an image.
     pub async fn get_detections(&self, image_id: i64) -> Result<Vec<StoredDetection>> {
-        let rows: Vec<(i64, i64, i32, i32, i32, i32, f32, Option<Vec<u8>>, Option<i64>)> =
+        let rows: Vec<DetectionDbRow> =
             sqlx::query_as(
                 "SELECT id, image_id, x0, y0, x1, y1, confidence, ccip_embedding, identity_id FROM character_detections WHERE image_id = ?"
             )
@@ -358,7 +360,7 @@ impl DetectionPipeline {
             placeholders.join(", ")
         );
 
-        let mut q = sqlx::query_as::<_, (i64, i64, i32, i32, i32, i32, f32, Option<Vec<u8>>, Option<i64>)>(&query);
+        let mut q = sqlx::query_as::<_, DetectionDbRow>(&query);
         for id in image_ids {
             q = q.bind(*id);
         }
@@ -884,7 +886,7 @@ impl DetectionPipeline {
 
     /// Get all unassigned detections (identity_id IS NULL) with full details.
     pub async fn list_unassigned_detections(&self) -> Result<Vec<StoredDetection>> {
-        let rows: Vec<(i64, i64, i32, i32, i32, i32, f32, Option<Vec<u8>>, Option<i64>)> =
+        let rows: Vec<DetectionDbRow> =
             sqlx::query_as(
                 "SELECT id, image_id, x0, y0, x1, y1, confidence, ccip_embedding, identity_id FROM character_detections WHERE identity_id IS NULL ORDER BY id"
             )
@@ -913,7 +915,7 @@ impl DetectionPipeline {
             return Ok(Some(cached));
         }
 
-        let row: (i64, i64, i32, i32, i32, i32, f32, Option<Vec<u8>>, Option<i64>) =
+        let row: DetectionDbRow =
             sqlx::query_as(
                 "SELECT id, image_id, x0, y0, x1, y1, confidence, ccip_embedding, identity_id FROM character_detections WHERE id = ?"
             )

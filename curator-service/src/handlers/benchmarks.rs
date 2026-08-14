@@ -346,55 +346,91 @@ pub struct DetectionBenchmarkOutcome {
     pub has_gpu: bool,
 }
 
-fn detection_outcome(
-    yolo: Option<(f64, Option<f64>, Option<String>)>,
-    ccip_feat: Option<(f64, Option<f64>, Option<String>)>,
-    ccip_metrics: Option<(f64, Option<f64>, Option<String>)>,
-    ocr_det: Option<(f64, Option<f64>, Option<String>)>,
-    ocr_rec: Option<(f64, Option<f64>, Option<String>)>,
-    ocr_cls: Option<(f64, Option<f64>, Option<String>)>,
-    manga_bubble: Option<(f64, Option<f64>, Option<String>)>,
-    safety: Option<(f64, Option<f64>, Option<String>)>,
-    has_gpu: bool,
-) -> DetectionBenchmarkOutcome {
-    let field = |opt: Option<(f64, Option<f64>, Option<String>)>| {
-        opt.map(|(cpu, gpu, err)| (Some(cpu), gpu, err))
-            .unwrap_or((None, None, None))
-    };
-    let (yolo_cpu, yolo_gpu, yolo_err) = field(yolo);
-    let (ccip_feat_cpu, ccip_feat_gpu, ccip_feat_err) = field(ccip_feat);
-    let (ccip_metrics_cpu, ccip_metrics_gpu, ccip_metrics_err) = field(ccip_metrics);
-    let (ocr_det_cpu, ocr_det_gpu, ocr_det_err) = field(ocr_det);
-    let (ocr_rec_cpu, ocr_rec_gpu, ocr_rec_err) = field(ocr_rec);
-    let (ocr_cls_cpu, ocr_cls_gpu, ocr_cls_err) = field(ocr_cls);
-    let (manga_cpu, manga_gpu, manga_err) = field(manga_bubble);
-    let (safety_cpu, safety_gpu, safety_err) = field(safety);
-    DetectionBenchmarkOutcome {
-        yolo_cpu_time_ms: yolo_cpu,
-        yolo_gpu_time_ms: yolo_gpu,
-        yolo_gpu_error: yolo_err,
-        ccip_feat_cpu_time_ms: ccip_feat_cpu,
-        ccip_feat_gpu_time_ms: ccip_feat_gpu,
-        ccip_feat_gpu_error: ccip_feat_err,
-        ccip_metrics_cpu_time_ms: ccip_metrics_cpu,
-        ccip_metrics_gpu_time_ms: ccip_metrics_gpu,
-        ccip_metrics_gpu_error: ccip_metrics_err,
-        ocr_det_cpu_time_ms: ocr_det_cpu,
-        ocr_det_gpu_time_ms: ocr_det_gpu,
-        ocr_det_gpu_error: ocr_det_err,
-        ocr_rec_cpu_time_ms: ocr_rec_cpu,
-        ocr_rec_gpu_time_ms: ocr_rec_gpu,
-        ocr_rec_gpu_error: ocr_rec_err,
-        ocr_cls_cpu_time_ms: ocr_cls_cpu,
-        ocr_cls_gpu_time_ms: ocr_cls_gpu,
-        ocr_cls_gpu_error: ocr_cls_err,
-        manga_bubble_cpu_time_ms: manga_cpu,
-        manga_bubble_gpu_time_ms: manga_gpu,
-        manga_bubble_gpu_error: manga_err,
-        safety_cpu_time_ms: safety_cpu,
-        safety_gpu_time_ms: safety_gpu,
-        safety_gpu_error: safety_err,
-        has_gpu,
+impl DetectionBenchmarkOutcome {
+    pub fn empty(has_gpu: bool) -> Self {
+        Self {
+            yolo_cpu_time_ms: None,
+            yolo_gpu_time_ms: None,
+            yolo_gpu_error: None,
+            ccip_feat_cpu_time_ms: None,
+            ccip_feat_gpu_time_ms: None,
+            ccip_feat_gpu_error: None,
+            ccip_metrics_cpu_time_ms: None,
+            ccip_metrics_gpu_time_ms: None,
+            ccip_metrics_gpu_error: None,
+            ocr_det_cpu_time_ms: None,
+            ocr_det_gpu_time_ms: None,
+            ocr_det_gpu_error: None,
+            ocr_rec_cpu_time_ms: None,
+            ocr_rec_gpu_time_ms: None,
+            ocr_rec_gpu_error: None,
+            ocr_cls_cpu_time_ms: None,
+            ocr_cls_gpu_time_ms: None,
+            ocr_cls_gpu_error: None,
+            manga_bubble_cpu_time_ms: None,
+            manga_bubble_gpu_time_ms: None,
+            manga_bubble_gpu_error: None,
+            safety_cpu_time_ms: None,
+            safety_gpu_time_ms: None,
+            safety_gpu_error: None,
+            has_gpu,
+        }
+    }
+
+    pub fn with_yolo(mut self, (cpu, gpu, err): (f64, Option<f64>, Option<String>)) -> Self {
+        self.yolo_cpu_time_ms = Some(cpu);
+        self.yolo_gpu_time_ms = gpu;
+        self.yolo_gpu_error = err;
+        self
+    }
+
+    pub fn with_ccip_feat(mut self, (cpu, gpu, err): (f64, Option<f64>, Option<String>)) -> Self {
+        self.ccip_feat_cpu_time_ms = Some(cpu);
+        self.ccip_feat_gpu_time_ms = gpu;
+        self.ccip_feat_gpu_error = err;
+        self
+    }
+
+    pub fn with_ccip_metrics(mut self, (cpu, gpu, err): (f64, Option<f64>, Option<String>)) -> Self {
+        self.ccip_metrics_cpu_time_ms = Some(cpu);
+        self.ccip_metrics_gpu_time_ms = gpu;
+        self.ccip_metrics_gpu_error = err;
+        self
+    }
+
+    pub fn with_ocr_det(mut self, (cpu, gpu, err): (f64, Option<f64>, Option<String>)) -> Self {
+        self.ocr_det_cpu_time_ms = Some(cpu);
+        self.ocr_det_gpu_time_ms = gpu;
+        self.ocr_det_gpu_error = err;
+        self
+    }
+
+    pub fn with_ocr_rec(mut self, (cpu, gpu, err): (f64, Option<f64>, Option<String>)) -> Self {
+        self.ocr_rec_cpu_time_ms = Some(cpu);
+        self.ocr_rec_gpu_time_ms = gpu;
+        self.ocr_rec_gpu_error = err;
+        self
+    }
+
+    pub fn with_ocr_cls(mut self, (cpu, gpu, err): (f64, Option<f64>, Option<String>)) -> Self {
+        self.ocr_cls_cpu_time_ms = Some(cpu);
+        self.ocr_cls_gpu_time_ms = gpu;
+        self.ocr_cls_gpu_error = err;
+        self
+    }
+
+    pub fn with_manga_bubble(mut self, (cpu, gpu, err): (f64, Option<f64>, Option<String>)) -> Self {
+        self.manga_bubble_cpu_time_ms = Some(cpu);
+        self.manga_bubble_gpu_time_ms = gpu;
+        self.manga_bubble_gpu_error = err;
+        self
+    }
+
+    pub fn with_safety(mut self, (cpu, gpu, err): (f64, Option<f64>, Option<String>)) -> Self {
+        self.safety_cpu_time_ms = Some(cpu);
+        self.safety_gpu_time_ms = gpu;
+        self.safety_gpu_error = err;
+        self
     }
 }
 
@@ -428,17 +464,7 @@ pub async fn run_detection_benchmark_logic(
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark(&path, 640)
                 .map_err(|e| anyhow::anyhow!("Yolo benchmark failed: {:?}", e))?;
-            Ok(detection_outcome(
-                Some((cpu, gpu, err)),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                has_gpu,
-            ))
+            Ok(DetectionBenchmarkOutcome::empty(has_gpu).with_yolo((cpu, gpu, err)))
         }
         DetectionBenchmarkKind::CcipFeat => {
             let path = det_dir.join("ccip/model_feat.onnx");
@@ -448,17 +474,7 @@ pub async fn run_detection_benchmark_logic(
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark(&path, 384)
                 .map_err(|e| anyhow::anyhow!("CCIP Feature benchmark failed: {:?}", e))?;
-            Ok(detection_outcome(
-                None,
-                Some((cpu, gpu, err)),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                has_gpu,
-            ))
+            Ok(DetectionBenchmarkOutcome::empty(has_gpu).with_ccip_feat((cpu, gpu, err)))
         }
         DetectionBenchmarkKind::CcipMetrics => {
             let path = det_dir.join("ccip/model_metrics.onnx");
@@ -468,17 +484,7 @@ pub async fn run_detection_benchmark_logic(
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark_2d(&path, 16, 768)
                 .map_err(|e| anyhow::anyhow!("CCIP Metrics benchmark failed: {:?}", e))?;
-            Ok(detection_outcome(
-                None,
-                None,
-                Some((cpu, gpu, err)),
-                None,
-                None,
-                None,
-                None,
-                None,
-                has_gpu,
-            ))
+            Ok(DetectionBenchmarkOutcome::empty(has_gpu).with_ccip_metrics((cpu, gpu, err)))
         }
         DetectionBenchmarkKind::OcrDet => {
             let mut path = det_dir.join("pp-ocrv6-medium/det/inference.onnx");
@@ -493,17 +499,7 @@ pub async fn run_detection_benchmark_logic(
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark(&path, 960)
                 .map_err(|e| anyhow::anyhow!("OCR Detection benchmark failed: {:?}", e))?;
-            Ok(detection_outcome(
-                None,
-                None,
-                None,
-                Some((cpu, gpu, err)),
-                None,
-                None,
-                None,
-                None,
-                has_gpu,
-            ))
+            Ok(DetectionBenchmarkOutcome::empty(has_gpu).with_ocr_det((cpu, gpu, err)))
         }
         DetectionBenchmarkKind::OcrRec => {
             let mut path = det_dir.join("pp-ocrv6-medium/rec/inference.onnx");
@@ -518,17 +514,7 @@ pub async fn run_detection_benchmark_logic(
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark_4d(&path, 48, 320)
                 .map_err(|e| anyhow::anyhow!("OCR Recognition benchmark failed: {:?}", e))?;
-            Ok(detection_outcome(
-                None,
-                None,
-                None,
-                None,
-                Some((cpu, gpu, err)),
-                None,
-                None,
-                None,
-                has_gpu,
-            ))
+            Ok(DetectionBenchmarkOutcome::empty(has_gpu).with_ocr_rec((cpu, gpu, err)))
         }
         DetectionBenchmarkKind::OcrCls => {
             let path = det_dir.join("pp-lcnet-cls/inference.onnx");
@@ -537,17 +523,7 @@ pub async fn run_detection_benchmark_logic(
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark_4d(&path, 80, 160)
                 .map_err(|e| anyhow::anyhow!("OCR Classification benchmark failed: {:?}", e))?;
-            Ok(detection_outcome(
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some((cpu, gpu, err)),
-                None,
-                None,
-                has_gpu,
-            ))
+            Ok(DetectionBenchmarkOutcome::empty(has_gpu).with_ocr_cls((cpu, gpu, err)))
         }
         DetectionBenchmarkKind::MangaBubble => {
             let mut path = det_dir.join("manga-bubble-yolo/yolo26n.onnx");
@@ -562,17 +538,7 @@ pub async fn run_detection_benchmark_logic(
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark(&path, 1280)
                 .map_err(|e| anyhow::anyhow!("Manga Bubble YOLO benchmark failed: {:?}", e))?;
-            Ok(detection_outcome(
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some((cpu, gpu, err)),
-                None,
-                has_gpu,
-            ))
+            Ok(DetectionBenchmarkOutcome::empty(has_gpu).with_manga_bubble((cpu, gpu, err)))
         }
         DetectionBenchmarkKind::Safety => {
             let nsfw_dir = det_dir.join("nsfw-detection-2-mini/onnx");
@@ -609,17 +575,7 @@ pub async fn run_detection_benchmark_logic(
             info!("RunSafetyBenchmark request: path={:?}", path);
             let (cpu, gpu, err) = curator_ml::benchmark_safety_classifier(&path)
                 .map_err(|e| anyhow::anyhow!("Safety benchmark failed: {:?}", e))?;
-            Ok(detection_outcome(
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some((cpu, gpu, err)),
-                gpu.is_some(),
-            ))
+            Ok(DetectionBenchmarkOutcome::empty(gpu.is_some()).with_safety((cpu, gpu, err)))
         }
     }
 }
