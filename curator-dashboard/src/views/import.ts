@@ -22,11 +22,25 @@ export function setupImport() {
   const importInput = document.getElementById("import-path-input") as HTMLInputElement;
   const importMsg = document.getElementById("import-status-msg");
   const cancelBtn = document.getElementById("import-cancel-btn") as HTMLButtonElement | null;
+  const dismissBtn = document.getElementById("import-dismiss-btn") as HTMLButtonElement | null;
 
   if (importInput) {
     setupBrowseButton("browse-file-btn", importInput, false);
     setupBrowseButton("browse-folder-btn", importInput, true);
   }
+
+  dismissBtn?.addEventListener("click", () => {
+    stopScanProgressPolling();
+    if (importProgressTimer) {
+      clearInterval(importProgressTimer);
+      importProgressTimer = null;
+    }
+    const panel = document.getElementById("import-progress-panel");
+    if (panel) panel.style.display = "none";
+    if (importMsg) importMsg.textContent = "";
+    if (dismissBtn) dismissBtn.style.display = "none";
+    if (cancelBtn) cancelBtn.style.display = "none";
+  });
 
   cancelBtn?.addEventListener("click", async () => {
     if (!cancelBtn) return;
@@ -55,6 +69,7 @@ export function setupImport() {
     const indexedCount = document.getElementById("import-indexed-count");
     const pendingCount = document.getElementById("import-pending-count");
     const cancelBtn = document.getElementById("import-cancel-btn") as HTMLButtonElement | null;
+    const dismissBtn = document.getElementById("import-dismiss-btn") as HTMLButtonElement | null;
 
     if (panel) panel.style.display = "block";
     if (title) title.textContent = "Scanning directory...";
@@ -62,6 +77,7 @@ export function setupImport() {
     if (percent) percent.textContent = "0%";
     if (indexedCount) indexedCount.textContent = "Discovering files...";
     if (pendingCount) pendingCount.textContent = "Queuing jobs...";
+    if (dismissBtn) dismissBtn.style.display = "none";
     if (cancelBtn) {
       cancelBtn.style.display = "inline-flex";
       cancelBtn.disabled = false;
@@ -80,6 +96,7 @@ export function setupImport() {
         startImportProgressPolling(Number(folderId), importedCount);
       } else {
         if (cancelBtn) cancelBtn.style.display = "none";
+        if (dismissBtn) dismissBtn.style.display = "inline-flex";
         setStatusMessage(importMsg, "Import completed.", "success");
       }
       importInput.value = "";
@@ -87,6 +104,7 @@ export function setupImport() {
     } catch (e: any) {
       stopScanProgressPolling();
       if (cancelBtn) cancelBtn.style.display = "none";
+      if (dismissBtn) dismissBtn.style.display = "inline-flex";
       const errStr = e?.message || String(e);
       if (errStr.includes("cancelled")) {
         setStatusMessage(importMsg, "Import was cancelled by user.", "error");
@@ -95,10 +113,29 @@ export function setupImport() {
         if (percent) percent.textContent = "Cancelled";
       } else {
         setStatusMessage(importMsg, `Import Error: ${errStr}`, "error");
-        if (panel) panel.style.display = "none";
       }
     }
   });
+
+  // Check if an import is already in flight when opening
+  checkActiveImportState();
+}
+
+async function checkActiveImportState() {
+  try {
+    const prog = await typedCall("ImportService.GetImportProgress", null, null, ImportProgressSchema);
+    if (prog.running) {
+      const panel = document.getElementById("import-progress-panel");
+      const cancelBtn = document.getElementById("import-cancel-btn") as HTMLButtonElement | null;
+      if (panel) panel.style.display = "block";
+      if (cancelBtn) {
+        cancelBtn.style.display = "inline-flex";
+        cancelBtn.disabled = false;
+        cancelBtn.innerHTML = `<i class="bi bi-x-circle"></i> Cancel`;
+      }
+      startScanProgressPolling();
+    }
+  } catch (_) {}
 }
 
 function startScanProgressPolling() {
@@ -109,6 +146,8 @@ function startScanProgressPolling() {
   const bar = document.getElementById("import-progress-bar");
   const indexedCount = document.getElementById("import-indexed-count");
   const pendingCount = document.getElementById("import-pending-count");
+  const cancelBtn = document.getElementById("import-cancel-btn") as HTMLButtonElement | null;
+  const dismissBtn = document.getElementById("import-dismiss-btn") as HTMLButtonElement | null;
 
   scanProgressTimer = setInterval(async () => {
     try {
@@ -142,6 +181,11 @@ function startScanProgressPolling() {
       } else if (phase === "cancelled") {
         if (title) title.textContent = "Cancelling import...";
         if (percent) percent.textContent = "Cancelled";
+        if (cancelBtn) cancelBtn.style.display = "none";
+        if (dismissBtn) dismissBtn.style.display = "inline-flex";
+      } else if (phase === "complete" || phase === "failed") {
+        if (cancelBtn) cancelBtn.style.display = "none";
+        if (dismissBtn) dismissBtn.style.display = "inline-flex";
       }
     } catch (_) {}
   }, 200);
@@ -162,9 +206,11 @@ function startImportProgressPolling(targetFolderId: number, expectedBatchCount: 
   const indexedCount = document.getElementById("import-indexed-count");
   const pendingCount = document.getElementById("import-pending-count");
   const cancelBtn = document.getElementById("import-cancel-btn") as HTMLButtonElement | null;
+  const dismissBtn = document.getElementById("import-dismiss-btn") as HTMLButtonElement | null;
   const statusMsg = document.getElementById("import-status-msg");
 
   if (cancelBtn) cancelBtn.style.display = "none";
+  if (dismissBtn) dismissBtn.style.display = "none";
   if (!panel || !bar || !percent) return;
   panel.style.display = "block";
   if (title) title.textContent = `Processing Vector Indexing (${expectedBatchCount} images)...`;
@@ -199,6 +245,7 @@ function startImportProgressPolling(targetFolderId: number, expectedBatchCount: 
             percent.textContent = "100%";
             if (title) title.textContent = "✓ Import & Vector Indexing Complete!";
             if (statusMsg) setStatusMessage(statusMsg, `Successfully imported and indexed all ${total} images!`, "success");
+            if (dismissBtn) dismissBtn.style.display = "inline-flex";
             clearInterval(importProgressTimer);
             importProgressTimer = null;
             refreshDashboard();
@@ -237,6 +284,9 @@ export function renderImportHtml(): SafeHtml {
             <button type="button" class="win-button" id="import-cancel-btn" style="display: none; font-size: 11px; padding: 2px 8px; color: #a80000;" title="Cancel ongoing import">
               <i class="bi bi-x-circle"></i> Cancel
             </button>
+            <button type="button" class="win-button" id="import-dismiss-btn" style="display: none; font-size: 11px; padding: 2px 8px;" title="Clear progress display">
+              <i class="bi bi-x-lg"></i> Clear
+            </button>
             <span id="import-progress-percent" style="font-weight: 700; color: var(--sys-border-focus); font-size: 13px;">0%</span>
           </div>
         </div>
@@ -252,4 +302,5 @@ export function renderImportHtml(): SafeHtml {
     </div>
   `;
 }
+
 
