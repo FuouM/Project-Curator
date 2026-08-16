@@ -60,7 +60,7 @@ impl FolderRepo {
                 f.imported_at,
                 COUNT(CASE WHEN LOWER(i.current_filepath) NOT LIKE '%.mp4' AND LOWER(i.current_filepath) NOT LIKE '%.webm' THEN 1 END) as image_count,
                 COALESCE(SUM(CASE WHEN LOWER(i.current_filepath) LIKE '%.mp4' OR LOWER(i.current_filepath) LIKE '%.webm' THEN 1 ELSE 0 END), 0) as video_count,
-                COALESCE(SUM(CASE WHEN iv.vector_state = 'ready' THEN 1 ELSE 0 END), 0) as video_ready,
+                COALESCE(SUM(CASE WHEN iv.vector_state = 'ready' THEN 1 ELSE 0 END), 0) as vector_ready,
                 COALESCE(SUM(CASE WHEN iv.vector_state IN ('pending', 'preprocessing') THEN 1 ELSE 0 END), 0) as vector_pending
             FROM folders f
             LEFT JOIN images i ON i.folder_id = f.id AND i.deleted_at IS NULL
@@ -68,6 +68,7 @@ impl FolderRepo {
             GROUP BY f.id
             ORDER BY f.imported_at DESC
             "#,
+
         )
         .fetch_all(db)
         .await?;
@@ -367,3 +368,35 @@ impl FolderRepo {
         Ok((true, affected))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_get_imported_folders_query() -> Result<()> {
+        let options = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(":memory:")
+            .create_if_missing(true);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await?;
+        sqlx::migrate!("./migrations").run(&pool).await?;
+
+        // 1. Create a folder
+        let folder_id = FolderRepo::get_or_create_folder("C:/test/folder", &pool).await?;
+        assert!(folder_id > 0);
+
+        // 2. Fetch imported folders
+        let folders = FolderRepo::get_imported_folders(&pool).await?;
+        assert_eq!(folders.len(), 1);
+        assert_eq!(folders[0].id, folder_id);
+        assert_eq!(folders[0].name, "folder");
+        assert_eq!(folders[0].vector_ready, 0);
+        assert_eq!(folders[0].vector_pending, 0);
+
+        Ok(())
+    }
+}
+
