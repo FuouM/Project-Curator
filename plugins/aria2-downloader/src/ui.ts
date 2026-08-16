@@ -87,6 +87,84 @@ function formatRate(bps: number): string {
   return `${formatBytes(bps, "0 B", 1)}/s`;
 }
 
+/** Extract the hoster (hostname without `www.`) from a URL. */
+function hostFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    const head = url.split(/[\\/]/)[0];
+    return head || url;
+  }
+}
+
+// ── Resizable table columns (persisted) ─────────────────────────────────────
+
+const COL_WIDTH_KEY = "aria2-downloader-col-";
+
+interface ColumnResizeState {
+  th: HTMLTableCellElement;
+  colKey: string;
+  startX: number;
+  startWidth: number;
+  liveWidth: number;
+}
+
+let columnResizeState: ColumnResizeState | null = null;
+
+/** Restore persisted widths onto table headers (idempotent per render). */
+function applyColumnWidths(): void {
+  document.querySelectorAll<HTMLTableCellElement>(".ad-table thead th").forEach((th) => {
+    const colKey = (th.className.match(/\bcol-\w+/) ?? [""])[0];
+    if (!colKey) return;
+    const width = localStorage.getItem(COL_WIDTH_KEY + colKey);
+    if (width) th.style.width = `${width}px`;
+  });
+}
+
+function columnResizeMouseDown(e: MouseEvent): void {
+  const target = e.target as HTMLElement;
+  const th = target.closest?.("th");
+  if (!th || !th.closest(".ad-table")) return;
+  const rect = th.getBoundingClientRect();
+  if (e.clientX < rect.right - 5 || e.clientX > rect.right + 5) return;
+  e.preventDefault();
+  const colKey = (th.className.match(/\bcol-\w+/) ?? [""])[0];
+  if (!colKey) return;
+  columnResizeState = {
+    th,
+    colKey,
+    startX: e.clientX,
+    startWidth: rect.width,
+    liveWidth: rect.width,
+  };
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+}
+
+function columnResizeMouseMove(e: MouseEvent): void {
+  if (!columnResizeState) return;
+  const width = Math.max(40, columnResizeState.startWidth + (e.clientX - columnResizeState.startX));
+  columnResizeState.liveWidth = width;
+  columnResizeState.th.style.width = `${width}px`;
+}
+
+function columnResizeMouseUp(): void {
+  if (!columnResizeState) return;
+  localStorage.setItem(COL_WIDTH_KEY + columnResizeState.colKey, String(columnResizeState.liveWidth));
+  columnResizeState = null;
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
+}
+
+let columnResizeWired = false;
+function wireColumnResize(): void {
+  if (columnResizeWired) return;
+  columnResizeWired = true;
+  document.addEventListener("mousedown", columnResizeMouseDown);
+  document.addEventListener("mousemove", columnResizeMouseMove);
+  document.addEventListener("mouseup", columnResizeMouseUp);
+}
+
 function formatDateTime(epochSecs: number): string {
   const d = new Date(epochSecs * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -193,7 +271,7 @@ export function injectStyles(): void {
     .ad-scroll {
       flex: 1;
       min-height: 0;
-      overflow-y: auto;
+      overflow: auto;
       border: 1px solid var(--sys-border-light, #d0d0d0);
       background: var(--sys-window-bg, #fff);
     }
@@ -259,7 +337,20 @@ export function injectStyles(): void {
       padding: 4px 6px;
       border-bottom: 1px solid #d0d0d0;
       background: #f4f6f8;
+      position: relative;
+      user-select: none;
     }
+    .ad-table thead th::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      right: 0;
+      bottom: 3px;
+      width: 2px;
+      background: #c8ccd0;
+      cursor: col-resize;
+    }
+    .ad-table thead th:hover::after { background: #0078d7; }
     .ad-table td {
       padding: 4px 6px;
       font-size: 11px;
@@ -268,8 +359,12 @@ export function injectStyles(): void {
     }
     .ad-table tbody tr:hover { background: #f4f6f8; }
     .ad-table .col-status { width: 74px; }
+    .ad-table .col-hoster { width: 88px; }
     .ad-table .col-progress { width: 150px; }
-    .ad-table .col-meta { width: 190px; }
+    .ad-table .col-size { width: 96px; }
+    .ad-table .col-speed { width: 84px; }
+    .ad-table .col-eta { width: 62px; }
+    .ad-table .col-hdate { width: 122px; }
     .ad-table .col-actions { width: 150px; text-align: right; }
     .ad-progress-wrap {
       display: flex;
@@ -578,6 +673,8 @@ export function renderTab(): HTMLElement {
       renderQueue();
     })
   );
+
+  wireColumnResize();
 
   // ── Initial render ────────────────────────────────────────────────────────
   // Pass the list elements directly: the host appends `root` to the document
@@ -1129,9 +1226,12 @@ export function renderQueue(listEl?: HTMLElement): void {
     thead.innerHTML =
       "<tr>" +
       '<th class="col-status">Status</th>' +
+      '<th class="col-hoster">Hoster</th>' +
       '<th class="col-file">File</th>' +
       '<th class="col-progress">Progress</th>' +
-      '<th class="col-meta">Size / Speed</th>' +
+      '<th class="col-size">Size</th>' +
+      '<th class="col-speed">Speed</th>' +
+      '<th class="col-eta">ETA</th>' +
       '<th class="col-actions">Actions</th>' +
       "</tr>";
     table.appendChild(thead);
@@ -1142,6 +1242,8 @@ export function renderQueue(listEl?: HTMLElement): void {
     table.appendChild(tbody);
     list.appendChild(table);
   }
+
+  applyColumnWidths();
 
   const count = el("ad-queue-count");
   if (count) count.textContent = state.queue.size ? `(${state.queue.size})` : "";
@@ -1194,15 +1296,40 @@ function renderQueueRow(item: QueueItem): HTMLTableRowElement {
   progressWrap.appendChild(pct);
   tdProgress.appendChild(progressWrap);
 
-  const tdMeta = document.createElement("td");
-  tdMeta.className = "col-meta";
-  const meta = document.createElement("span");
-  meta.className = "ad-meta";
-  meta.style.cssText = "display:block;width:100%;";
+  const tdHoster = document.createElement("td");
+  tdHoster.className = "col-hoster";
+  const hoster = document.createElement("span");
+  hoster.className = "ad-meta";
+  hoster.style.cssText = "display:block;width:100%;";
+  hoster.textContent = hostFromUrl(item.url);
+  hoster.title = item.url;
+  tdHoster.appendChild(hoster);
+
+  const tdSize = document.createElement("td");
+  tdSize.className = "col-size";
+  const size = document.createElement("span");
+  size.className = "ad-meta";
+  size.style.cssText = "display:block;width:100%;";
   const total = item.totalBytes ? ` / ${formatBytes(item.totalBytes)}` : "";
-  meta.textContent = `${formatBytes(item.downloadedBytes)}${total} · ${formatRate(item.speedBps)} · CN:${item.connections} · ETA ${formatEta(item.etaSecs)}`;
-  meta.title = item.error ?? item.command ?? "";
-  tdMeta.appendChild(meta);
+  size.textContent = `${formatBytes(item.downloadedBytes)}${total}`;
+  tdSize.appendChild(size);
+
+  const running = item.status === "running";
+  const tdSpeed = document.createElement("td");
+  tdSpeed.className = "col-speed";
+  const speed = document.createElement("span");
+  speed.className = "ad-meta";
+  speed.style.cssText = "display:block;width:100%;";
+  speed.textContent = running ? formatRate(item.speedBps) : "—";
+  tdSpeed.appendChild(speed);
+
+  const tdEta = document.createElement("td");
+  tdEta.className = "col-eta";
+  const eta = document.createElement("span");
+  eta.className = "ad-meta";
+  eta.style.cssText = "display:block;width:100%;";
+  eta.textContent = running ? formatEta(item.etaSecs) : "—";
+  tdEta.appendChild(eta);
 
   const tdActions = document.createElement("td");
   tdActions.className = "col-actions";
@@ -1247,9 +1374,12 @@ function renderQueueRow(item: QueueItem): HTMLTableRowElement {
   tdActions.appendChild(actions);
 
   tr.appendChild(tdStatus);
+  tr.appendChild(tdHoster);
   tr.appendChild(tdFile);
   tr.appendChild(tdProgress);
-  tr.appendChild(tdMeta);
+  tr.appendChild(tdSize);
+  tr.appendChild(tdSpeed);
+  tr.appendChild(tdEta);
   tr.appendChild(tdActions);
   return tr;
 }
@@ -1264,48 +1394,105 @@ export function renderHistory(records: HistoryRecord[], listEl?: HTMLElement): v
     list.innerHTML = '<div class="ad-empty">No downloads recorded yet.</div>';
     return;
   }
+  const table = document.createElement("table");
+  table.className = "ad-table";
+  const thead = document.createElement("thead");
+  thead.innerHTML =
+    "<tr>" +
+    '<th class="col-status">Status</th>' +
+    '<th class="col-hoster">Hoster</th>' +
+    '<th class="col-file">File</th>' +
+    '<th class="col-size">Size</th>' +
+    '<th class="col-hdate">Completed</th>' +
+    '<th class="col-actions">Actions</th>' +
+    "</tr>";
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
   for (const rec of records) {
-    const row = document.createElement("div");
-    row.className = "ad-row";
-    const badge = document.createElement("span");
-    badge.className = `ad-badge ${rec.status}`;
-    badge.textContent = rec.status;
-    const name = document.createElement("div");
-    name.className = "ad-row-mono";
-    name.textContent = rec.filename;
-    name.title = rec.file_path;
-    const meta = document.createElement("span");
-    meta.className = "ad-meta";
-    meta.textContent = `${formatBytes(rec.file_size)} · ${formatDateTime(rec.completed_at)}`;
-    row.appendChild(badge);
-    row.appendChild(name);
-    row.appendChild(meta);
-
-    const actions = document.createElement("div");
-    actions.style.cssText = "display:flex;gap:4px;flex-shrink:0;";
-    const mk = (icon: string, title: string, fn: () => void) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "win-button";
-      b.style.cssText = "font-size:10px;padding:1px 6px;";
-      b.innerHTML = `<i class="${icon}"></i>`;
-      b.title = title;
-      b.addEventListener("click", fn);
-      actions.appendChild(b);
-    };
-    mk("bi bi-folder2-open", "Open in Explorer (highlight)", () => {
-      void (async () => {
-        const ok = await revealInFolder(rec.file_path);
-        if (!ok) log("Could not reveal output file in Explorer.", "error");
-      })();
-    });
-    mk("bi bi-clipboard", "Copy path", () => void navigator.clipboard?.writeText(rec.file_path));
-    mk("bi bi-link-45deg", "Copy URL", () => void navigator.clipboard?.writeText(rec.url));
-    mk("bi bi-arrow-repeat", "Re-download", () => void redownloadUrl(rec.url));
-    mk("bi bi-x-lg", "Remove from history", () => void removeHistoryRecord(rec.id));
-    row.appendChild(actions);
-    list.appendChild(row);
+    tbody.appendChild(renderHistoryRow(rec));
   }
+  table.appendChild(tbody);
+  list.appendChild(table);
+  applyColumnWidths();
+}
+
+function renderHistoryRow(rec: HistoryRecord): HTMLTableRowElement {
+  const tr = document.createElement("tr");
+  tr.className = "ad-table-row";
+
+  const tdStatus = document.createElement("td");
+  tdStatus.className = "col-status";
+  const badge = document.createElement("span");
+  badge.className = `ad-badge ${rec.status}`;
+  badge.textContent = rec.status;
+  tdStatus.appendChild(badge);
+
+  const tdHoster = document.createElement("td");
+  tdHoster.className = "col-hoster";
+  const hoster = document.createElement("span");
+  hoster.className = "ad-meta";
+  hoster.style.cssText = "display:block;width:100%;";
+  hoster.textContent = hostFromUrl(rec.url);
+  hoster.title = rec.url;
+  tdHoster.appendChild(hoster);
+
+  const tdFile = document.createElement("td");
+  tdFile.className = "col-file";
+  const name = document.createElement("div");
+  name.className = "ad-row-mono";
+  name.textContent = rec.filename;
+  name.title = rec.file_path;
+  tdFile.appendChild(name);
+
+  const tdSize = document.createElement("td");
+  tdSize.className = "col-size";
+  const size = document.createElement("span");
+  size.className = "ad-meta";
+  size.style.cssText = "display:block;width:100%;";
+  size.textContent = formatBytes(rec.file_size);
+  tdSize.appendChild(size);
+
+  const tdDate = document.createElement("td");
+  tdDate.className = "col-hdate";
+  const date = document.createElement("span");
+  date.className = "ad-meta";
+  date.style.cssText = "display:block;width:100%;";
+  date.textContent = formatDateTime(rec.completed_at);
+  tdDate.appendChild(date);
+
+  const tdActions = document.createElement("td");
+  tdActions.className = "col-actions";
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;gap:4px;justify-content:flex-end;";
+  const mk = (icon: string, title: string, fn: () => void) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "win-button";
+    b.style.cssText = "font-size:10px;padding:1px 6px;";
+    b.innerHTML = `<i class="${icon}"></i>`;
+    b.title = title;
+    b.addEventListener("click", fn);
+    actions.appendChild(b);
+  };
+  mk("bi bi-folder2-open", "Open in Explorer (highlight)", () => {
+    void (async () => {
+      const ok = await revealInFolder(rec.file_path);
+      if (!ok) log("Could not reveal output file in Explorer.", "error");
+    })();
+  });
+  mk("bi bi-clipboard", "Copy path", () => void navigator.clipboard?.writeText(rec.file_path));
+  mk("bi bi-link-45deg", "Copy URL", () => void navigator.clipboard?.writeText(rec.url));
+  mk("bi bi-arrow-repeat", "Re-download", () => void redownloadUrl(rec.url));
+  mk("bi bi-x-lg", "Remove from history", () => void removeHistoryRecord(rec.id));
+  tdActions.appendChild(actions);
+
+  tr.appendChild(tdStatus);
+  tr.appendChild(tdHoster);
+  tr.appendChild(tdFile);
+  tr.appendChild(tdSize);
+  tr.appendChild(tdDate);
+  tr.appendChild(tdActions);
+  return tr;
 }
 
 // ── Log dock (delta rendering) ──────────────────────────────────────────────

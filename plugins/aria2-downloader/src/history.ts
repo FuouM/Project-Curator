@@ -119,7 +119,7 @@ export async function queryHistory(
 export async function searchHistory(term: string, limit = 200): Promise<HistoryRecord[]> {
   const res = await dbQuery(
     `SELECT * FROM download_history
-     WHERE url LIKE ? OR filename LIKE ? OR package_name LIKE ?
+     WHERE filename LIKE ? OR status LIKE ? OR url LIKE ?
      ORDER BY completed_at DESC LIMIT ?`,
     [`%${term}%`, `%${term}%`, `%${term}%`, limit]
   );

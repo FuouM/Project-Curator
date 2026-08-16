@@ -354,7 +354,7 @@
     var _a;
     return (_a = (await dbQuery(
       `SELECT * FROM download_history
-     WHERE url LIKE ? OR filename LIKE ? OR package_name LIKE ?
+     WHERE filename LIKE ? OR status LIKE ? OR url LIKE ?
      ORDER BY completed_at DESC LIMIT ?`,
       [`%${term}%`, `%${term}%`, `%${term}%`, limit]
     )).rows) != null ? _a : [];
@@ -391,6 +391,51 @@
   }
   function formatRate(bps) {
     return bps ? `${formatBytes(bps, "0 B", 1)}/s` : "0 B/s";
+  }
+  function hostFromUrl(url) {
+    try {
+      return new URL(url).hostname.replace(/^www\./, "");
+    } catch (e) {
+      return url.split(/[\\/]/)[0] || url;
+    }
+  }
+  var COL_WIDTH_KEY = "aria2-downloader-col-", columnResizeState = null;
+  function applyColumnWidths() {
+    document.querySelectorAll(".ad-table thead th").forEach((th) => {
+      var _a;
+      let colKey = ((_a = th.className.match(/\bcol-\w+/)) != null ? _a : [""])[0];
+      if (!colKey) return;
+      let width = localStorage.getItem(COL_WIDTH_KEY + colKey);
+      width && (th.style.width = `${width}px`);
+    });
+  }
+  function columnResizeMouseDown(e) {
+    var _a, _b;
+    let target = e.target, th = (_a = target.closest) == null ? void 0 : _a.call(target, "th");
+    if (!th || !th.closest(".ad-table")) return;
+    let rect = th.getBoundingClientRect();
+    if (e.clientX < rect.right - 5 || e.clientX > rect.right + 5) return;
+    e.preventDefault();
+    let colKey = ((_b = th.className.match(/\bcol-\w+/)) != null ? _b : [""])[0];
+    colKey && (columnResizeState = {
+      th,
+      colKey,
+      startX: e.clientX,
+      startWidth: rect.width,
+      liveWidth: rect.width
+    }, document.body.style.cursor = "col-resize", document.body.style.userSelect = "none");
+  }
+  function columnResizeMouseMove(e) {
+    if (!columnResizeState) return;
+    let width = Math.max(40, columnResizeState.startWidth + (e.clientX - columnResizeState.startX));
+    columnResizeState.liveWidth = width, columnResizeState.th.style.width = `${width}px`;
+  }
+  function columnResizeMouseUp() {
+    columnResizeState && (localStorage.setItem(COL_WIDTH_KEY + columnResizeState.colKey, String(columnResizeState.liveWidth)), columnResizeState = null, document.body.style.cursor = "", document.body.style.userSelect = "");
+  }
+  var columnResizeWired = !1;
+  function wireColumnResize() {
+    columnResizeWired || (columnResizeWired = !0, document.addEventListener("mousedown", columnResizeMouseDown), document.addEventListener("mousemove", columnResizeMouseMove), document.addEventListener("mouseup", columnResizeMouseUp));
   }
   function formatDateTime(epochSecs) {
     let d = new Date(epochSecs * 1e3), pad = (n) => String(n).padStart(2, "0");
@@ -493,7 +538,7 @@
     .ad-scroll {
       flex: 1;
       min-height: 0;
-      overflow-y: auto;
+      overflow: auto;
       border: 1px solid var(--sys-border-light, #d0d0d0);
       background: var(--sys-window-bg, #fff);
     }
@@ -559,7 +604,20 @@
       padding: 4px 6px;
       border-bottom: 1px solid #d0d0d0;
       background: #f4f6f8;
+      position: relative;
+      user-select: none;
     }
+    .ad-table thead th::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      right: 0;
+      bottom: 3px;
+      width: 2px;
+      background: #c8ccd0;
+      cursor: col-resize;
+    }
+    .ad-table thead th:hover::after { background: #0078d7; }
     .ad-table td {
       padding: 4px 6px;
       font-size: 11px;
@@ -568,8 +626,12 @@
     }
     .ad-table tbody tr:hover { background: #f4f6f8; }
     .ad-table .col-status { width: 74px; }
+    .ad-table .col-hoster { width: 88px; }
     .ad-table .col-progress { width: 150px; }
-    .ad-table .col-meta { width: 190px; }
+    .ad-table .col-size { width: 96px; }
+    .ad-table .col-speed { width: 84px; }
+    .ad-table .col-eta { width: 62px; }
+    .ad-table .col-hdate { width: 122px; }
     .ad-table .col-actions { width: 150px; text-align: right; }
     .ad-progress-wrap {
       display: flex;
@@ -795,7 +857,7 @@
         var _a;
         queueStatusFilter = (_a = btn.dataset.status) != null ? _a : "", queueFilterEls.forEach((b) => b.classList.toggle("active", b === btn)), renderQueue();
       })
-    ), renderQueue(queueList), updateChips(), renderHistory(state.history, historyList), setToolBanner(state.toolAvailable, state.toolVersion, defaultBannerText(), banner), initHistory(), root;
+    ), wireColumnResize(), renderQueue(queueList), updateChips(), renderHistory(state.history, historyList), setToolBanner(state.toolAvailable, state.toolVersion, defaultBannerText(), banner), initHistory(), root;
   }
   function defaultBannerText() {
     return state.toolInstalling ? "Installing aria2 engine..." : "aria2 engine not found. Download & install it to enable multi-connection downloads.";
@@ -1119,17 +1181,17 @@ ${r.label} \u2014 ${r.badgeText}`, chip.textContent = r.badgeText, chips.appendC
       let table = document.createElement("table");
       table.className = "ad-table";
       let thead = document.createElement("thead");
-      thead.innerHTML = '<tr><th class="col-status">Status</th><th class="col-file">File</th><th class="col-progress">Progress</th><th class="col-meta">Size / Speed</th><th class="col-actions">Actions</th></tr>', table.appendChild(thead);
+      thead.innerHTML = '<tr><th class="col-status">Status</th><th class="col-hoster">Hoster</th><th class="col-file">File</th><th class="col-progress">Progress</th><th class="col-size">Size</th><th class="col-speed">Speed</th><th class="col-eta">ETA</th><th class="col-actions">Actions</th></tr>', table.appendChild(thead);
       let tbody = document.createElement("tbody");
       for (let item of items)
         tbody.appendChild(renderQueueRow(item));
       table.appendChild(tbody), list.appendChild(table);
     }
+    applyColumnWidths();
     let count = el("ad-queue-count");
     count && (count.textContent = state.queue.size ? `(${state.queue.size})` : "");
   }
   function renderQueueRow(item) {
-    var _a, _b;
     let tr = document.createElement("tr");
     tr.className = "ad-table-row";
     let tdStatus = document.createElement("td");
@@ -1155,12 +1217,24 @@ ${r.label} \u2014 ${r.badgeText}`, chip.textContent = r.badgeText, chips.appendC
     fill.className = "ad-progress-fill", fill.style.width = `${Math.max(0, Math.min(100, item.percent))}%`, bar.appendChild(fill);
     let pct = document.createElement("span");
     pct.className = "ad-meta", pct.textContent = `${Math.round(item.percent)}%`, progressWrap.appendChild(bar), progressWrap.appendChild(pct), tdProgress.appendChild(progressWrap);
-    let tdMeta = document.createElement("td");
-    tdMeta.className = "col-meta";
-    let meta = document.createElement("span");
-    meta.className = "ad-meta", meta.style.cssText = "display:block;width:100%;";
+    let tdHoster = document.createElement("td");
+    tdHoster.className = "col-hoster";
+    let hoster = document.createElement("span");
+    hoster.className = "ad-meta", hoster.style.cssText = "display:block;width:100%;", hoster.textContent = hostFromUrl(item.url), hoster.title = item.url, tdHoster.appendChild(hoster);
+    let tdSize = document.createElement("td");
+    tdSize.className = "col-size";
+    let size = document.createElement("span");
+    size.className = "ad-meta", size.style.cssText = "display:block;width:100%;";
     let total = item.totalBytes ? ` / ${formatBytes(item.totalBytes)}` : "";
-    meta.textContent = `${formatBytes(item.downloadedBytes)}${total} \xB7 ${formatRate(item.speedBps)} \xB7 CN:${item.connections} \xB7 ETA ${formatEta(item.etaSecs)}`, meta.title = (_b = (_a = item.error) != null ? _a : item.command) != null ? _b : "", tdMeta.appendChild(meta);
+    size.textContent = `${formatBytes(item.downloadedBytes)}${total}`, tdSize.appendChild(size);
+    let running = item.status === "running", tdSpeed = document.createElement("td");
+    tdSpeed.className = "col-speed";
+    let speed = document.createElement("span");
+    speed.className = "ad-meta", speed.style.cssText = "display:block;width:100%;", speed.textContent = running ? formatRate(item.speedBps) : "\u2014", tdSpeed.appendChild(speed);
+    let tdEta = document.createElement("td");
+    tdEta.className = "col-eta";
+    let eta = document.createElement("span");
+    eta.className = "ad-meta", eta.style.cssText = "display:block;width:100%;", eta.textContent = running ? formatEta(item.etaSecs) : "\u2014", tdEta.appendChild(eta);
     let tdActions = document.createElement("td");
     tdActions.className = "col-actions";
     let actions = document.createElement("div");
@@ -1171,8 +1245,8 @@ ${r.label} \u2014 ${r.badgeText}`, chip.textContent = r.badgeText, chips.appendC
     };
     return item.status === "queued" && mk("bi bi-play-fill", "Start", () => void startQueuedItem(item.jobId)), item.status === "running" && mk("bi bi-stop-circle", "Cancel (graceful)", () => void cancelDownload(item.jobId)), item.status === "completed" && mk("bi bi-folder2-open", "Reveal in Explorer", () => {
       (async () => {
-        var _a2;
-        let api = (_a2 = window.__TAURI__) == null ? void 0 : _a2.core;
+        var _a;
+        let api = (_a = window.__TAURI__) == null ? void 0 : _a.core;
         if (api != null && api.invoke)
           try {
             await api.invoke("reveal_in_folder", { path: item.outputPath });
@@ -1181,43 +1255,66 @@ ${r.label} \u2014 ${r.badgeText}`, chip.textContent = r.badgeText, chips.appendC
           }
       })();
     }), (item.status === "failed" || item.status === "cancelled") && mk("bi bi-arrow-clockwise", "Retry", () => void retryDownload(item.jobId)), mk("bi bi-clipboard", "Copy URL", () => {
-      var _a2;
-      return void ((_a2 = navigator.clipboard) == null ? void 0 : _a2.writeText(item.url));
-    }), tdActions.appendChild(actions), tr.appendChild(tdStatus), tr.appendChild(tdFile), tr.appendChild(tdProgress), tr.appendChild(tdMeta), tr.appendChild(tdActions), tr;
+      var _a;
+      return void ((_a = navigator.clipboard) == null ? void 0 : _a.writeText(item.url));
+    }), tdActions.appendChild(actions), tr.appendChild(tdStatus), tr.appendChild(tdHoster), tr.appendChild(tdFile), tr.appendChild(tdProgress), tr.appendChild(tdSize), tr.appendChild(tdSpeed), tr.appendChild(tdEta), tr.appendChild(tdActions), tr;
   }
   function renderHistory(records, listEl) {
     let list = listEl != null ? listEl : el("ad-history-list");
-    if (list) {
-      if (list.innerHTML = "", !records.length) {
-        list.innerHTML = '<div class="ad-empty">No downloads recorded yet.</div>';
-        return;
-      }
-      for (let rec of records) {
-        let row = document.createElement("div");
-        row.className = "ad-row";
-        let badge = document.createElement("span");
-        badge.className = `ad-badge ${rec.status}`, badge.textContent = rec.status;
-        let name = document.createElement("div");
-        name.className = "ad-row-mono", name.textContent = rec.filename, name.title = rec.file_path;
-        let meta = document.createElement("span");
-        meta.className = "ad-meta", meta.textContent = `${formatBytes(rec.file_size)} \xB7 ${formatDateTime(rec.completed_at)}`, row.appendChild(badge), row.appendChild(name), row.appendChild(meta);
-        let actions = document.createElement("div");
-        actions.style.cssText = "display:flex;gap:4px;flex-shrink:0;";
-        let mk = (icon, title, fn) => {
-          let b = document.createElement("button");
-          b.type = "button", b.className = "win-button", b.style.cssText = "font-size:10px;padding:1px 6px;", b.innerHTML = `<i class="${icon}"></i>`, b.title = title, b.addEventListener("click", fn), actions.appendChild(b);
-        };
-        mk("bi bi-folder2-open", "Open in Explorer (highlight)", () => {
-          (async () => await revealInFolder(rec.file_path) || log("Could not reveal output file in Explorer.", "error"))();
-        }), mk("bi bi-clipboard", "Copy path", () => {
-          var _a;
-          return void ((_a = navigator.clipboard) == null ? void 0 : _a.writeText(rec.file_path));
-        }), mk("bi bi-link-45deg", "Copy URL", () => {
-          var _a;
-          return void ((_a = navigator.clipboard) == null ? void 0 : _a.writeText(rec.url));
-        }), mk("bi bi-arrow-repeat", "Re-download", () => void redownloadUrl(rec.url)), mk("bi bi-x-lg", "Remove from history", () => void removeHistoryRecord(rec.id)), row.appendChild(actions), list.appendChild(row);
-      }
+    if (!list) return;
+    if (list.innerHTML = "", !records.length) {
+      list.innerHTML = '<div class="ad-empty">No downloads recorded yet.</div>';
+      return;
     }
+    let table = document.createElement("table");
+    table.className = "ad-table";
+    let thead = document.createElement("thead");
+    thead.innerHTML = '<tr><th class="col-status">Status</th><th class="col-hoster">Hoster</th><th class="col-file">File</th><th class="col-size">Size</th><th class="col-hdate">Completed</th><th class="col-actions">Actions</th></tr>', table.appendChild(thead);
+    let tbody = document.createElement("tbody");
+    for (let rec of records)
+      tbody.appendChild(renderHistoryRow(rec));
+    table.appendChild(tbody), list.appendChild(table), applyColumnWidths();
+  }
+  function renderHistoryRow(rec) {
+    let tr = document.createElement("tr");
+    tr.className = "ad-table-row";
+    let tdStatus = document.createElement("td");
+    tdStatus.className = "col-status";
+    let badge = document.createElement("span");
+    badge.className = `ad-badge ${rec.status}`, badge.textContent = rec.status, tdStatus.appendChild(badge);
+    let tdHoster = document.createElement("td");
+    tdHoster.className = "col-hoster";
+    let hoster = document.createElement("span");
+    hoster.className = "ad-meta", hoster.style.cssText = "display:block;width:100%;", hoster.textContent = hostFromUrl(rec.url), hoster.title = rec.url, tdHoster.appendChild(hoster);
+    let tdFile = document.createElement("td");
+    tdFile.className = "col-file";
+    let name = document.createElement("div");
+    name.className = "ad-row-mono", name.textContent = rec.filename, name.title = rec.file_path, tdFile.appendChild(name);
+    let tdSize = document.createElement("td");
+    tdSize.className = "col-size";
+    let size = document.createElement("span");
+    size.className = "ad-meta", size.style.cssText = "display:block;width:100%;", size.textContent = formatBytes(rec.file_size), tdSize.appendChild(size);
+    let tdDate = document.createElement("td");
+    tdDate.className = "col-hdate";
+    let date = document.createElement("span");
+    date.className = "ad-meta", date.style.cssText = "display:block;width:100%;", date.textContent = formatDateTime(rec.completed_at), tdDate.appendChild(date);
+    let tdActions = document.createElement("td");
+    tdActions.className = "col-actions";
+    let actions = document.createElement("div");
+    actions.style.cssText = "display:flex;gap:4px;justify-content:flex-end;";
+    let mk = (icon, title, fn) => {
+      let b = document.createElement("button");
+      b.type = "button", b.className = "win-button", b.style.cssText = "font-size:10px;padding:1px 6px;", b.innerHTML = `<i class="${icon}"></i>`, b.title = title, b.addEventListener("click", fn), actions.appendChild(b);
+    };
+    return mk("bi bi-folder2-open", "Open in Explorer (highlight)", () => {
+      (async () => await revealInFolder(rec.file_path) || log("Could not reveal output file in Explorer.", "error"))();
+    }), mk("bi bi-clipboard", "Copy path", () => {
+      var _a;
+      return void ((_a = navigator.clipboard) == null ? void 0 : _a.writeText(rec.file_path));
+    }), mk("bi bi-link-45deg", "Copy URL", () => {
+      var _a;
+      return void ((_a = navigator.clipboard) == null ? void 0 : _a.writeText(rec.url));
+    }), mk("bi bi-arrow-repeat", "Re-download", () => void redownloadUrl(rec.url)), mk("bi bi-x-lg", "Remove from history", () => void removeHistoryRecord(rec.id)), tdActions.appendChild(actions), tr.appendChild(tdStatus), tr.appendChild(tdHoster), tr.appendChild(tdFile), tr.appendChild(tdSize), tr.appendChild(tdDate), tr.appendChild(tdActions), tr;
   }
   function appendLogDelta(item) {
     let dock = el("ad-log-dock");
