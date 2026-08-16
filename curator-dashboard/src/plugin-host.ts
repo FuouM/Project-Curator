@@ -94,11 +94,11 @@ export async function getSelectionAssetContexts(): Promise<AssetContext[]> {
  * JSON-serialized response in the legacy shape, so bundled plugins keep their
  * existing parsing behavior unchanged.
  */
-async function invokePlugin(command: string, params: object | null | undefined): Promise<any> {
+async function invokePlugin(pluginId: string, command: string, params: object | null | undefined): Promise<any> {
   const resp = await typedCall(
     "PluginsService.InvokePlugin",
     InvokePluginRequestSchema,
-    { pluginId: "", command, parametersJson: JSON.stringify(params ?? null) },
+    { pluginId, command, parametersJson: JSON.stringify(params ?? null) },
     InvokePluginResponseSchema,
   );
   return JSON.parse(resp.responseJson);
@@ -120,7 +120,7 @@ export interface PluginHostApi {
   getContextMenuItems(): Array<{ id: string; label: string; fn: (asset: AssetContext) => void }>;
 }
 
-const pluginHost: PluginHostApi = {
+const basePluginHost: PluginHostApi = {
   registerTab(id, label, iconClass, render, chromeLess) {
     registeredTabs.push({ id, label, iconClass, render, chromeLess });
   },
@@ -134,7 +134,7 @@ const pluginHost: PluginHostApi = {
     registeredContextMenuItems.push({ id, label, fn });
   },
   callService(method, params) {
-    return invokePlugin(method, params);
+    return invokePlugin("", method, params);
   },
   convertFileSrc(filePath: string) {
     return convertFileSrc(filePath);
@@ -154,13 +154,28 @@ const pluginHost: PluginHostApi = {
   },
 };
 
+/**
+ * Per-plugin facade over the base host. Bundles capture `window.PluginHost` at
+ * load time, so swapping the global right before a bundle executes binds that
+ * plugin's `callService` to its own name — the backend uses it to scope
+ * `PluginDbExecute`/`PluginDbQuery` to `.curator/plugin_data/<plugin>/`.
+ */
+function makePluginHostFacade(pluginName: string): PluginHostApi {
+  return {
+    ...basePluginHost,
+    callService(method, params) {
+      return invokePlugin(pluginName, method, params);
+    },
+  };
+}
+
 declare global {
   interface Window {
     PluginHost: PluginHostApi;
   }
 }
 
-window.PluginHost = pluginHost;
+window.PluginHost = basePluginHost;
 
 // ---------------------------------------------------------------------------
 // Bundle Loading
@@ -173,6 +188,8 @@ function executePluginBundle(code: string, pluginName: string, pluginDir: string
   // can construct absolute paths for local binary assets and temporary files.
   (window as any).__curator_plugin_dir__ = pluginDir;
   (window as any).__curator_workspace_root__ = workspaceRoot;
+  // Bind callService to this plugin so the backend can scope plugin DB access.
+  window.PluginHost = makePluginHostFacade(pluginName);
   const script = document.createElement("script");
   script.textContent = code;
   script.setAttribute("data-plugin", pluginName);
@@ -180,6 +197,7 @@ function executePluginBundle(code: string, pluginName: string, pluginDir: string
   document.head.removeChild(script);
   delete (window as any).__curator_plugin_dir__;
   delete (window as any).__curator_workspace_root__;
+  window.PluginHost = basePluginHost;
 }
 
 function clearRegistry() {

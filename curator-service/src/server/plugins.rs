@@ -22,6 +22,7 @@ impl PluginsServiceImpl {
 
 async fn dispatch_plugin_command(
     ctx: &Arc<ClientContext>,
+    plugin_id: &str,
     command: &str,
     params: &serde_json::Value,
 ) -> Result<serde_json::Value, Status> {
@@ -363,12 +364,14 @@ async fn dispatch_plugin_command(
                     crate::handlers::plugin_runtime::progress_mut(&progress, &plugin, |s| {
                         s.status = "failed".to_string();
                         s.error = Some(e.to_string());
-                    });
+                    })
+                    .await;
                     crate::handlers::plugin_runtime::progress_log(
                         &progress,
                         &plugin,
                         format!("[ERROR] {e}"),
-                    );
+                    )
+                    .await;
                 }
             });
             Ok(serde_json::json!({
@@ -393,6 +396,223 @@ async fn dispatch_plugin_command(
                     "error": p.error,
                 }
             }))
+        }
+
+        "CheckTool" => {
+            let tool = params["tool"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing tool"))?;
+            match handlers::tools::check_tool(&ctx.data_dir, &ctx.settings, tool).await {
+                Ok(s) => Ok(serde_json::json!({
+                    "CheckToolResult": {
+                        "installed": s.available,
+                        "path": s.resolved_path,
+                        "version": s.version,
+                        "portable_path": s.portable_path,
+                    }
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "Error": { "message": e.to_string() }
+                })),
+            }
+        }
+
+        "SetToolPath" => {
+            let tool = params["tool"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing tool"))?;
+            let path = params["path"].as_str().map(|s| s.to_string());
+            match handlers::tools::set_tool_path(&ctx.data_dir, &ctx.settings, tool, path).await {
+                Ok(()) => Ok(serde_json::json!("Success")),
+                Err(e) => Ok(serde_json::json!({
+                    "Error": { "message": e.to_string() }
+                })),
+            }
+        }
+
+        "InstallTool" => {
+            let tool = params["tool"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing tool"))?;
+            match handlers::tools::install_tool(&ctx.data_dir, tool, ctx.tool_install_progress.clone()).await {
+                Ok(outcome) => Ok(serde_json::json!({
+                    "InstallToolResult": { "started": outcome.started, "error": outcome.error }
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "InstallToolResult": { "started": false, "error": e.to_string() }
+                })),
+            }
+        }
+
+        "GetToolInstallProgress" => {
+            let tool = params["tool"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing tool"))?;
+            let p = handlers::tools::get_tool_install_progress(&ctx.tool_install_progress, tool).await;
+            Ok(serde_json::json!({
+                "GetToolInstallProgressResult": {
+                    "status": p.status,
+                    "percent": p.percent,
+                    "logs": p.logs,
+                    "error": p.error,
+                }
+            }))
+        }
+
+        "ResolveOutputPath" => {
+            let job_id = params["job_id"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing job_id"))?;
+            let output_path = std::path::PathBuf::from(handlers::resolve_relative_path(
+                &ctx.data_dir,
+                params["output_path"].as_str().unwrap_or_default(),
+            ));
+            let auto_rename = params["auto_rename"].as_bool().unwrap_or(false);
+            let resolved = handlers::download::resolve_output_path(
+                &ctx.download_jobs,
+                &ctx.download_path_claims,
+                job_id,
+                &output_path,
+                auto_rename,
+            )
+            .await;
+            Ok(serde_json::json!({
+                "ResolveOutputPathResult": {
+                    "output_path": resolved.to_string_lossy().into_owned()
+                }
+            }))
+        }
+
+        "DownloadStart" => {
+            let engine_id = params["engine"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing engine"))?;
+            let url = params["url"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing url"))?;
+            let job_id = params["job_id"]
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            let output_path = std::path::PathBuf::from(handlers::resolve_relative_path(
+                &ctx.data_dir,
+                params["output_path"].as_str().unwrap_or_default(),
+            ));
+            let engine = ctx
+                .engines
+                .get(engine_id)
+                .cloned()
+                .ok_or_else(|| Status::invalid_argument(format!("unknown engine: {engine_id}")))?;
+
+            let job = handlers::download::DownloadJob {
+                job_id: job_id.clone(),
+                engine: engine_id.to_string(),
+                url: url.to_string(),
+                output_path,
+                max_connections: params["max_connections"].as_u64().unwrap_or(8) as u16,
+                speed_limit_kb: params["speed_limit_kb"].as_u64(),
+                user_agent: params["user_agent"].as_str().map(|s| s.to_string()),
+                headers: params["headers"]
+                    .as_array()
+                    .map(|a| a.iter().filter_map(|h| h.as_str().map(|s| s.to_string())).collect())
+                    .unwrap_or_default(),
+                max_tries: params["max_tries"].as_u64(),
+                timeout_secs: params["timeout_secs"].as_u64(),
+                auto_rename: params["auto_rename"].as_bool().unwrap_or(false),
+            };
+
+            if let Err(e) = handlers::download::start_download(
+                job,
+                engine,
+                ctx.data_dir.clone(),
+                ctx.settings.clone(),
+                ctx.download_jobs.clone(),
+                ctx.download_cancels.clone(),
+                ctx.download_path_claims.clone(),
+            )
+            .await
+            {
+                return Ok(serde_json::json!({
+                    "Error": { "message": e.to_string() }
+                }));
+            }
+            Ok(serde_json::json!({
+                "DownloadStartResult": { "job_id": job_id }
+            }))
+        }
+
+        "DownloadProgress" => {
+            let job_id = params["job_id"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing job_id"))?;
+            let p = handlers::download::get_download_progress(&ctx.download_jobs, job_id).await;
+            Ok(serde_json::json!({
+                "DownloadProgressResult": {
+                    "running": p.running,
+                    "status": p.status,
+                    "percent": p.percent,
+                    "downloaded_bytes": p.downloaded_bytes,
+                    "total_bytes": p.total_bytes,
+                    "speed_bps": p.speed_bps,
+                    "eta_secs": p.eta_secs,
+                    "connections": p.connections,
+                    "output_path": p.output_path,
+                    "error": p.error,
+                    "logs": p.logs,
+                    "command": p.command,
+                    "engine": p.engine,
+                }
+            }))
+        }
+
+        "DownloadCancel" => {
+            let job_id = params["job_id"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing job_id"))?;
+            handlers::download::cancel_download(&ctx.download_jobs, &ctx.download_cancels, job_id)
+                .await
+                .map_err(internal_status)?;
+            Ok(serde_json::json!("Success"))
+        }
+
+        "PluginDbExecute" => {
+            let db = params["db"].as_str().unwrap_or("plugin.db");
+            let sql = params["sql"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing sql"))?;
+            if plugin_id.is_empty() {
+                return Err(Status::invalid_argument("missing plugin_id"));
+            }
+            let params_arr = params["params"].as_array().cloned().unwrap_or_default();
+            match handlers::plugin_db::plugin_db_execute(&ctx.data_dir, plugin_id, db, sql, &params_arr)
+                .await
+            {
+                Ok(rows_affected) => Ok(serde_json::json!({
+                    "PluginDbExecuteResult": { "rows_affected": rows_affected }
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "Error": { "message": e.to_string() }
+                })),
+            }
+        }
+
+        "PluginDbQuery" => {
+            let db = params["db"].as_str().unwrap_or("plugin.db");
+            let sql = params["sql"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing sql"))?;
+            if plugin_id.is_empty() {
+                return Err(Status::invalid_argument("missing plugin_id"));
+            }
+            let params_arr = params["params"].as_array().cloned().unwrap_or_default();
+            match handlers::plugin_db::plugin_db_query(&ctx.data_dir, plugin_id, db, sql, &params_arr).await {
+                Ok(rows) => Ok(serde_json::json!({
+                    "PluginDbQueryResult": { "rows": rows }
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "Error": { "message": e.to_string() }
+                })),
+            }
         }
 
         unknown => Err(Status::invalid_argument(format!("Unknown plugin command: {unknown}"))),
@@ -477,7 +697,7 @@ impl PluginsService for PluginsServiceImpl {
                 .map_err(|e| Status::invalid_argument(format!("invalid parameters_json: {e}")))?
         };
 
-        let response = dispatch_plugin_command(&self.ctx, &req.command, &params).await?;
+        let response = dispatch_plugin_command(&self.ctx, &req.plugin_id, &req.command, &params).await?;
         let response_json = serde_json::to_string(&response)
             .map_err(|e| internal_status(format!("failed to serialize response: {e}")))?;
         Ok(TonicResponse::new(InvokePluginResponse { response_json }))

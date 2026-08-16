@@ -1,0 +1,12 @@
+{
+  "name": "aria2-downloader",
+  "version": "1.0.0",
+  "description": "High-speed direct download manager powered by the native aria2 engine (HTTP, HTTPS, FTP, and range-request downloads) running as a pure JavaScript plugin - no web server, no runtime downloads.",
+  "author": "Project Curator",
+  "permissions": ["ui:inject"],
+  "components": {
+    "ui": "index.js",
+    "type": "javascript"
+  },
+  "hooks": []
+}

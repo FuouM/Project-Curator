@@ -173,6 +173,7 @@ pub async fn update_settings_logic(
     let preferred = s.preferred_tagger;
     let enabled_plugins = s.enabled_plugins.clone();
     let s_ffmpeg_path = s.ffmpeg_path.clone();
+    let s_tool_paths = s.tool_paths.clone();
 
     let settings_to_save = s.clone();
     let data_dir_buf = data_dir.to_path_buf();
@@ -226,5 +227,6 @@ pub async fn update_settings_logic(
         preferred_tagger: preferred,
         enabled_plugins,
         ffmpeg_path: s_ffmpeg_path,
+        tool_paths: s_tool_paths,
     })
 }

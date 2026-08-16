@@ -73,20 +73,21 @@ struct InjectSpec {
     tag: String,
 }
 
-pub fn progress_mut<F>(map: &PluginRuntimeProgressMap, plugin: &str, f: F)
+pub async fn progress_mut<F>(map: &PluginRuntimeProgressMap, plugin: &str, f: F)
 where
     F: FnOnce(&mut PluginRuntimeProgress),
 {
-    let mut guard = map.blocking_lock();
+    let mut guard = map.lock().await;
     let cell = guard.entry(plugin.to_string()).or_default();
     f(cell);
 }
 
-pub fn progress_log(map: &PluginRuntimeProgressMap, plugin: &str, line: impl Into<String>) {
+pub async fn progress_log(map: &PluginRuntimeProgressMap, plugin: &str, line: impl Into<String>) {
     let line = line.into();
     progress_mut(map, plugin, |s| {
         s.logs.push(line.clone());
-    });
+    })
+    .await;
     tracing::info!("plugin runtime installer [{plugin}]: {line}");
 }
 
@@ -98,7 +99,9 @@ pub async fn install_plugin_runtime(
     plugin_name: String,
     progress: PluginRuntimeProgressMap,
 ) -> anyhow::Result<()> {
-    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+    // Run on the async runtime (models.rs pattern) so the tokio progress mutex
+    // can be taken with `.lock().await` throughout the pipeline.
+    let join = tokio::spawn(async move {
         let root = plugin_root(&data_dir)?;
         let plugin_dir = root.join(&plugin_name);
         let spec = read_spec(&plugin_dir)?;
@@ -113,14 +116,15 @@ pub async fn install_plugin_runtime(
         std::fs::create_dir_all(&runtime_dir)?;
 
         let zip_path = std::env::temp_dir().join(format!("{plugin_name}_v{}.zip", spec.zip_root));
-        download_archive(&spec, &zip_path, &plugin_name, &progress)?;
-        extract_archive(&spec, &zip_path, &runtime_dir, &plugin_name, &progress)?;
-        inject_bridge(&spec, &plugin_dir, &runtime_dir, &plugin_name, &progress)?;
+        download_archive(&spec, &zip_path, &plugin_name, &progress).await?;
+        extract_archive(&spec, &zip_path, &runtime_dir, &plugin_name, &progress).await?;
+        inject_bridge(&spec, &plugin_dir, &runtime_dir, &plugin_name, &progress).await?;
         std::fs::remove_file(&zip_path).ok(); // temp cleanup, ignore failure
         Ok(())
-    })
-    .await
-    .map_err(|e| anyhow::anyhow!("installer task panicked: {e}"))?
+    });
+
+    join.await
+        .map_err(|e| anyhow::anyhow!("installer task panicked: {e}"))?
 }
 
 fn read_spec(plugin_dir: &Path) -> anyhow::Result<InstallSpec> {
@@ -135,7 +139,7 @@ fn read_spec(plugin_dir: &Path) -> anyhow::Result<InstallSpec> {
     Ok(spec)
 }
 
-fn download_archive(
+async fn download_archive(
     spec: &InstallSpec,
     zip_path: &Path,
     plugin: &str,
@@ -144,8 +148,9 @@ fn download_archive(
     progress_mut(progress, plugin, |s| {
         s.status = "downloading".to_string();
         s.percent = 0;
-    });
-    progress_log(progress, plugin, format!("Downloading {}", spec.archive_url));
+    })
+    .await;
+    progress_log(progress, plugin, format!("Downloading {}", spec.archive_url)).await;
     let config = ureq::config::Config::builder()
         .max_redirects(10)
         .timeout_global(Some(std::time::Duration::from_secs(120)))
@@ -163,7 +168,7 @@ fn download_archive(
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(0);
-    progress_log(progress, plugin, format!("Response size: {} bytes", total));
+    progress_log(progress, plugin, format!("Response size: {} bytes", total)).await;
 
     let tmp_path = zip_path.with_extension("zip.tmp");
     let mut file = std::fs::File::create(&tmp_path)?;
@@ -179,19 +184,19 @@ fn download_archive(
         done += n as u64;
         if total > 0 {
             let pct = ((done as f64 / total as f64) * 90.0) as u32;
-            progress_mut(progress, plugin, |s| s.percent = pct);
+            progress_mut(progress, plugin, |s| s.percent = pct).await;
             if pct >= last_logged_pct + 10 {
                 last_logged_pct = pct;
-                progress_log(progress, plugin, format!("Downloading… {pct}%"));
+                progress_log(progress, plugin, format!("Downloading… {pct}%")).await;
             }
         }
     }
     drop(file);
     std::fs::rename(&tmp_path, zip_path)?;
-    progress_log(progress, plugin, "Download complete.");
+    progress_log(progress, plugin, "Download complete.").await;
     Ok(())
 }
-fn extract_archive(
+async fn extract_archive(
     spec: &InstallSpec,
     zip_path: &Path,
     runtime_dir: &Path,
@@ -201,15 +206,17 @@ fn extract_archive(
     progress_mut(progress, plugin, |s| {
         s.status = "extracting".to_string();
         s.percent = 90;
-    });
-    progress_log(progress, plugin, "Extracting runtime…");
+    })
+    .await;
+    progress_log(progress, plugin, "Extracting runtime…").await;
 
     let file = std::fs::File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| anyhow::anyhow!("open zip: {e}"))?;
     let prefix = format!("{}/", spec.zip_root);
-    progress_log(progress, plugin, format!("Archive entries: {}", archive.len()));
+    progress_log(progress, plugin, format!("Archive entries: {}", archive.len())).await;
 
     let mut written = 0usize;
+    let mut extracted_lines: Vec<String> = Vec::new();
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| anyhow::anyhow!("zip entry {i}: {e}"))?;
         let full = entry.name().to_string();
@@ -228,7 +235,12 @@ fn extract_archive(
         let mut out = std::fs::File::create(&out_path)?;
         std::io::copy(&mut entry, &mut out)?;
         written += 1;
-        progress_log(progress, plugin, format!("Extracted {rel}"));
+        // Deferred: `zip::ZipFile` is not Send, so we must not hold it across
+        // an `.await`. Emit the per-file lines after the loop closes `entry`.
+        extracted_lines.push(format!("Extracted {rel}"));
+    }
+    for line in extracted_lines {
+        progress_log(progress, plugin, line).await;
     }
 
     if !runtime_dir.join("index.html").is_file() {
@@ -240,7 +252,7 @@ fn extract_archive(
     // pinned version is re-audited instead of silently producing wrong output.
     if let Some(verify) = &spec.verify {
         let target = runtime_dir.join(&verify.path);
-        progress_log(progress, plugin, format!("Verifying SHA-256 of {}", verify.path));
+        progress_log(progress, plugin, format!("Verifying SHA-256 of {}", verify.path)).await;
         let bytes = std::fs::read(&target)
             .map_err(|e| anyhow::anyhow!("missing {} after extraction: {e}", verify.path))?;
         let actual = {
@@ -257,14 +269,14 @@ fn extract_archive(
                 verify.sha256
             );
         }
-        progress_log(progress, plugin, "Hash verified.");
+        progress_log(progress, plugin, "Hash verified.").await;
     }
 
-    progress_log(progress, plugin, format!("Extracted {written} files."));
+    progress_log(progress, plugin, format!("Extracted {written} files.")).await;
     Ok(())
 }
 
-fn inject_bridge(
+async fn inject_bridge(
     spec: &InstallSpec,
     plugin_dir: &Path,
     runtime_dir: &Path,
@@ -274,7 +286,7 @@ fn inject_bridge(
     if let Some(inject) = &spec.inject {
         let source = plugin_dir.join(&inject.source);
         let dest = runtime_dir.join(&inject.source);
-        progress_log(progress, plugin, format!("Injecting {}", inject.source));
+        progress_log(progress, plugin, format!("Injecting {}", inject.source)).await;
         std::fs::copy(&source, &dest)?;
 
         let index_path = runtime_dir.join("index.html");
@@ -282,7 +294,7 @@ fn inject_bridge(
         if html.contains(&inject.tag) {
             // idempotent
         } else {
-            progress_log(progress, plugin, format!("Patching index.html ({} → before </body>)", inject.tag));
+            progress_log(progress, plugin, format!("Patching index.html ({} → before </body>)", inject.tag)).await;
             let patched = html.replace("</body>", &format!("{}\n</body>", inject.tag));
             std::fs::write(&index_path, patched)?;
         }
@@ -290,8 +302,9 @@ fn inject_bridge(
     progress_mut(progress, plugin, |s| {
         s.status = "completed".to_string();
         s.percent = 100;
-    });
-    progress_log(progress, plugin, "Runtime installed.");
+    })
+    .await;
+    progress_log(progress, plugin, "Runtime installed.").await;
     Ok(())
 }
 

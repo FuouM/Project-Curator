@@ -58,6 +58,15 @@ struct ClientContext {
     benchmark_progress: handlers::BenchmarkProgressMap,
     transcode_progress: handlers::transcode::TranscodeProgressMap,
     plugin_runtime_progress: handlers::plugin_runtime::PluginRuntimeProgressMap,
+    /// Generic download-job state, engine registry, and per-job cancel handles
+    /// (aria2 now; future yt-dlp is additive). Plugins drive downloads through
+    /// the generic `DownloadStart` / `DownloadProgress` / `DownloadCancel`.
+    download_jobs: handlers::download::DownloadJobsMap,
+    download_cancels: handlers::download::DownloadCancelMap,
+    download_path_claims: handlers::download::DownloadPathClaims,
+    engines: handlers::download::EngineRegistry,
+    /// Generic tool install progress (aria2 portable binary, future tools).
+    tool_install_progress: handlers::tools::ToolInstallProgressMap,
     /// Service-side safety classifier and its coalescing import batch queue.
     safety: handlers::safety::SafetyService,
     /// Serializes folder scan/import write bursts. gRPC handles every RPC in
@@ -96,6 +105,10 @@ pub(crate) struct AppSettings {
     /// Explicit FFmpeg executable path, if the user configured one.
     #[serde(default)]
     ffmpeg_path: Option<String>,
+    /// Explicit executable paths for auxiliary tools, keyed by tool id
+    /// (`"ffmpeg"`, `"aria2"`, …), written via the generic `SetToolPath`.
+    #[serde(default)]
+    tool_paths: std::collections::HashMap<String, Option<String>>,
 }
 
 fn default_idle_timeout() -> u64 {
@@ -121,6 +134,7 @@ impl Default for AppSettings {
             preferred_tagger: TaggerModel::Camie,
             enabled_plugins: std::collections::HashMap::new(),
             ffmpeg_path: None,
+            tool_paths: std::collections::HashMap::new(),
         }
     }
 }
@@ -364,6 +378,21 @@ async fn main() -> Result<(), Error> {
     let plugin_runtime_progress: handlers::plugin_runtime::PluginRuntimeProgressMap =
         Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
 
+    let download_jobs: handlers::download::DownloadJobsMap =
+        Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+    let download_cancels: handlers::download::DownloadCancelMap =
+        Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+    let download_path_claims: handlers::download::DownloadPathClaims =
+        Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+    let engines: handlers::download::EngineRegistry = Arc::new(
+        std::collections::HashMap::from([(
+            "aria2",
+            Arc::new(handlers::download::aria2::Aria2Engine) as Arc<dyn handlers::download::DownloadEngine>,
+        )]),
+    );
+    let tool_install_progress: handlers::tools::ToolInstallProgressMap =
+        Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+
     let data_dir_arc = Arc::new(data_dir);
     let safety = handlers::safety::SafetyService::new((*data_dir_arc).clone());
 
@@ -382,6 +411,11 @@ async fn main() -> Result<(), Error> {
         benchmark_progress,
         transcode_progress,
         plugin_runtime_progress,
+        download_jobs,
+        download_cancels,
+        download_path_claims,
+        engines,
+        tool_install_progress,
         safety,
         import_lock: tokio::sync::Mutex::new(()),
     });
