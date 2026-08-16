@@ -11,6 +11,7 @@ pub struct BackgroundWorker {
     db: SqlitePool,
     model_manager: Arc<ModelManager>,
     vector_index: Arc<VectorIndex>,
+    safety: Arc<crate::handlers::safety::SafetyService>,
 }
 
 const INDEX_SAVE_BATCH_INTERVAL: u32 = 8;
@@ -26,13 +27,16 @@ impl BackgroundWorker {
         db: SqlitePool,
         model_manager: Arc<ModelManager>,
         vector_index: Arc<VectorIndex>,
+        safety: Arc<crate::handlers::safety::SafetyService>,
     ) -> Self {
         Self {
             db,
             model_manager,
             vector_index,
+            safety,
         }
     }
+
 
     pub fn start(self) {
         // Reset any leftover 'preprocessing' states to 'pending' on startup,
@@ -235,6 +239,7 @@ impl BackgroundWorker {
         let db_inf = self.db.clone();
         let mm_inf = self.model_manager.clone();
         let vi_inf = self.vector_index.clone();
+        let safety_inf = self.safety.clone();
 
         tokio::spawn(async move {
             info!("Pipelined indexing/inference stage started.");
@@ -259,6 +264,7 @@ impl BackgroundWorker {
                 match inference_res {
                     Ok(Ok(embeddings_results)) => {
                         let mut added_any = false;
+                        let mut indexed_images = Vec::with_capacity(images.len());
 
                         // Batch all per-image state updates into a single transaction
                         let mut tx = match db_inf.begin().await {
@@ -276,7 +282,7 @@ impl BackgroundWorker {
                                     {
                                         error!(
                                             "Failed to index vector in USearch for image {}: {:?}",
-                                            image.id, e
+                                             image.id, e
                                         );
                                         let _ = sqlx::query("UPDATE image_vectors SET vector_state = 'failed' WHERE image_id = ? AND source_id = ?")
                                             .bind(image.id)
@@ -294,9 +300,6 @@ impl BackgroundWorker {
                                     );
 
                                     // Update SQLite database to set state to ready.
-                                    // BLOB layout is native-endian (bytemuck cast_slice) and is
-                                    // only ever read back on the same machine via bytes_to_vector
-                                    // (explicit LE) - NOT portable across endianness.
                                     let update_res = sqlx::query(
                                         "UPDATE image_vectors 
                                          SET vector_state = 'ready', vector_id = ?, vector_checksum = ?, vector = ?, created_at = CURRENT_TIMESTAMP
@@ -312,6 +315,8 @@ impl BackgroundWorker {
 
                                     if let Err(e) = update_res {
                                         error!("Failed to update image_vectors in DB for image {}: {:?}", image.id, e);
+                                    } else {
+                                        indexed_images.push(image);
                                     }
                                 }
                                 Err(e) => {
@@ -337,6 +342,24 @@ impl BackgroundWorker {
                                 error!("Failed to save USearch index after batch processing: {:?}", e);
                             }
                         }
+
+                        // Stage 3: Sequential post-embed safety classification for newly indexed images
+                        let safety_batch: Vec<(i64, String)> = indexed_images
+                            .into_iter()
+                            .map(|img| {
+                                let p = curator_core::video::decode_path(
+                                    &img.current_filepath,
+                                    img.video_frame_path.as_deref(),
+                                )
+                                .to_string_lossy()
+                                .into_owned();
+                                (img.id, p)
+                            })
+                            .collect();
+
+                        if !safety_batch.is_empty() {
+                            safety_inf.classify_and_write(&db_inf, safety_batch).await;
+                        }
                     }
                     Ok(Err(e)) => {
                         error!("Batch inference failed: {:?}", e);
@@ -361,8 +384,50 @@ impl BackgroundWorker {
                 }
             }
         });
+
+        // Stage 3 Task: Background safety backfill reconciler (runs on unclassified images when idle)
+        {
+            let db_safety = self.db.clone();
+            let safety_backfill = self.safety.clone();
+            tokio::spawn(async move {
+                info!("Background safety backfill worker started.");
+                loop {
+                    sleep(Duration::from_secs(6)).await;
+
+                    let unclassified: Vec<(i64, String, Option<String>)> = match sqlx::query_as(
+                        "SELECT id, current_filepath, video_frame_path FROM images 
+                         WHERE safe_score IS NULL AND deleted_at IS NULL AND is_missing = 0 
+                         LIMIT 8",
+                    )
+                    .fetch_all(&db_safety)
+                    .await
+                    {
+                        Ok(rows) => rows,
+                        Err(_) => continue,
+                    };
+
+                    if unclassified.is_empty() {
+                        sleep(Duration::from_secs(15)).await;
+                        continue;
+                    }
+
+                    let batch: Vec<(i64, String)> = unclassified
+                        .into_iter()
+                        .map(|(id, fp, vfp)| {
+                            let p = curator_core::video::decode_path(&fp, vfp.as_deref())
+                                .to_string_lossy()
+                                .into_owned();
+                            (id, p)
+                        })
+                        .collect();
+
+                    safety_backfill.classify_and_write(&db_safety, batch).await;
+                }
+            });
+        }
     }
 }
+
 
 use std::path::Path;
 

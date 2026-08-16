@@ -24,12 +24,7 @@ pub const SAFETY_TICK_MS: u64 = 250;
 pub struct SafetyService {
     classifier: Arc<std::sync::Mutex<Option<Arc<SafetyClassifier>>>>,
     data_dir: Arc<PathBuf>,
-    /// Coalescing batch queue fed by the import/upsert path (`enqueue_import`).
-    pending: Arc<Mutex<Vec<(i64, String)>>>,
     progress: Arc<Mutex<SafetyRescanState>>,
-    /// Single-flusher guarantees (one background drain at a time, drained to empty).
-    flush_busy: Arc<tokio::sync::Mutex<()>>,
-    timer_armed: Arc<AtomicBool>,
     model_missing_logged: Arc<AtomicBool>,
 }
 
@@ -47,10 +42,7 @@ impl SafetyService {
         Self {
             classifier: Arc::new(std::sync::Mutex::new(None)),
             data_dir: Arc::new(data_dir),
-            pending: Arc::new(Mutex::new(Vec::new())),
             progress: Arc::new(Mutex::new(SafetyRescanState::default())),
-            flush_busy: Arc::new(tokio::sync::Mutex::new(())),
-            timer_armed: Arc::new(AtomicBool::new(false)),
             model_missing_logged: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -68,64 +60,12 @@ impl SafetyService {
         Ok(c)
     }
 
-    /// Enqueue one imported image for safety classification. A single background
-    /// flusher drains the queue every `SAFETY_BATCH_FLUSH` rows or `SAFETY_TICK_MS`,
-    /// whichever fires first, classifying via `classify_images_batch` and writing
-    /// the five per-class columns. When the model file is absent the batch is
-    /// dropped (columns stay `NULL`) — never a silent inference fallback.
-    pub async fn enqueue_import(&self, db: SqlitePool, image_id: i64, filepath: String) {
-        let flush_needed = {
-            let mut q = self.pending.lock().await;
-            q.push((image_id, filepath));
-            q.len() >= SAFETY_BATCH_FLUSH
-        };
-
-        if flush_needed {
-            self.schedule_flush(db).await;
-        } else if self
-            .timer_armed
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
-        {
-            let this = self.clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(Duration::from_millis(SAFETY_TICK_MS)).await;
-                this.schedule_flush(db).await;
-            });
-        }
-    }
-
-    /// Begin draining the coalescing queue unless a flush is already running.
-    async fn schedule_flush(&self, db: SqlitePool) {
-        if self.flush_busy.try_lock().is_err() {
-            return; // a flusher already owns the drain lock
-        }
-        let this = self.clone();
-        tokio::spawn(async move {
-            let _busy = this.flush_busy.lock().await;
-            this.drain_until_empty(&db).await;
-            this.timer_armed.store(false, Ordering::SeqCst);
-        });
-    }
-
-    async fn drain_until_empty(&self, db: &SqlitePool) {
-        loop {
-            let batch = {
-                let mut q = self.pending.lock().await;
-                if q.is_empty() {
-                    return;
-                }
-                let take_count = q.len().min(SAFETY_BATCH_FLUSH);
-                q.drain(..take_count).collect::<Vec<_>>()
-            };
-            self.classify_and_write(db, batch).await;
-        }
-    }
-
-
     /// Classify one batch and write the per-class columns. Absent model file or a
     /// failed run simply leaves the columns `NULL` (a later rescan retries).
-    async fn classify_and_write(&self, db: &SqlitePool, batch: Vec<(i64, String)>) {
+    pub async fn classify_and_write(&self, db: &SqlitePool, batch: Vec<(i64, String)>) {
+        if batch.is_empty() {
+            return;
+        }
         let model_path = SafetyClassifier::resolve_model_path(&self.data_dir);
         if !model_path.exists() {
             if !self
@@ -150,6 +90,7 @@ impl SafetyService {
         let results = classify_paths(&classifier, &batch).await;
         write_classifications(db, &results).await;
     }
+
 
     /// Classify a single arbitrary image file (ephemeral, library-agnostic).
     /// Unlike the import path — where a missing model is a no-op — the toolbox

@@ -329,8 +329,12 @@ async fn main() -> Result<(), Error> {
     ));
     info!("OCR detector configured (PP-OCRv6 medium, models load on first use)");
 
-    let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone());
+    let data_dir_arc = Arc::new(data_dir);
+    let safety = Arc::new(handlers::safety::SafetyService::new((*data_dir_arc).clone()));
+
+    let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone(), safety.clone());
     worker.start();
+
 
     let settings_arc = Arc::new(tokio::sync::Mutex::new(settings));
 
@@ -391,9 +395,6 @@ async fn main() -> Result<(), Error> {
     let tool_install_progress: handlers::tools::ToolInstallProgressMap =
         Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
 
-    let data_dir_arc = Arc::new(data_dir);
-    let safety = handlers::safety::SafetyService::new((*data_dir_arc).clone());
-
     let ctx = Arc::new(ClientContext {
         db,
         model_manager,
@@ -414,10 +415,11 @@ async fn main() -> Result<(), Error> {
         download_path_claims,
         engines,
         tool_install_progress,
-        safety,
+        safety: (*safety).clone(),
         import_controller: handlers::import::ImportController::new(),
         import_lock: tokio::sync::Mutex::new(()),
     });
+
 
 
     info!("Starting Tonic gRPC Service...");

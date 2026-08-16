@@ -247,11 +247,9 @@ impl SafetyClassifier {
     }
 }
 
-fn err_results(msg: String, n: usize) -> Vec<Result<SafetyClassification>> {
-    (0..n).map(|_| Err(anyhow::anyhow!("{msg}"))).collect()
-}
 
 fn softmax(logits: &[f32]) -> Vec<f32> {
+
     if logits.is_empty() {
         return Vec::new();
     }

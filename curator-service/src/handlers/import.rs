@@ -419,15 +419,14 @@ async fn upsert_image_row(
 }
 
 pub async fn import_paths_logic(
-
     paths: &[String],
     db: &SqlitePool,
     active: EmbeddingModel,
     ffmpeg: Option<&Path>,
     data_dir: &Path,
-    safety: &SafetyService,
     controller: &ImportController,
 ) -> Result<(i64, String, usize, Vec<i64>)> {
+
     controller.reset();
 
     let clean_paths: Vec<String> = paths
@@ -639,24 +638,14 @@ pub async fn import_paths_logic(
             .await?,
         };
 
-        let is_new = existing.is_none();
         let img_id = upsert_image_row(&mut tx, &item, Some(item_folder_id), clip_source_id, existing)
             .await?;
 
         upsert_animation_metadata(&mut tx, img_id, &item.media).await?;
         upsert_video_metadata(&mut tx, img_id, &item.media).await?;
 
-        // Only enqueue newly inserted images for safety classification
-        if is_new {
-            let classify_path = item
-                .media
-                .video_frame_path
-                .clone()
-                .unwrap_or_else(|| item.path_str.clone());
-            safety.enqueue_import(db.clone(), img_id, classify_path).await;
-        }
-
         written_count += 1;
+
         if written_count % 20 == 0 || written_count == total_count as i64 {
             controller.set_writing_db(total_count as i64, written_count);
         }
@@ -686,7 +675,6 @@ pub async fn import_image_logic(
     active: EmbeddingModel,
     ffmpeg: Option<&Path>,
     data_dir: &Path,
-    safety: &SafetyService,
     controller: &ImportController,
 ) -> Result<(i64, String, usize, Option<i64>)> {
     let (id, sha, count, folder_ids) = import_paths_logic(
@@ -695,12 +683,12 @@ pub async fn import_image_logic(
         active,
         ffmpeg,
         data_dir,
-        safety,
         controller,
     )
     .await?;
     Ok((id, sha, count, folder_ids.into_iter().next()))
 }
+
 
 
 
@@ -830,7 +818,6 @@ pub async fn rescan_folder_logic(
     active: EmbeddingModel,
     ffmpeg: Option<&Path>,
     data_dir: &Path,
-    safety: &SafetyService,
     controller: &ImportController,
 ) -> Result<(i64, i64)> {
     let folder_path: Option<String> =
@@ -858,7 +845,8 @@ pub async fn rescan_folder_logic(
     .await?;
 
     let (_id, _sha, found, _folder_id) =
-        import_image_logic(&path, db, active, ffmpeg, data_dir, safety, controller).await?;
+        import_image_logic(&path, db, active, ffmpeg, data_dir, controller).await?;
+
 
     let after: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM images WHERE folder_id = ? AND deleted_at IS NULL",

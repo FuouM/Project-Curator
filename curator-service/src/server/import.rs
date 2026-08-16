@@ -63,11 +63,11 @@ impl ImportService for ImportServiceImpl {
                 active,
                 ffmpeg.as_deref(),
                 &self.ctx.data_dir,
-                &self.ctx.safety,
                 &self.ctx.import_controller,
             )
             .await
             .map_err(internal_status)?;
+
         Ok(TonicResponse::new(ImportResult {
             image_id,
             sha256,
@@ -162,9 +162,9 @@ impl ImportService for ImportServiceImpl {
             active,
             ffmpeg.as_deref(),
             &self.ctx.data_dir,
-            &self.ctx.safety,
             &self.ctx.import_controller,
         )
+
 
         .await
         .map_err(internal_status)?;
