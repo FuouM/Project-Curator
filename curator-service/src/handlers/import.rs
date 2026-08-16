@@ -377,21 +377,25 @@ pub async fn import_single_image(
         phash: phash.clone(),
         media,
     };
+    let is_new = existing.is_none();
     let id = upsert_image_row(&mut tx, &item, folder_id, clip_source_id, existing).await?;
 
     upsert_animation_metadata(&mut tx, id, &item.media).await?;
     upsert_video_metadata(&mut tx, id, &item.media).await?;
     tx.commit().await?;
 
-    // Coalescing safety queue: videos classify their extracted poster frame.
-    let classify_path = item
-        .media
-        .video_frame_path
-        .clone()
-        .unwrap_or_else(|| path_str.to_string());
-    safety.enqueue_import(db.clone(), id, classify_path).await;
+    // Only enqueue newly inserted images for safety classification
+    if is_new {
+        let classify_path = item
+            .media
+            .video_frame_path
+            .clone()
+            .unwrap_or_else(|| path_str.to_string());
+        safety.enqueue_import(db.clone(), id, classify_path).await;
+    }
 
     Ok((id, sha256))
+
 }
 
 pub async fn import_image_logic(
@@ -542,21 +546,25 @@ pub async fn import_image_logic(
                 .await?,
             };
 
+            let is_new = existing.is_none();
             let img_id = upsert_image_row(&mut tx, &item, Some(folder_id), clip_source_id, existing)
                 .await?;
 
             upsert_animation_metadata(&mut tx, img_id, &item.media).await?;
             upsert_video_metadata(&mut tx, img_id, &item.media).await?;
 
-            // Coalescing safety queue: videos classify their extracted poster frame.
-            let classify_path = item
-                .media
-                .video_frame_path
-                .clone()
-                .unwrap_or_else(|| item.path_str.clone());
-            safety.enqueue_import(db.clone(), img_id, classify_path).await;
+            // Only enqueue newly inserted images for safety classification
+            if is_new {
+                let classify_path = item
+                    .media
+                    .video_frame_path
+                    .clone()
+                    .unwrap_or_else(|| item.path_str.clone());
+                safety.enqueue_import(db.clone(), img_id, classify_path).await;
+            }
 
             if !imported_any {
+
                 first_id = img_id;
                 first_sha = item.sha256;
                 imported_any = true;
