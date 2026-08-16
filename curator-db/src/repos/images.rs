@@ -128,18 +128,23 @@ impl ImageRepo {
             .await?;
 
         let source_id = SourceRepo::resolve_source_id(db, preferred_source).await?;
+        let user_source_id = SourceRepo::resolve_source_id(db, "user").await.unwrap_or(0);
+        let concept_source_id = SourceRepo::resolve_source_id(db, "ai:custom-concepts").await.unwrap_or(0);
 
         let all_tag_rows: Vec<(String, String, f32, Option<String>, bool)> = sqlx::query_as(
             "SELECT t.name, t.category, it.confidence, s.name, (it.is_blacklisted = 1)
              FROM image_tags it
              JOIN tags t ON it.tag_id = t.id
              LEFT JOIN sources s ON it.source_id = s.id
-             WHERE it.image_id = ? AND it.source_id = ? AND (it.is_deleted = 0 OR it.is_blacklisted = 1)",
+             WHERE it.image_id = ? AND it.source_id IN (?, ?, ?) AND (it.is_deleted = 0 OR it.is_blacklisted = 1)",
         )
         .bind(image_id)
         .bind(source_id)
+        .bind(user_source_id)
+        .bind(concept_source_id)
         .fetch_all(db)
         .await?;
+
 
         let mut active_tags = Vec::new();
         let mut blacklisted_tags = Vec::new();
@@ -263,6 +268,8 @@ impl ImageRepo {
         }
 
         let source_id = SourceRepo::resolve_source_id(db, preferred_source).await?;
+        let user_source_id = SourceRepo::resolve_source_id(db, "user").await.unwrap_or(0);
+        let concept_source_id = SourceRepo::resolve_source_id(db, "ai:custom-concepts").await.unwrap_or(0);
         let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
 
         #[derive(sqlx::FromRow)]
@@ -297,15 +304,15 @@ impl ImageRepo {
                    i.note,
                    t.name AS tag_name, t.category AS tag_category, it.confidence, s.name as source_name, COALESCE(it.is_blacklisted, 0) AS is_blacklisted
             FROM images i
-            LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0 AND it.source_id = {source_id}
+            LEFT JOIN image_tags it ON it.image_id = i.id AND it.is_deleted = 0 AND it.source_id IN ({source_id}, {user_source_id}, {concept_source_id})
             LEFT JOIN tags t ON it.tag_id = t.id
             LEFT JOIN sources s ON it.source_id = s.id
             WHERE i.id IN ({}) AND i.deleted_at IS NULL
             ORDER BY i.created_at DESC, i.id DESC
             "#,
-            placeholders,
-            source_id = source_id
+            placeholders
         );
+
         let mut q = sqlx::query_as::<_, BatchImageRow>(&sql);
         for id in ids {
             q = q.bind(id);
@@ -665,3 +672,73 @@ impl ImageRepo {
         Ok(StorageStats { stats })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_get_image_returns_both_ai_and_user_tags() -> Result<()> {
+        let options = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(":memory:")
+            .create_if_missing(true);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await?;
+        sqlx::migrate!("./migrations").run(&pool).await?;
+
+        // 1. Insert test image
+        sqlx::query(
+            "INSERT INTO images (id, sha256, current_filepath, mtime, created_at) VALUES (1, 'hash1', 'C:/test.png', 1000, '2026-08-16 12:00:00')",
+        )
+        .execute(&pool)
+        .await?;
+
+
+        // 2. Insert sources
+        sqlx::query("INSERT INTO sources (id, name, type) VALUES (1, 'ai:camie-tagger-v2', 'ai')")
+            .execute(&pool)
+            .await?;
+        sqlx::query("INSERT INTO sources (id, name, type) VALUES (2, 'user', 'user')")
+            .execute(&pool)
+            .await?;
+
+        // 3. Insert tags
+        sqlx::query("INSERT INTO tags (id, name, category) VALUES (10, 'blonde_hair', 'general')")
+            .execute(&pool)
+            .await?;
+        sqlx::query("INSERT INTO tags (id, name, category) VALUES (20, 'suooo', 'user')")
+            .execute(&pool)
+            .await?;
+
+        // 4. Attach AI tag
+        sqlx::query("INSERT INTO image_tags (image_id, tag_id, source_id, confidence, is_deleted, is_blacklisted) VALUES (1, 10, 1, 0.9, 0, 0)")
+            .execute(&pool)
+            .await?;
+
+        // 5. Attach User tag
+        sqlx::query("INSERT INTO image_tags (image_id, tag_id, source_id, confidence, is_deleted, is_blacklisted) VALUES (1, 20, 2, 1.0, 0, 0)")
+            .execute(&pool)
+            .await?;
+
+        // 6. Query single image with preferred_source = 'ai:camie-tagger-v2'
+        let details = ImageRepo::get_image(1, "ai:camie-tagger-v2", &pool).await?;
+        assert_eq!(details.id, 1);
+        assert_eq!(details.tags.len(), 2, "Expected 2 tags (1 AI tag + 1 User tag)");
+        let tag_names: Vec<&str> = details.tags.iter().map(|t| t.tag.as_str()).collect();
+        assert!(tag_names.contains(&"blonde_hair"));
+        assert!(tag_names.contains(&"suooo"));
+
+        // 7. Query batch images with preferred_source = 'ai:camie-tagger-v2'
+        let batch = ImageRepo::batch_get_images(&[1], "ai:camie-tagger-v2", &pool).await?;
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch[0].tags.len(), 2, "Expected 2 tags in batch query");
+        let batch_tag_names: Vec<&str> = batch[0].tags.iter().map(|t| t.tag.as_str()).collect();
+        assert!(batch_tag_names.contains(&"blonde_hair"));
+        assert!(batch_tag_names.contains(&"suooo"));
+
+        Ok(())
+    }
+}
+
