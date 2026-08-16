@@ -167,11 +167,9 @@ export function renderGalleryHtml(): SafeHtml {
           <span id="gallery-selected-count" style="font-size: 11px; color: var(--sys-text-subtle); display: none;">0 selected</span>
           <button type="button" class="win-button" id="gallery-select-all-btn" style="display: none; font-size: 11px;">Select All</button>
           <button type="button" class="win-button" id="gallery-clear-select-btn" style="display: none; font-size: 11px;">Clear</button>
-          <button type="button" class="win-button primary" id="gallery-teach-concept-btn" style="display: none; font-size: 11px;">
-            <i class="bi bi-magic"></i> Teach Concept (<span id="teach-select-count">0</span>)
-          </button>
           <div class="selection-toolbar-actions extensions-toolbar" style="display: none;"></div>
           <button type="button" class="win-button" id="gallery-lucky-btn">
+
             <i class="bi bi-shuffle"></i> I'm Feeling Lucky
           </button>
           <button type="button" class="win-button ${galleryInfiniteScroll ? 'primary' : ''}" id="gallery-toggle-infinite-scroll-btn">
@@ -272,10 +270,9 @@ export function setupPageJump(jumpBtnId: string, jumpInputId: string, pageRef: {
 export function updateSelectionUI() {
   const countSpan = document.getElementById("gallery-selected-count");
   const searchCountSpan = document.getElementById("search-selected-count");
-  const teachCountSpan = document.getElementById("teach-select-count");
-  const searchTeachCountSpan = document.getElementById("search-teach-select-count");
 
   const toggleBtn = document.getElementById("gallery-toggle-select-mode-btn");
+
   const searchToggleBtn = document.getElementById("search-toggle-select-mode-btn");
 
   const selectAllBtn = document.getElementById("gallery-select-all-btn");
@@ -283,9 +280,6 @@ export function updateSelectionUI() {
 
   const clearBtn = document.getElementById("gallery-clear-select-btn");
   const searchClearBtn = document.getElementById("search-clear-select-btn");
-
-  const teachBtn = document.getElementById("gallery-teach-concept-btn");
-  const searchTeachBtn = document.getElementById("search-teach-concept-btn");
 
   const galleryGrid = document.getElementById("gallery-grid");
   const searchGrid = document.getElementById("search-results-grid");
@@ -313,20 +307,15 @@ export function updateSelectionUI() {
     searchCountSpan.style.display = isSelectMode ? "inline" : "none";
   }
 
-  if (teachCountSpan) teachCountSpan.textContent = count.toString();
-  if (searchTeachCountSpan) searchTeachCountSpan.textContent = count.toString();
-
   if (selectAllBtn) selectAllBtn.style.display = isSelectMode ? "inline-block" : "none";
   if (searchSelectAllBtn) searchSelectAllBtn.style.display = isSelectMode ? "inline-block" : "none";
 
   if (clearBtn) clearBtn.style.display = isSelectMode && count > 0 ? "inline-block" : "none";
   if (searchClearBtn) searchClearBtn.style.display = isSelectMode && count > 0 ? "inline-block" : "none";
 
-  if (teachBtn) teachBtn.style.display = count > 0 ? "inline-block" : "none";
-  if (searchTeachBtn) searchTeachBtn.style.display = count > 0 ? "inline-block" : "none";
-
   const extSlots = document.querySelectorAll<HTMLElement>("#extensions-toolbar, .extensions-toolbar");
   extSlots.forEach((el) => {
     el.style.display = isSelectMode && count > 0 ? "inline-flex" : "none";
   });
 }
+

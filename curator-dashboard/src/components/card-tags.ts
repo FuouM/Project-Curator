@@ -38,18 +38,19 @@ export function renderUserTagsListHtml(tags: TagSummary[] | undefined, style = "
 export function renderCardTagsContainerHtml(img: { tags: TagSummary[] }, isFeatured = false): SafeHtml {
   const tags = img.tags || [];
 
-  // Separate user and custom concept tags from AI model tags
-  const userAndConceptTags = tags.filter(
-    t => t.category === "user" || t.source_name === "user" || t.source_name === "ai:custom-concepts" || t.source_name === "custom-concept"
+  // Separate user tags from AI model tags
+  const userTags = tags.filter(
+    t => t.category === "user" || t.source_name === "user"
   );
   const aiTags = tags.filter(
-    t => !(t.category === "user" || t.source_name === "user" || t.source_name === "ai:custom-concepts" || t.source_name === "custom-concept")
+    t => !(t.category === "user" || t.source_name === "user")
   );
 
   let userTagsHtml = "";
-  if (userAndConceptTags.length > 0) {
-    userTagsHtml = renderUserTagsListHtml(userAndConceptTags);
+  if (userTags.length > 0) {
+    userTagsHtml = renderUserTagsListHtml(userTags);
   }
+
 
   if (aiTags.length === 0) {
     return userTagsHtml as SafeHtml;

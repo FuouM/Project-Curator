@@ -3,8 +3,8 @@ pub const SOURCE_CLIP: &str = "ai:clip-vit-b-32";
 pub const SOURCE_MOBILECLIP: &str = "ai:mobileclip-s2";
 pub const SOURCE_CAMIE: &str = "ai:camie-tagger-v2";
 pub const SOURCE_WD_EVA02: &str = "ai:wd-eva02-tagger-2026-canary";
-pub const SOURCE_CUSTOM_CONCEPTS: &str = "ai:custom-concepts";
 pub const SOURCE_USER: &str = "user";
+
 
 /// Named pipe path for IPC communication between service, CLI, and dashboard.
 pub const PIPE_NAME: &str = r"\\.\pipe\curator_ipc";

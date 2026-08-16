@@ -8,7 +8,6 @@
 //! (`curator-service`) use `.into()` on `curator_core::detection::*` /
 //! `curator_core::tagger::*` re-exports, which resolve to these impls.
 
-use crate::concept::CustomConcept;
 use crate::detection::{
     CharacterIdentity, CharacterSearchEntry, DetectionCropEntry, DetectionResult, ReidentifyResult,
     StoredDetection,
@@ -31,21 +30,8 @@ impl From<TaggerStatusInfo> for commonpb::TaggerStatusInfo {
     }
 }
 
-impl From<CustomConcept> for commonpb::CustomConcept {
-    fn from(v: CustomConcept) -> Self {
-        commonpb::CustomConcept {
-            id: v.id,
-            name: v.name,
-            category: v.category,
-            threshold: v.threshold,
-            sample_count: v.sample_count as u32,
-            created_at: v.created_at,
-            updated_at: v.updated_at,
-        }
-    }
-}
-
 impl From<StoredDetection> for commonpb::StoredDetection {
+
     fn from(v: StoredDetection) -> Self {
         commonpb::StoredDetection {
             id: v.id,

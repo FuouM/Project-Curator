@@ -3,8 +3,9 @@ import { typedCall } from "../ipc";
 import { maskPath, SafeHtml, html } from "../components";
 import { renderImages, attachCardEventHandlers } from "../cards";
 import { renderParsedMetadataHtml, renderCardTagsContainerHtml, renderIdentityListHtml } from "../components/card-tags";
-import { findSimilar } from "./concepts";
+import { findSimilar } from "./search";
 import { updateBenchmarkModelHeader } from "./benchmark";
+
 import { applyNsfwToCard, loadNsfwPrefs } from "../nsfw";
 import { imageDetailsFromProto, taggerStatusInfoFromProto } from "../proto-adapters";
 import { ImageDetails } from "../types";

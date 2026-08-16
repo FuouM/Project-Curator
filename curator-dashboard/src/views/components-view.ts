@@ -1,6 +1,7 @@
 import { renderGroupBox, SHOWCASE_COMPONENTS } from "../components";
 import { showAlert } from "../alert";
-import { setupInputClearButtons } from "./concepts";
+import { setupInputClearButtons } from "../utils";
+
 
 const COLLAPSE_STATE_KEY = "curator-component-collapse-states";
 

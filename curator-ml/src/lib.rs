@@ -1,7 +1,6 @@
 pub mod onnx;
 pub mod grpc_convert;
 pub mod preprocess;
-pub mod concept;
 pub mod model_manager;
 pub mod device;
 pub mod detection;
@@ -12,8 +11,8 @@ pub mod safety;
 pub use onnx::ManagedSession;
 pub use model_manager::ModelManager;
 pub use device::{apply_device_preference, OnnxConfig};
-pub use concept::{CustomConcept, bytes_to_vector, train_linear_svm_decision_boundary};
 pub use detection::{
+
     CCIPModel, DetectionPipeline, YoloDetector, OcrDetector, OcrDetection, BubbleDetection,
     MangaBubbleDetector,
 };

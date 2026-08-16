@@ -7,7 +7,6 @@ import { setupSettings } from "./views/settings";
 import { setupImport } from "./views/import";
 import { setupSearch, renderSearchHtml } from "./views/search";
 import { setupTagEditorModal } from "./components/tag-editor-modal";
-import { setupConcepts } from "./views/concepts";
 import { setupFilenameParserView } from "./views/filename-parser";
 import { setupNavigation, navigateToView } from "./views/navigation";
 import { setupToolbox, renderToolboxHtml } from "./views/toolbox";
@@ -19,8 +18,8 @@ import { renderGalleryHtml, renderFavoritesHtml } from "./views/gallery";
 import { renderTagstatsHtml } from "./views/tagstats";
 import { renderFoldersHtml } from "./views/folders";
 import { renderImportHtml } from "./views/import";
-import { renderConceptsHtml } from "./views/concepts";
 import { renderCharactersHtml } from "./views/characters";
+
 import { renderFilenameParserHtml } from "./views/filename-parser";
 import { renderLogsHtml } from "./views/logs";
 import { renderBenchmarkHtml } from "./views/benchmark";
@@ -132,8 +131,6 @@ function init() {
   if (viewFolders) viewFolders.innerHTML = renderFoldersHtml();
   const viewImport = document.getElementById("view-import");
   if (viewImport) viewImport.innerHTML = renderImportHtml();
-  const viewConcepts = document.getElementById("view-concepts");
-  if (viewConcepts) viewConcepts.innerHTML = renderConceptsHtml();
   const viewCharacters = document.getElementById("view-characters");
   if (viewCharacters) viewCharacters.innerHTML = renderCharactersHtml();
   const viewFilenameParser = document.getElementById("view-filename-parser");
@@ -161,12 +158,12 @@ function init() {
   setupTagEditorModal();
   setupImageViewer();
   setupLogTabs();
-  setupConcepts();
   setupFilenameParserView();
   setupToolbox();
   setupBenchmark();
   setupSettings();
   setupModelsView();
+
 
   // Setup event delegation on grids
   const galleryGrid = document.getElementById("gallery-grid");

@@ -10,7 +10,8 @@ pub mod vector_index;
 
 
 pub use plugin_db::{open_plugin_db, plugin_data_root, plugin_db_execute, plugin_db_query};
-pub use repos::{ConceptRepo, CustomConceptRecord, FolderRepo, ImageRepo, SourceRepo, TagRepo};
+pub use repos::{FolderRepo, ImageRepo, SourceRepo, TagRepo};
+
 pub use vector_index::VectorIndex;
 
 pub async fn init_db<P: AsRef<Path>>(db_path: P) -> Result<SqlitePool, anyhow::Error> {

@@ -9,8 +9,9 @@ import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId, 
 import { openImageViewer } from "./image-viewer";
 import { typedCall } from "./ipc";
 import { openTagModal } from "./components/tag-editor-modal";
-import { findSimilar } from "./views/concepts";
+import { findSimilar } from "./views/search";
 import { LruCache } from "./lru-cache";
+
 import { EmptySchema } from "@bufbuild/protobuf/wkt";
 import {
   GetImageRequestSchema,

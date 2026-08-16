@@ -152,17 +152,8 @@ export interface DuplicateFolderGroup {
   shared_image_count: number;
 }
 
-export interface CustomConcept {
-  id: number;
-  name: string;
-  category: string;
-  threshold: number;
-  sample_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface CharacterDetection {
+
   id: number;
   image_id: number;
   x0: number;

@@ -42,10 +42,8 @@ pub mod grpc {
     pub mod ocr {
         tonic::include_proto!("curator.ocr");
     }
-    pub mod concepts {
-        tonic::include_proto!("curator.concepts");
-    }
     pub mod models {
+
         tonic::include_proto!("curator.models");
     }
     pub mod tools {

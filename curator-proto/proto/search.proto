@@ -16,9 +16,10 @@ message SearchRequest {
   optional string filename_filter = 4;
   optional string parse_filter = 5;
   optional string parse_type = 6;
-  optional int64 concept_id = 7;
+  reserved 7;
   optional int64 character_identity_id = 8;
   optional bool ocr_filter = 9;
+
   optional string ocr_text_search = 10;
   // Restrict results to a media kind: "image", "video", or unset for all.
   optional string media_type = 11;

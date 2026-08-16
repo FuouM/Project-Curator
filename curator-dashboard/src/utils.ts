@@ -54,3 +54,36 @@ export function imageBytesToPngBlob(bytes: Uint8Array): Promise<Blob> {
     img.src = url;
   });
 }
+
+export function setupInputClearButtons() {
+
+  const inputs = document.querySelectorAll<HTMLInputElement>('.input-field.has-clear');
+
+  inputs.forEach((input) => {
+    const wrapper = input.closest('.input-wrapper');
+    if (!wrapper) return;
+
+    const clearBtn = wrapper.querySelector('.input-clear-btn') as HTMLButtonElement;
+    if (!clearBtn) return;
+
+    function updateClearVisibility() {
+      if (input.value.length > 0) {
+        wrapper!.classList.add('has-value');
+      } else {
+        wrapper!.classList.remove('has-value');
+      }
+    }
+
+    input.addEventListener('input', updateClearVisibility);
+    input.addEventListener('change', updateClearVisibility);
+    updateClearVisibility();
+
+    clearBtn.addEventListener('click', () => {
+      input.value = '';
+      updateClearVisibility();
+      input.focus();
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  });
+}
+

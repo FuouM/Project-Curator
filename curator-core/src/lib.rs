@@ -31,18 +31,19 @@ pub use curator_media::video::{decode_path, is_video, VideoInfo};
 pub use curator_db as db;
 pub use curator_db::{
     init_db, models, open_plugin_db, plugin_data_root, plugin_db_execute, plugin_db_query,
-    ConceptRepo, CustomConceptRecord, FolderRepo, ImageRepo, SourceRepo, TagRepo, VectorIndex,
+    FolderRepo, ImageRepo, SourceRepo, TagRepo, VectorIndex,
 };
 
 
 // ── curator-ml ──────────────────────────────────────────────────────────
-pub use curator_ml::{benchmark, concept, detection, onnx, preprocess, tagger};
+pub use curator_ml::{benchmark, detection, onnx, preprocess, tagger};
 pub use curator_ml::onnx::ManagedSession;
 pub use curator_ml::detection::{
     BubbleDetection, CCIPModel, DetectionPipeline, MangaBubbleDetector, OcrDetection, OcrDetector,
     YoloDetector,
 };
 pub use curator_ml::tagger::{TagPrediction, TaggerEngine, TaggerManager};
+
 
 // ── image crate re-export (historical `curator_core::image::*` path) ─────
 pub use image;

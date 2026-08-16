@@ -5,9 +5,8 @@ use curator_proto::grpc::benchmarks as benchmarks_pb;
 use curator_proto::grpc::benchmarks::benchmarks_service_client::BenchmarksServiceClient;
 use curator_proto::grpc::characters as characters_pb;
 use curator_proto::grpc::characters::characters_service_client::CharactersServiceClient;
-use curator_proto::grpc::concepts as concepts_pb;
-use curator_proto::grpc::concepts::concepts_service_client::ConceptsServiceClient;
 use curator_proto::grpc::folders as folders_pb;
+
 use curator_proto::grpc::folders::folders_service_client::FoldersServiceClient;
 use curator_proto::grpc::gallery as gallery_pb;
 use curator_proto::grpc::gallery::gallery_service_client::GalleryServiceClient;
@@ -427,62 +426,8 @@ pub async fn call_typed(
             Ok(resp.into_inner().encode_to_vec())
         }
 
-        // ---- ConceptsService ----
-        "ConceptsService.CreateConcept" => {
-            let req = decode::<concepts_pb::CreateConceptRequest>(request_bytes)?;
-            let mut client = ConceptsServiceClient::new(channel);
-            let resp = client.create_concept(req).await.map_err(status_err)?;
-            Ok(resp.into_inner().encode_to_vec())
-        }
-        "ConceptsService.ListConcepts" => {
-            let mut client = ConceptsServiceClient::new(channel);
-            let resp = client.list_concepts(()).await.map_err(status_err)?;
-            Ok(resp.into_inner().encode_to_vec())
-        }
-        "ConceptsService.UpdateConcept" => {
-            let req = decode::<concepts_pb::UpdateConceptRequest>(request_bytes)?;
-            let mut client = ConceptsServiceClient::new(channel);
-            let resp = client.update_concept(req).await.map_err(status_err)?;
-            Ok(resp.into_inner().encode_to_vec())
-        }
-        "ConceptsService.DeleteConcept" => {
-            let req = decode::<concepts_pb::DeleteConceptRequest>(request_bytes)?;
-            let mut client = ConceptsServiceClient::new(channel);
-            let resp = client.delete_concept(req).await.map_err(status_err)?;
-            Ok(resp.into_inner().encode_to_vec())
-        }
-        "ConceptsService.AddConceptSamples" => {
-            let req = decode::<concepts_pb::AddConceptSamplesRequest>(request_bytes)?;
-            let mut client = ConceptsServiceClient::new(channel);
-            let resp = client.add_concept_samples(req).await.map_err(status_err)?;
-            Ok(resp.into_inner().encode_to_vec())
-        }
-        "ConceptsService.RemoveConceptSample" => {
-            let req = decode::<concepts_pb::RemoveConceptSampleRequest>(request_bytes)?;
-            let mut client = ConceptsServiceClient::new(channel);
-            let resp = client.remove_concept_sample(req).await.map_err(status_err)?;
-            Ok(resp.into_inner().encode_to_vec())
-        }
-        "ConceptsService.RescanConcept" => {
-            let req = decode::<concepts_pb::RescanConceptRequest>(request_bytes)?;
-            let mut client = ConceptsServiceClient::new(channel);
-            let resp = client.rescan_concept(req).await.map_err(status_err)?;
-            Ok(resp.into_inner().encode_to_vec())
-        }
-        "ConceptsService.GetConceptSamples" => {
-            let req = decode::<concepts_pb::RescanConceptRequest>(request_bytes)?;
-            let mut client = ConceptsServiceClient::new(channel);
-            let resp = client.get_concept_samples(req).await.map_err(status_err)?;
-            Ok(resp.into_inner().encode_to_vec())
-        }
-        "ConceptsService.CleanAutoConceptTags" => {
-            let req = decode::<concepts_pb::CleanAutoConceptTagsRequest>(request_bytes)?;
-            let mut client = ConceptsServiceClient::new(channel);
-            let resp = client.clean_auto_concept_tags(req).await.map_err(status_err)?;
-            Ok(resp.into_inner().encode_to_vec())
-        }
-
         // ---- ModelsService ----
+
         "ModelsService.GetModelStatus" => {
             let mut client = ModelsServiceClient::new(channel);
             let resp = client.get_model_status(()).await.map_err(status_err)?;

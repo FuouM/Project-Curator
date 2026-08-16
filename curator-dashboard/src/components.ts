@@ -23,10 +23,8 @@ export type { StatCardOptions } from './components/stat-card';
 
 export { renderGroupBox } from './components/group-box';
 
-export { renderConceptCard } from './components/concept-card';
-export type { ConceptCardProps } from './components/concept-card';
-
 export { renderImageCard } from './components/image-card';
+
 export type { ImageCardOptions } from './components/image-card';
 
 export {

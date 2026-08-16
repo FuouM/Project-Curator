@@ -2,27 +2,26 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { typedCall } from "../ipc";
 import { maskPath, SafeHtml, html } from "../components";
 import { renderSearchResults } from "../cards";
-import { setupInputClearButtons } from "./concepts";
+import { setupInputClearButtons } from "../utils";
 import { setupSelectionToolbar } from "../selection-toolbar";
 import { attachAutocomplete } from "../autocomplete";
 import { showErrorAlert } from "../alert";
 import { searchMatchFromProto } from "../proto-adapters";
 import { SearchRequestSchema, SearchResultSchema } from "../gen/search_pb";
 import { TagStatisticsResultSchema } from "../gen/common_pb";
-import { ConceptListResultSchema } from "../gen/concepts_pb";
 
-export async function loadSearchConceptsDropdown() {
-  const select = document.getElementById("search-concept-select") as HTMLSelectElement;
-  if (!select) return;
+export function findSimilar(imagePath: string) {
+  const navItem = document.querySelector(`.nav-item[data-view="search"]`) as HTMLElement | null;
+  if (navItem) navItem.click();
 
-  try {
-    const resp = await typedCall("ConceptsService.ListConcepts", null, null, ConceptListResultSchema);
-    const concepts = resp.concepts;
-    const optionsHtml = `<option value="">-- All Concepts --</option>` + concepts.map((c) =>
-      `<option value="${c.id}">${c.name} (${c.sampleCount} samples)</option>`
-    ).join("");
-    select.innerHTML = optionsHtml;
-  } catch (_) {}
+  setTimeout(() => {
+    const imageInput = document.getElementById("search-image-path-input") as HTMLInputElement;
+    if (imageInput) {
+      imageInput.value = imagePath;
+      imageInput.dispatchEvent(new Event("change"));
+    }
+    document.getElementById("search-form")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  }, 100);
 }
 
 export function switchToSearchWithTag(tagName: string) {
@@ -41,8 +40,8 @@ export function switchToSearchWithTag(tagName: string) {
 
 export function setupSearch() {
   setupInputClearButtons();
-  loadSearchConceptsDropdown();
   setupTagAutocomplete();
+
 
   // Parse search help modal toggle
   document.getElementById("search-parse-help-btn")?.addEventListener("click", () => {
@@ -148,8 +147,6 @@ export function setupSearch() {
       const parseFilter = parseInput?.value.trim() || null;
       const parseTypeSelect = document.getElementById("search-parse-type-select") as HTMLSelectElement;
       const parseType = parseTypeSelect?.value.trim() || null;
-      const conceptSelect = document.getElementById("search-concept-select") as HTMLSelectElement;
-      const conceptIdVal = conceptSelect && conceptSelect.value ? parseInt(conceptSelect.value) : null;
       const ocrFilterCheckbox = document.getElementById("search-ocr-filter") as HTMLInputElement;
       const ocrFilter = ocrFilterCheckbox?.checked ? true : null;
       const ocrTextInput = document.getElementById("search-ocr-text-input") as HTMLInputElement;
@@ -168,7 +165,6 @@ export function setupSearch() {
           filenameFilter: filenameFilter ?? undefined,
           parseFilter: parseFilter ?? undefined,
           parseType: parseType ?? undefined,
-          conceptId: conceptIdVal !== null ? BigInt(conceptIdVal) : undefined,
           characterIdentityId: undefined,
           ocrFilter: ocrFilter ?? undefined,
           ocrTextSearch: ocrTextSearch ?? undefined,
@@ -177,6 +173,7 @@ export function setupSearch() {
         },
         SearchResultSchema
       );
+
       const elapsedMs = performance.now() - startTime;
 
       const matches = resp.matches.map(searchMatchFromProto);
@@ -262,11 +259,6 @@ export function renderSearchHtml(): SafeHtml {
               <input class="input-field has-clear" id="search-text-input" placeholder="Type natural language query (e.g. 'a cute dog sleeping')..." />
               <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
             </div>
-            <div class="input-wrapper" style="flex: 1;">
-              <select class="input-field" id="search-concept-select" style="width: 100%; height: 24px;">
-                <option value="">-- All Concepts --</option>
-              </select>
-            </div>
             <div class="input-wrapper" style="flex: 0 0 110px;">
               <select class="input-field" id="search-media-type-select" style="width: 100%; height: 24px;" title="Filter results by media type">
                 <option value="">All Media</option>
@@ -280,6 +272,7 @@ export function renderSearchHtml(): SafeHtml {
               <div id="search-tag-autocomplete" class="autocomplete-dropdown" style="display: none;"></div>
             </div>
           </div>
+
           <div class="form-group">
             <label for="search-filename-input" style="min-width: 80px;">Filename:</label>
             <div class="input-wrapper" style="flex: 1;">
@@ -378,11 +371,9 @@ export function renderSearchHtml(): SafeHtml {
           <span id="search-selected-count" style="font-size: 11px; color: var(--sys-text-subtle); display: none;">0 selected</span>
           <button type="button" class="win-button" id="search-select-all-btn" style="display: none; font-size: 11px;">Select All</button>
           <button type="button" class="win-button" id="search-clear-select-btn" style="display: none; font-size: 11px;">Clear</button>
-          <button type="button" class="win-button primary" id="search-teach-concept-btn" style="display: none; font-size: 11px;">
-            <i class="bi bi-magic"></i> Teach Concept (<span id="search-teach-select-count">0</span>)
-          </button>
           <div class="selection-toolbar-actions extensions-toolbar" style="display: none;"></div>
         </div>
+
         <span id="search-stats-meta" style="font-size: 11px; color: var(--sys-text-subtle, #71717a); font-style: italic; display: none;"></span>
       </div>
       <div class="image-grid" id="search-results-grid">

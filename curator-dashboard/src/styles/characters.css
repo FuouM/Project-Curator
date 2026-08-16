@@ -1,4 +1,4 @@
-/* Custom Concept Card Shimmer & Skeleton Loaders */
+/* Character Identities View & Card Styles */
 .skeleton-loader {
   position: relative;
   background-color: var(--sys-window-bg);
@@ -12,6 +12,7 @@
   animation: skeleton-shimmer 1.5s ease-in-out infinite;
   pointer-events: none;
 }
+
 .crop-placeholder-slot {
   position: relative;
   overflow: hidden;
@@ -48,10 +49,6 @@
   width: 100%;
   box-sizing: border-box;
 }
-.concept-card.group-box.expanded {
-  grid-column: 1 / -1;
-  border-color: var(--sys-border-focus, #0078d4);
-}
 
 .concept-card-title {
   position: absolute;
@@ -65,11 +62,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-.concept-sparkle {
-  color: #0078d4;
-  font-size: 13px;
 }
 
 .concept-badge {
@@ -135,38 +127,6 @@
   font-weight: 700;
 }
 
-.concept-threshold-box {
-  background-color: var(--sys-window-bg);
-  border: 1px solid var(--sys-border-dark);
-  padding: 8px;
-  border-radius: 2px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.concept-threshold-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 11px;
-  color: var(--sys-control-text, #333333);
-}
-.concept-threshold-val {
-  font-weight: 700;
-  color: var(--sys-border-focus, #0078d4);
-  font-size: 11px;
-}
-.concept-threshold-slider {
-  width: 100%;
-  accent-color: var(--sys-border-focus, #0078d4);
-  cursor: pointer;
-}
-
-.concept-meta-date {
-  font-size: 10px;
-  color: var(--sys-text-subtle, #777777);
-}
-
 .concept-card-actions {
   display: flex;
   gap: 8px;
@@ -174,27 +134,4 @@
 }
 .concept-card-actions button {
   flex: 1;
-}
-
-.concept-samples-panel {
-  margin-top: 6px;
-  padding: 8px;
-  background-color: var(--sys-window-bg);
-  border: 1px solid var(--sys-border-dark);
-  border-radius: 2px;
-}
-.concept-samples-panel .concept-samples-header {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--sys-control-text);
-  margin-bottom: 6px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.concept-samples-panel .concept-samples-close {
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: bold;
-  color: var(--sys-text-subtle, #777777);
 }

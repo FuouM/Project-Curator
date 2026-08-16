@@ -316,18 +316,8 @@ message DownloadProgress {
   optional string error = 9;
 }
 
-// A custom concept definition.
-message CustomConcept {
-  int64 id = 1;
-  string name = 2;
-  string category = 3;
-  float threshold = 4;
-  uint32 sample_count = 5;
-  string created_at = 6;
-  string updated_at = 7;
-}
-
 // A stored person detection.
+
 message StoredDetection {
   int64 id = 1;
   int64 image_id = 2;

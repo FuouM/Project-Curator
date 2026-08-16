@@ -1,5 +1,4 @@
 use anyhow::Result;
-use curator_core::concept::bytes_to_vector;
 use curator_core::ipc::SearchMatch;
 use curator_core::vector::{ModelManager, VectorIndex};
 use super::image::batch_get_images_logic;
@@ -11,13 +10,13 @@ pub struct SearchParams {
     pub filename_filter: Option<String>,
     pub parse_filter: Option<String>,
     pub parse_type: Option<String>,
-    pub concept_id: Option<i64>,
     pub character_identity_id: Option<i64>,
     pub ocr_filter: Option<bool>,
     pub ocr_text_search: Option<String>,
     pub media_type: Option<String>,
     pub limit: usize,
 }
+
 
 /// Returns `(WHERE-clause suffix, boolean video predicate)` for a media-kind
 /// filter. The WHERE suffix is used directly in list queries; the boolean
@@ -110,8 +109,6 @@ fn parse_search_terms(input: &str) -> Vec<String> {
 }
 use sqlx::SqlitePool;
 
-use super::concepts::get_custom_concept_by_id;
-
 pub async fn search_logic(
     params: SearchParams,
     preferred_source: &str,
@@ -128,7 +125,6 @@ pub async fn search_logic(
         filename_filter,
         parse_filter,
         parse_type,
-        concept_id,
         character_identity_id,
         ocr_filter,
         ocr_text_search,
@@ -140,71 +136,9 @@ pub async fn search_logic(
     let mut exact_matches = std::collections::HashSet::new();
     let mut perceptual_matches = std::collections::HashMap::new();
 
-    if let Some(c_id) = concept_id {
-        if let Ok(concept) = get_custom_concept_by_id(db, c_id).await {
-            let active_model = model_manager.active_model();
-            let source_name = active_model.source_name();
-            let source_row: Option<(i64,)> = sqlx::query_as("SELECT id FROM sources WHERE name = ? LIMIT 1")
-                .bind(source_name)
-                .fetch_optional(db)
-                .await?;
-            if let Some((source_id,)) = source_row {
-                let vec_row: Option<(Vec<u8>,)> = sqlx::query_as(
-                    "SELECT vector FROM custom_concept_vectors WHERE concept_id = ? AND source_id = ? LIMIT 1",
-                )
-                .bind(c_id)
-                .bind(source_id)
-                .fetch_optional(db)
-                .await?;
-
-                if let Some((blob,)) = vec_row {
-                    let proto_vec = bytes_to_vector(&blob);
-                    if !proto_vec.is_empty() {
-                        let mut ids = std::collections::HashSet::new();
-
-                        let results = vector_index.search(&proto_vec, limit.max(500))?;
-                        for (id, dist) in results {
-                            let image_id = id as i64;
-                            let raw_score = 1.0 - dist;
-
-                            // Include candidates down to reasonable similarity threshold (CLIP cosine space cutoff)
-                            let min_threshold = (concept.threshold * 0.25).max(0.15);
-                            let is_match = raw_score >= min_threshold;
-
-                            if is_match {
-                                // Normalize score for display ranking
-                                let normalized_score = ((raw_score - 0.15) / 0.85).clamp(0.0, 1.0);
-                                ids.insert(image_id);
-                                vector_scores.insert(image_id, normalized_score);
-                            }
-                        }
-
-                        let tagged_images: Vec<(i64,)> = sqlx::query_as(
-                            "SELECT DISTINCT it.image_id FROM image_tags it
-                             JOIN tags t ON it.tag_id = t.id
-                             WHERE t.name = ? AND it.is_deleted = 0",
-                        )
-                        .bind(&concept.name)
-                        .fetch_all(db)
-                        .await
-                        .unwrap_or_else(|e| {
-                            tracing::warn!("Failed to query concept tagged images: {:?}", e);
-                            Vec::new()
-                        });
-                        for r in tagged_images {
-                            ids.insert(r.0);
-                            vector_scores.entry(r.0).or_insert(1.0);
-                        }
-
-                        candidate_ids = Some(ids);
-                    }
-                }
-            }
-        }
-    }
-
     // Filter by character identity
     if let Some(char_id) = character_identity_id {
+
         let rows: Vec<(i64,)> = sqlx::query_as(
             "SELECT DISTINCT image_id FROM character_detections WHERE identity_id = ?"
         )
@@ -505,10 +439,10 @@ pub async fn search_logic(
         || filename_filter.is_some()
         || parse_filter.is_some()
         || parse_type.is_some()
-        || concept_id.is_some()
         || character_identity_id.is_some()
         || ocr_filter.is_some()
         || ocr_text_search.is_some();
+
 
     let target_ids = if !has_query {
         let (media_where, _) = media_sql_clause(media_type.as_deref());

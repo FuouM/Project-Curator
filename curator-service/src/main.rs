@@ -18,8 +18,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use curator_core::grpc::{
     benchmarks::benchmarks_service_server::BenchmarksServiceServer,
     characters::characters_service_server::CharactersServiceServer,
-    concepts::concepts_service_server::ConceptsServiceServer,
     folders::folders_service_server::FoldersServiceServer,
+
     gallery::gallery_service_server::GalleryServiceServer,
     import::import_service_server::ImportServiceServer,
     models::models_service_server::ModelsServiceServer,
@@ -218,7 +218,6 @@ async fn main() -> Result<(), Error> {
         (curator_core::constants::SOURCE_WD_EVA02, "AI_MODEL"),
         (curator_core::constants::SOURCE_MOBILECLIP, "AI_MODEL"),
         (curator_core::constants::SOURCE_USER, "USER"),
-        (curator_core::constants::SOURCE_CUSTOM_CONCEPTS, "AI_MODEL"),
     ] {
         sqlx::query(
             "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES (?, ?, '{}')",
@@ -229,9 +228,8 @@ async fn main() -> Result<(), Error> {
         .await?;
     }
 
-    let _ = handlers::concepts::sync_all_custom_concept_tags(&db).await;
-
     let settings = load_settings(&data_dir);
+
     info!(
         "Settings loaded: clip_device={:?}, tagger_device={:?}, tagger_wd_device={:?}, detection_device={:?}, detection_metrics_device={:?}, idle_timeout={}s",
         settings.clip_device, settings.tagger_device, settings.tagger_wd_device, settings.detection_device, settings.detection_metrics_device, settings.idle_timeout_secs
@@ -446,10 +444,8 @@ async fn main() -> Result<(), Error> {
             server::characters::CharactersServiceImpl::new(ctx.clone()),
         ))
         .add_service(OcrServiceServer::new(server::ocr::OcrServiceImpl::new(ctx.clone())))
-        .add_service(ConceptsServiceServer::new(
-            server::concepts::ConceptsServiceImpl::new(ctx.clone()),
-        ))
         .add_service(ModelsServiceServer::new(
+
             server::models::ModelsServiceImpl::new(ctx.clone()),
         ))
         .add_service(ToolsServiceServer::new(server::tools::ToolsServiceImpl::new(

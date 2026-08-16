@@ -38,9 +38,9 @@ impl SearchService for SearchServiceImpl {
                 filename_filter: req.filename_filter,
                 parse_filter: req.parse_filter,
                 parse_type: req.parse_type,
-                concept_id: req.concept_id,
                 character_identity_id: req.character_identity_id,
                 ocr_filter: req.ocr_filter,
+
                 ocr_text_search: req.ocr_text_search,
                 media_type: req.media_type,
                 limit: req.limit as usize,

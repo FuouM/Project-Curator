@@ -1,20 +1,17 @@
 import { isSelectMode, setIsSelectMode, selectedImageIds } from "./state";
 import { updateSelectionUI } from "./views/gallery";
-import { openTeachConceptModal } from "./views/concepts";
 
 interface SelectionToolbarOptions {
   prefix: string;
   gridSelector: string;
-  onTeachConcept?: () => void;
 }
 
 export function setupSelectionToolbar(options: SelectionToolbarOptions) {
-  const { prefix, gridSelector, onTeachConcept } = options;
+  const { prefix, gridSelector } = options;
 
   const toggleBtn = document.getElementById(`${prefix}-toggle-select-mode-btn`);
   const selectAllBtn = document.getElementById(`${prefix}-select-all-btn`);
   const clearBtn = document.getElementById(`${prefix}-clear-select-btn`);
-  const teachBtn = document.getElementById(`${prefix}-teach-concept-btn`);
 
   toggleBtn?.addEventListener("click", () => {
     setIsSelectMode(!isSelectMode);
@@ -47,13 +44,5 @@ export function setupSelectionToolbar(options: SelectionToolbarOptions) {
     document.querySelectorAll(".card-select-checkbox").forEach((cb: any) => (cb.checked = false));
     updateSelectionUI();
   });
-
-  teachBtn?.addEventListener("click", () => {
-    if (selectedImageIds.size === 0) return;
-    if (onTeachConcept) {
-      onTeachConcept();
-    } else {
-      openTeachConceptModal();
-    }
-  });
 }
+

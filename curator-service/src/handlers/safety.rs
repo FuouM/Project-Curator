@@ -11,13 +11,13 @@ use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
-/// Flush the import-path coalescing queue when this many rows are queued...
+/// Batch size for safety classification sweeps.
 pub const SAFETY_BATCH_FLUSH: usize = 8;
-/// ...or this much time has elapsed since the first queued row, whichever first.
-pub const SAFETY_TICK_MS: u64 = 250;
 
 
 /// Service-side owner of the `SafetyClassifier` and every DB write of the five
+
+
 /// per-class safety columns. The DB only ever records what the model produced —
 /// there is no threshold, no aggregate, and no filtering on the backend.
 #[derive(Clone)]

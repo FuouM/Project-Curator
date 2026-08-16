@@ -10,7 +10,7 @@ import { html, SafeHtml, ComponentMeta } from "./_shared";
 import { maskPath } from "./path-utils";
 import { getTagPillHtml } from "./card-tags";
 import { refreshCardTags } from "../views/tags";
-import { openTeachConceptModal } from "../views/concepts";
+
 
 export function renderTagEditorModalHtml(imageId: number, filepath: string): SafeHtml {
   return html`
@@ -59,10 +59,8 @@ export function renderTagEditorModalHtml(imageId: number, filepath: string): Saf
             <button type="button" class="win-button" id="auto-tag-modal-btn" data-action="auto-tag" style="font-size: 11px;">
               <i class="bi bi-stars"></i> AUTO TAG
             </button>
-            <button type="button" class="win-button primary" id="teach-concept-from-modal-btn" data-action="teach-concept" style="font-size: 11px;">
-              <i class="bi bi-magic"></i> Teach Concept
-            </button>
           </div>
+
           <p id="auto-tag-modal-status" style="font-size: 11px; margin-top: 4px; color: #555555; min-height: 16px;"></p>
         </div>
       </div>
@@ -286,14 +284,10 @@ export function setupTagEditorModal() {
       }
     } else if (action === "auto-tag") {
       handleModalAutoTag();
-    } else if (action === "teach-concept") {
-      const idInput = document.getElementById("tag-image-id") as HTMLInputElement | null;
-      if (idInput && idInput.value) {
-        openTeachConceptModal();
-      }
     } else if (action === "close-modal") {
       document.getElementById("add-tag-modal")?.classList.remove("active");
     }
+
   });
 }
 

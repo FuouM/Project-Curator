@@ -281,9 +281,9 @@ async fn main() -> Result<(), Error> {
                     filename_filter: None,
                     parse_filter: None,
                     parse_type: None,
-                    concept_id: None,
                     character_identity_id: None,
                     ocr_filter: None,
+
                     ocr_text_search: None,
                     media_type: None,
                     limit: limit as u32,

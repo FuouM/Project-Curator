@@ -1,6 +1,6 @@
 import { typedCall } from "../ipc";
 import { SafeHtml, html } from "../components";
-import { CharacterIdentity, CharacterDetection, CustomConcept } from "../types";
+import { CharacterIdentity, CharacterDetection } from "../types";
 import { getCachedCrop, setCachedCrop, invalidateCropCache } from "../crop-cache";
 import { openImageViewer } from "../image-viewer";
 import { attachAutocomplete } from "../autocomplete";
@@ -25,19 +25,17 @@ import {
 } from "../gen/characters_pb";
 import {
   CharacterIdentity as PCharacterIdentity,
-  CustomConcept as PCustomConcept,
   StoredDetection,
   TagStatisticsResultSchema,
   ReidentifyResultSchema,
 } from "../gen/common_pb";
 import { GetCharacterSuggestionsRequestSchema } from "../gen/search_pb";
 import { GetImageRequestSchema, ImageResultSchema } from "../gen/gallery_pb";
-import { ConceptListResultSchema } from "../gen/concepts_pb";
 
 interface SuggestionItem {
   name: string;
   count: number;
-  source: "tag" | "identity" | "concept";
+  source: "tag" | "identity";
 }
 
 function characterIdentityFromProto(p: PCharacterIdentity): CharacterIdentity {
@@ -49,17 +47,6 @@ function characterIdentityFromProto(p: PCharacterIdentity): CharacterIdentity {
   };
 }
 
-function customConceptFromProto(p: PCustomConcept): CustomConcept {
-  return {
-    id: Number(p.id),
-    name: p.name,
-    category: p.category,
-    threshold: p.threshold,
-    sample_count: p.sampleCount,
-    created_at: p.createdAt,
-    updated_at: p.updatedAt,
-  };
-}
 
 function storedDetectionFromProto(p: StoredDetection): CharacterDetection {
   return {
@@ -100,10 +87,9 @@ function compareIdentities(a: { name: string }, b: { name: string }): number {
 }
 
 // Fetch suggestions matching the query text dynamically from the database
-const IDENTITY_CONCEPT_CACHE_TTL = 30000;
-let identityConceptCache: {
+const IDENTITY_CACHE_TTL = 30000;
+let identityCache: {
   identities: CharacterIdentity[];
-  concepts: CustomConcept[];
   ts: number;
 } | null = null;
 
@@ -118,18 +104,12 @@ export async function getSuggestions(query: string): Promise<SuggestionItem[]> {
     );
 
     let identities: CharacterIdentity[] = [];
-    let concepts: CustomConcept[] = [];
-    if (identityConceptCache && Date.now() - identityConceptCache.ts < IDENTITY_CONCEPT_CACHE_TTL) {
-      identities = identityConceptCache.identities;
-      concepts = identityConceptCache.concepts;
+    if (identityCache && Date.now() - identityCache.ts < IDENTITY_CACHE_TTL) {
+      identities = identityCache.identities;
     } else {
-      const [idResp, conceptResp] = await Promise.all([
-        typedCall("CharactersService.ListCharacterIdentities", null, null, CharacterIdentitiesListSchema).catch(() => null),
-        typedCall("ConceptsService.ListConcepts", null, null, ConceptListResultSchema).catch(() => null)
-      ]);
+      const idResp = await typedCall("CharactersService.ListCharacterIdentities", null, null, CharacterIdentitiesListSchema).catch(() => null);
       identities = idResp ? idResp.identities.map(characterIdentityFromProto) : [];
-      concepts = conceptResp ? conceptResp.concepts.map(customConceptFromProto) : [];
-      identityConceptCache = { identities, concepts, ts: Date.now() };
+      identityCache = { identities, ts: Date.now() };
     }
 
     if (tagResp) {
@@ -152,16 +132,8 @@ export async function getSuggestions(query: string): Promise<SuggestionItem[]> {
         items.push({ name: identity.name, count: identity.detection_count, source: "identity" });
       }
     }
-
-    const conceptLen = concepts.length;
-    for (let i = 0; i < conceptLen; i++) {
-      const concept = concepts[i];
-      if (concept.name.toLowerCase().includes(q) && !seen.has(concept.name)) {
-        seen.add(concept.name);
-        items.push({ name: concept.name, count: concept.sample_count, source: "concept" });
-      }
-    }
   } catch (_) {}
+
 
   return items.sort((a, b) => {
     const aIsPlaceholder = isPlaceholderName(a.name);

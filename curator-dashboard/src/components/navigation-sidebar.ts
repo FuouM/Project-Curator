@@ -27,9 +27,9 @@ export function renderSidebarHtml(activeView: string): SafeHtml {
           <ul class="tree-leaf-list">
             ${navItem("import", "bi bi-box-arrow-in-down", "Import Images")}
             ${navItem("search", "bi bi-search", "General Search")}
-            ${navItem("concepts", "bi bi-magic", "Custom Concepts")}
             ${navItem("characters", "bi bi-bounding-box", "Character Identities")}
             ${navItem("filename-parser", "bi bi-regex", "Filename Parser")}
+
             ${navItem("toolbox", "bi bi-tools", "Image Toolbox")}
           </ul>
         </li>
