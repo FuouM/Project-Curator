@@ -793,13 +793,16 @@ pub async fn index_folder_logic(
              SELECT 1 FROM image_vectors iv
              WHERE iv.image_id = i.id AND iv.source_id = ?
                AND iv.vector_state IN ('ready', 'pending', 'preprocessing')
-           )",
+           )
+         ON CONFLICT(image_id, source_id) DO UPDATE SET vector_state = 'pending', vector_id = '', vector_checksum = NULL
+         WHERE vector_state NOT IN ('ready', 'pending', 'preprocessing')",
     )
     .bind(source_id)
     .bind(folder_id)
     .bind(source_id)
     .execute(db)
     .await?;
+
 
     let queued = result.rows_affected() as i64;
     info!(
