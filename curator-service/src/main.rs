@@ -70,14 +70,10 @@ struct ClientContext {
     tool_install_progress: handlers::tools::ToolInstallProgressMap,
     /// Service-side safety classifier and its coalescing import batch queue.
     safety: handlers::safety::SafetyService,
-    /// Serializes folder scan/import write bursts. gRPC handles every RPC in
-    /// its own tokio task, but SQLite permits a single writer, so concurrent
-    /// bulk scan/import operations would otherwise collide and fail with
-    /// `database is locked`. The legacy single-pipe IPC model serialized all
-    /// requests implicitly; this mutex restores that guarantee for the
-    /// write-heavy request family only.
+    import_controller: handlers::import::ImportController,
     import_lock: tokio::sync::Mutex<()>,
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AppSettings {
@@ -419,8 +415,10 @@ async fn main() -> Result<(), Error> {
         engines,
         tool_install_progress,
         safety,
+        import_controller: handlers::import::ImportController::new(),
         import_lock: tokio::sync::Mutex::new(()),
     });
+
 
     info!("Starting Tonic gRPC Service...");
     let server = tonic::transport::Server::builder()

@@ -7,8 +7,120 @@ use std::fs;
 use std::path::Path;
 use tracing::{info, warn};
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+
 use super::common::resolve_source_id;
 use super::safety::SafetyService;
+
+#[derive(Debug, Clone, Default)]
+pub struct ImportProgressState {
+    pub running: bool,
+    pub phase: String, // "idle" | "discovering" | "extracting" | "writing_db" | "complete" | "cancelled" | "failed"
+    pub discovered_files: i64,
+    pub processed_files: i64,
+    pub total_files: i64,
+    pub current_file: String,
+    pub error_message: String,
+}
+
+#[derive(Clone, Default)]
+pub struct ImportController {
+    pub progress: Arc<Mutex<ImportProgressState>>,
+    pub cancel_flag: Arc<AtomicBool>,
+}
+
+impl ImportController {
+    pub fn new() -> Self {
+        Self {
+            progress: Arc::new(Mutex::new(ImportProgressState {
+                phase: "idle".to_string(),
+                ..Default::default()
+            })),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn get_progress(&self) -> ImportProgressState {
+        self.progress.lock().unwrap().clone()
+    }
+
+    pub fn request_cancel(&self) -> bool {
+        let running = self.progress.lock().unwrap().running;
+        if running {
+            self.cancel_flag.store(true, Ordering::SeqCst);
+            let mut p = self.progress.lock().unwrap();
+            p.phase = "cancelled".to_string();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel_flag.load(Ordering::Relaxed)
+    }
+
+    pub fn reset(&self) {
+        self.cancel_flag.store(false, Ordering::SeqCst);
+        let mut p = self.progress.lock().unwrap();
+        *p = ImportProgressState {
+            running: true,
+            phase: "discovering".to_string(),
+            discovered_files: 0,
+            processed_files: 0,
+            total_files: 0,
+            current_file: String::new(),
+            error_message: String::new(),
+        };
+    }
+
+    pub fn set_discovering(&self, count: i64, current_path: &str) {
+        let mut p = self.progress.lock().unwrap();
+        p.discovered_files = count;
+        p.current_file = current_path.to_string();
+    }
+
+    pub fn set_extracting(&self, total: i64, processed: i64, current_path: &str) {
+        let mut p = self.progress.lock().unwrap();
+        p.phase = "extracting".to_string();
+        p.total_files = total;
+        p.processed_files = processed;
+        p.current_file = current_path.to_string();
+    }
+
+    pub fn set_writing_db(&self, total: i64, processed: i64) {
+        let mut p = self.progress.lock().unwrap();
+        p.phase = "writing_db".to_string();
+        p.total_files = total;
+        p.processed_files = processed;
+    }
+
+    pub fn set_complete(&self, total: i64) {
+        let mut p = self.progress.lock().unwrap();
+        p.running = false;
+        p.phase = "complete".to_string();
+        p.total_files = total;
+        p.processed_files = total;
+        p.current_file.clear();
+    }
+
+    pub fn set_cancelled(&self) {
+        let mut p = self.progress.lock().unwrap();
+        p.running = false;
+        p.phase = "cancelled".to_string();
+        p.current_file.clear();
+    }
+
+    pub fn set_failed(&self, err: &str) {
+        let mut p = self.progress.lock().unwrap();
+        p.running = false;
+        p.phase = "failed".to_string();
+        p.error_message = err.to_string();
+        p.current_file.clear();
+    }
+}
+
 
 /// Best-effort media metadata extracted from a file header.
 /// Extraction failures are logged and stored as `None`, matching the phash
@@ -405,9 +517,12 @@ pub async fn import_image_logic(
     ffmpeg: Option<&Path>,
     data_dir: &Path,
     safety: &SafetyService,
+    controller: &ImportController,
 ) -> Result<(i64, String, usize, Option<i64>)> {
+    controller.reset();
     let path = Path::new(path_str);
     if !path.exists() {
+        controller.set_failed(&format!("File or directory does not exist: {}", path_str));
         return Err(anyhow::anyhow!(
             "File or directory does not exist: {}",
             path_str
@@ -415,12 +530,23 @@ pub async fn import_image_logic(
     }
 
     if path.is_dir() {
-        let folder_id = get_or_create_folder(path_str, db).await?;
+        let folder_id = match get_or_create_folder(path_str, db).await {
+            Ok(id) => id,
+            Err(e) => {
+                controller.set_failed(&e.to_string());
+                return Err(e);
+            }
+        };
 
         let mut paths_to_process = vec![path.to_path_buf()];
         let mut image_paths = Vec::new();
+        let mut scan_counter = 0usize;
 
         while let Some(current_path) = paths_to_process.pop() {
+            if controller.is_cancelled() {
+                controller.set_cancelled();
+                return Err(anyhow::anyhow!("Import cancelled by user"));
+            }
             if current_path.is_dir() {
                 if let Ok(entries) = fs::read_dir(&current_path) {
                     for entry in entries.flatten() {
@@ -435,12 +561,18 @@ pub async fn import_image_logic(
                         "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" | "tiff" | "mp4" | "webm"
                     ) {
                         image_paths.push(current_path);
+                        scan_counter += 1;
+                        if scan_counter % 25 == 0 {
+                            controller.set_discovering(scan_counter as i64, path_str);
+                        }
                     }
                 }
             }
         }
+        controller.set_discovering(image_paths.len() as i64, path_str);
 
         if image_paths.is_empty() {
+            controller.set_failed(&format!("No supported image files found in directory: {}", path_str));
             return Err(anyhow::anyhow!(
                 "No supported image files found in directory: {}",
                 path_str
@@ -448,6 +580,8 @@ pub async fn import_image_logic(
         }
 
         let total_count = image_paths.len();
+        controller.set_extracting(total_count as i64, 0, "");
+
         let num_threads = std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(4)
@@ -460,9 +594,8 @@ pub async fn import_image_logic(
             .collect();
 
         let mut prepped_images = Vec::with_capacity(paths_vec.len());
-
-        // ffmpeg/data_dir are borrowed read-only inside the scoped threads.
         let ffmpeg_owned = ffmpeg.map(|p| p.to_path_buf());
+        let processed_counter = std::sync::atomic::AtomicUsize::new(0);
 
         std::thread::scope(|s| {
             let mut handles = Vec::with_capacity(num_threads);
@@ -471,9 +604,15 @@ pub async fn import_image_logic(
                 let chunk_paths = chunk.to_vec();
                 let ffmpeg_ref = ffmpeg_owned.clone();
                 let data_dir_owned = data_dir.to_path_buf();
+                let ctrl = controller.clone();
+                let proc_ref = &processed_counter;
+
                 let handle = s.spawn(move || {
                     let mut items = Vec::with_capacity(chunk_paths.len());
                     for p_str in chunk_paths {
+                        if ctrl.is_cancelled() {
+                            break;
+                        }
                         let p = Path::new(&p_str);
                         if let Ok(metadata) = fs::metadata(p) {
                             let mtime = metadata
@@ -498,12 +637,16 @@ pub async fn import_image_logic(
                             };
                             let sha256 = compute_content_sha(p, &media);
                             items.push(PreppedImage {
-                                path_str: p_str,
+                                path_str: p_str.clone(),
                                 sha256,
                                 mtime,
                                 phash: None,
                                 media,
                             });
+                        }
+                        let done = proc_ref.fetch_add(1, Ordering::Relaxed) + 1;
+                        if done % 10 == 0 || done == total_count {
+                            ctrl.set_extracting(total_count as i64, done as i64, &p_str);
                         }
                     }
                     items
@@ -518,15 +661,29 @@ pub async fn import_image_logic(
             }
         });
 
+        if controller.is_cancelled() {
+            controller.set_cancelled();
+            return Err(anyhow::anyhow!("Import cancelled by user"));
+        }
+
         let clip_source_id = resolve_source_id(db, active.source_name()).await?;
 
         let mut first_id = 0;
         let mut first_sha = String::new();
         let mut imported_any = false;
+        let mut written_count = 0i64;
+
+        controller.set_writing_db(prepped_images.len() as i64, 0);
 
         // Batch all per-image statements in a single transaction.
         let mut tx = db.begin().await?;
         for item in prepped_images {
+            if controller.is_cancelled() {
+                let _ = tx.rollback().await;
+                controller.set_cancelled();
+                return Err(anyhow::anyhow!("Import cancelled by user"));
+            }
+
             let existing: Option<(i64, String)> =
                 sqlx::query_as("SELECT id, current_filepath FROM images WHERE sha256 = ?")
                     .bind(&item.sha256)
@@ -563,8 +720,12 @@ pub async fn import_image_logic(
                 safety.enqueue_import(db.clone(), img_id, classify_path).await;
             }
 
-            if !imported_any {
+            written_count += 1;
+            if written_count % 20 == 0 || written_count == total_count as i64 {
+                controller.set_writing_db(total_count as i64, written_count);
+            }
 
+            if !imported_any {
                 first_id = img_id;
                 first_sha = item.sha256;
                 imported_any = true;
@@ -573,8 +734,10 @@ pub async fn import_image_logic(
         tx.commit().await?;
 
         if imported_any {
+            controller.set_complete(total_count as i64);
             Ok((first_id, first_sha, total_count, Some(folder_id)))
         } else {
+            controller.set_failed(&format!("Failed to import any images from directory: {}", path_str));
             Err(anyhow::anyhow!(
                 "Failed to import any images from directory: {}",
                 path_str
@@ -596,9 +759,11 @@ pub async fn import_image_logic(
             safety,
         )
         .await?;
+        controller.set_complete(1);
         Ok((id, sha, 1, Some(folder_id)))
     }
 }
+
 
 pub async fn backfill_image_folders(db: &SqlitePool) -> Result<i64> {
     #[derive(Debug, sqlx::FromRow)]
@@ -727,6 +892,7 @@ pub async fn rescan_folder_logic(
     ffmpeg: Option<&Path>,
     data_dir: &Path,
     safety: &SafetyService,
+    controller: &ImportController,
 ) -> Result<(i64, i64)> {
     let folder_path: Option<String> =
         sqlx::query_scalar("SELECT path FROM folders WHERE id = ?")
@@ -753,7 +919,7 @@ pub async fn rescan_folder_logic(
     .await?;
 
     let (_id, _sha, found, _folder_id) =
-        import_image_logic(&path, db, active, ffmpeg, data_dir, safety).await?;
+        import_image_logic(&path, db, active, ffmpeg, data_dir, safety, controller).await?;
 
     let after: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM images WHERE folder_id = ? AND deleted_at IS NULL",
@@ -770,6 +936,7 @@ pub async fn rescan_folder_logic(
     );
     Ok((imported, found_i64))
 }
+
 
 /// Queue vector indexing for media in an imported folder that does not yet have
 /// a `ready` vector for the active embedding model. Rows that are already

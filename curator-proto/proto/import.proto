@@ -7,6 +7,8 @@ import "common.proto";
 
 service ImportService {
   rpc ImportImage (ImportImageRequest) returns (ImportResult);
+  rpc GetImportProgress (google.protobuf.Empty) returns (ImportProgress);
+  rpc CancelImport (google.protobuf.Empty) returns (CancelImportResult);
   rpc GetImportedFolders (google.protobuf.Empty) returns (ImportedFoldersResult);
   rpc BackfillImageFolders (google.protobuf.Empty) returns (BackfillResult);
   rpc BackfillMediaMetadata (google.protobuf.Empty) returns (MediaMetadataBackfillResult);
@@ -15,6 +17,21 @@ service ImportService {
   rpc RescanSafety (google.protobuf.Empty) returns (RescanSafetyResult);
   rpc GetSafetyRescanProgress (google.protobuf.Empty) returns (SafetyRescanProgress);
   rpc EphemeralClassifySafety (EphemeralClassifySafetyRequest) returns (EphemeralClassifySafetyResult);
+}
+
+message ImportProgress {
+  bool running = 1;
+  string phase = 2; // "idle" | "discovering" | "extracting" | "writing_db" | "complete" | "cancelled" | "failed"
+  int64 discovered_files = 3;
+  int64 processed_files = 4;
+  int64 total_files = 5;
+  string current_file = 6;
+  string error_message = 7;
+}
+
+message CancelImportResult {
+  bool success = 1;
+  string message = 2;
 }
 
 message ImportImageRequest {
@@ -27,6 +44,7 @@ message ImportResult {
   uint32 imported_count = 3;
   optional int64 folder_id = 4;
 }
+
 
 message ImportedFoldersResult {
   repeated curator.common.FolderDetails folders = 1;

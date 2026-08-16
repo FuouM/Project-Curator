@@ -14,7 +14,78 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file import.proto.
  */
 export const file_import: GenFile = /*@__PURE__*/
-  fileDesc("CgxpbXBvcnQucHJvdG8SDmN1cmF0b3IuaW1wb3J0IiIKEkltcG9ydEltYWdlUmVxdWVzdBIMCgRwYXRoGAEgASgJIm4KDEltcG9ydFJlc3VsdBIQCghpbWFnZV9pZBgBIAEoAxIOCgZzaGEyNTYYAiABKAkSFgoOaW1wb3J0ZWRfY291bnQYAyABKA0SFgoJZm9sZGVyX2lkGAQgASgDSACIAQFCDAoKX2ZvbGRlcl9pZCJHChVJbXBvcnRlZEZvbGRlcnNSZXN1bHQSLgoHZm9sZGVycxgBIAMoCzIdLmN1cmF0b3IuY29tbW9uLkZvbGRlckRldGFpbHMiKwoOQmFja2ZpbGxSZXN1bHQSGQoRaW1hZ2VzX2JhY2tmaWxsZWQYASABKAMiQQobTWVkaWFNZXRhZGF0YUJhY2tmaWxsUmVzdWx0EhEKCXByb2Nlc3NlZBgBIAEoAxIPCgd1cGRhdGVkGAIgASgDIigKE1Jlc2NhbkZvbGRlclJlcXVlc3QSEQoJZm9sZGVyX2lkGAEgASgDIkgKElJlc2NhbkZvbGRlclJlc3VsdBIRCglmb2xkZXJfaWQYASABKAMSEAoIaW1wb3J0ZWQYAiABKAMSDQoFZm91bmQYAyABKAMiJwoSSW5kZXhGb2xkZXJSZXF1ZXN0EhEKCWZvbGRlcl9pZBgBIAEoAyI2ChFJbmRleEZvbGRlclJlc3VsdBIRCglmb2xkZXJfaWQYASABKAMSDgoGcXVldWVkGAIgASgDIkcKElJlc2NhblNhZmV0eVJlc3VsdBIPCgdzdGFydGVkGAEgASgIEg8KB3BlbmRpbmcYAiABKAMSDwoHbWVzc2FnZRgDIAEoCSJqChRTYWZldHlSZXNjYW5Qcm9ncmVzcxIPCgdydW5uaW5nGAEgASgIEhEKCXByb2Nlc3NlZBgCIAEoAxINCgV0b3RhbBgDIAEoAxIPCgd1cGRhdGVkGAQgASgDEg4KBnN0YXR1cxgFIAEoCSIuCh5FcGhlbWVyYWxDbGFzc2lmeVNhZmV0eVJlcXVlc3QSDAoEcGF0aBgBIAEoCSL/AQodRXBoZW1lcmFsQ2xhc3NpZnlTYWZldHlSZXN1bHQSDAoEcGF0aBgBIAEoCRIXCgpzYWZlX3Njb3JlGAIgASgCSACIAQESGQoMaGVudGFpX3Njb3JlGAMgASgCSAGIAQESFwoKcG9ybl9zY29yZRgEIAEoAkgCiAEBEhcKCnNleHlfc2NvcmUYBSABKAJIA4gBARIaCg1kcmF3aW5nX3Njb3JlGAYgASgCSASIAQFCDQoLX3NhZmVfc2NvcmVCDwoNX2hlbnRhaV9zY29yZUINCgtfcG9ybl9zY29yZUINCgtfc2V4eV9zY29yZUIQCg5fZHJhd2luZ19zY29yZTKxBgoNSW1wb3J0U2VydmljZRJPCgtJbXBvcnRJbWFnZRIiLmN1cmF0b3IuaW1wb3J0LkltcG9ydEltYWdlUmVxdWVzdBocLmN1cmF0b3IuaW1wb3J0LkltcG9ydFJlc3VsdBJTChJHZXRJbXBvcnRlZEZvbGRlcnMSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaJS5jdXJhdG9yLmltcG9ydC5JbXBvcnRlZEZvbGRlcnNSZXN1bHQSTgoUQmFja2ZpbGxJbWFnZUZvbGRlcnMSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaHi5jdXJhdG9yLmltcG9ydC5CYWNrZmlsbFJlc3VsdBJcChVCYWNrZmlsbE1lZGlhTWV0YWRhdGESFi5nb29nbGUucHJvdG9idWYuRW1wdHkaKy5jdXJhdG9yLmltcG9ydC5NZWRpYU1ldGFkYXRhQmFja2ZpbGxSZXN1bHQSVwoMUmVzY2FuRm9sZGVyEiMuY3VyYXRvci5pbXBvcnQuUmVzY2FuRm9sZGVyUmVxdWVzdBoiLmN1cmF0b3IuaW1wb3J0LlJlc2NhbkZvbGRlclJlc3VsdBJUCgtJbmRleEZvbGRlchIiLmN1cmF0b3IuaW1wb3J0LkluZGV4Rm9sZGVyUmVxdWVzdBohLmN1cmF0b3IuaW1wb3J0LkluZGV4Rm9sZGVyUmVzdWx0EkoKDFJlc2NhblNhZmV0eRIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRoiLmN1cmF0b3IuaW1wb3J0LlJlc2NhblNhZmV0eVJlc3VsdBJXChdHZXRTYWZldHlSZXNjYW5Qcm9ncmVzcxIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRokLmN1cmF0b3IuaW1wb3J0LlNhZmV0eVJlc2NhblByb2dyZXNzEngKF0VwaGVtZXJhbENsYXNzaWZ5U2FmZXR5Ei4uY3VyYXRvci5pbXBvcnQuRXBoZW1lcmFsQ2xhc3NpZnlTYWZldHlSZXF1ZXN0Gi0uY3VyYXRvci5pbXBvcnQuRXBoZW1lcmFsQ2xhc3NpZnlTYWZldHlSZXN1bHRiBnByb3RvMw", [file_google_protobuf_empty, file_common]);
+  fileDesc("CgxpbXBvcnQucHJvdG8SDmN1cmF0b3IuaW1wb3J0IqUBCg5JbXBvcnRQcm9ncmVzcxIPCgdydW5uaW5nGAEgASgIEg0KBXBoYXNlGAIgASgJEhgKEGRpc2NvdmVyZWRfZmlsZXMYAyABKAMSFwoPcHJvY2Vzc2VkX2ZpbGVzGAQgASgDEhMKC3RvdGFsX2ZpbGVzGAUgASgDEhQKDGN1cnJlbnRfZmlsZRgGIAEoCRIVCg1lcnJvcl9tZXNzYWdlGAcgASgJIjYKEkNhbmNlbEltcG9ydFJlc3VsdBIPCgdzdWNjZXNzGAEgASgIEg8KB21lc3NhZ2UYAiABKAkiIgoSSW1wb3J0SW1hZ2VSZXF1ZXN0EgwKBHBhdGgYASABKAkibgoMSW1wb3J0UmVzdWx0EhAKCGltYWdlX2lkGAEgASgDEg4KBnNoYTI1NhgCIAEoCRIWCg5pbXBvcnRlZF9jb3VudBgDIAEoDRIWCglmb2xkZXJfaWQYBCABKANIAIgBAUIMCgpfZm9sZGVyX2lkIkcKFUltcG9ydGVkRm9sZGVyc1Jlc3VsdBIuCgdmb2xkZXJzGAEgAygLMh0uY3VyYXRvci5jb21tb24uRm9sZGVyRGV0YWlscyIrCg5CYWNrZmlsbFJlc3VsdBIZChFpbWFnZXNfYmFja2ZpbGxlZBgBIAEoAyJBChtNZWRpYU1ldGFkYXRhQmFja2ZpbGxSZXN1bHQSEQoJcHJvY2Vzc2VkGAEgASgDEg8KB3VwZGF0ZWQYAiABKAMiKAoTUmVzY2FuRm9sZGVyUmVxdWVzdBIRCglmb2xkZXJfaWQYASABKAMiSAoSUmVzY2FuRm9sZGVyUmVzdWx0EhEKCWZvbGRlcl9pZBgBIAEoAxIQCghpbXBvcnRlZBgCIAEoAxINCgVmb3VuZBgDIAEoAyInChJJbmRleEZvbGRlclJlcXVlc3QSEQoJZm9sZGVyX2lkGAEgASgDIjYKEUluZGV4Rm9sZGVyUmVzdWx0EhEKCWZvbGRlcl9pZBgBIAEoAxIOCgZxdWV1ZWQYAiABKAMiRwoSUmVzY2FuU2FmZXR5UmVzdWx0Eg8KB3N0YXJ0ZWQYASABKAgSDwoHcGVuZGluZxgCIAEoAxIPCgdtZXNzYWdlGAMgASgJImoKFFNhZmV0eVJlc2NhblByb2dyZXNzEg8KB3J1bm5pbmcYASABKAgSEQoJcHJvY2Vzc2VkGAIgASgDEg0KBXRvdGFsGAMgASgDEg8KB3VwZGF0ZWQYBCABKAMSDgoGc3RhdHVzGAUgASgJIi4KHkVwaGVtZXJhbENsYXNzaWZ5U2FmZXR5UmVxdWVzdBIMCgRwYXRoGAEgASgJIv8BCh1FcGhlbWVyYWxDbGFzc2lmeVNhZmV0eVJlc3VsdBIMCgRwYXRoGAEgASgJEhcKCnNhZmVfc2NvcmUYAiABKAJIAIgBARIZCgxoZW50YWlfc2NvcmUYAyABKAJIAYgBARIXCgpwb3JuX3Njb3JlGAQgASgCSAKIAQESFwoKc2V4eV9zY29yZRgFIAEoAkgDiAEBEhoKDWRyYXdpbmdfc2NvcmUYBiABKAJIBIgBAUINCgtfc2FmZV9zY29yZUIPCg1faGVudGFpX3Njb3JlQg0KC19wb3JuX3Njb3JlQg0KC19zZXh5X3Njb3JlQhAKDl9kcmF3aW5nX3Njb3JlMsoHCg1JbXBvcnRTZXJ2aWNlEk8KC0ltcG9ydEltYWdlEiIuY3VyYXRvci5pbXBvcnQuSW1wb3J0SW1hZ2VSZXF1ZXN0GhwuY3VyYXRvci5pbXBvcnQuSW1wb3J0UmVzdWx0EksKEUdldEltcG9ydFByb2dyZXNzEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5Gh4uY3VyYXRvci5pbXBvcnQuSW1wb3J0UHJvZ3Jlc3MSSgoMQ2FuY2VsSW1wb3J0EhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GiIuY3VyYXRvci5pbXBvcnQuQ2FuY2VsSW1wb3J0UmVzdWx0ElMKEkdldEltcG9ydGVkRm9sZGVycxIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRolLmN1cmF0b3IuaW1wb3J0LkltcG9ydGVkRm9sZGVyc1Jlc3VsdBJOChRCYWNrZmlsbEltYWdlRm9sZGVycxIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRoeLmN1cmF0b3IuaW1wb3J0LkJhY2tmaWxsUmVzdWx0ElwKFUJhY2tmaWxsTWVkaWFNZXRhZGF0YRIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRorLmN1cmF0b3IuaW1wb3J0Lk1lZGlhTWV0YWRhdGFCYWNrZmlsbFJlc3VsdBJXCgxSZXNjYW5Gb2xkZXISIy5jdXJhdG9yLmltcG9ydC5SZXNjYW5Gb2xkZXJSZXF1ZXN0GiIuY3VyYXRvci5pbXBvcnQuUmVzY2FuRm9sZGVyUmVzdWx0ElQKC0luZGV4Rm9sZGVyEiIuY3VyYXRvci5pbXBvcnQuSW5kZXhGb2xkZXJSZXF1ZXN0GiEuY3VyYXRvci5pbXBvcnQuSW5kZXhGb2xkZXJSZXN1bHQSSgoMUmVzY2FuU2FmZXR5EhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GiIuY3VyYXRvci5pbXBvcnQuUmVzY2FuU2FmZXR5UmVzdWx0ElcKF0dldFNhZmV0eVJlc2NhblByb2dyZXNzEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GiQuY3VyYXRvci5pbXBvcnQuU2FmZXR5UmVzY2FuUHJvZ3Jlc3MSeAoXRXBoZW1lcmFsQ2xhc3NpZnlTYWZldHkSLi5jdXJhdG9yLmltcG9ydC5FcGhlbWVyYWxDbGFzc2lmeVNhZmV0eVJlcXVlc3QaLS5jdXJhdG9yLmltcG9ydC5FcGhlbWVyYWxDbGFzc2lmeVNhZmV0eVJlc3VsdGIGcHJvdG8z", [file_google_protobuf_empty, file_common]);
+
+/**
+ * @generated from message curator.import.ImportProgress
+ */
+export type ImportProgress = Message<"curator.import.ImportProgress"> & {
+  /**
+   * @generated from field: bool running = 1;
+   */
+  running: boolean;
+
+  /**
+   * "idle" | "discovering" | "extracting" | "writing_db" | "complete" | "cancelled" | "failed"
+   *
+   * @generated from field: string phase = 2;
+   */
+  phase: string;
+
+  /**
+   * @generated from field: int64 discovered_files = 3;
+   */
+  discoveredFiles: bigint;
+
+  /**
+   * @generated from field: int64 processed_files = 4;
+   */
+  processedFiles: bigint;
+
+  /**
+   * @generated from field: int64 total_files = 5;
+   */
+  totalFiles: bigint;
+
+  /**
+   * @generated from field: string current_file = 6;
+   */
+  currentFile: string;
+
+  /**
+   * @generated from field: string error_message = 7;
+   */
+  errorMessage: string;
+};
+
+/**
+ * Describes the message curator.import.ImportProgress.
+ * Use `create(ImportProgressSchema)` to create a new message.
+ */
+export const ImportProgressSchema: GenMessage<ImportProgress> = /*@__PURE__*/
+  messageDesc(file_import, 0);
+
+/**
+ * @generated from message curator.import.CancelImportResult
+ */
+export type CancelImportResult = Message<"curator.import.CancelImportResult"> & {
+  /**
+   * @generated from field: bool success = 1;
+   */
+  success: boolean;
+
+  /**
+   * @generated from field: string message = 2;
+   */
+  message: string;
+};
+
+/**
+ * Describes the message curator.import.CancelImportResult.
+ * Use `create(CancelImportResultSchema)` to create a new message.
+ */
+export const CancelImportResultSchema: GenMessage<CancelImportResult> = /*@__PURE__*/
+  messageDesc(file_import, 1);
 
 /**
  * @generated from message curator.import.ImportImageRequest
@@ -31,7 +102,7 @@ export type ImportImageRequest = Message<"curator.import.ImportImageRequest"> & 
  * Use `create(ImportImageRequestSchema)` to create a new message.
  */
 export const ImportImageRequestSchema: GenMessage<ImportImageRequest> = /*@__PURE__*/
-  messageDesc(file_import, 0);
+  messageDesc(file_import, 2);
 
 /**
  * @generated from message curator.import.ImportResult
@@ -63,7 +134,7 @@ export type ImportResult = Message<"curator.import.ImportResult"> & {
  * Use `create(ImportResultSchema)` to create a new message.
  */
 export const ImportResultSchema: GenMessage<ImportResult> = /*@__PURE__*/
-  messageDesc(file_import, 1);
+  messageDesc(file_import, 3);
 
 /**
  * @generated from message curator.import.ImportedFoldersResult
@@ -80,7 +151,7 @@ export type ImportedFoldersResult = Message<"curator.import.ImportedFoldersResul
  * Use `create(ImportedFoldersResultSchema)` to create a new message.
  */
 export const ImportedFoldersResultSchema: GenMessage<ImportedFoldersResult> = /*@__PURE__*/
-  messageDesc(file_import, 2);
+  messageDesc(file_import, 4);
 
 /**
  * @generated from message curator.import.BackfillResult
@@ -97,7 +168,7 @@ export type BackfillResult = Message<"curator.import.BackfillResult"> & {
  * Use `create(BackfillResultSchema)` to create a new message.
  */
 export const BackfillResultSchema: GenMessage<BackfillResult> = /*@__PURE__*/
-  messageDesc(file_import, 3);
+  messageDesc(file_import, 5);
 
 /**
  * @generated from message curator.import.MediaMetadataBackfillResult
@@ -119,7 +190,7 @@ export type MediaMetadataBackfillResult = Message<"curator.import.MediaMetadataB
  * Use `create(MediaMetadataBackfillResultSchema)` to create a new message.
  */
 export const MediaMetadataBackfillResultSchema: GenMessage<MediaMetadataBackfillResult> = /*@__PURE__*/
-  messageDesc(file_import, 4);
+  messageDesc(file_import, 6);
 
 /**
  * @generated from message curator.import.RescanFolderRequest
@@ -136,7 +207,7 @@ export type RescanFolderRequest = Message<"curator.import.RescanFolderRequest"> 
  * Use `create(RescanFolderRequestSchema)` to create a new message.
  */
 export const RescanFolderRequestSchema: GenMessage<RescanFolderRequest> = /*@__PURE__*/
-  messageDesc(file_import, 5);
+  messageDesc(file_import, 7);
 
 /**
  * @generated from message curator.import.RescanFolderResult
@@ -167,7 +238,7 @@ export type RescanFolderResult = Message<"curator.import.RescanFolderResult"> & 
  * Use `create(RescanFolderResultSchema)` to create a new message.
  */
 export const RescanFolderResultSchema: GenMessage<RescanFolderResult> = /*@__PURE__*/
-  messageDesc(file_import, 6);
+  messageDesc(file_import, 8);
 
 /**
  * @generated from message curator.import.IndexFolderRequest
@@ -184,7 +255,7 @@ export type IndexFolderRequest = Message<"curator.import.IndexFolderRequest"> & 
  * Use `create(IndexFolderRequestSchema)` to create a new message.
  */
 export const IndexFolderRequestSchema: GenMessage<IndexFolderRequest> = /*@__PURE__*/
-  messageDesc(file_import, 7);
+  messageDesc(file_import, 9);
 
 /**
  * @generated from message curator.import.IndexFolderResult
@@ -208,7 +279,7 @@ export type IndexFolderResult = Message<"curator.import.IndexFolderResult"> & {
  * Use `create(IndexFolderResultSchema)` to create a new message.
  */
 export const IndexFolderResultSchema: GenMessage<IndexFolderResult> = /*@__PURE__*/
-  messageDesc(file_import, 8);
+  messageDesc(file_import, 10);
 
 /**
  * @generated from message curator.import.RescanSafetyResult
@@ -239,7 +310,7 @@ export type RescanSafetyResult = Message<"curator.import.RescanSafetyResult"> & 
  * Use `create(RescanSafetyResultSchema)` to create a new message.
  */
 export const RescanSafetyResultSchema: GenMessage<RescanSafetyResult> = /*@__PURE__*/
-  messageDesc(file_import, 9);
+  messageDesc(file_import, 11);
 
 /**
  * @generated from message curator.import.SafetyRescanProgress
@@ -280,7 +351,7 @@ export type SafetyRescanProgress = Message<"curator.import.SafetyRescanProgress"
  * Use `create(SafetyRescanProgressSchema)` to create a new message.
  */
 export const SafetyRescanProgressSchema: GenMessage<SafetyRescanProgress> = /*@__PURE__*/
-  messageDesc(file_import, 10);
+  messageDesc(file_import, 12);
 
 /**
  * Ephemeral (library-agnostic) safety classification of an arbitrary image
@@ -300,7 +371,7 @@ export type EphemeralClassifySafetyRequest = Message<"curator.import.EphemeralCl
  * Use `create(EphemeralClassifySafetyRequestSchema)` to create a new message.
  */
 export const EphemeralClassifySafetyRequestSchema: GenMessage<EphemeralClassifySafetyRequest> = /*@__PURE__*/
-  messageDesc(file_import, 11);
+  messageDesc(file_import, 13);
 
 /**
  * @generated from message curator.import.EphemeralClassifySafetyResult
@@ -355,7 +426,7 @@ export type EphemeralClassifySafetyResult = Message<"curator.import.EphemeralCla
  * Use `create(EphemeralClassifySafetyResultSchema)` to create a new message.
  */
 export const EphemeralClassifySafetyResultSchema: GenMessage<EphemeralClassifySafetyResult> = /*@__PURE__*/
-  messageDesc(file_import, 12);
+  messageDesc(file_import, 14);
 
 /**
  * @generated from service curator.import.ImportService
@@ -368,6 +439,22 @@ export const ImportService: GenService<{
     methodKind: "unary";
     input: typeof ImportImageRequestSchema;
     output: typeof ImportResultSchema;
+  },
+  /**
+   * @generated from rpc curator.import.ImportService.GetImportProgress
+   */
+  getImportProgress: {
+    methodKind: "unary";
+    input: typeof EmptySchema;
+    output: typeof ImportProgressSchema;
+  },
+  /**
+   * @generated from rpc curator.import.ImportService.CancelImport
+   */
+  cancelImport: {
+    methodKind: "unary";
+    input: typeof EmptySchema;
+    output: typeof CancelImportResultSchema;
   },
   /**
    * @generated from rpc curator.import.ImportService.GetImportedFolders

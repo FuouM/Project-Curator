@@ -106,6 +106,17 @@ pub async fn call_typed(
             let resp = client.import_image(req).await.map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
+        "ImportService.GetImportProgress" => {
+            let mut client = ImportServiceClient::new(channel);
+            let resp = client.get_import_progress(()).await.map_err(status_err)?;
+            Ok(resp.into_inner().encode_to_vec())
+        }
+        "ImportService.CancelImport" => {
+            let mut client = ImportServiceClient::new(channel);
+            let resp = client.cancel_import(()).await.map_err(status_err)?;
+            Ok(resp.into_inner().encode_to_vec())
+        }
+
         "ImportService.GetImportedFolders" => {
             let mut client = ImportServiceClient::new(channel);
             let resp = client.get_imported_folders(()).await.map_err(status_err)?;

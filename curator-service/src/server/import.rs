@@ -2,10 +2,11 @@ use crate::handlers;
 use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::import::{
-    import_service_server::ImportService, BackfillResult, EphemeralClassifySafetyRequest,
-    EphemeralClassifySafetyResult, ImportImageRequest, ImportResult, ImportedFoldersResult,
-    IndexFolderRequest, IndexFolderResult, MediaMetadataBackfillResult, RescanFolderRequest,
-    RescanFolderResult, RescanSafetyResult, SafetyRescanProgress,
+    import_service_server::ImportService, BackfillResult, CancelImportResult,
+    EphemeralClassifySafetyRequest, EphemeralClassifySafetyResult, ImportImageRequest,
+    ImportProgress, ImportResult, ImportedFoldersResult, IndexFolderRequest, IndexFolderResult,
+    MediaMetadataBackfillResult, RescanFolderRequest, RescanFolderResult, RescanSafetyResult,
+    SafetyRescanProgress,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
@@ -51,6 +52,7 @@ impl ImportService for ImportServiceImpl {
                 ffmpeg.as_deref(),
                 &self.ctx.data_dir,
                 &self.ctx.safety,
+                &self.ctx.import_controller,
             )
             .await
             .map_err(internal_status)?;
@@ -61,6 +63,36 @@ impl ImportService for ImportServiceImpl {
             folder_id,
         }))
     }
+
+    async fn get_import_progress(
+        &self,
+        _request: TonicRequest<()>,
+    ) -> Result<TonicResponse<ImportProgress>, Status> {
+        let p = self.ctx.import_controller.get_progress();
+        Ok(TonicResponse::new(ImportProgress {
+            running: p.running,
+            phase: p.phase,
+            discovered_files: p.discovered_files,
+            processed_files: p.processed_files,
+            total_files: p.total_files,
+            current_file: p.current_file,
+            error_message: p.error_message,
+        }))
+    }
+
+    async fn cancel_import(
+        &self,
+        _request: TonicRequest<()>,
+    ) -> Result<TonicResponse<CancelImportResult>, Status> {
+        let success = self.ctx.import_controller.request_cancel();
+        let message = if success {
+            "Cancellation requested".to_string()
+        } else {
+            "No import is currently running".to_string()
+        };
+        Ok(TonicResponse::new(CancelImportResult { success, message }))
+    }
+
 
     async fn get_imported_folders(
         &self,
@@ -117,7 +149,9 @@ impl ImportService for ImportServiceImpl {
             ffmpeg.as_deref(),
             &self.ctx.data_dir,
             &self.ctx.safety,
+            &self.ctx.import_controller,
         )
+
         .await
         .map_err(internal_status)?;
         Ok(TonicResponse::new(RescanFolderResult {

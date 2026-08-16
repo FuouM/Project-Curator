@@ -1,6 +1,12 @@
 import { typedCall } from "../ipc";
 import { folderDetailsFromProto } from "../proto-adapters";
-import { ImportImageRequestSchema, ImportResultSchema, ImportedFoldersResultSchema } from "../gen/import_pb";
+import {
+  ImportImageRequestSchema,
+  ImportResultSchema,
+  ImportedFoldersResultSchema,
+  ImportProgressSchema,
+  CancelImportResultSchema,
+} from "../gen/import_pb";
 import { StatusResultSchema } from "../gen/system_pb";
 import { SafeHtml, html } from "../components";
 import { setStatusMessage } from "../utils";
@@ -9,22 +15,38 @@ import { refreshDashboard } from "./dashboard";
 import { refreshGallery } from "./gallery";
 
 let importProgressTimer: any = null;
+let scanProgressTimer: any = null;
 
 export function setupImport() {
   const importForm = document.getElementById("import-form");
   const importInput = document.getElementById("import-path-input") as HTMLInputElement;
   const importMsg = document.getElementById("import-status-msg");
+  const cancelBtn = document.getElementById("import-cancel-btn") as HTMLButtonElement | null;
 
   if (importInput) {
     setupBrowseButton("browse-file-btn", importInput, false);
     setupBrowseButton("browse-folder-btn", importInput, true);
   }
 
+  cancelBtn?.addEventListener("click", async () => {
+    if (!cancelBtn) return;
+    cancelBtn.disabled = true;
+    cancelBtn.innerHTML = `<i class="bi bi-hourglass-split"></i> Cancelling...`;
+    try {
+      const resp = await typedCall("ImportService.CancelImport", null, null, CancelImportResultSchema);
+      if (resp.success) {
+        if (importMsg) setStatusMessage(importMsg, "Cancelling import operation...", "loading");
+      }
+    } catch (e) {
+      console.error("Failed to cancel import:", e);
+    }
+  });
+
   importForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!importInput || !importMsg) return;
 
-    setStatusMessage(importMsg, "Scanning directory & queuing import jobs...", "loading");
+    setStatusMessage(importMsg, "Starting import scan...", "loading");
 
     const panel = document.getElementById("import-progress-panel");
     const title = document.getElementById("import-progress-title");
@@ -32,28 +54,104 @@ export function setupImport() {
     const bar = document.getElementById("import-progress-bar");
     const indexedCount = document.getElementById("import-indexed-count");
     const pendingCount = document.getElementById("import-pending-count");
+    const cancelBtn = document.getElementById("import-cancel-btn") as HTMLButtonElement | null;
 
     if (panel) panel.style.display = "block";
-    if (title) title.textContent = "Scanning Directory & Queuing Import Jobs...";
+    if (title) title.textContent = "Scanning directory...";
     if (bar) bar.style.width = "0%";
     if (percent) percent.textContent = "0%";
-    if (indexedCount) indexedCount.textContent = "Scanning folder...";
+    if (indexedCount) indexedCount.textContent = "Discovering files...";
     if (pendingCount) pendingCount.textContent = "Queuing jobs...";
+    if (cancelBtn) {
+      cancelBtn.style.display = "inline-flex";
+      cancelBtn.disabled = false;
+      cancelBtn.innerHTML = `<i class="bi bi-x-circle"></i> Cancel`;
+    }
+
+    startScanProgressPolling();
 
     try {
       const resp = await typedCall("ImportService.ImportImage", ImportImageRequestSchema, { path: importInput.value }, ImportResultSchema);
+      stopScanProgressPolling();
+
       const { importedCount, folderId } = resp;
       if (folderId && importedCount) {
-        setStatusMessage(importMsg, `Started import! Processing ${importedCount} image(s)...`, "loading");
+        setStatusMessage(importMsg, `Import completed! Queued ${importedCount} image(s) for indexing...`, "loading");
         startImportProgressPolling(Number(folderId), importedCount);
+      } else {
+        if (cancelBtn) cancelBtn.style.display = "none";
+        setStatusMessage(importMsg, "Import completed.", "success");
       }
       importInput.value = "";
       importInput.dispatchEvent(new Event('change', { bubbles: true }));
-    } catch (e) {
-      setStatusMessage(importMsg, `IPC Error: ${e}`, "error");
-      if (panel) panel.style.display = "none";
+    } catch (e: any) {
+      stopScanProgressPolling();
+      if (cancelBtn) cancelBtn.style.display = "none";
+      const errStr = e?.message || String(e);
+      if (errStr.includes("cancelled")) {
+        setStatusMessage(importMsg, "Import was cancelled by user.", "error");
+        if (title) title.textContent = "Import Cancelled";
+        if (bar) bar.style.width = "0%";
+        if (percent) percent.textContent = "Cancelled";
+      } else {
+        setStatusMessage(importMsg, `Import Error: ${errStr}`, "error");
+        if (panel) panel.style.display = "none";
+      }
     }
   });
+}
+
+function startScanProgressPolling() {
+  if (scanProgressTimer) clearInterval(scanProgressTimer);
+
+  const title = document.getElementById("import-progress-title");
+  const percent = document.getElementById("import-progress-percent");
+  const bar = document.getElementById("import-progress-bar");
+  const indexedCount = document.getElementById("import-indexed-count");
+  const pendingCount = document.getElementById("import-pending-count");
+
+  scanProgressTimer = setInterval(async () => {
+    try {
+      const prog = await typedCall("ImportService.GetImportProgress", null, null, ImportProgressSchema);
+      if (!prog.running && prog.phase === "idle") return;
+
+      const phase = prog.phase;
+      const discovered = Number(prog.discoveredFiles);
+      const processed = Number(prog.processedFiles);
+      const total = Number(prog.totalFiles);
+
+      if (phase === "discovering") {
+        if (title) title.textContent = "Discovering supported media files...";
+        if (percent) percent.textContent = `${discovered} found`;
+        if (bar) bar.style.width = "15%";
+        if (indexedCount) indexedCount.textContent = `Files found: ${discovered}`;
+        if (pendingCount) pendingCount.textContent = "Scanning directories...";
+      } else if (phase === "extracting") {
+        const pct = total > 0 ? Math.min(90, Math.round((processed / total) * 90)) : 0;
+        if (title) title.textContent = `Extracting metadata & hashing (${processed} / ${total})...`;
+        if (percent) percent.textContent = `${Math.round((processed / Math.max(1, total)) * 100)}%`;
+        if (bar) bar.style.width = `${pct}%`;
+        if (indexedCount) indexedCount.textContent = `Processed: ${processed} / ${total}`;
+        if (pendingCount) pendingCount.textContent = "Extracting media info...";
+      } else if (phase === "writing_db") {
+        if (title) title.textContent = `Saving records to library (${processed} / ${total})...`;
+        if (percent) percent.textContent = "95%";
+        if (bar) bar.style.width = "95%";
+        if (indexedCount) indexedCount.textContent = `Saved: ${processed} / ${total}`;
+        if (pendingCount) pendingCount.textContent = "Writing to database...";
+      } else if (phase === "cancelled") {
+        if (title) title.textContent = "Cancelling import...";
+        if (percent) percent.textContent = "Cancelled";
+      }
+    } catch (_) {}
+  }, 200);
+}
+
+function stopScanProgressPolling() {
+  if (scanProgressTimer) {
+    clearInterval(scanProgressTimer);
+    scanProgressTimer = null;
+  }
 }
 
 function startImportProgressPolling(targetFolderId: number, expectedBatchCount: number) {
@@ -63,11 +161,13 @@ function startImportProgressPolling(targetFolderId: number, expectedBatchCount: 
   const bar = document.getElementById("import-progress-bar");
   const indexedCount = document.getElementById("import-indexed-count");
   const pendingCount = document.getElementById("import-pending-count");
+  const cancelBtn = document.getElementById("import-cancel-btn") as HTMLButtonElement | null;
   const statusMsg = document.getElementById("import-status-msg");
 
+  if (cancelBtn) cancelBtn.style.display = "none";
   if (!panel || !bar || !percent) return;
   panel.style.display = "block";
-  if (title) title.textContent = `Processing Import & Vector Indexing (${expectedBatchCount} images)...`;
+  if (title) title.textContent = `Processing Vector Indexing (${expectedBatchCount} images)...`;
   bar.style.width = "0%";
   percent.textContent = "0%";
   if (indexedCount) indexedCount.textContent = `Indexed Vectors: 0 / Total Images: ${expectedBatchCount}`;
@@ -132,14 +232,19 @@ export function renderImportHtml(): SafeHtml {
 
       <div id="import-progress-panel" style="display: none; margin-top: 16px; padding: 14px; background: var(--sys-menu-bg); border: 1px solid var(--sys-menu-border); border-radius: 6px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <span id="import-progress-title" style="font-weight: 600; font-size: 13px;">Processing Import &amp; Vector Indexing...</span>
-          <span id="import-progress-percent" style="font-weight: 700; color: var(--sys-border-focus); font-size: 13px;">0%</span>
+          <span id="import-progress-title" style="font-weight: 600; font-size: 13px;">Processing Import...</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button type="button" class="win-button" id="import-cancel-btn" style="display: none; font-size: 11px; padding: 2px 8px; color: #a80000;" title="Cancel ongoing import">
+              <i class="bi bi-x-circle"></i> Cancel
+            </button>
+            <span id="import-progress-percent" style="font-weight: 700; color: var(--sys-border-focus); font-size: 13px;">0%</span>
+          </div>
         </div>
         <div style="width: 100%; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden; margin-bottom: 10px;">
           <div id="import-progress-bar" style="width: 0%; height: 100%; background-color: var(--sys-primary, #0078d4); transition: width 0.3s ease;"></div>
         </div>
         <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--sys-text-subtle);">
-          <span id="import-indexed-count">Indexed: 0 / 0</span>
+          <span id="import-indexed-count">Files: 0 / 0</span>
           <span id="import-pending-count">Pending Jobs: 0</span>
         </div>
       </div>
@@ -147,3 +252,4 @@ export function renderImportHtml(): SafeHtml {
     </div>
   `;
 }
+
