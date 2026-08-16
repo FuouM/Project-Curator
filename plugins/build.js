@@ -48,6 +48,9 @@ async function buildPlugin(name) {
       format: "iife",
       target: "es2017",
       platform: "browser",
+      // Plugins may import .css files as plain text strings and inject them
+      // via a <style> tag (see dynasty-scans/src/index.ts).
+      loader: { ".css": "text" },
       // Tree-shake dead code and minify whitespace but keep names readable
       // for easier debugging inside the app's DevTools.
       minifyWhitespace: false,

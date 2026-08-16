@@ -11,8 +11,6 @@ import {
   navigate,
   setActions,
   setBanner,
-  tagClass,
-  tagStyle,
 } from "./state";
 import {
   ChapterCacheCount,
@@ -25,8 +23,8 @@ import {
   unfollowSeries,
 } from "./db";
 import { Series, SeriesTag, fetchSeries, getSeriesCover, openExternal } from "./api";
-
-const PH = window.PluginHost;
+import { renderTagPill } from "./components/tag-pill";
+import { renderCoverImage } from "./components/cover";
 
 interface ChapterMeta extends ChapterRef {
   volumeHeader?: string;
@@ -119,67 +117,7 @@ function collectChapters(series: Series): ChapterMeta[] {
 }
 
 function coverEl(coverPath: string | null, alt: string): HTMLElement {
-  if (coverPath) {
-    const img = document.createElement("img");
-    img.className = "ds-cover";
-    img.alt = alt;
-    img.src = PH.convertFileSrc(coverPath);
-    img.addEventListener("error", () => {
-      img.style.display = "none";
-    });
-    return img;
-  }
-  const ph = document.createElement("div");
-  ph.className = "ds-cover-placeholder";
-  ph.innerHTML = '<i class="bi bi-image"></i>';
-  return ph;
-}
-
-function tagPill(t: { type: string; name: string; permalink?: string }): HTMLElement {
-  const pill = document.createElement("span");
-  pill.className = tagClass(t.type, t.name);
-  pill.style.cssText = tagStyle(t.type, t.name) + "font-size:10px;padding:2px 6px;border-radius:2px;";
-  pill.textContent = t.name;
-  pill.title = `${t.type}: ${t.name} (click to open)`;
-
-  pill.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    const type = (t.type ?? "").toLowerCase();
-    if (type === "series" || type === "anthology" || type === "issue") {
-      navigate({
-        view: "series",
-        seriesPermalink: t.permalink || t.name,
-        seriesName: t.name,
-      });
-      return;
-    }
-
-    let url = "";
-    if (type === "author" || type === "artist") {
-      url = t.permalink
-        ? `https://dynasty-scans.com/authors/${t.permalink}`
-        : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`;
-    } else if (type === "scanlator" || type === "group") {
-      url = t.permalink
-        ? `https://dynasty-scans.com/scanlators/${t.permalink}`
-        : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`;
-    } else if (type === "doujin" || type === "doujinshi" || type === "copyright" || type === "parody") {
-      url = t.permalink
-        ? `https://dynasty-scans.com/doujins/${t.permalink}`
-        : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`;
-    } else if (type === "pairing") {
-      url = t.permalink
-        ? `https://dynasty-scans.com/pairings/${t.permalink}`
-        : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`;
-    } else {
-      url = t.permalink
-        ? `https://dynasty-scans.com/tags/${t.permalink}`
-        : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`;
-    }
-    void openExternal(url);
-  });
-
-  return pill;
+  return renderCoverImage(coverPath, alt, "ds-cover", "ds-cover-placeholder");
 }
 
 function metaRow(label: string, tags: SeriesTag[]): HTMLElement | null {
@@ -195,36 +133,12 @@ function metaRow(label: string, tags: SeriesTag[]): HTMLElement | null {
   const pillsWrap = document.createElement("div");
   pillsWrap.className = "ds-meta-pills";
   for (const t of tags) {
-    pillsWrap.appendChild(tagPill(t));
+    pillsWrap.appendChild(renderTagPill(t, false));
   }
   row.appendChild(pillsWrap);
 
   return row;
 }
-
-function buildBody(
-  container: HTMLElement,
-  series: Series,
-  coverPath: string | null,
-  chapters: ChapterMeta[],
-  progress: Map<string, SeriesProgressRow>,
-  cacheCounts: Map<string, number>,
-  readHistorySet: Set<string>
-): void {
-  const head = document.createElement("div");
-  head.className = "ds-series-head";
-  head.appendChild(coverEl(coverPath, series.name));
-
-  const info = document.createElement("div");
-  info.style.cssText = "flex:1;min-width:0;";
-  const name = document.createElement("div");
-  name.style.cssText = "font-size:14px;font-weight:600;";
-  name.textContent = decodeEntities(series.name);
-  const typeLine = document.createElement("div");
-  typeLine.className = "ds-muted";
-  typeLine.textContent = series.type ?? "Series";
-  info.appendChild(name);
-  info.appendChild(typeLine);
 
 function renderSanitizedDescription(container: HTMLElement, htmlOrText: string): void {
   container.innerHTML = "";
@@ -301,6 +215,30 @@ function renderSanitizedDescription(container: HTMLElement, htmlOrText: string):
     walk(child, container);
   }
 }
+
+function buildBody(
+  container: HTMLElement,
+  series: Series,
+  coverPath: string | null,
+  chapters: ChapterMeta[],
+  progress: Map<string, SeriesProgressRow>,
+  cacheCounts: Map<string, number>,
+  readHistorySet: Set<string>
+): void {
+  const head = document.createElement("div");
+  head.className = "ds-series-head";
+  head.appendChild(coverEl(coverPath, series.name));
+
+  const info = document.createElement("div");
+  info.style.cssText = "flex:1;min-width:0;";
+  const name = document.createElement("div");
+  name.style.cssText = "font-size:14px;font-weight:600;";
+  name.textContent = decodeEntities(series.name);
+  const typeLine = document.createElement("div");
+  typeLine.className = "ds-muted";
+  typeLine.textContent = series.type ?? "Series";
+  info.appendChild(name);
+  info.appendChild(typeLine);
 
   if (series.description) {
     const desc = document.createElement("div");

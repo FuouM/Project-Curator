@@ -16,6 +16,48 @@
     return a;
   };
 
+  // lib/format.ts
+  function formatBytes(bytes, fallback = "", decimals = 2) {
+    var _a;
+    if (bytes == null || isNaN(bytes) || bytes < 0) return fallback;
+    if (bytes === 0) return "0 B";
+    let units = ["B", "KB", "MB", "GB", "TB"], i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(decimals)} ${(_a = units[i]) != null ? _a : "B"}`;
+  }
+
+  // lib/ipc-utils.ts
+  var PH2 = window.PluginHost;
+
+  // lib/poll.ts
+  var PH3 = window.PluginHost;
+
+  // dynasty-scans/src/utils/html.ts
+  function decodeEntities(str) {
+    if (!str) return "";
+    let s = String(str);
+    for (let i = 0; i < 2 && s.includes("&"); i++)
+      s = s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&#039;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&ndash;/g, "\u2013").replace(/&mdash;/g, "\u2014").replace(/&hellip;/g, "\u2026").replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec))).replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    return s;
+  }
+
+  // dynasty-scans/src/utils/formatting.ts
+  function formatDate(ms) {
+    if (!ms) return "";
+    let d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate()
+    ).padStart(2, "0")}`;
+  }
+  function formatDateTime(ms) {
+    if (!ms) return "Never";
+    let d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate()
+    ).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(
+      d.getMinutes()
+    ).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+  }
+
   // dynasty-scans/src/state.ts
   var TAB_ID = "dynasty-scans", SITE_ROOT = "https://dynasty-scans.com", DB_NAME = "dynasty_reader.db", PAGES_PREFIX = ".curator/plugin_data/dynasty-scans/pages", COVERS_PREFIX = ".curator/plugin_data/dynasty-scans/covers", state = {
     route: { view: "browse" },
@@ -61,8 +103,8 @@
     tab.type = "button";
     let isActive = state.route.view === "reader" || state.route.view === "series";
     tab.className = `win-button ds-nav-tab${isActive ? " active" : ""}`, tab.style.cssText = "display:inline-flex;align-items:center;gap:6px;max-width:220px;padding:2px 8px;font-size:11px;";
-    let icon = document.createElement("i");
-    icon.className = "bi bi-book-half", tab.appendChild(icon);
+    let icon2 = document.createElement("i");
+    icon2.className = "bi bi-book-half", tab.appendChild(icon2);
     let titleSpan = document.createElement("span");
     titleSpan.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;", titleSpan.textContent = decodeEntities(state.lastMangaTab.title), tab.appendChild(titleSpan);
     let closeBtn = document.createElement("i");
@@ -77,19 +119,19 @@
     }), container.appendChild(tab);
   }
   function setTitle(text) {
-    let el = document.getElementById("ds-title");
-    el && (el.textContent = text);
+    let el2 = document.getElementById("ds-title");
+    el2 && (el2.textContent = text);
   }
   var bannerTimer = null;
   function setBanner(message) {
-    let el = document.getElementById("ds-banner");
-    if (el) {
+    let el2 = document.getElementById("ds-banner");
+    if (el2) {
       if (bannerTimer !== null && (clearTimeout(bannerTimer), bannerTimer = null), !message) {
-        el.style.display = "none", el.textContent = "";
+        el2.style.display = "none", el2.textContent = "";
         return;
       }
-      el.textContent = message, el.style.display = "inline-flex", bannerTimer = setTimeout(() => {
-        el.style.display = "none", el.textContent = "", bannerTimer = null;
+      el2.textContent = message, el2.style.display = "inline-flex", bannerTimer = setTimeout(() => {
+        el2.style.display = "none", el2.textContent = "", bannerTimer = null;
       }, 4e3);
     }
   }
@@ -119,23 +161,11 @@
         return "Library";
     }
   }
-  function formatBytes(bytes) {
-    if (!bytes || bytes <= 0) return "0 B";
-    let units = ["B", "KB", "MB", "GB", "TB"], i = Math.floor(Math.log(bytes) / Math.log(1024)), val = bytes / Math.pow(1024, i);
-    return `${val.toFixed(val >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
-  }
   function isOnline() {
     return typeof navigator != "undefined" ? navigator.onLine : !0;
   }
   function absUrl(u) {
     return /^https?:\/\//i.test(u) ? u : SITE_ROOT + u;
-  }
-  function decodeEntities(str) {
-    if (!str) return "";
-    let s = String(str);
-    for (let i = 0; i < 2 && s.includes("&"); i++)
-      s = s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&#039;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&ndash;/g, "\u2013").replace(/&mdash;/g, "\u2014").replace(/&hellip;/g, "\u2026").replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec))).replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
-    return s;
   }
   function tagClass(type, name) {
     switch ((type != null ? type : "").toLowerCase()) {
@@ -202,28 +232,12 @@
     ], p = PALETTES[Math.abs(hash) % PALETTES.length];
     return `background-color: ${p.bg}; border: 1px solid ${p.border}; color: ${p.text}; font-weight: 500;`;
   }
-  function formatDate(ms) {
-    if (!ms) return "";
-    let d = new Date(ms);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-      d.getDate()
-    ).padStart(2, "0")}`;
-  }
-  function formatDateTime(ms) {
-    if (!ms) return "Never";
-    let d = new Date(ms);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-      d.getDate()
-    ).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(
-      d.getMinutes()
-    ).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
-  }
 
-  // dynasty-scans/src/db.ts
-  var PH = window.PluginHost;
+  // dynasty-scans/src/db/client.ts
+  var PH4 = window.PluginHost;
   async function execute(sql, params = []) {
     var _a, _b;
-    let resp = await PH.callService("PluginDbExecute", {
+    let resp = await PH4.callService("PluginDbExecute", {
       db: DB_NAME,
       sql,
       params
@@ -233,10 +247,12 @@
   }
   async function query(sql, params = []) {
     var _a, _b;
-    let resp = await PH.callService("PluginDbQuery", { db: DB_NAME, sql, params });
+    let resp = await PH4.callService("PluginDbQuery", { db: DB_NAME, sql, params });
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
     return (_b = (_a = resp == null ? void 0 : resp.PluginDbQueryResult) == null ? void 0 : _a.rows) != null ? _b : [];
   }
+
+  // dynasty-scans/src/db/schema.ts
   var SCHEMA = [
     `CREATE TABLE IF NOT EXISTS followed_series (
     permalink TEXT PRIMARY KEY,
@@ -307,6 +323,8 @@
       }
     })()), initDbPromise;
   }
+
+  // dynasty-scans/src/db/metadata.repo.ts
   async function getCached(key) {
     let rows = await query(
       "SELECT json_payload, cached_at, etag FROM cached_metadata WHERE cache_key = ?",
@@ -343,6 +361,8 @@
       [Date.now(), key]
     );
   }
+
+  // dynasty-scans/src/db/library.repo.ts
   async function getFollowedSeriesCount() {
     var _a, _b;
     return (_b = (_a = (await query("SELECT COUNT(*) as count FROM followed_series"))[0]) == null ? void 0 : _a.count) != null ? _b : 0;
@@ -414,6 +434,13 @@
         p.completed ? 1 : 0,
         Date.now()
       ]
+    );
+  }
+  async function getProgressForSeries(seriesPermalink) {
+    return query(
+      `SELECT chapter_permalink, page_index, page_total, completed
+     FROM reading_progress WHERE series_permalink = ?`,
+      [seriesPermalink]
     );
   }
   async function addHistory(p) {
@@ -503,6 +530,9 @@
   async function removeBookmark(chapterPermalink) {
     await execute("DELETE FROM bookmarks WHERE chapter_permalink = ?", [chapterPermalink]);
   }
+
+  // dynasty-scans/src/db/cache.repo.ts
+  var PH5 = window.PluginHost;
   async function getCachedPages(chapterPermalink) {
     return query(
       `SELECT chapter_permalink, page_index, file_path, cached_at
@@ -519,13 +549,6 @@
        size_bytes = excluded.size_bytes,
        cached_at = excluded.cached_at`,
       [chapterPermalink, pageIndex, filePath, sizeBytes, Date.now()]
-    );
-  }
-  async function getProgressForSeries(seriesPermalink) {
-    return query(
-      `SELECT chapter_permalink, page_index, page_total, completed
-     FROM reading_progress WHERE series_permalink = ?`,
-      [seriesPermalink]
     );
   }
   async function getCachedPageCounts(chapterPermalinks) {
@@ -549,7 +572,7 @@
       (async () => {
         var _a2, _b2;
         try {
-          let resp = await PH.callService("DirStat", { path: "" });
+          let resp = await PH5.callService("DirStat", { path: "" });
           return Number((_b2 = (_a2 = resp == null ? void 0 : resp.DirStatResult) == null ? void 0 : _a2.total_bytes) != null ? _b2 : 0);
         } catch (e) {
           return 0;
@@ -630,7 +653,7 @@
         try {
           let clean = g.seriesPermalink.replace(/[^a-zA-Z0-9_-]/g, "_"), candidatePaths = g.isStandalone ? [`pages/_singles/${clean}`, `pages/${clean}`] : [`pages/${clean}`], foundBytes = 0;
           for (let p of candidatePaths) {
-            let resp = await PH.callService("DirStat", { path: p }), bytes = Number((_b = (_a = resp == null ? void 0 : resp.DirStatResult) == null ? void 0 : _a.total_bytes) != null ? _b : 0);
+            let resp = await PH5.callService("DirStat", { path: p }), bytes = Number((_b = (_a = resp == null ? void 0 : resp.DirStatResult) == null ? void 0 : _a.total_bytes) != null ? _b : 0);
             if (bytes > 0) {
               foundBytes = bytes;
               break;
@@ -642,7 +665,7 @@
               g.chapterPermalinks
             );
             for (let row of pathRows) {
-              let resp = await PH.callService("FileExists", { path: row.file_path });
+              let resp = await PH5.callService("FileExists", { path: row.file_path });
               foundBytes += Number((_d = (_c = resp == null ? void 0 : resp.FileExistsResult) == null ? void 0 : _c.size_bytes) != null ? _d : 0);
             }
           }
@@ -656,7 +679,7 @@
     await Promise.all(
       paths.map(async (p) => {
         try {
-          await PH.callService("FileDelete", { path: p });
+          await PH5.callService("FileDelete", { path: p });
         } catch (e) {
         }
       })
@@ -687,16 +710,8 @@
     await clearAllCachedPages(), await clearAllCachedCovers(), await execute("DELETE FROM cached_metadata");
   }
 
-  // dynasty-scans/src/api.ts
-  var PH2 = window.PluginHost;
-  function directoryGroups(d) {
-    var _a;
-    return ((_a = d == null ? void 0 : d.tags) != null ? _a : []).map((obj) => {
-      var _a2, _b;
-      let letter = (_a2 = Object.keys(obj)[0]) != null ? _a2 : "?";
-      return { letter, entries: (_b = obj[letter]) != null ? _b : [] };
-    });
-  }
+  // dynasty-scans/src/api/client.ts
+  var PH6 = window.PluginHost;
   async function httpGetText(url, opts = {}) {
     var _a, _b, _c, _d, _e, _f, _g, _h;
     let params = {
@@ -704,7 +719,7 @@
       timeout_ms: (_a = opts.timeoutMs) != null ? _a : 15e3
     };
     opts.method === "POST" && (params.method = "POST", params.body = (_b = opts.body) != null ? _b : "", params.content_type = (_c = opts.contentType) != null ? _c : "application/x-www-form-urlencoded"), opts.headers && (params.headers = opts.headers);
-    let resp = await PH2.callService("HttpGet", params);
+    let resp = await PH6.callService("HttpGet", params);
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
     return {
       status: Number((_e = (_d = resp == null ? void 0 : resp.HttpGetResult) == null ? void 0 : _d.status) != null ? _e : 0),
@@ -714,7 +729,7 @@
   }
   async function httpDownload(url, outputPath, timeoutMs = 3e4) {
     var _a, _b;
-    let resp = await PH2.callService("HttpDownload", {
+    let resp = await PH6.callService("HttpDownload", {
       url,
       output_path: outputPath,
       timeout_ms: timeoutMs
@@ -724,7 +739,7 @@
   }
   async function httpDownloadFull(url, outputPath, timeoutMs = 3e4) {
     var _a, _b, _c, _d;
-    let resp = await PH2.callService("HttpDownload", {
+    let resp = await PH6.callService("HttpDownload", {
       url,
       output_path: outputPath,
       timeout_ms: timeoutMs
@@ -737,17 +752,17 @@
   }
   async function fileResolve(path) {
     var _a;
-    let resp = await PH2.callService("FileExists", { path });
+    let resp = await PH6.callService("FileExists", { path });
     return resp != null && resp.Error || !((_a = resp == null ? void 0 : resp.FileExistsResult) != null && _a.exists) ? null : String(resp.FileExistsResult.absolute_path);
   }
   async function fileMove(src, dst) {
     var _a, _b;
-    let resp = await PH2.callService("FileMove", { src, dst });
+    let resp = await PH6.callService("FileMove", { src, dst });
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
     return String((_b = (_a = resp == null ? void 0 : resp.FileMoveResult) == null ? void 0 : _a.absolute_path) != null ? _b : "");
   }
   async function fileDelete(path) {
-    let resp = await PH2.callService("FileDelete", { path });
+    let resp = await PH6.callService("FileDelete", { path });
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
   }
   async function cachedJson(key, url, ttlMs) {
@@ -758,37 +773,8 @@
     if (status !== 200) throw new Error(`HTTP ${status} for ${url}`);
     return await setCached(key, key.split(":")[0], body, etag), JSON.parse(body);
   }
-  function fetchChapter(permalink) {
-    return cachedJson(`chapter:${permalink}`, `${SITE_ROOT}/chapters/${permalink}.json`);
-  }
-  async function fetchSeries(permalink, force = !1, preferredType) {
-    let key = `series:${permalink}`;
-    if (!force) {
-      let cached = await getCached(key);
-      if (cached) return JSON.parse(cached.json_payload);
-    }
-    let typeMap = {
-      series: `${SITE_ROOT}/series/${permalink}.json`,
-      anthology: `${SITE_ROOT}/anthologies/${permalink}.json`,
-      doujin: `${SITE_ROOT}/doujins/${permalink}.json`,
-      doujinshi: `${SITE_ROOT}/doujins/${permalink}.json`,
-      issue: `${SITE_ROOT}/issues/${permalink}.json`
-    }, defaultEndpoints = [
-      `${SITE_ROOT}/series/${permalink}.json`,
-      `${SITE_ROOT}/anthologies/${permalink}.json`,
-      `${SITE_ROOT}/doujins/${permalink}.json`,
-      `${SITE_ROOT}/issues/${permalink}.json`
-    ], preferredUrl = preferredType ? typeMap[preferredType.toLowerCase()] : void 0, endpoints = preferredUrl ? [preferredUrl, ...defaultEndpoints.filter((u) => u !== preferredUrl)] : defaultEndpoints, lastErr = null;
-    for (let url of endpoints)
-      try {
-        let { status, body, etag } = await httpGetText(url);
-        if (status === 200 && body)
-          return await setCached(key, "series", body, etag), JSON.parse(body);
-      } catch (e) {
-        lastErr = e instanceof Error ? e : new Error(String(e));
-      }
-    throw lastErr != null ? lastErr : new Error(`Failed to load ${permalink}`);
-  }
+
+  // dynasty-scans/src/api/feed.ts
   var FEED_TTL_MS = 3600 * 1e3;
   async function checkFeedOnline(urlPath, key, etag) {
     let url = SITE_ROOT + urlPath, headers = {};
@@ -850,8 +836,18 @@
       source: "network"
     };
   }
+
+  // dynasty-scans/src/api/directory.ts
   function fetchDirectory(urlPath, key) {
     return cachedJson(key, SITE_ROOT + urlPath, FEED_TTL_MS);
+  }
+  function directoryGroups(d) {
+    var _a;
+    return ((_a = d == null ? void 0 : d.tags) != null ? _a : []).map((obj) => {
+      var _a2, _b;
+      let letter = (_a2 = Object.keys(obj)[0]) != null ? _a2 : "?";
+      return { letter, entries: (_b = obj[letter]) != null ? _b : [] };
+    });
   }
   async function suggest(query2) {
     let { status, body } = await httpGetText(`${SITE_ROOT}/tags/suggest`, {
@@ -860,6 +856,41 @@
     });
     if (status !== 200) throw new Error(`HTTP ${status} for /tags/suggest`);
     return JSON.parse(body);
+  }
+
+  // dynasty-scans/src/api/chapter.ts
+  function fetchChapter(permalink) {
+    return cachedJson(`chapter:${permalink}`, `${SITE_ROOT}/chapters/${permalink}.json`);
+  }
+
+  // dynasty-scans/src/api/series.ts
+  async function fetchSeries(permalink, force = !1, preferredType) {
+    let key = `series:${permalink}`;
+    if (!force) {
+      let cached = await getCached(key);
+      if (cached) return JSON.parse(cached.json_payload);
+    }
+    let typeMap = {
+      series: `${SITE_ROOT}/series/${permalink}.json`,
+      anthology: `${SITE_ROOT}/anthologies/${permalink}.json`,
+      doujin: `${SITE_ROOT}/doujins/${permalink}.json`,
+      doujinshi: `${SITE_ROOT}/doujins/${permalink}.json`,
+      issue: `${SITE_ROOT}/issues/${permalink}.json`
+    }, defaultEndpoints = [
+      `${SITE_ROOT}/series/${permalink}.json`,
+      `${SITE_ROOT}/anthologies/${permalink}.json`,
+      `${SITE_ROOT}/doujins/${permalink}.json`,
+      `${SITE_ROOT}/issues/${permalink}.json`
+    ], preferredUrl = preferredType ? typeMap[preferredType.toLowerCase()] : void 0, endpoints = preferredUrl ? [preferredUrl, ...defaultEndpoints.filter((u) => u !== preferredUrl)] : defaultEndpoints, lastErr = null;
+    for (let url of endpoints)
+      try {
+        let { status, body, etag } = await httpGetText(url);
+        if (status === 200 && body)
+          return await setCached(key, "series", body, etag), JSON.parse(body);
+      } catch (e) {
+        lastErr = e instanceof Error ? e : new Error(String(e));
+      }
+    throw lastErr != null ? lastErr : new Error(`Failed to load ${permalink}`);
   }
   async function getSeriesCover(permalink, coverUrl) {
     if (!coverUrl) return null;
@@ -884,7 +915,7 @@
     if (cached && cached.json_payload) return cached.json_payload;
     let extMatch = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(firstPageUrl), ext = extMatch ? extMatch[1] : "jpg", tmpOutPath = `${COVERS_PREFIX}/raw_ch_${permalink}.${ext}`, webpOutPath = `${COVERS_PREFIX}/ch_${permalink}.webp`, finalPath = await httpDownload(absUrl(firstPageUrl), tmpOutPath, 3e4);
     try {
-      let convResp = await PH2.callService("EphemeralConvertImages", {
+      let convResp = await PH.callService("EphemeralConvertImages", {
         quality: 75,
         conversions: [[tmpOutPath, webpOutPath]]
       }), results = (_a = convResp == null ? void 0 : convResp.ConvertImagesResult) == null ? void 0 : _a.converted;
@@ -938,6 +969,8 @@
     }
     return null;
   }
+
+  // dynasty-scans/src/api/navigation.ts
   async function openExternal(url) {
     var _a;
     let api = (_a = window.__TAURI__) == null ? void 0 : _a.core;
@@ -961,21 +994,107 @@
     return `${PAGES_PREFIX}/${cleanSeries}/${cleanChapter}/page_${pad}.${ext}`;
   }
 
-  // dynasty-scans/src/ui-library.ts
-  var PH3 = window.PluginHost;
-  function coverImg(path, alt) {
+  // dynasty-scans/src/components/dom.ts
+  function el(tag, attrs, ...children) {
+    let node = document.createElement(tag);
+    attrs && (attrs.class && (node.className = attrs.class), attrs.style && (node.style.cssText = attrs.style), attrs.title && (node.title = attrs.title), attrs.id && (node.id = attrs.id), attrs.type && node.setAttribute("type", attrs.type));
+    for (let child of children)
+      child != null && node.appendChild(typeof child == "string" ? document.createTextNode(child) : child);
+    return node;
+  }
+  function icon(className) {
+    return el("i", { class: className });
+  }
+
+  // dynasty-scans/src/components/button.ts
+  function createConfirmDeleteButton(title, onConfirm, initialHtml = '<i class="bi bi-trash3"></i>') {
+    let btn = el("button", {
+      type: "button",
+      class: "win-button",
+      style: "font-size:11px;padding:2px 8px;flex-shrink:0;",
+      title
+    });
+    btn.innerHTML = initialHtml;
+    let confirming = !1, originalHtml = initialHtml, reset = () => {
+      confirming = !1, btn.className = "win-button", btn.style.color = "", btn.style.backgroundColor = "", btn.style.borderColor = "", btn.innerHTML = originalHtml, btn.title = title, document.removeEventListener("click", onDocClick);
+    }, onDocClick = (ev) => {
+      btn.contains(ev.target) || reset();
+    };
+    return btn.addEventListener("click", async (ev) => {
+      if (ev.stopPropagation(), !confirming) {
+        originalHtml = btn.innerHTML, confirming = !0, btn.className = "win-button primary", btn.style.color = "#ffffff", btn.style.backgroundColor = "#d13438", btn.style.borderColor = "#a80000", btn.innerHTML = '<i class="bi bi-check-lg"></i> Delete?', btn.title = "Click again to confirm deletion, or click outside to cancel", setTimeout(() => {
+          document.addEventListener("click", onDocClick);
+        }, 0);
+        return;
+      }
+      document.removeEventListener("click", onDocClick), btn.disabled = !0, btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+      try {
+        await onConfirm();
+      } catch (err) {
+        btn.disabled = !1, reset();
+        let msg = err instanceof Error ? err.message : String(err);
+        setBanner(`Deletion failed: ${msg}`);
+      }
+    }), btn;
+  }
+
+  // dynasty-scans/src/components/cover.ts
+  var PH7 = window.PluginHost;
+  function renderCoverImage(path, alt, imgClass = "ds-cover", placeholderClass = "ds-cover-placeholder") {
     if (path) {
-      let img = document.createElement("img");
-      return img.className = "ds-cover", img.alt = alt, img.src = PH3.convertFileSrc(path), img.addEventListener("error", () => {
+      let img = el("img", { class: imgClass, title: alt });
+      return img.alt = alt, img.src = PH7.convertFileSrc(path), img.addEventListener("error", () => {
         var _a;
-        img.style.display = "none";
-        let ph2 = document.createElement("div");
-        ph2.className = "ds-cover-placeholder", ph2.innerHTML = '<i class="bi bi-image"></i>', (_a = img.parentElement) == null || _a.replaceChild(ph2, img);
+        img.style.display = "none", (_a = img.parentElement) == null || _a.replaceChild(renderCoverPlaceholder(placeholderClass), img);
       }), img;
     }
-    let ph = document.createElement("div");
-    return ph.className = "ds-cover-placeholder", ph.innerHTML = '<i class="bi bi-image"></i>', ph;
+    return renderCoverPlaceholder(placeholderClass);
   }
+  function renderCoverPlaceholder(placeholderClass = "ds-cover-placeholder", glyphClass = "bi bi-image") {
+    let ph = el("div", { class: placeholderClass });
+    return ph.appendChild(icon(glyphClass)), ph;
+  }
+  function renderFeedCover(path, coverKey, cssText = "") {
+    if (path) {
+      let img = el("img", { class: "ds-feed-cover", style: cssText });
+      return img.alt = coverKey, img.width = 42, img.height = 58, img.decoding = "async", img.src = PH7.convertFileSrc(path), img.addEventListener("error", () => {
+        var _a;
+        img.style.display = "none", (_a = img.parentElement) == null || _a.appendChild(
+          el("div", { class: "ds-feed-cover-placeholder", style: cssText }, icon("bi bi-book"))
+        );
+      }), img;
+    }
+    return el("div", { class: "ds-feed-cover-placeholder", style: cssText }, icon("bi bi-book"));
+  }
+
+  // dynasty-scans/src/components/pager.ts
+  function renderPager(totalPages, currentPage, onPage, opts = {}) {
+    var _a, _b;
+    let showLabels = (_a = opts.showLabels) != null ? _a : !1, row = el("div", {
+      class: "ds-row",
+      style: (_b = opts.cssText) != null ? _b : showLabels ? "align-items:center;justify-content:space-between;" : "margin-top:8px;"
+    }), prev = el("button", {
+      type: "button",
+      class: "win-button",
+      style: "font-size:10px;padding:1px 8px;",
+      title: opts.ariaLabel ? `${opts.ariaLabel} \u2014 previous page` : "Previous page"
+    });
+    prev.innerHTML = showLabels ? '<i class="bi bi-chevron-left"></i> Prev' : '<i class="bi bi-chevron-left"></i>', prev.disabled = currentPage <= 1, prev.addEventListener("click", () => onPage(currentPage - 1));
+    let label = el("span", {
+      class: "ds-progress-text",
+      style: "font-size:11px;color:var(--sys-text-muted, #666);"
+    });
+    label.textContent = `Page ${currentPage} of ${totalPages}`;
+    let next = el("button", {
+      type: "button",
+      class: "win-button",
+      style: "font-size:10px;padding:1px 8px;",
+      title: opts.ariaLabel ? `${opts.ariaLabel} \u2014 next page` : "Next page"
+    });
+    return next.innerHTML = showLabels ? 'Next <i class="bi bi-chevron-right"></i>' : '<i class="bi bi-chevron-right"></i>', next.disabled = currentPage >= totalPages, next.addEventListener("click", () => onPage(currentPage + 1)), row.appendChild(prev), row.appendChild(label), row.appendChild(next), row;
+  }
+
+  // dynasty-scans/src/ui-library.ts
   function createLibraryPanel(titleHtml) {
     let panel = document.createElement("div");
     panel.className = "group-box ds-library-panel";
@@ -985,16 +1104,6 @@
     body.className = "ds-library-panel-body";
     let footer = document.createElement("div");
     return footer.className = "ds-library-panel-footer", footer.style.display = "none", panel.appendChild(head), panel.appendChild(body), panel.appendChild(footer), { panel, head, body, footer };
-  }
-  function pager(totalPages, currentPage, onPage) {
-    let row = document.createElement("div");
-    row.className = "ds-row", row.style.cssText = "align-items:center;justify-content:space-between;";
-    let prev = document.createElement("button");
-    prev.type = "button", prev.className = "win-button", prev.style.cssText = "font-size:10px;padding:1px 8px;", prev.innerHTML = '<i class="bi bi-chevron-left"></i> Prev', prev.disabled = currentPage <= 1, prev.addEventListener("click", () => onPage(currentPage - 1));
-    let label = document.createElement("span");
-    label.className = "ds-progress-text", label.style.cssText = "font-size:11px;color:var(--sys-text-muted, #666);", label.textContent = `Page ${currentPage} of ${totalPages}`;
-    let next = document.createElement("button");
-    return next.type = "button", next.className = "win-button", next.style.cssText = "font-size:10px;padding:1px 8px;", next.innerHTML = 'Next <i class="bi bi-chevron-right"></i>', next.disabled = currentPage >= totalPages, next.addEventListener("click", () => onPage(currentPage + 1)), row.appendChild(prev), row.appendChild(label), row.appendChild(next), row;
   }
   function renderLibrary(container, _route) {
     container.innerHTML = "";
@@ -1067,7 +1176,7 @@
     }
     for (let row of rows) {
       let card = document.createElement("div");
-      card.className = "group-box", card.style.cssText = "display:flex;gap:10px;align-items:center;cursor:pointer;margin-bottom:4px;", card.appendChild(coverImg(row.cover, row.name));
+      card.className = "group-box", card.style.cssText = "display:flex;gap:10px;align-items:center;cursor:pointer;margin-bottom:4px;", card.appendChild(renderCoverImage(row.cover, row.name));
       let info = document.createElement("div");
       info.style.cssText = "flex:1;min-width:0;";
       let name = document.createElement("div");
@@ -1085,7 +1194,7 @@
         ev.stopPropagation(), openExternal(`https://dynasty-scans.com/series/${row.permalink}`);
       }), card.appendChild(extBtn), card.appendChild(open), body.appendChild(card);
     }
-    totalPages > 1 ? (footer.style.display = "block", footer.appendChild(pager(totalPages, currentPage, onPage))) : footer.style.display = "none";
+    totalPages > 1 ? (footer.style.display = "block", footer.appendChild(renderPager(totalPages, currentPage, onPage, { showLabels: !0 }))) : footer.style.display = "none";
   }
   async function loadBookmarksPage(body, footer, page) {
     body.innerHTML = "", footer.innerHTML = "", footer.style.display = "none";
@@ -1100,31 +1209,6 @@
       let errEl = document.createElement("div");
       errEl.className = "ds-muted", errEl.textContent = `Failed to load bookmarks: ${msg}`, body.appendChild(errEl);
     }
-  }
-  function createConfirmDeleteButton(title, onConfirm, initialHtml = '<i class="bi bi-trash3"></i>') {
-    let btn = document.createElement("button");
-    btn.type = "button", btn.className = "win-button", btn.style.cssText = "font-size:11px;padding:2px 8px;flex-shrink:0;", btn.title = title, btn.innerHTML = initialHtml;
-    let confirming = !1, originalHtml = initialHtml, reset = () => {
-      confirming = !1, btn.className = "win-button", btn.style.color = "", btn.style.backgroundColor = "", btn.style.borderColor = "", btn.innerHTML = originalHtml, btn.title = title, document.removeEventListener("click", onDocClick);
-    }, onDocClick = (ev) => {
-      btn.contains(ev.target) || reset();
-    };
-    return btn.addEventListener("click", async (ev) => {
-      if (ev.stopPropagation(), !confirming) {
-        originalHtml = btn.innerHTML, confirming = !0, btn.className = "win-button primary", btn.style.color = "#ffffff", btn.style.backgroundColor = "#d13438", btn.style.borderColor = "#a80000", btn.innerHTML = '<i class="bi bi-check-lg"></i> Delete?', btn.title = "Click again to confirm deletion, or click outside to cancel", setTimeout(() => {
-          document.addEventListener("click", onDocClick);
-        }, 0);
-        return;
-      }
-      document.removeEventListener("click", onDocClick), btn.disabled = !0, btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
-      try {
-        await onConfirm();
-      } catch (err) {
-        btn.disabled = !1, reset();
-        let msg = err instanceof Error ? err.message : String(err);
-        setBanner(`Deletion failed: ${msg}`);
-      }
-    }), btn;
   }
   function renderBookmarks(body, footer, rows, totalPages, currentPage, onPage) {
     if (body.innerHTML = "", footer.innerHTML = "", rows.length === 0) {
@@ -1160,7 +1244,7 @@
       });
       item.appendChild(info), item.appendChild(extBtn), item.appendChild(removeBtn), body.appendChild(item);
     }
-    totalPages > 1 ? (footer.style.display = "block", footer.appendChild(pager(totalPages, currentPage, onPage))) : footer.style.display = "none";
+    totalPages > 1 ? (footer.style.display = "block", footer.appendChild(renderPager(totalPages, currentPage, onPage, { showLabels: !0 }))) : footer.style.display = "none";
   }
   async function loadHistoryPage(body, footer, page) {
     body.innerHTML = "", footer.innerHTML = "", footer.style.display = "none";
@@ -1209,282 +1293,228 @@
       });
       item.appendChild(info), item.appendChild(extBtn), item.appendChild(removeBtn), body.appendChild(item);
     }
-    totalPages > 1 ? (footer.style.display = "block", footer.appendChild(pager(totalPages, currentPage, onPage))) : footer.style.display = "none";
+    totalPages > 1 ? (footer.style.display = "block", footer.appendChild(renderPager(totalPages, currentPage, onPage, { showLabels: !0 }))) : footer.style.display = "none";
   }
 
-  // dynasty-scans/src/ui-browse.ts
-  var PH4 = window.PluginHost, TABS = [
-    { id: "releases", label: "Recent Releases" },
-    { id: "added", label: "Recently Added" },
-    { id: "series-dir", label: "Series Directory" },
-    { id: "tags-dir", label: "Tags" }
-  ], FEED_TAB_TO_URL = {
+  // dynasty-scans/src/browse/browse-covers.ts
+  var PH8 = window.PluginHost, SCROLL_IDLE_MS = 400, BrowseCovers = class {
+    constructor() {
+      this.memoryCache = /* @__PURE__ */ new Map();
+      this.inflight = /* @__PURE__ */ new Map();
+      this.queue = [];
+      this.queuedKeys = /* @__PURE__ */ new Set();
+      this.pendingDomUpdates = [];
+      this.MAX_CONCURRENCY = 2;
+      this.activeWorkers = 0;
+      this.hydrationHost = null;
+      this.lazyObserver = null;
+      this.isScrolling = !1;
+      this.scrollIdleTimer = null;
+      this.scrollTrackingAttached = !1;
+      this.onScrollActive = () => {
+        this.isScrolling || (console.log("[ds-covers] scroll start \u2014 hydration paused"), this.isScrolling = !0), this.scrollIdleTimer !== null && window.clearTimeout(this.scrollIdleTimer), this.scrollIdleTimer = window.setTimeout(() => {
+          this.isScrolling = !1, this.scrollIdleTimer = null, console.log(`[ds-covers] scroll idle \u2014 flushing ${this.pendingDomUpdates.length} buffered updates, queue=${this.queue.length}`), this.flushPendingDomUpdates(), this.pumpCoverHydration();
+        }, SCROLL_IDLE_MS);
+      };
+      try {
+        let saved = localStorage.getItem("ds_covers_enabled");
+        this.enabled = saved !== null ? saved === "true" : !0;
+      } catch (e) {
+        this.enabled = !0;
+      }
+    }
+    get coversEnabled() {
+      return this.enabled;
+    }
+    setCoversEnabled(v) {
+      this.enabled = v;
+      try {
+        localStorage.setItem("ds_covers_enabled", v ? "true" : "false");
+      } catch (e) {
+      }
+    }
+    get currentHydrationHost() {
+      return this.hydrationHost;
+    }
+    /** Maps a feed chapter to its cover key + series metadata. */
+    getItemCoverInfo(ch) {
+      var _a;
+      let seriesTag = ((_a = ch.tags) != null ? _a : []).find((t) => {
+        var _a2;
+        let type = ((_a2 = t.type) != null ? _a2 : "").toLowerCase();
+        return type === "series" || type === "doujin" || type === "doujinshi" || type === "anthology" || type === "issue";
+      }), seriesPermalink = (seriesTag == null ? void 0 : seriesTag.permalink) || (ch.series ? ch.series.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") : ""), seriesName = ch.series || (seriesTag == null ? void 0 : seriesTag.name) || "", seriesType = (seriesTag == null ? void 0 : seriesTag.type) || "series";
+      return seriesPermalink ? {
+        coverKey: `series:${seriesPermalink}`,
+        chapterPermalink: ch.permalink,
+        seriesPermalink,
+        seriesName,
+        seriesType,
+        isStandalone: !1
+      } : {
+        coverKey: `chapter:${ch.permalink}`,
+        chapterPermalink: ch.permalink,
+        seriesPermalink: "",
+        seriesName: "",
+        seriesType: "",
+        isStandalone: !0
+      };
+    }
+    /** Resets per-page hydration state and attaches scroll tracking once. */
+    beginPage(host) {
+      this.hydrationHost = host, this.queue.length = 0, this.queuedKeys.clear(), this.pendingDomUpdates.length = 0, this.lazyObserver && (this.lazyObserver.disconnect(), this.lazyObserver = null), this.scrollTrackingAttached || (this.scrollTrackingAttached = !0, this.attachScrollTracking(), console.log("[ds-covers] scroll tracking attached to #ds-view"));
+    }
+    /** Pre-loads locally cached covers from SQLite in a single batch query. */
+    async preloadBatch(coverTargets) {
+      let uniqueCoverKeys = /* @__PURE__ */ new Map(), keysToQuery = [];
+      for (let ct of coverTargets)
+        uniqueCoverKeys.has(ct.coverKey) || (uniqueCoverKeys.set(ct.coverKey, ct), this.memoryCache.has(ct.coverKey) || keysToQuery.push(`cover:${ct.coverKey}`));
+      if (keysToQuery.length > 0)
+        try {
+          let cachedMap = await getBatchCached(keysToQuery);
+          for (let [fullKey, payload] of cachedMap) {
+            let rawKey = fullKey.replace(/^cover:/, "");
+            payload && this.memoryCache.set(rawKey, payload);
+          }
+        } catch (e) {
+        }
+    }
+    /** Observes a cover wrap; enqueues hydration when it nears the viewport. */
+    observe(wrap) {
+      this.enabled && this.getLazyObserver().observe(wrap);
+    }
+    /** Tears down hydration state and pauses pumps (used on scroll-to-top). */
+    scrollToTop() {
+      this.lazyObserver && (this.lazyObserver.disconnect(), this.lazyObserver = null), this.queue.length = 0, this.queuedKeys.clear(), this.pendingDomUpdates.length = 0, this.onScrollActive();
+    }
+    /** Re-observes wraps that never got an image (e.g. after scroll-to-top). */
+    reobserveUnloadedCovers(host) {
+      if (!this.enabled) return;
+      let observer = this.getLazyObserver();
+      host.querySelectorAll(".ds-feed-cover-wrap:not(:has(img.ds-feed-cover))").forEach((wrap) => observer.observe(wrap));
+    }
+    attachScrollTracking() {
+      let dsView = document.getElementById("ds-view");
+      dsView ? dsView.addEventListener("scroll", this.onScrollActive, { passive: !0 }) : console.warn("[ds-covers] #ds-view not found \u2014 scroll tracking may miss events"), document.addEventListener("scroll", this.onScrollActive, { capture: !0, passive: !0 });
+    }
+    applyCoverToNode(node, coverKey, coverPath) {
+      if (node.querySelector("img.ds-feed-cover")) return;
+      node.innerHTML = "";
+      let img = document.createElement("img");
+      img.className = "ds-feed-cover", img.alt = coverKey, img.width = 42, img.height = 58, img.decoding = "async", img.src = PH8.convertFileSrc(coverPath), img.addEventListener("error", () => {
+        img.style.display = "none";
+        let ph = document.createElement("div");
+        ph.className = "ds-feed-cover-placeholder", ph.innerHTML = '<i class="bi bi-book"></i>', node.appendChild(ph);
+      }), node.appendChild(img);
+    }
+    flushPendingDomUpdates() {
+      if (this.pendingDomUpdates.length === 0) return;
+      let updates = this.pendingDomUpdates.splice(0);
+      requestAnimationFrame(() => {
+        for (let { coverKey, coverPath, host } of updates) {
+          if (host !== this.hydrationHost) continue;
+          let nodes = host.querySelectorAll(`[data-feed-cover="${coverKey}"]`);
+          for (let node of nodes) this.applyCoverToNode(node, coverKey, coverPath);
+        }
+      });
+    }
+    scheduleCoverDomUpdate(coverKey, coverPath, host) {
+      if (this.isScrolling) {
+        this.pendingDomUpdates.push({ coverKey, coverPath, host });
+        return;
+      }
+      requestAnimationFrame(() => {
+        if (host !== this.hydrationHost) return;
+        let nodes = host.querySelectorAll(`[data-feed-cover="${coverKey}"]`);
+        for (let node of nodes) this.applyCoverToNode(node, coverKey, coverPath);
+      });
+    }
+    getLazyObserver() {
+      return this.lazyObserver || (this.lazyObserver = new IntersectionObserver(
+        (entries) => {
+          var _a;
+          for (let entry of entries)
+            if (entry.isIntersecting) {
+              let el2 = entry.target;
+              if ((_a = this.lazyObserver) == null || _a.unobserve(el2), !this.enabled) continue;
+              let coverKey = el2.dataset.feedCover, chapterPermalink = el2.dataset.chapterPermalink, seriesPermalink = el2.dataset.seriesPermalink, seriesType = el2.dataset.seriesType;
+              if (coverKey) {
+                let cached = this.memoryCache.get(coverKey);
+                cached && this.hydrationHost ? this.scheduleCoverDomUpdate(coverKey, cached, this.hydrationHost) : chapterPermalink && !this.queuedKeys.has(coverKey) && (this.queuedKeys.add(coverKey), this.queue.push({
+                  coverKey,
+                  chapterPermalink,
+                  seriesPermalink: seriesPermalink || null,
+                  seriesType: seriesType || null
+                }), this.isScrolling || this.pumpCoverHydration());
+              }
+            }
+        },
+        { rootMargin: "150px" }
+      )), this.lazyObserver;
+    }
+    pumpCoverHydration() {
+      if (!(this.isScrolling || !this.hydrationHost || this.queue.length === 0))
+        for (console.log(`[ds-covers] pump: workers=${this.activeWorkers}/${this.MAX_CONCURRENCY} queue=${this.queue.length} scrolling=${this.isScrolling}`); !this.isScrolling && this.activeWorkers < this.MAX_CONCURRENCY && this.queue.length > 0; ) {
+          let target = this.queue.pop();
+          if (!target) break;
+          this.activeWorkers++;
+          let host = this.hydrationHost;
+          console.log(`[ds-covers] worker start: ${target.coverKey}`), (async () => {
+            try {
+              let task = this.inflight.get(target.coverKey);
+              task || (task = getOrHydrateItemCover(
+                target.coverKey,
+                target.chapterPermalink,
+                target.seriesPermalink,
+                target.seriesType
+              ), this.inflight.set(target.coverKey, task));
+              let coverPath = await task;
+              this.memoryCache.set(target.coverKey, coverPath), console.log(`[ds-covers] worker done: ${target.coverKey} \u2192 ${coverPath ? "hit" : "miss"} isScrolling=${this.isScrolling}`), coverPath && host === this.hydrationHost && this.scheduleCoverDomUpdate(target.coverKey, coverPath, host);
+            } catch (err) {
+              console.warn(`[ds-covers] worker error: ${target.coverKey}`, err);
+            } finally {
+              this.inflight.delete(target.coverKey), this.activeWorkers--, setTimeout(() => {
+                this.isScrolling || this.pumpCoverHydration();
+              }, 0);
+            }
+          })();
+        }
+    }
+  }, browseCovers = new BrowseCovers();
+
+  // dynasty-scans/src/components/tag-pill.ts
+  function renderTagPill(t, compact = !0) {
+    let pill = el("span", {
+      class: tagClass(t.type, t.name),
+      style: tagStyle(t.type, t.name) + (compact ? "font-size:10px;padding:1px 6px;border-radius:2px;" : "font-size:10px;padding:2px 6px;border-radius:2px;"),
+      title: `${t.type}: ${t.name} (click to open)`
+    });
+    return pill.textContent = t.name, pill.addEventListener("click", (ev) => {
+      var _a;
+      ev.stopPropagation();
+      let type = ((_a = t.type) != null ? _a : "").toLowerCase();
+      if (type === "series" || type === "anthology" || type === "issue") {
+        navigate({
+          view: "series",
+          seriesPermalink: t.permalink || t.name,
+          seriesName: t.name
+        });
+        return;
+      }
+      let url = "";
+      type === "author" || type === "artist" ? url = t.permalink ? `https://dynasty-scans.com/authors/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : type === "scanlator" || type === "group" ? url = t.permalink ? `https://dynasty-scans.com/scanlators/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : type === "doujin" || type === "doujinshi" || type === "copyright" || type === "parody" ? url = t.permalink ? `https://dynasty-scans.com/doujins/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : type === "pairing" ? url = t.permalink ? `https://dynasty-scans.com/pairings/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : url = t.permalink ? `https://dynasty-scans.com/tags/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`, openExternal(url);
+    }), pill;
+  }
+
+  // dynasty-scans/src/browse/browse-feed.ts
+  var FEED_TAB_TO_URL = {
     releases: "/chapters.json",
     added: "/chapters/added.json"
   }, FEED_TAB_TO_KEY = {
     releases: "feed:releases",
     added: "feed:added"
   };
-  function renderBrowse(container, route) {
-    var _a, _b, _c;
-    container.innerHTML = "";
-    let searchBox = document.createElement("div");
-    searchBox.className = "group-box", searchBox.style.cssText = "margin-bottom:8px;", searchBox.innerHTML = '<div class="group-box-title"><i class="bi bi-search"></i> Search &amp; Go</div><div style="display:flex;flex-direction:column;gap:6px;">  <div class="ds-row">    <div class="ds-search-wrap" style="flex:1;">      <input type="text" class="input-field" id="ds-search-input"        placeholder="Search dynasty-scans (opens in your browser)..." style="width:100%;" />      <div class="ds-typeahead" id="ds-search-suggest" style="display:none;"></div>    </div>    <button type="button" class="win-button" id="ds-search-btn">      <i class="bi bi-box-arrow-up-right"></i> Search    </button>  </div>  <div class="ds-row">    <input type="text" class="input-field" id="ds-url-input" style="flex:1;"      placeholder="Paste a dynasty-scans.com series or chapter URL..." />    <button type="button" class="win-button" id="ds-url-btn">      <i class="bi bi-link-45deg"></i> Open Locally    </button>  </div>  <div class="ds-muted" style="margin-top:2px;">    Accepted: https://dynasty-scans.com/series/&lt;permalink&gt; or /chapters/&lt;permalink&gt; (or the .json form).  </div></div>', container.appendChild(searchBox);
-    let tabsRow = document.createElement("div");
-    tabsRow.className = "ds-subtabs", container.appendChild(tabsRow);
-    let content = document.createElement("div");
-    content.id = "ds-browse-content", content.style.cssText = "margin-top:8px;", container.appendChild(content);
-    let currentTab = (_a = route.browseTab) != null ? _a : "releases";
-    for (let tab of TABS) {
-      let btn = document.createElement("button");
-      btn.type = "button", btn.className = `win-button ds-subtab${tab.id === currentTab ? " active" : ""}`, btn.textContent = tab.label, btn.addEventListener("click", () => {
-        route.browseTab = tab.id;
-        for (let b of tabsRow.children) b.classList.remove("active");
-        btn.classList.add("active"), renderTabContent(content, tab.id, 1);
-      }), tabsRow.appendChild(btn);
-    }
-    let coverToggleBtn = document.createElement("button");
-    coverToggleBtn.type = "button", coverToggleBtn.id = "ds-cover-toggle", coverToggleBtn.className = "win-button ds-cover-toggle-btn", coverToggleBtn.title = "Toggle cover image loading (diagnostic)";
-    let updateCoverToggleLabel = () => {
-      coverToggleBtn.innerHTML = coversEnabled ? '<i class="bi bi-image"></i> Covers: ON' : '<i class="bi bi-image-slash"></i> Covers: OFF', coverToggleBtn.style.opacity = coversEnabled ? "1" : "0.5";
-    };
-    updateCoverToggleLabel(), coverToggleBtn.addEventListener("click", () => {
-      var _a2;
-      coversEnabled = !coversEnabled;
-      try {
-        localStorage.setItem("ds_covers_enabled", coversEnabled ? "true" : "false");
-      } catch (e) {
-      }
-      updateCoverToggleLabel(), console.log(`[ds-covers] covers ${coversEnabled ? "enabled" : "disabled"} \u2014 re-rendering feed`);
-      let activeTab = tabsRow.querySelector(".ds-subtab.active"), activeTabId = (_a2 = activeTab == null ? void 0 : activeTab.dataset.tabId) != null ? _a2 : currentTab;
-      renderTabContent(content, activeTabId, 1);
-    }), tabsRow.appendChild(coverToggleBtn);
-    for (let btn of tabsRow.querySelectorAll(".ds-subtab")) {
-      let label = (_c = (_b = btn.textContent) == null ? void 0 : _b.trim()) != null ? _c : "", tab = TABS.find((t) => t.label === label);
-      tab && (btn.dataset.tabId = tab.id);
-    }
-    let input = searchBox.querySelector("#ds-search-input"), suggestEl = searchBox.querySelector("#ds-search-suggest"), searchBtn = searchBox.querySelector("#ds-search-btn"), debounceTimer, runSearch = () => {
-      var _a2;
-      let q = ((_a2 = input == null ? void 0 : input.value) != null ? _a2 : "").trim();
-      q && openExternal(`https://dynasty-scans.com/search?q=${encodeURIComponent(q)}`);
-    };
-    searchBtn == null || searchBtn.addEventListener("click", runSearch), input == null || input.addEventListener("keydown", (ev) => {
-      ev.key === "Enter" && runSearch();
-    }), input == null || input.addEventListener("input", () => {
-      var _a2;
-      window.clearTimeout(debounceTimer);
-      let q = ((_a2 = input.value) != null ? _a2 : "").trim();
-      if (suggestEl) {
-        if (!q) {
-          suggestEl.style.display = "none";
-          return;
-        }
-        debounceTimer = window.setTimeout(() => {
-          loadSuggestions(q, suggestEl);
-        }, 250);
-      }
-    }), input == null || input.addEventListener("blur", () => {
-      window.setTimeout(() => {
-        suggestEl && (suggestEl.style.display = "none");
-      }, 150);
-    });
-    let urlInput = searchBox.querySelector("#ds-url-input"), urlBtn = searchBox.querySelector("#ds-url-btn"), openByUrl = () => {
-      var _a2;
-      let raw = ((_a2 = urlInput == null ? void 0 : urlInput.value) != null ? _a2 : "").trim();
-      if (!raw) {
-        setBanner("Paste a dynasty-scans.com series or chapter URL first.");
-        return;
-      }
-      let parsed = parseDynastyUrl(raw);
-      if (!parsed) {
-        setBanner("Unrecognized URL. Use https://dynasty-scans.com/series/<permalink> or /chapters/<permalink>.");
-        return;
-      }
-      parsed.kind === "chapter" ? navigate({ view: "reader", chapterPermalink: parsed.permalink, chapterTitle: parsed.permalink }) : navigate({ view: "series", seriesPermalink: parsed.permalink, seriesName: parsed.permalink });
-    };
-    urlBtn == null || urlBtn.addEventListener("click", openByUrl), urlInput == null || urlInput.addEventListener("keydown", (ev) => {
-      ev.key === "Enter" && openByUrl();
-    }), renderTabContent(content, currentTab, 1);
-  }
-  async function loadSuggestions(q, host) {
-    let results;
-    try {
-      results = await suggest(q);
-    } catch (err) {
-      host.style.display = "none";
-      let msg = err instanceof Error ? err.message : String(err);
-      setBanner(`Search suggestions failed: ${msg}`);
-      return;
-    }
-    if (host.innerHTML = "", results.length === 0) {
-      host.style.display = "none";
-      return;
-    }
-    for (let r of results.slice(0, 8)) {
-      let item = document.createElement("div");
-      item.className = "ds-typeahead-item";
-      let name = document.createElement("span");
-      name.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;", name.textContent = decodeEntities(r.name);
-      let type = document.createElement("span");
-      type.className = "ds-typeahead-type", type.textContent = r.type, item.appendChild(name), item.appendChild(type), item.addEventListener("mousedown", () => {
-        openExternal(`https://dynasty-scans.com/search?q=${encodeURIComponent(r.name)}`);
-      }), host.appendChild(item);
-    }
-    host.style.display = "block";
-  }
-  async function renderTabContent(host, tabId, page) {
-    host.innerHTML = "";
-    let loading = document.createElement("div");
-    loading.className = "ds-muted", loading.textContent = "Loading\u2026", host.appendChild(loading);
-    try {
-      tabId === "releases" || tabId === "added" ? await renderFeed(host, tabId, page) : tabId === "series-dir" ? await renderDirectory(host, "series", page) : await renderDirectory(host, "tags", page);
-    } catch (err) {
-      host.innerHTML = "";
-      let msg = err instanceof Error ? err.message : String(err);
-      setBanner(`Browse failed: ${msg}`);
-      let retry = document.createElement("button");
-      retry.type = "button", retry.className = "win-button", retry.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Retry', retry.addEventListener("click", () => void renderTabContent(host, tabId, page)), host.appendChild(retry);
-    }
-  }
-  function pager2(totalPages, currentPage, onPage) {
-    let row = document.createElement("div");
-    row.className = "ds-row", row.style.cssText = "margin-top:8px;";
-    let prev = document.createElement("button");
-    prev.type = "button", prev.className = "win-button", prev.style.cssText = "font-size:10px;padding:1px 8px;", prev.innerHTML = '<i class="bi bi-chevron-left"></i>', prev.disabled = currentPage <= 1, prev.addEventListener("click", () => onPage(currentPage - 1));
-    let label = document.createElement("span");
-    label.className = "ds-progress-text", label.textContent = `Page ${currentPage} of ${totalPages}`;
-    let next = document.createElement("button");
-    return next.type = "button", next.className = "win-button", next.style.cssText = "font-size:10px;padding:1px 8px;", next.innerHTML = '<i class="bi bi-chevron-right"></i>', next.disabled = currentPage >= totalPages, next.addEventListener("click", () => onPage(currentPage + 1)), row.appendChild(prev), row.appendChild(label), row.appendChild(next), row;
-  }
-  var feedCoverMemoryCache = /* @__PURE__ */ new Map(), inflightCovers = /* @__PURE__ */ new Map(), coverHydrationQueue = [], queuedCoverKeys = /* @__PURE__ */ new Set(), pendingDomUpdates = [], MAX_COVER_CONCURRENCY = 2, activeCoverWorkers = 0, currentHydrationHost = null, coversEnabled = (() => {
-    try {
-      let saved = localStorage.getItem("ds_covers_enabled");
-      return saved !== null ? saved === "true" : !0;
-    } catch (e) {
-      return !0;
-    }
-  })(), coverLazyObserver = null, isScrolling = !1, scrollIdleTimer = null, SCROLL_IDLE_MS = 400;
-  function onScrollActive() {
-    isScrolling || (console.log("[ds-covers] scroll start \u2014 hydration paused"), isScrolling = !0), scrollIdleTimer !== null && window.clearTimeout(scrollIdleTimer), scrollIdleTimer = window.setTimeout(() => {
-      isScrolling = !1, scrollIdleTimer = null, console.log(`[ds-covers] scroll idle \u2014 flushing ${pendingDomUpdates.length} buffered updates, queue=${coverHydrationQueue.length}`), flushPendingDomUpdates(), pumpCoverHydration();
-    }, SCROLL_IDLE_MS);
-  }
-  function attachScrollTracking() {
-    let dsView = document.getElementById("ds-view");
-    dsView ? dsView.addEventListener("scroll", onScrollActive, { passive: !0 }) : console.warn("[ds-covers] #ds-view not found \u2014 scroll tracking may miss events"), document.addEventListener("scroll", onScrollActive, { capture: !0, passive: !0 });
-  }
-  var scrollTrackingAttached = !1;
-  function applyCoverToNode(node, coverKey, coverPath) {
-    if (node.querySelector("img.ds-feed-cover")) return;
-    node.innerHTML = "";
-    let img = document.createElement("img");
-    img.className = "ds-feed-cover", img.alt = coverKey, img.width = 42, img.height = 58, img.decoding = "async", img.src = PH4.convertFileSrc(coverPath), img.addEventListener("error", () => {
-      img.style.display = "none";
-      let ph = document.createElement("div");
-      ph.className = "ds-feed-cover-placeholder", ph.innerHTML = '<i class="bi bi-book"></i>', node.appendChild(ph);
-    }), node.appendChild(img);
-  }
-  function flushPendingDomUpdates() {
-    if (pendingDomUpdates.length === 0) return;
-    let updates = pendingDomUpdates.splice(0);
-    requestAnimationFrame(() => {
-      for (let { coverKey, coverPath, host } of updates) {
-        if (host !== currentHydrationHost) continue;
-        let nodes = host.querySelectorAll(`[data-feed-cover="${coverKey}"]`);
-        for (let node of nodes) applyCoverToNode(node, coverKey, coverPath);
-      }
-    });
-  }
-  function scheduleCoverDomUpdate(coverKey, coverPath, host) {
-    if (isScrolling) {
-      pendingDomUpdates.push({ coverKey, coverPath, host });
-      return;
-    }
-    requestAnimationFrame(() => {
-      if (host !== currentHydrationHost) return;
-      let nodes = host.querySelectorAll(`[data-feed-cover="${coverKey}"]`);
-      for (let node of nodes) applyCoverToNode(node, coverKey, coverPath);
-    });
-  }
-  function getCoverLazyObserver() {
-    return coverLazyObserver || (coverLazyObserver = new IntersectionObserver(
-      (entries) => {
-        for (let entry of entries)
-          if (entry.isIntersecting) {
-            let el = entry.target;
-            if (coverLazyObserver == null || coverLazyObserver.unobserve(el), !coversEnabled) continue;
-            let coverKey = el.dataset.feedCover, chapterPermalink = el.dataset.chapterPermalink, seriesPermalink = el.dataset.seriesPermalink, seriesType = el.dataset.seriesType;
-            if (coverKey) {
-              let cached = feedCoverMemoryCache.get(coverKey);
-              cached && currentHydrationHost ? scheduleCoverDomUpdate(coverKey, cached, currentHydrationHost) : chapterPermalink && !queuedCoverKeys.has(coverKey) && (queuedCoverKeys.add(coverKey), coverHydrationQueue.push({
-                coverKey,
-                chapterPermalink,
-                seriesPermalink: seriesPermalink || null,
-                seriesType: seriesType || null
-              }), isScrolling || pumpCoverHydration());
-            }
-          }
-      },
-      { rootMargin: "150px" }
-    )), coverLazyObserver;
-  }
-  function reobserveUnloadedCovers(host) {
-    if (!coversEnabled) return;
-    let observer = getCoverLazyObserver();
-    host.querySelectorAll(".ds-feed-cover-wrap:not(:has(img.ds-feed-cover))").forEach((wrap) => observer.observe(wrap));
-  }
-  function pumpCoverHydration() {
-    if (!(isScrolling || !currentHydrationHost || coverHydrationQueue.length === 0))
-      for (console.log(`[ds-covers] pump: workers=${activeCoverWorkers}/${MAX_COVER_CONCURRENCY} queue=${coverHydrationQueue.length} scrolling=${isScrolling}`); !isScrolling && activeCoverWorkers < MAX_COVER_CONCURRENCY && coverHydrationQueue.length > 0; ) {
-        let target = coverHydrationQueue.pop();
-        if (!target) break;
-        activeCoverWorkers++;
-        let host = currentHydrationHost;
-        console.log(`[ds-covers] worker start: ${target.coverKey}`), (async () => {
-          try {
-            let task = inflightCovers.get(target.coverKey);
-            task || (task = getOrHydrateItemCover(
-              target.coverKey,
-              target.chapterPermalink,
-              target.seriesPermalink,
-              target.seriesType
-            ), inflightCovers.set(target.coverKey, task));
-            let coverPath = await task;
-            feedCoverMemoryCache.set(target.coverKey, coverPath), console.log(`[ds-covers] worker done: ${target.coverKey} \u2192 ${coverPath ? "hit" : "miss"} isScrolling=${isScrolling}`), coverPath && host === currentHydrationHost && scheduleCoverDomUpdate(target.coverKey, coverPath, host);
-          } catch (err) {
-            console.warn(`[ds-covers] worker error: ${target.coverKey}`, err);
-          } finally {
-            inflightCovers.delete(target.coverKey), activeCoverWorkers--, setTimeout(() => {
-              isScrolling || pumpCoverHydration();
-            }, 0);
-          }
-        })();
-      }
-  }
-  function getItemCoverInfo(ch) {
-    var _a;
-    let seriesTag = ((_a = ch.tags) != null ? _a : []).find((t) => {
-      var _a2;
-      let type = ((_a2 = t.type) != null ? _a2 : "").toLowerCase();
-      return type === "series" || type === "doujin" || type === "doujinshi" || type === "anthology" || type === "issue";
-    }), seriesPermalink = (seriesTag == null ? void 0 : seriesTag.permalink) || (ch.series ? ch.series.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") : ""), seriesName = ch.series || (seriesTag == null ? void 0 : seriesTag.name) || "", seriesType = (seriesTag == null ? void 0 : seriesTag.type) || "series";
-    return seriesPermalink ? {
-      coverKey: `series:${seriesPermalink}`,
-      chapterPermalink: ch.permalink,
-      seriesPermalink,
-      seriesName,
-      seriesType,
-      isStandalone: !1
-    } : {
-      coverKey: `chapter:${ch.permalink}`,
-      chapterPermalink: ch.permalink,
-      seriesPermalink: "",
-      seriesName: "",
-      seriesType: "",
-      isStandalone: !0
-    };
-  }
-  async function renderFeed(host, tabId, page) {
+  async function renderFeed(host, tabId, page, reload) {
     var _a;
     let url = `${FEED_TAB_TO_URL[tabId]}?page=${page}`, key = `${FEED_TAB_TO_KEY[tabId]}:${page}`, feedResult = await fetchFeedWithRevalidation(url, key), feed = feedResult.data, revalidatePromise = feedResult.revalidatePromise;
     if (host.innerHTML = "", !feed.chapters || feed.chapters.length === 0) {
@@ -1492,7 +1522,7 @@
       empty.className = "ds-muted", empty.textContent = "No chapters on this page.", host.appendChild(empty);
       return;
     }
-    currentHydrationHost = host, coverHydrationQueue.length = 0, queuedCoverKeys.clear(), pendingDomUpdates.length = 0, coverLazyObserver && (coverLazyObserver.disconnect(), coverLazyObserver = null), scrollTrackingAttached || (scrollTrackingAttached = !0, attachScrollTracking(), console.log("[ds-covers] scroll tracking attached to #ds-view"));
+    browseCovers.beginPage(host);
     let permalinks = feed.chapters.map((c) => c.permalink), readSet = /* @__PURE__ */ new Set(), bookmarkSet = /* @__PURE__ */ new Set();
     try {
       let [h, b] = await Promise.all([
@@ -1503,25 +1533,15 @@
     } catch (e) {
       readSet = /* @__PURE__ */ new Set(), bookmarkSet = /* @__PURE__ */ new Set();
     }
-    if (coversEnabled) {
-      let coverTargets = feed.chapters.map((c) => getItemCoverInfo(c)), uniqueCoverKeys = /* @__PURE__ */ new Map(), keysToQuery = [];
-      for (let ct of coverTargets)
-        uniqueCoverKeys.has(ct.coverKey) || (uniqueCoverKeys.set(ct.coverKey, ct), feedCoverMemoryCache.has(ct.coverKey) || keysToQuery.push(`cover:${ct.coverKey}`));
-      if (keysToQuery.length > 0)
-        try {
-          let cachedMap = await getBatchCached(keysToQuery);
-          for (let [fullKey, payload] of cachedMap) {
-            let rawKey = fullKey.replace(/^cover:/, "");
-            payload && feedCoverMemoryCache.set(rawKey, payload);
-          }
-        } catch (e) {
-        }
+    if (browseCovers.coversEnabled) {
+      let coverTargets = feed.chapters.map((c) => browseCovers.getItemCoverInfo(c));
+      await browseCovers.preloadBatch(coverTargets);
     }
     let currentTopPermalink = (_a = feed.chapters[0]) == null ? void 0 : _a.permalink;
     for (let ch of feed.chapters)
       host.appendChild(feedItem(ch, readSet.has(ch.permalink), bookmarkSet.has(ch.permalink)));
     host.appendChild(
-      pager2(feed.total_pages, feed.current_page, (p) => void renderTabContent(host, tabId, p))
+      renderPager(feed.total_pages, feed.current_page, (p) => void reload(host, tabId, p))
     );
     let currentEtag = feedResult.etag, statusFooter = feedStatusFooter({
       cachedAt: feedResult.cachedAt,
@@ -1549,7 +1569,7 @@
             status: "New releases available",
             etagStatus: "Updated (200 OK)",
             isStale: !1
-          }), showFeedUpdateBanner(host, tabId, page), btn.innerHTML = '<i class="bi bi-arrow-up-circle"></i> Update Ready', btn.disabled = !1) : (btn.innerHTML = prevHtml, btn.disabled = !1);
+          }), showFeedUpdateBanner(host, tabId, page, reload), btn.innerHTML = '<i class="bi bi-arrow-up-circle"></i> Update Ready', btn.disabled = !1) : (btn.innerHTML = prevHtml, btn.disabled = !1);
         } catch (err) {
           console.warn("Manual check updates failed:", err), btn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Failed', setTimeout(() => {
             btn.innerHTML = prevHtml, btn.disabled = !1;
@@ -1559,9 +1579,9 @@
       onScrollTop: () => {
         let dsView = document.getElementById("ds-view");
         if (!dsView || dsView.scrollTop <= 0) return;
-        coverLazyObserver && (coverLazyObserver.disconnect(), coverLazyObserver = null), coverHydrationQueue.length = 0, queuedCoverKeys.clear(), pendingDomUpdates.length = 0, onScrollActive(), dsView.scrollTo({ top: 0, behavior: "smooth" });
+        browseCovers.scrollToTop(), dsView.scrollTo({ top: 0, behavior: "smooth" });
         let topTimer = null, done = () => {
-          dsView.removeEventListener("scroll", checkArrival), topTimer && (clearTimeout(topTimer), topTimer = null), host === currentHydrationHost && reobserveUnloadedCovers(host);
+          dsView.removeEventListener("scroll", checkArrival), topTimer && (clearTimeout(topTimer), topTimer = null), host === browseCovers.currentHydrationHost && browseCovers.reobserveUnloadedCovers(host);
         }, checkArrival = () => {
           dsView.scrollTop <= 0 && done();
         };
@@ -1570,11 +1590,11 @@
     });
     host.appendChild(statusFooter), revalidatePromise && revalidatePromise.then((reval) => {
       var _a2, _b;
-      if (host === currentHydrationHost)
+      if (host === browseCovers.currentHydrationHost)
         if (reval) {
           currentEtag = reval.etag || currentEtag;
           let freshTop = (_b = (_a2 = reval.data.chapters) == null ? void 0 : _a2[0]) == null ? void 0 : _b.permalink;
-          freshTop && freshTop !== currentTopPermalink && showFeedUpdateBanner(host, tabId, page), updateFeedStatusFooter(statusFooter, {
+          freshTop && freshTop !== currentTopPermalink && showFeedUpdateBanner(host, tabId, page, reload), updateFeedStatusFooter(statusFooter, {
             cachedAt: Date.now(),
             etag: currentEtag,
             status: "Updated (200 OK)",
@@ -1639,7 +1659,7 @@
       etagEl && (etagEl.setAttribute("title", `HTTP ETag: ${info.etag}`), etagEl.innerHTML = `<i class="bi bi-hash"></i> ${info.etag.replace(/^"|"$/g, "").slice(0, 8)}`);
     }
   }
-  function showFeedUpdateBanner(host, tabId, page) {
+  function showFeedUpdateBanner(host, tabId, page, reload) {
     if (host.querySelector(".ds-feed-update-banner")) return;
     let banner = document.createElement("div");
     banner.className = "ds-feed-update-banner", banner.innerHTML = `
@@ -1649,32 +1669,14 @@
   `;
     let btn = banner.querySelector("button");
     btn == null || btn.addEventListener("click", () => {
-      renderTabContent(host, tabId, page);
+      reload(host, tabId, page);
     }), host.insertBefore(banner, host.firstChild);
-  }
-  function tagPill(t) {
-    let pill = document.createElement("span");
-    return pill.className = tagClass(t.type, t.name), pill.style.cssText = tagStyle(t.type, t.name) + "font-size:10px;padding:1px 6px;border-radius:2px;", pill.textContent = t.name, pill.title = `${t.type}: ${t.name} (click to open)`, pill.addEventListener("click", (ev) => {
-      var _a;
-      ev.stopPropagation();
-      let type = ((_a = t.type) != null ? _a : "").toLowerCase();
-      if (type === "series" || type === "anthology" || type === "issue") {
-        navigate({
-          view: "series",
-          seriesPermalink: t.permalink || t.name,
-          seriesName: t.name
-        });
-        return;
-      }
-      let url = "";
-      type === "author" || type === "artist" ? url = t.permalink ? `https://dynasty-scans.com/authors/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : type === "scanlator" || type === "group" ? url = t.permalink ? `https://dynasty-scans.com/scanlators/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : type === "doujin" || type === "doujinshi" || type === "copyright" || type === "parody" ? url = t.permalink ? `https://dynasty-scans.com/doujins/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : type === "pairing" ? url = t.permalink ? `https://dynasty-scans.com/pairings/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : url = t.permalink ? `https://dynasty-scans.com/tags/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`, openExternal(url);
-    }), pill;
   }
   function feedItem(ch, isRead = !1, isBookmarked = !1) {
     var _a;
     let item = document.createElement("div");
     item.className = `ds-item${isRead ? " ds-item-read" : ""}`, item.style.cssText = "display:flex;align-items:center;gap:10px;padding:6px 8px;";
-    let coverInfo = getItemCoverInfo(ch), coverWrap = document.createElement("div");
+    let coverInfo = browseCovers.getItemCoverInfo(ch), coverWrap = document.createElement("div");
     coverWrap.className = "ds-feed-cover-wrap", coverWrap.style.cssText = "flex-shrink:0;cursor:pointer;", coverWrap.dataset.feedCover = coverInfo.coverKey, coverWrap.dataset.chapterPermalink = coverInfo.chapterPermalink, coverWrap.dataset.seriesPermalink = coverInfo.seriesPermalink, coverWrap.dataset.seriesType = coverInfo.seriesType || "", coverInfo.isStandalone ? (coverWrap.title = `Read "${decodeEntities(ch.title)}"`, coverWrap.addEventListener("click", (ev) => {
       ev.stopPropagation(), navigate({
         view: "reader",
@@ -1689,7 +1691,7 @@
       });
     }));
     let ph = document.createElement("div");
-    ph.className = "ds-feed-cover-placeholder", ph.innerHTML = '<i class="bi bi-book"></i>', coverWrap.appendChild(ph), coversEnabled && getCoverLazyObserver().observe(coverWrap), item.appendChild(coverWrap);
+    ph.className = "ds-feed-cover-placeholder", ph.innerHTML = '<i class="bi bi-book"></i>', coverWrap.appendChild(ph), browseCovers.observe(coverWrap), item.appendChild(coverWrap);
     let info = document.createElement("div");
     info.style.cssText = "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;";
     let title = document.createElement("div");
@@ -1710,7 +1712,7 @@
       return ((_a2 = t.type) != null ? _a2 : "").toLowerCase() !== "series";
     }).slice(0, 8);
     for (let t of tags)
-      metaRow2.appendChild(tagPill(t));
+      metaRow2.appendChild(renderTagPill(t));
     info.appendChild(metaRow2);
     let bookmarked = isBookmarked, bookmarkBtn = document.createElement("button");
     bookmarkBtn.type = "button", bookmarkBtn.className = `win-button${bookmarked ? " primary" : ""}`, bookmarkBtn.style.cssText = "font-size:11px;padding:2px 8px;flex-shrink:0;", bookmarkBtn.title = bookmarked ? "Remove from Read Later" : "Save for Read Later", bookmarkBtn.innerHTML = bookmarked ? '<i class="bi bi-bookmark-fill"></i> Saved' : '<i class="bi bi-bookmark-plus"></i> Read Later', bookmarkBtn.addEventListener("click", async (ev) => {
@@ -1742,7 +1744,9 @@
       });
     }), item;
   }
-  async function renderDirectory(host, kind, page) {
+
+  // dynasty-scans/src/browse/browse-directory.ts
+  async function renderDirectory(host, kind, page, reload) {
     let url = kind === "series" ? `/series.json?page=${page}` : `/tags.json?page=${page}`, key = `${kind === "series" ? "dir:series" : "dir:tags"}:${page}`, dir = await fetchDirectory(url, key), groups = directoryGroups(dir);
     if (host.innerHTML = "", groups.length === 0) {
       let empty = document.createElement("div");
@@ -1775,12 +1779,133 @@
       host.appendChild(list);
     }
     host.appendChild(
-      pager2(dir.total_pages, dir.current_page, (p) => void renderTabContent(host, kind === "series" ? "series-dir" : "tags-dir", p))
+      renderPager(dir.total_pages, dir.current_page, (p) => void reload(host, kind, p))
     );
   }
 
+  // dynasty-scans/src/browse/browse-search.ts
+  async function loadSuggestions(q, host) {
+    let results;
+    try {
+      results = await suggest(q);
+    } catch (err) {
+      host.style.display = "none";
+      let msg = err instanceof Error ? err.message : String(err);
+      setBanner(`Search suggestions failed: ${msg}`);
+      return;
+    }
+    if (host.innerHTML = "", results.length === 0) {
+      host.style.display = "none";
+      return;
+    }
+    for (let r of results.slice(0, 8)) {
+      let item = document.createElement("div");
+      item.className = "ds-typeahead-item";
+      let name = document.createElement("span");
+      name.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;", name.textContent = decodeEntities(r.name);
+      let type = document.createElement("span");
+      type.className = "ds-typeahead-type", type.textContent = r.type, item.appendChild(name), item.appendChild(type), item.addEventListener("mousedown", () => {
+        openExternal(`https://dynasty-scans.com/search?q=${encodeURIComponent(r.name)}`);
+      }), host.appendChild(item);
+    }
+    host.style.display = "block";
+  }
+  function wireSearchPanel(panel) {
+    let input = panel.querySelector("#ds-search-input"), suggestEl = panel.querySelector("#ds-search-suggest"), searchBtn = panel.querySelector("#ds-search-btn"), debounceTimer, runSearch = () => {
+      var _a;
+      let q = ((_a = input == null ? void 0 : input.value) != null ? _a : "").trim();
+      q && openExternal(`https://dynasty-scans.com/search?q=${encodeURIComponent(q)}`);
+    };
+    searchBtn == null || searchBtn.addEventListener("click", runSearch), input == null || input.addEventListener("keydown", (ev) => {
+      ev.key === "Enter" && runSearch();
+    }), input == null || input.addEventListener("input", () => {
+      var _a;
+      window.clearTimeout(debounceTimer);
+      let q = ((_a = input.value) != null ? _a : "").trim();
+      if (suggestEl) {
+        if (!q) {
+          suggestEl.style.display = "none";
+          return;
+        }
+        debounceTimer = window.setTimeout(() => {
+          loadSuggestions(q, suggestEl);
+        }, 250);
+      }
+    }), input == null || input.addEventListener("blur", () => {
+      window.setTimeout(() => {
+        suggestEl && (suggestEl.style.display = "none");
+      }, 150);
+    });
+    let urlInput = panel.querySelector("#ds-url-input"), urlBtn = panel.querySelector("#ds-url-btn"), openByUrl = () => {
+      var _a;
+      let raw = ((_a = urlInput == null ? void 0 : urlInput.value) != null ? _a : "").trim();
+      if (!raw) {
+        setBanner("Paste a dynasty-scans.com series or chapter URL first.");
+        return;
+      }
+      let parsed = parseDynastyUrl(raw);
+      if (!parsed) {
+        setBanner("Unrecognized URL. Use https://dynasty-scans.com/series/<permalink> or /chapters/<permalink>.");
+        return;
+      }
+      parsed.kind === "chapter" ? navigate({ view: "reader", chapterPermalink: parsed.permalink, chapterTitle: parsed.permalink }) : navigate({ view: "series", seriesPermalink: parsed.permalink, seriesName: parsed.permalink });
+    };
+    urlBtn == null || urlBtn.addEventListener("click", openByUrl), urlInput == null || urlInput.addEventListener("keydown", (ev) => {
+      ev.key === "Enter" && openByUrl();
+    });
+  }
+
+  // dynasty-scans/src/browse/browse-controller.ts
+  var TABS = [
+    { id: "releases", label: "Recent Releases" },
+    { id: "added", label: "Recently Added" },
+    { id: "series-dir", label: "Series Directory" },
+    { id: "tags-dir", label: "Tags" }
+  ];
+  async function renderTabContent(host, tabId, page) {
+    host.innerHTML = "";
+    let loading = document.createElement("div");
+    loading.className = "ds-muted", loading.textContent = "Loading\u2026", host.appendChild(loading);
+    try {
+      tabId === "releases" || tabId === "added" ? await renderFeed(host, tabId, page, renderTabContent) : tabId === "series-dir" ? await renderDirectory(host, "series", page, renderTabContent) : await renderDirectory(host, "tags", page, renderTabContent);
+    } catch (err) {
+      host.innerHTML = "";
+      let msg = err instanceof Error ? err.message : String(err), retry = document.createElement("button");
+      retry.type = "button", retry.className = "win-button", retry.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Retry', retry.addEventListener("click", () => void renderTabContent(host, tabId, page)), host.appendChild(retry);
+    }
+  }
+  function renderBrowse(container, route) {
+    var _a;
+    container.innerHTML = "";
+    let searchBox = document.createElement("div");
+    searchBox.className = "group-box", searchBox.style.cssText = "margin-bottom:8px;", searchBox.innerHTML = '<div class="group-box-title"><i class="bi bi-search"></i> Search &amp; Go</div><div style="display:flex;flex-direction:column;gap:6px;">  <div class="ds-row">    <div class="ds-search-wrap" style="flex:1;">      <input type="text" class="input-field" id="ds-search-input"        placeholder="Search dynasty-scans (opens in your browser)..." style="width:100%;" />      <div class="ds-typeahead" id="ds-search-suggest" style="display:none;"></div>    </div>    <button type="button" class="win-button" id="ds-search-btn">      <i class="bi bi-box-arrow-up-right"></i> Search    </button>  </div>  <div class="ds-row">    <input type="text" class="input-field" id="ds-url-input" style="flex:1;"      placeholder="Paste a dynasty-scans.com series or chapter URL..." />    <button type="button" class="win-button" id="ds-url-btn">      <i class="bi bi-link-45deg"></i> Open Locally    </button>  </div>  <div class="ds-muted" style="margin-top:2px;">    Accepted: https://dynasty-scans.com/series/&lt;permalink&gt; or /chapters/&lt;permalink&gt; (or the .json form).  </div></div>', container.appendChild(searchBox), wireSearchPanel(searchBox);
+    let tabsRow = document.createElement("div");
+    tabsRow.className = "ds-subtabs", container.appendChild(tabsRow);
+    let content = document.createElement("div");
+    content.id = "ds-browse-content", content.style.cssText = "margin-top:8px;", container.appendChild(content);
+    let currentTab = (_a = route.browseTab) != null ? _a : "releases";
+    for (let tab of TABS) {
+      let btn = document.createElement("button");
+      btn.type = "button", btn.className = `win-button ds-subtab${tab.id === currentTab ? " active" : ""}`, btn.dataset.tabId = tab.id, btn.textContent = tab.label, btn.addEventListener("click", () => {
+        route.browseTab = tab.id;
+        for (let b of tabsRow.children) b.classList.remove("active");
+        btn.classList.add("active"), renderTabContent(content, tab.id, 1);
+      }), tabsRow.appendChild(btn);
+    }
+    let coverToggleBtn = document.createElement("button");
+    coverToggleBtn.type = "button", coverToggleBtn.id = "ds-cover-toggle", coverToggleBtn.className = "win-button ds-cover-toggle-btn", coverToggleBtn.title = "Toggle cover image loading (diagnostic)";
+    let updateCoverToggleLabel = () => {
+      coverToggleBtn.innerHTML = browseCovers.coversEnabled ? '<i class="bi bi-image"></i> Covers: ON' : '<i class="bi bi-image-slash"></i> Covers: OFF', coverToggleBtn.style.opacity = browseCovers.coversEnabled ? "1" : "0.5";
+    };
+    updateCoverToggleLabel(), coverToggleBtn.addEventListener("click", () => {
+      var _a2;
+      browseCovers.setCoversEnabled(!browseCovers.coversEnabled), updateCoverToggleLabel(), console.log(`[ds-covers] covers ${browseCovers.coversEnabled ? "enabled" : "disabled"} \u2014 re-rendering feed`);
+      let activeTab = tabsRow.querySelector(".ds-subtab.active"), activeTabId = (_a2 = activeTab == null ? void 0 : activeTab.dataset.tabId) != null ? _a2 : currentTab;
+      renderTabContent(content, activeTabId, 1);
+    }), tabsRow.appendChild(coverToggleBtn), renderTabContent(content, currentTab, 1);
+  }
+
   // dynasty-scans/src/ui-series.ts
-  var PH5 = window.PluginHost;
   function renderSeries(container, route) {
     container.innerHTML = "";
     let permalink = route.seriesPermalink;
@@ -1842,32 +1967,7 @@
     return out;
   }
   function coverEl(coverPath, alt) {
-    if (coverPath) {
-      let img = document.createElement("img");
-      return img.className = "ds-cover", img.alt = alt, img.src = PH5.convertFileSrc(coverPath), img.addEventListener("error", () => {
-        img.style.display = "none";
-      }), img;
-    }
-    let ph = document.createElement("div");
-    return ph.className = "ds-cover-placeholder", ph.innerHTML = '<i class="bi bi-image"></i>', ph;
-  }
-  function tagPill2(t) {
-    let pill = document.createElement("span");
-    return pill.className = tagClass(t.type, t.name), pill.style.cssText = tagStyle(t.type, t.name) + "font-size:10px;padding:2px 6px;border-radius:2px;", pill.textContent = t.name, pill.title = `${t.type}: ${t.name} (click to open)`, pill.addEventListener("click", (ev) => {
-      var _a;
-      ev.stopPropagation();
-      let type = ((_a = t.type) != null ? _a : "").toLowerCase();
-      if (type === "series" || type === "anthology" || type === "issue") {
-        navigate({
-          view: "series",
-          seriesPermalink: t.permalink || t.name,
-          seriesName: t.name
-        });
-        return;
-      }
-      let url = "";
-      type === "author" || type === "artist" ? url = t.permalink ? `https://dynasty-scans.com/authors/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : type === "scanlator" || type === "group" ? url = t.permalink ? `https://dynasty-scans.com/scanlators/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : type === "doujin" || type === "doujinshi" || type === "copyright" || type === "parody" ? url = t.permalink ? `https://dynasty-scans.com/doujins/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : type === "pairing" ? url = t.permalink ? `https://dynasty-scans.com/pairings/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : url = t.permalink ? `https://dynasty-scans.com/tags/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`, openExternal(url);
-    }), pill;
+    return renderCoverImage(coverPath, alt, "ds-cover", "ds-cover-placeholder");
   }
   function metaRow(label, tags) {
     if (!tags || tags.length === 0) return null;
@@ -1878,8 +1978,52 @@
     let pillsWrap = document.createElement("div");
     pillsWrap.className = "ds-meta-pills";
     for (let t of tags)
-      pillsWrap.appendChild(tagPill2(t));
+      pillsWrap.appendChild(renderTagPill(t, !1));
     return row.appendChild(pillsWrap), row;
+  }
+  function renderSanitizedDescription(container, htmlOrText) {
+    if (container.innerHTML = "", !htmlOrText) return;
+    let doc = new DOMParser().parseFromString(htmlOrText, "text/html"), walk = (node, parentEl) => {
+      var _a;
+      if (node.nodeType === Node.TEXT_NODE) {
+        let text = decodeEntities(node.textContent || "");
+        text && parentEl.appendChild(document.createTextNode(text));
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        let el2 = node, tag = el2.tagName.toLowerCase();
+        if (tag === "p") {
+          let p = document.createElement("p");
+          p.style.cssText = "margin:4px 0;";
+          for (let child of Array.from(el2.childNodes))
+            walk(child, p);
+          p.childNodes.length > 0 && parentEl.appendChild(p);
+        } else if (tag === "br")
+          parentEl.appendChild(document.createElement("br"));
+        else if (tag === "a") {
+          let href = el2.getAttribute("href") || "", text = decodeEntities(((_a = el2.textContent) == null ? void 0 : _a.trim()) || "");
+          if (href) {
+            let a = document.createElement("a");
+            a.className = "ds-external-link", a.style.cssText = "color:var(--sys-primary,#0078d4);text-decoration:underline;cursor:pointer;word-break:break-all;", text && text !== href ? a.textContent = `${text} \u2014 ${href}` : a.textContent = href, a.title = href, a.addEventListener("click", (ev) => {
+              ev.preventDefault(), ev.stopPropagation(), openExternal(href);
+            }), parentEl.appendChild(a);
+          } else
+            parentEl.appendChild(document.createTextNode(text));
+        } else if (tag === "b" || tag === "strong") {
+          let b = document.createElement("strong");
+          for (let child of Array.from(el2.childNodes))
+            walk(child, b);
+          parentEl.appendChild(b);
+        } else if (tag === "i" || tag === "em") {
+          let em = document.createElement("em");
+          for (let child of Array.from(el2.childNodes))
+            walk(child, em);
+          parentEl.appendChild(em);
+        } else
+          for (let child of Array.from(el2.childNodes))
+            walk(child, parentEl);
+      }
+    };
+    for (let child of Array.from(doc.body.childNodes))
+      walk(child, container);
   }
   function buildBody(container, series, coverPath, chapters, progress, cacheCounts, readHistorySet) {
     var _a, _b, _c, _d, _e, _f, _g;
@@ -1890,52 +2034,7 @@
     let name = document.createElement("div");
     name.style.cssText = "font-size:14px;font-weight:600;", name.textContent = decodeEntities(series.name);
     let typeLine = document.createElement("div");
-    typeLine.className = "ds-muted", typeLine.textContent = (_a = series.type) != null ? _a : "Series", info.appendChild(name), info.appendChild(typeLine);
-    function renderSanitizedDescription(container2, htmlOrText) {
-      if (container2.innerHTML = "", !htmlOrText) return;
-      let doc = new DOMParser().parseFromString(htmlOrText, "text/html"), walk = (node, parentEl) => {
-        var _a2;
-        if (node.nodeType === Node.TEXT_NODE) {
-          let text = decodeEntities(node.textContent || "");
-          text && parentEl.appendChild(document.createTextNode(text));
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-          let el = node, tag = el.tagName.toLowerCase();
-          if (tag === "p") {
-            let p = document.createElement("p");
-            p.style.cssText = "margin:4px 0;";
-            for (let child of Array.from(el.childNodes))
-              walk(child, p);
-            p.childNodes.length > 0 && parentEl.appendChild(p);
-          } else if (tag === "br")
-            parentEl.appendChild(document.createElement("br"));
-          else if (tag === "a") {
-            let href = el.getAttribute("href") || "", text = decodeEntities(((_a2 = el.textContent) == null ? void 0 : _a2.trim()) || "");
-            if (href) {
-              let a = document.createElement("a");
-              a.className = "ds-external-link", a.style.cssText = "color:var(--sys-primary,#0078d4);text-decoration:underline;cursor:pointer;word-break:break-all;", text && text !== href ? a.textContent = `${text} \u2014 ${href}` : a.textContent = href, a.title = href, a.addEventListener("click", (ev) => {
-                ev.preventDefault(), ev.stopPropagation(), openExternal(href);
-              }), parentEl.appendChild(a);
-            } else
-              parentEl.appendChild(document.createTextNode(text));
-          } else if (tag === "b" || tag === "strong") {
-            let b = document.createElement("strong");
-            for (let child of Array.from(el.childNodes))
-              walk(child, b);
-            parentEl.appendChild(b);
-          } else if (tag === "i" || tag === "em") {
-            let em = document.createElement("em");
-            for (let child of Array.from(el.childNodes))
-              walk(child, em);
-            parentEl.appendChild(em);
-          } else
-            for (let child of Array.from(el.childNodes))
-              walk(child, parentEl);
-        }
-      };
-      for (let child of Array.from(doc.body.childNodes))
-        walk(child, container2);
-    }
-    if (series.description) {
+    if (typeLine.className = "ds-muted", typeLine.textContent = (_a = series.type) != null ? _a : "Series", info.appendChild(name), info.appendChild(typeLine), series.description) {
       let desc = document.createElement("div");
       desc.className = "ds-series-desc", renderSanitizedDescription(desc, series.description), info.appendChild(desc);
     }
@@ -2071,52 +2170,224 @@
     });
   }
 
-  // dynasty-scans/src/ui-reader.ts
-  var PH6 = window.PluginHost;
-  function renderReader(container, route) {
-    container.innerHTML = "";
-    let permalink = route.chapterPermalink;
-    if (!permalink) {
-      setBanner("Missing chapter permalink.");
-      return;
+  // dynasty-scans/src/reader/reader-queue.ts
+  var ReaderQueue = class {
+    constructor(c) {
+      this.c = c;
+      this.queue = [];
+      this.inFlight = /* @__PURE__ */ new Set();
+      this.retrying = /* @__PURE__ */ new Set();
+      this.failed = /* @__PURE__ */ new Set();
+      this.firstErrorShown = !1;
     }
-    let loading = document.createElement("div");
-    loading.className = "ds-muted", loading.textContent = "Loading chapter\u2026", container.appendChild(loading);
-    let disposed = !1, cleanup = [], onDispose = (fn) => {
-      cleanup.push(fn);
-    };
-    return (async () => {
-      var _a, _b, _c, _d, _e, _f, _g, _h, _i;
-      let chapter;
+    get failedSet() {
+      return this.failed;
+    }
+    isFailed(index) {
+      return this.failed.has(index);
+    }
+    clearFailed(index) {
+      this.failed.delete(index);
+    }
+    isRetrying(index) {
+      return this.retrying.has(index);
+    }
+    markRetrying(index) {
+      this.retrying.add(index);
+    }
+    /** Marks a page as needing a (re)download. Priorities jump to the queue head. */
+    enqueue(index, priority = !1) {
+      let pages = this.c.pages;
+      index < 0 || index >= pages.length || this.inFlight.has(index) || this.failed.has(index) || (this.queue.includes(index) || (priority ? this.queue.unshift(index) : this.queue.push(index)), this.queue.sort((a, b) => {
+        let distA = Math.abs(a - this.c.currentIndex) + (a < this.c.currentIndex ? 1e3 : 0), distB = Math.abs(b - this.c.currentIndex) + (b < this.c.currentIndex ? 1e3 : 0);
+        return distA - distB;
+      }), this.pump());
+    }
+    pump() {
+      for (; this.inFlight.size < 1 && this.queue.length > 0; ) {
+        let idx = this.queue.shift();
+        this.inFlight.has(idx) || (this.inFlight.add(idx), this.downloadPage(idx).finally(() => {
+          this.inFlight.delete(idx), this.pump();
+        }));
+      }
+    }
+    async downloadPage(index) {
+      let c = this.c, page = c.pages[index];
+      if (!page) return;
+      let slot = c.slots[index], outPath = c.pageOutputPath(index, page.url);
       try {
-        chapter = await fetchChapter(permalink);
+        let existing = await c.fileResolve(outPath), absPath, sizeBytes = 0;
+        if (existing)
+          absPath = existing;
+        else {
+          let res = await c.httpDownloadFull(c.absUrl(page.url), outPath);
+          absPath = res.absolutePath, sizeBytes = res.sizeBytes;
+        }
+        await c.setCachedPage(index, absPath, sizeBytes), c.cachedMap.set(index, absPath), !c.disposed && slot && c.renderSlotImg(slot, absPath, index + 1), c.updateCacheCount();
       } catch (err) {
-        if (disposed) return;
-        container.innerHTML = "";
+        if (c.disposed) return;
+        this.failed.add(index);
         let msg = err instanceof Error ? err.message : String(err);
-        setBanner(`Failed to load chapter: ${msg}`);
-        let retry = document.createElement("button");
-        retry.type = "button", retry.className = "win-button", retry.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Retry', retry.addEventListener("click", () => renderReader(container, route)), container.appendChild(retry);
-        return;
+        slot && c.renderSlotState(slot, "error", `Download failed: ${msg}`), this.firstErrorShown || (this.firstErrorShown = !0, c.setBanner(`Page download failed (page ${index + 1} of ${c.pages.length}). Use the slot's Retry.`));
       }
-      if (disposed) return;
-      let seriesTag = ((_a = chapter.tags) != null ? _a : []).find((t) => t.type === "Series"), seriesPermalink = (_b = route.seriesPermalink) != null ? _b : seriesTag == null ? void 0 : seriesTag.permalink, seriesName = (_d = (_c = route.seriesName) != null ? _c : seriesTag == null ? void 0 : seriesTag.name) != null ? _d : chapter.title, chapterTitle = (_e = route.chapterTitle) != null ? _e : chapter.title, chapterList = (_f = route.chapterList) != null ? _f : [], pages = (_g = chapter.pages) != null ? _g : [];
-      if (container.innerHTML = "", pages.length === 0) {
-        let empty = document.createElement("div");
-        empty.className = "ds-muted", empty.textContent = "This chapter has no pages.", container.appendChild(empty);
-        return;
+    }
+  };
+
+  // dynasty-scans/src/reader/reader-viewport.ts
+  var ReaderViewport = class {
+    constructor(c) {
+      this.c = c;
+      this.wheelDebounce = 0;
+      this.build();
+    }
+    build() {
+      let c = this.c, viewport = document.createElement("div");
+      viewport.id = "ds-reader-viewport", c.readerContainer.appendChild(viewport), c.viewport = viewport;
+      let strip = document.createElement("div");
+      strip.id = "ds-reader-strip", viewport.appendChild(strip), c.strip = strip;
+      let updateViewportHeight = () => {
+        let h = viewport.clientHeight;
+        h > 50 && (c.readerContainer.style.setProperty("--ds-viewport-full", `${h}px`), c.readerContainer.style.setProperty("--ds-viewport-height", `${h - 20}px`));
+      }, ro = new ResizeObserver(updateViewportHeight);
+      ro.observe(viewport), c.onDispose(() => ro.disconnect()), window.setTimeout(updateViewportHeight, 0);
+    }
+    /** Called once slots exist. Attaches scroll tracking, preloading, and wheel. */
+    wireAfterSlots() {
+      let c = this.c;
+      this.attachScrollTracking(), this.attachPreloader(), this.attachWheel();
+    }
+    /** Jumps to a page: paged mode slides the strip; scroll mode scrolls into view. */
+    slideTo(index) {
+      let c = this.c;
+      if (c.isHorizontal)
+        c.scrollLock ? (c.strip.style.transition = "", c.strip.style.transform = `translateX(${-index * 100}%)`) : (c.strip.style.transition = "none", c.strip.offsetWidth, c.strip.style.transform = `translateX(${-index * 100}%)`);
+      else {
+        c.isProgrammaticScroll = !0, c.programmaticScrollTimer !== null && clearTimeout(c.programmaticScrollTimer), c.programmaticScrollTimer = window.setTimeout(() => {
+          c.isProgrammaticScroll = !1;
+        }, 350);
+        let target = c.slots[index];
+        target && target.scrollIntoView({ behavior: "smooth", block: "start" });
       }
-      chapterList.length === 0 && seriesPermalink && fetchSeries(seriesPermalink).then((s) => {
-        var _a2;
-        if (disposed) return;
-        let cl = [];
-        for (let t of (_a2 = s.taggings) != null ? _a2 : [])
-          t.title && t.permalink && cl.push({ title: t.title, permalink: t.permalink, released_on: t.released_on });
-        cl.length > 0 && (chapterList = cl, updateChapterNav());
+    }
+    /** Restores the reader to the current page (used on resize / mode / fullscreen changes). */
+    resetToCurrentPage(smooth = !1) {
+      let c = this.c;
+      if ((() => {
+        let h = c.viewport.clientHeight;
+        h > 50 && (c.readerContainer.style.setProperty("--ds-viewport-full", `${h}px`), c.readerContainer.style.setProperty("--ds-viewport-height", `${h - 20}px`));
+      })(), c.isHorizontal)
+        smooth ? c.strip.style.transform = `translateX(${-c.currentIndex * 100}%)` : (c.strip.style.transition = "none", c.strip.offsetWidth, c.strip.style.transform = `translateX(${-c.currentIndex * 100}%)`, requestAnimationFrame(() => {
+          c.strip.style.transition = "";
+        }));
+      else {
+        c.isProgrammaticScroll = !0, c.programmaticScrollTimer !== null && clearTimeout(c.programmaticScrollTimer), c.programmaticScrollTimer = window.setTimeout(() => {
+          c.isProgrammaticScroll = !1;
+        }, 350);
+        let target = c.slots[c.currentIndex];
+        target && target.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+      }
+      c.updateProgressText();
+    }
+    /** Applies the current mode to the viewport/strip and updates the mode button icon. */
+    applyLayoutMode() {
+      let c = this.c;
+      if (c.isHorizontal)
+        c.modeBtn.innerHTML = '<i class="bi bi-distribute-vertical"></i> Scroll', c.viewport.classList.add("horizontal"), c.strip.style.transition = "none", c.strip.style.transform = `translateX(${-c.currentIndex * 100}%)`, requestAnimationFrame(() => {
+          c.strip.style.transition = "";
+        });
+      else {
+        c.modeBtn.innerHTML = '<i class="bi bi-arrow-left-right"></i> Paged', c.viewport.classList.remove("horizontal"), c.strip.style.transform = "", c.strip.style.transition = "";
+        let target = c.slots[c.currentIndex];
+        target && target.scrollIntoView({ block: "start" });
+      }
+    }
+    attachScrollTracking() {
+      let c = this.c, computeCurrentPageFromScroll = () => {
+        if (c.isHorizontal || c.isProgrammaticScroll) return;
+        let vpRect = c.viewport.getBoundingClientRect(), focalY = vpRect.top + vpRect.height * 0.35, bestIdx = c.currentIndex;
+        for (let i = 0; i < c.slots.length; i++) {
+          let r = c.slots[i].getBoundingClientRect();
+          if (r.top <= focalY && r.bottom > focalY) {
+            bestIdx = i;
+            break;
+          }
+          if (r.top > focalY) {
+            bestIdx = i > 0 ? i - 1 : 0;
+            break;
+          }
+          bestIdx = i;
+        }
+        bestIdx !== c.currentIndex && (c.currentIndex = bestIdx, c.atEnd = c.currentIndex >= c.pages.length - 1, c.updateProgressText(), c.schedulePersist(), c.atEnd && c.persistNow());
+      }, onViewportScroll = () => {
+        c.isHorizontal || c.isProgrammaticScroll || (c.scrollRaf !== null && cancelAnimationFrame(c.scrollRaf), c.scrollRaf = requestAnimationFrame(() => {
+          computeCurrentPageFromScroll(), c.scrollRaf = null;
+        }));
+      };
+      c.viewport.addEventListener("scroll", onViewportScroll, { passive: !0 }), c.onDispose(() => {
+        c.viewport.removeEventListener("scroll", onViewportScroll), c.scrollRaf !== null && cancelAnimationFrame(c.scrollRaf);
       });
-      let isHorizontal = localStorage.getItem("ds-reader-mode") === "paged", fitMode = localStorage.getItem("ds-reader-fit") || "width", scrollLock = localStorage.getItem("ds-reader-scroll-lock") === "1", currentIndex = Math.min((_h = route.startPage) != null ? _h : 0, pages.length - 1), readerContainer = document.createElement("div");
-      readerContainer.id = "ds-reader-container", readerContainer.className = `fit-${fitMode}`, container.appendChild(readerContainer);
-      let nav = document.createElement("div");
+    }
+    attachPreloader() {
+      let c = this.c, observer = new IntersectionObserver(
+        (entries) => {
+          for (let entry of entries)
+            if (entry.isIntersecting) {
+              let idx = Number(entry.target.dataset.index);
+              c.enqueue(idx), c.enqueue(idx + 1), c.enqueue(idx + 2);
+            }
+        },
+        { root: c.viewport, rootMargin: "400px 0px", threshold: 0 }
+      );
+      c.slots.forEach((s) => observer.observe(s)), c.onDispose(() => observer.disconnect());
+    }
+    attachWheel() {
+      let c = this.c, onWheel = (ev) => {
+        if (!c.scrollLock && !c.isHorizontal) return;
+        ev.preventDefault();
+        let now = Date.now();
+        if (now - this.wheelDebounce < 180 || Math.abs(ev.deltaY) < 10 && Math.abs(ev.deltaX) < 10) return;
+        this.wheelDebounce = now;
+        let delta = Math.abs(ev.deltaY) >= Math.abs(ev.deltaX) ? ev.deltaY : ev.deltaX;
+        if (c.isHorizontal)
+          delta > 0 ? c.setPage(c.currentIndex + 1) : c.setPage(c.currentIndex - 1);
+        else {
+          let vpRect = c.viewport.getBoundingClientRect();
+          if (delta > 0) {
+            let targetIdx = c.currentIndex + 1;
+            for (let i = 0; i < c.slots.length; i++)
+              if (c.slots[i].getBoundingClientRect().top > vpRect.top + 20) {
+                targetIdx = i;
+                break;
+              }
+            c.setPage(Math.min(c.pages.length - 1, targetIdx));
+          } else {
+            let targetIdx = c.currentIndex - 1;
+            for (let i = c.slots.length - 1; i >= 0; i--)
+              if (c.slots[i].getBoundingClientRect().top < vpRect.top - 20) {
+                targetIdx = i;
+                break;
+              }
+            c.setPage(Math.max(0, targetIdx));
+          }
+        }
+      };
+      c.viewport.addEventListener("wheel", onWheel, { passive: !1 }), c.onDispose(() => c.viewport.removeEventListener("wheel", onWheel));
+    }
+  };
+
+  // dynasty-scans/src/reader/reader-toolbar.ts
+  var ReaderToolbar = class {
+    constructor(c) {
+      this.c = c;
+      this.build();
+    }
+    /** Finishes wiring after the slot strip exists (applies saved mode + labels). */
+    wireAfterSlots() {
+      let c = this.c;
+      c.updateChapterNav(), c.isHorizontal && c.viewportImpl.applyLayoutMode(), this.updateScrollLockBtn(), this.applyTheme();
+    }
+    build() {
+      let c = this.c, nav = document.createElement("div");
       nav.className = "ds-reader-nav";
       let prevChapterBtn = document.createElement("button");
       prevChapterBtn.type = "button", prevChapterBtn.className = "win-button", prevChapterBtn.style.cssText = "font-size:11px;padding:2px 8px;", prevChapterBtn.title = "Previous Chapter", prevChapterBtn.innerHTML = '<i class="bi bi-chevron-double-left"></i> Ch';
@@ -2137,435 +2408,403 @@
       let progressFill = document.createElement("div");
       progressFill.className = "ds-reader-progress-fill", progressTrack.appendChild(progressFill), progressWrap.appendChild(progressTrack);
       let scrollLockBtn = document.createElement("button");
-      scrollLockBtn.type = "button", scrollLockBtn.className = `win-button${scrollLock ? " primary" : ""}`, scrollLockBtn.style.cssText = "font-size:11px;padding:2px 8px;", scrollLockBtn.title = "Scroll Lock: mouse wheel flips exactly one page at a time", scrollLockBtn.innerHTML = scrollLock ? '<i class="bi bi-lock-fill"></i> Scroll Lock' : '<i class="bi bi-unlock"></i> Scroll Lock';
+      scrollLockBtn.type = "button", scrollLockBtn.className = `win-button${c.scrollLock ? " primary" : ""}`, scrollLockBtn.style.cssText = "font-size:11px;padding:2px 8px;", scrollLockBtn.title = "Scroll Lock: mouse wheel flips exactly one page at a time", scrollLockBtn.innerHTML = c.scrollLock ? '<i class="bi bi-lock-fill"></i> Scroll Lock' : '<i class="bi bi-unlock"></i> Scroll Lock';
       let modeBtn = document.createElement("button");
-      modeBtn.type = "button", modeBtn.className = "win-button", modeBtn.style.cssText = "font-size:11px;padding:2px 8px;", modeBtn.title = "Toggle Horizontal / Vertical reading mode", modeBtn.innerHTML = isHorizontal ? '<i class="bi bi-distribute-vertical"></i> Scroll' : '<i class="bi bi-arrow-left-right"></i> Paged';
+      modeBtn.type = "button", modeBtn.className = "win-button", modeBtn.style.cssText = "font-size:11px;padding:2px 8px;", modeBtn.title = "Toggle Horizontal / Vertical reading mode", modeBtn.innerHTML = c.isHorizontal ? '<i class="bi bi-distribute-vertical"></i> Scroll' : '<i class="bi bi-arrow-left-right"></i> Paged';
       let fitSelect = document.createElement("select");
-      fitSelect.className = "win-input", fitSelect.style.cssText = "font-size:11px;padding:2px 4px;", fitSelect.innerHTML = '<option value="width">Fit Width</option><option value="height">Fit Height</option><option value="original">Original Size</option>', fitSelect.value = fitMode;
-      let isFullscreen = !1, resetToCurrentPage = () => {
-      }, fullscreenBtn = document.createElement("button");
+      fitSelect.className = "win-input", fitSelect.style.cssText = "font-size:11px;padding:2px 4px;", fitSelect.innerHTML = '<option value="width">Fit Width</option><option value="height">Fit Height</option><option value="original">Original Size</option>', fitSelect.value = c.fitMode;
+      let fullscreenBtn = document.createElement("button");
       fullscreenBtn.type = "button", fullscreenBtn.className = "win-button", fullscreenBtn.style.cssText = "font-size:11px;padding:2px 8px;", fullscreenBtn.title = "Toggle Fullscreen (F)", fullscreenBtn.innerHTML = '<i class="bi bi-arrows-fullscreen"></i> Fullscreen';
-      let setFullscreen = (active) => {
-        if (isFullscreen = active, isFullscreen) {
-          readerContainer.classList.add("ds-fullscreen"), fullscreenBtn.className = "win-button primary", fullscreenBtn.innerHTML = '<i class="bi bi-fullscreen-exit"></i> Exit', fullscreenBtn.title = "Exit Fullscreen (Esc / F)";
-          try {
-            !document.fullscreenElement && document.fullscreenEnabled && readerContainer.requestFullscreen().catch(() => {
-            });
-          } catch (e) {
-          }
-        } else {
-          readerContainer.classList.remove("ds-fullscreen"), fullscreenBtn.className = "win-button", fullscreenBtn.innerHTML = '<i class="bi bi-arrows-fullscreen"></i> Fullscreen', fullscreenBtn.title = "Toggle Fullscreen (F)";
-          try {
-            document.fullscreenElement && document.exitFullscreen().catch(() => {
-            });
-          } catch (e) {
-          }
-        }
-        resetToCurrentPage(!1), setTimeout(() => resetToCurrentPage(!1), 60), setTimeout(() => resetToCurrentPage(!1), 180);
-      };
-      fullscreenBtn.addEventListener("click", () => {
-        setFullscreen(!isFullscreen);
-      });
+      let themeBtn = document.createElement("button");
+      themeBtn.type = "button", themeBtn.className = "win-button", themeBtn.style.cssText = "font-size:11px;padding:2px 8px;", themeBtn.title = "Toggle Light / Dark Theme (T)", c.prevChapterBtn = prevChapterBtn, c.nextChapterBtn = nextChapterBtn, c.prevPageBtn = prevPageBtn, c.nextPageBtn = nextPageBtn, c.positionLabel = positionLabel, c.progressFill = progressFill, c.scrollLockBtn = scrollLockBtn, c.modeBtn = modeBtn, c.fitSelect = fitSelect, c.fullscreenBtn = fullscreenBtn, c.themeBtn = themeBtn, nav.appendChild(prevChapterBtn), nav.appendChild(prevPageBtn), nav.appendChild(progressWrap), nav.appendChild(nextPageBtn), nav.appendChild(nextChapterBtn), nav.appendChild(scrollLockBtn), nav.appendChild(modeBtn), nav.appendChild(fitSelect), nav.appendChild(themeBtn), nav.appendChild(fullscreenBtn), c.readerContainer.appendChild(nav);
+      let gotoChapter = (ch) => c.gotoChapter(ch);
+      prevChapterBtn.addEventListener("click", () => {
+        let curIdx = c.chapterList.findIndex((x) => x.permalink === c.permalink);
+        curIdx > 0 && gotoChapter(c.chapterList[curIdx - 1]);
+      }), nextChapterBtn.addEventListener("click", () => {
+        let curIdx = c.chapterList.findIndex((x) => x.permalink === c.permalink);
+        curIdx >= 0 && curIdx < c.chapterList.length - 1 && gotoChapter(c.chapterList[curIdx + 1]);
+      }), prevPageBtn.addEventListener("click", () => c.setPage(c.currentIndex - 1)), nextPageBtn.addEventListener("click", () => c.setPage(c.currentIndex + 1)), scrollLockBtn.addEventListener("click", () => {
+        c.scrollLock = !c.scrollLock, localStorage.setItem("ds-reader-scroll-lock", c.scrollLock ? "1" : "0"), this.updateScrollLockBtn();
+      }), modeBtn.addEventListener("click", () => {
+        c.isHorizontal = !c.isHorizontal, localStorage.setItem("ds-reader-mode", c.isHorizontal ? "paged" : "scroll"), c.viewportImpl.applyLayoutMode(), this.updateScrollLockBtn();
+      }), fitSelect.addEventListener("change", () => {
+        c.fitMode = fitSelect.value, localStorage.setItem("ds-reader-fit", c.fitMode), c.readerContainer.className = `fit-${c.fitMode}`;
+      }), themeBtn.addEventListener("click", () => this.toggleTheme()), fullscreenBtn.addEventListener("click", () => this.setFullscreen(!c.isFullscreen)), this.applyTheme();
       let onFullscreenChange = () => {
-        !document.fullscreenElement && isFullscreen ? setFullscreen(!1) : resetToCurrentPage(!1);
+        !document.fullscreenElement && c.isFullscreen ? this.setFullscreen(!1) : c.viewportImpl.resetToCurrentPage(!1);
       };
-      document.addEventListener("fullscreenchange", onFullscreenChange), onDispose(() => {
+      document.addEventListener("fullscreenchange", onFullscreenChange), c.onDispose(() => {
         document.removeEventListener("fullscreenchange", onFullscreenChange), document.fullscreenElement && document.exitFullscreen().catch(() => {
         });
       });
-      let readerTheme = localStorage.getItem("ds-reader-theme") || "light", themeBtn = document.createElement("button");
-      themeBtn.type = "button", themeBtn.className = "win-button", themeBtn.style.cssText = "font-size:11px;padding:2px 8px;", themeBtn.title = "Toggle Light / Dark Theme (T)";
-      let applyTheme = () => {
-        readerTheme === "dark" ? (readerContainer.classList.add("ds-dark"), themeBtn.innerHTML = '<i class="bi bi-moon-fill"></i> Dark') : (readerContainer.classList.remove("ds-dark"), themeBtn.innerHTML = '<i class="bi bi-sun"></i> Light');
-      };
-      themeBtn.addEventListener("click", () => {
-        readerTheme = readerTheme === "light" ? "dark" : "light", localStorage.setItem("ds-reader-theme", readerTheme), applyTheme();
-      }), applyTheme();
-      let updateChapterNav = () => {
-        let curIdx = chapterList.findIndex((c) => c.permalink === permalink);
-        prevChapterBtn.disabled = curIdx <= 0, nextChapterBtn.disabled = curIdx < 0 || curIdx >= chapterList.length - 1;
-      };
-      updateChapterNav();
-      let gotoChapter = (c) => {
-        navigate({
-          view: "reader",
-          seriesPermalink,
-          seriesName,
-          chapterPermalink: c.permalink,
-          chapterTitle: c.title,
-          chapterList
-        });
-      };
-      prevChapterBtn.addEventListener("click", () => {
-        let curIdx = chapterList.findIndex((c) => c.permalink === permalink);
-        curIdx > 0 && gotoChapter(chapterList[curIdx - 1]);
-      }), nextChapterBtn.addEventListener("click", () => {
-        let curIdx = chapterList.findIndex((c) => c.permalink === permalink);
-        curIdx >= 0 && curIdx < chapterList.length - 1 && gotoChapter(chapterList[curIdx + 1]);
-      }), nav.appendChild(prevChapterBtn), nav.appendChild(prevPageBtn), nav.appendChild(progressWrap), nav.appendChild(nextPageBtn), nav.appendChild(nextChapterBtn), nav.appendChild(scrollLockBtn), nav.appendChild(modeBtn), nav.appendChild(fitSelect), nav.appendChild(themeBtn), nav.appendChild(fullscreenBtn), readerContainer.appendChild(nav);
-      let viewport = document.createElement("div");
-      viewport.id = "ds-reader-viewport", readerContainer.appendChild(viewport);
-      let updateViewportHeight = () => {
-        let h = viewport.clientHeight;
-        h > 50 && (readerContainer.style.setProperty("--ds-viewport-full", `${h}px`), readerContainer.style.setProperty("--ds-viewport-height", `${h - 20}px`));
-      }, ro = new ResizeObserver(updateViewportHeight);
-      ro.observe(viewport), onDispose(() => ro.disconnect()), window.setTimeout(updateViewportHeight, 0);
-      let strip = document.createElement("div");
-      strip.id = "ds-reader-strip", viewport.appendChild(strip);
-      let slots = [], cachedMap = /* @__PURE__ */ new Map(), queue = [], inFlight = /* @__PURE__ */ new Set(), retrying = /* @__PURE__ */ new Set(), failed = /* @__PURE__ */ new Set(), cachedRows;
-      try {
-        cachedRows = await getCachedPages(permalink);
-      } catch (err) {
-        cachedRows = [], setBanner(`Page cache lookup failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
-      for (let row of cachedRows)
-        row.page_index >= 0 && row.page_index < pages.length && row.file_path && cachedMap.set(row.page_index, row.file_path);
-      let cachedCount = cachedMap.size, renderSlotImg = (slot, absPath, pageNum) => {
-        slot.classList.remove("ds-slot-loading"), slot.innerHTML = "";
-        let badge = document.createElement("div");
-        badge.className = "ds-slot-page-badge", badge.textContent = `${pageNum} / ${pages.length}`, slot.appendChild(badge);
-        let img = document.createElement("img");
-        img.className = "ds-page-img", img.alt = `Page ${pageNum}`, img.addEventListener("error", () => {
-          let idx = Number(slot.dataset.index);
-          cachedMap.delete(idx), !retrying.has(idx) && (retrying.add(idx), renderSlotState(slot, "spinner", "Re-downloading\u2026"), enqueue(idx, !0));
-        }), img.src = PH6.convertFileSrc(absPath), slot.appendChild(img);
-      }, renderSlotState = (slot, kind, message) => {
-        slot.innerHTML = "";
-        let idx = Number(slot.dataset.index), badge = document.createElement("div");
-        badge.className = "ds-slot-page-badge", badge.textContent = `${idx + 1} / ${pages.length}`, slot.appendChild(badge);
-        let state2 = document.createElement("div");
-        state2.className = `ds-slot-state${kind === "error" ? " ds-slot-error" : ""}`, kind === "spinner" ? state2.innerHTML = '<i class="bi bi-cloud-arrow-down" style="font-size:20px;color:var(--sys-primary,#0078d4);"></i><div class="ds-slot-pulse-wrap"><div class="ds-slot-pulse-bar"></div></div>' : kind === "offline" ? state2.innerHTML = '<i class="bi bi-wifi-off" style="font-size:20px;"></i>' : state2.innerHTML = '<i class="bi bi-exclamation-triangle" style="font-size:20px;"></i>';
-        let text = document.createElement("span");
-        if (kind === "spinner") {
-          let pct = pages.length > 0 ? Math.round(cachedCount / pages.length * 100) : 0;
-          text.textContent = `Downloading page ${idx + 1} of ${pages.length} (${cachedCount}/${pages.length} cached \xB7 ${pct}%)`;
-        } else
-          text.textContent = message;
-        if (state2.appendChild(text), kind === "error") {
-          let retry = document.createElement("button");
-          retry.type = "button", retry.className = "win-button", retry.style.cssText = "font-size:10px;padding:1px 8px;", retry.textContent = "Retry", retry.addEventListener("click", () => {
-            failed.delete(idx), renderSlotState(slot, "spinner", "Downloading\u2026"), enqueue(idx);
-          }), state2.appendChild(retry);
-        }
-        slot.appendChild(state2);
-      }, firstErrorShown = !1, updateCacheCount = () => {
-        cachedCount = cachedMap.size, updateProgressText();
-        let pct = pages.length > 0 ? Math.round(cachedCount / pages.length * 100) : 0;
-        for (let slot of slots) {
-          let idx = Number(slot.dataset.index), absPath = cachedMap.get(idx);
-          if (absPath)
-            slot.querySelector("img.ds-page-img") || renderSlotImg(slot, absPath, idx + 1);
-          else {
-            let spinner = slot.querySelector(".ds-slot-state:not(.ds-slot-error) span");
-            spinner && (spinner.textContent = `Downloading page ${idx + 1} of ${pages.length} (${cachedCount}/${pages.length} cached \xB7 ${pct}%)`);
-          }
-        }
-      }, downloadPage = async (index) => {
-        let page = pages[index];
-        if (!page) return;
-        let slot = slots[index] || strip.querySelector(`.ds-slot[data-index="${index}"]`), outPath = pageOutputPath(seriesPermalink != null ? seriesPermalink : "", permalink, index, page.url);
+    }
+    setFullscreen(active) {
+      let c = this.c;
+      if (c.isFullscreen = active, c.isFullscreen) {
+        c.readerContainer.classList.add("ds-fullscreen"), c.fullscreenBtn.className = "win-button primary", c.fullscreenBtn.innerHTML = '<i class="bi bi-fullscreen-exit"></i> Exit', c.fullscreenBtn.title = "Exit Fullscreen (Esc / F)";
         try {
-          let existing = await fileResolve(outPath), absPath, sizeBytes = 0;
-          if (existing)
-            absPath = existing;
-          else {
-            let res = await httpDownloadFull(absUrl(page.url), outPath);
-            absPath = res.absolutePath, sizeBytes = res.sizeBytes;
-          }
-          await setCachedPage(permalink, index, absPath, sizeBytes), cachedMap.set(index, absPath), !disposed && slot && renderSlotImg(slot, absPath, index + 1), updateCacheCount();
-        } catch (err) {
-          if (disposed) return;
-          failed.add(index);
-          let msg = err instanceof Error ? err.message : String(err);
-          slot && renderSlotState(slot, "error", `Download failed: ${msg}`), firstErrorShown || (firstErrorShown = !0, setBanner(`Page download failed (page ${index + 1} of ${pages.length}). Use the slot's Retry.`));
+          !document.fullscreenElement && document.fullscreenEnabled && c.readerContainer.requestFullscreen().catch(() => {
+          });
+        } catch (e) {
         }
-      }, enqueue = (index, priority = !1) => {
-        index < 0 || index >= pages.length || inFlight.has(index) || failed.has(index) || (queue.includes(index) || (priority ? queue.unshift(index) : queue.push(index)), queue.sort((a, b) => {
-          let distA = Math.abs(a - currentIndex) + (a < currentIndex ? 1e3 : 0), distB = Math.abs(b - currentIndex) + (b < currentIndex ? 1e3 : 0);
-          return distA - distB;
-        }), pump());
-      }, pump = () => {
-        for (; inFlight.size < 1 && queue.length > 0; ) {
-          let idx = queue.shift();
-          inFlight.has(idx) || (inFlight.add(idx), downloadPage(idx).finally(() => {
-            inFlight.delete(idx), pump();
-          }));
+      } else {
+        c.readerContainer.classList.remove("ds-fullscreen"), c.fullscreenBtn.className = "win-button", c.fullscreenBtn.innerHTML = '<i class="bi bi-arrows-fullscreen"></i> Fullscreen', c.fullscreenBtn.title = "Toggle Fullscreen (F)";
+        try {
+          document.fullscreenElement && document.exitFullscreen().catch(() => {
+          });
+        } catch (e) {
         }
-      };
-      for (let i = 0; i < pages.length; i++) {
-        let slot = document.createElement("div");
-        slot.className = "ds-slot", slot.dataset.index = String(i);
-        let absPath = cachedMap.get(i);
-        absPath ? renderSlotImg(slot, absPath, i + 1) : isOnline() ? (renderSlotState(slot, "spinner", "Queued for download\u2026"), enqueue(i)) : renderSlotState(slot, "offline", "Offline \u2014 not downloaded"), strip.appendChild(slot), slots.push(slot);
       }
-      cachedMap.has(currentIndex) || enqueue(currentIndex, !0), cachedMap.has(currentIndex + 1) || enqueue(currentIndex + 1, !0), cachedMap.has(currentIndex + 2) || enqueue(currentIndex + 2, !0), window.setTimeout(async () => {
-        var _a2;
-        if (disposed) return;
-        let cleanSeries = (seriesPermalink || "_singles").replace(/[^a-zA-Z0-9_-]/g, "_"), cleanChapter = permalink.replace(/[^a-zA-Z0-9_-]/g, "_");
-        for (let i = 0; i < pages.length; i++) {
-          if (disposed) return;
-          let page = pages[i];
+      c.viewportImpl.resetToCurrentPage(!1), setTimeout(() => c.viewportImpl.resetToCurrentPage(!1), 60), setTimeout(() => c.viewportImpl.resetToCurrentPage(!1), 180);
+    }
+    toggleTheme() {
+      let c = this.c;
+      c.readerTheme = c.readerTheme === "light" ? "dark" : "light", localStorage.setItem("ds-reader-theme", c.readerTheme), this.applyTheme();
+    }
+    applyTheme() {
+      let c = this.c;
+      c.readerTheme === "dark" ? (c.readerContainer.classList.add("ds-dark"), c.themeBtn.innerHTML = '<i class="bi bi-moon-fill"></i> Dark') : (c.readerContainer.classList.remove("ds-dark"), c.themeBtn.innerHTML = '<i class="bi bi-sun"></i> Light');
+    }
+    updateScrollLockBtn() {
+      let c = this.c;
+      c.isHorizontal ? (c.scrollLockBtn.className = `win-button${c.scrollLock ? " primary" : ""}`, c.scrollLockBtn.innerHTML = '<i class="bi bi-arrow-left-right"></i> Scroll Smooth') : (c.scrollLockBtn.className = `win-button${c.scrollLock ? " primary" : ""}`, c.scrollLockBtn.innerHTML = c.scrollLock ? '<i class="bi bi-lock-fill"></i> Scroll Lock' : '<i class="bi bi-unlock"></i> Scroll Lock');
+    }
+  };
+
+  // dynasty-scans/src/reader/reader-shortcuts.ts
+  var ReaderShortcuts = class {
+    constructor(c) {
+      this.c = c;
+      let onKeyDown = (ev) => {
+        var _a;
+        let tag = (_a = ev.target) == null ? void 0 : _a.tagName;
+        tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (ev.key === "ArrowLeft" ? (ev.preventDefault(), c.setPage(c.currentIndex - 1)) : ev.key === "ArrowRight" || ev.key === " " ? (ev.preventDefault(), c.setPage(c.currentIndex + 1)) : ev.key === "f" || ev.key === "F" ? (ev.preventDefault(), c.toolbarImpl.setFullscreen(!c.isFullscreen)) : ev.key === "t" || ev.key === "T" ? (ev.preventDefault(), c.toolbarImpl.toggleTheme()) : ev.key === "Escape" && c.isFullscreen && (ev.preventDefault(), c.toolbarImpl.setFullscreen(!1)));
+      };
+      window.addEventListener("keydown", onKeyDown), c.onDispose(() => window.removeEventListener("keydown", onKeyDown));
+    }
+  };
+
+  // dynasty-scans/src/reader/reader-controller.ts
+  var ReaderController = class _ReaderController {
+    constructor(route, container) {
+      this.route = route;
+      // Shared reader state ---------------------------------------------------
+      this.disposed = !1;
+      this.pages = [];
+      this.permalink = "";
+      this.seriesPermalink = null;
+      this.seriesName = "";
+      this.chapterTitle = "";
+      this.chapterList = [];
+      this.isHorizontal = !1;
+      this.fitMode = "width";
+      this.scrollLock = !1;
+      this.currentIndex = 0;
+      this.readerTheme = "light";
+      this.isFullscreen = !1;
+      this.cachedMap = /* @__PURE__ */ new Map();
+      this.cachedCount = 0;
+      this.atEnd = !1;
+      this.lastPersistedIndex = -1;
+      this.isProgrammaticScroll = !1;
+      this.programmaticScrollTimer = null;
+      this.scrollRaf = null;
+      this.slots = [];
+      this.cleanup = [];
+      this.container = container;
+    }
+    onDispose(fn) {
+      this.cleanup.push(fn);
+    }
+    // State helpers (re-exported so modules avoid importing state directly) --
+    setBanner(msg) {
+      setBanner(msg);
+    }
+    navigate(route) {
+      navigate(route);
+    }
+    setActions(fn) {
+      setActions(fn);
+    }
+    // Transport wrappers ----------------------------------------------------
+    absUrl(u) {
+      return absUrl(u);
+    }
+    fileResolve(path) {
+      return fileResolve(path);
+    }
+    httpDownloadFull(url, outPath) {
+      return httpDownloadFull(url, outPath);
+    }
+    setCachedPage(index, absPath, sizeBytes) {
+      return setCachedPage(this.permalink, index, absPath, sizeBytes);
+    }
+    pageOutputPath(index, pageUrl) {
+      var _a;
+      return pageOutputPath((_a = this.seriesPermalink) != null ? _a : "", this.permalink, index, pageUrl);
+    }
+    // Slot rendering ---------------------------------------------------------
+    renderSlotImg(slot, absPath, pageNum) {
+      let PH10 = window.PluginHost;
+      slot.classList.remove("ds-slot-loading"), slot.innerHTML = "";
+      let badge = document.createElement("div");
+      badge.className = "ds-slot-page-badge", badge.textContent = `${pageNum} / ${this.pages.length}`, slot.appendChild(badge);
+      let img = document.createElement("img");
+      img.className = "ds-page-img", img.alt = `Page ${pageNum}`, img.addEventListener("error", () => {
+        let idx = Number(slot.dataset.index);
+        this.cachedMap.delete(idx), !this.queue.isRetrying(idx) && (this.queue.markRetrying(idx), this.renderSlotState(slot, "spinner", "Re-downloading\u2026"), this.queue.enqueue(idx, !0));
+      }), img.src = PH10.convertFileSrc(absPath), slot.appendChild(img);
+    }
+    renderSlotState(slot, kind, message) {
+      slot.innerHTML = "";
+      let idx = Number(slot.dataset.index), badge = document.createElement("div");
+      badge.className = "ds-slot-page-badge", badge.textContent = `${idx + 1} / ${this.pages.length}`, slot.appendChild(badge);
+      let state2 = document.createElement("div");
+      state2.className = `ds-slot-state${kind === "error" ? " ds-slot-error" : ""}`, kind === "spinner" ? state2.innerHTML = '<i class="bi bi-cloud-arrow-down" style="font-size:20px;color:var(--sys-primary,#0078d4);"></i><div class="ds-slot-pulse-wrap"><div class="ds-slot-pulse-bar"></div></div>' : kind === "offline" ? state2.innerHTML = '<i class="bi bi-wifi-off" style="font-size:20px;"></i>' : state2.innerHTML = '<i class="bi bi-exclamation-triangle" style="font-size:20px;"></i>';
+      let text = document.createElement("span");
+      if (kind === "spinner") {
+        let pct = this.pages.length > 0 ? Math.round(this.cachedCount / this.pages.length * 100) : 0;
+        text.textContent = `Downloading page ${idx + 1} of ${this.pages.length} (${this.cachedCount}/${this.pages.length} cached \xB7 ${pct}%)`;
+      } else
+        text.textContent = message;
+      if (state2.appendChild(text), kind === "error") {
+        let retry = document.createElement("button");
+        retry.type = "button", retry.className = "win-button", retry.style.cssText = "font-size:10px;padding:1px 8px;", retry.textContent = "Retry", retry.addEventListener("click", () => {
+          this.queue.clearFailed(idx), this.renderSlotState(slot, "spinner", "Downloading\u2026"), this.queue.enqueue(idx);
+        }), state2.appendChild(retry);
+      }
+      slot.appendChild(state2);
+    }
+    updateCacheCount() {
+      this.cachedCount = this.cachedMap.size, this.updateProgressText();
+      let pct = this.pages.length > 0 ? Math.round(this.cachedCount / this.pages.length * 100) : 0;
+      for (let slot of this.slots) {
+        let idx = Number(slot.dataset.index), absPath = this.cachedMap.get(idx);
+        if (absPath)
+          slot.querySelector("img.ds-page-img") || this.renderSlotImg(slot, absPath, idx + 1);
+        else {
+          let spinner = slot.querySelector(".ds-slot-state:not(.ds-slot-error) span");
+          spinner && (spinner.textContent = `Downloading page ${idx + 1} of ${this.pages.length} (${this.cachedCount}/${this.pages.length} cached \xB7 ${pct}%)`);
+        }
+      }
+    }
+    // Queue access ------------------------------------------------------------
+    enqueue(index, priority = !1) {
+      this.queue.enqueue(index, priority);
+    }
+    isPageFailed(index) {
+      return this.queue.isFailed(index);
+    }
+    // Progress + persistence --------------------------------------------------
+    updateProgressText() {
+      let pct = this.pages.length > 0 ? Math.round((this.currentIndex + 1) / this.pages.length * 100) : 0, cachedNote = this.cachedCount > 0 ? ` \xB7 ${this.cachedCount}/${this.pages.length} cached` : "";
+      this.positionLabel.textContent = `Page ${this.currentIndex + 1} of ${this.pages.length} (${pct}%)${cachedNote}`, this.progressFill.style.width = `${pct}%`, this.prevPageBtn.disabled = this.currentIndex <= 0, this.nextPageBtn.disabled = this.currentIndex >= this.pages.length - 1;
+    }
+    schedulePersist() {
+      window.clearTimeout(this.persistTimer), this.persistTimer = window.setTimeout(() => void this.persistNow(), 400);
+    }
+    async persistNow() {
+      var _a, _b;
+      if (!(this.lastPersistedIndex === this.currentIndex && !this.atEnd)) {
+        this.lastPersistedIndex = this.currentIndex;
+        try {
+          await setReadingProgress({
+            chapterPermalink: this.permalink,
+            seriesPermalink: (_a = this.seriesPermalink) != null ? _a : "",
+            seriesName: (_b = this.seriesName) != null ? _b : "",
+            chapterTitle: this.chapterTitle,
+            pageIndex: this.currentIndex,
+            pageTotal: this.pages.length,
+            completed: this.atEnd
+          });
+        } catch (err) {
+          console.error("dynasty-scans: failed to persist reading progress:", err);
+        }
+      }
+    }
+    setPage(index) {
+      index < 0 || index >= this.pages.length || (this.currentIndex = index, this.atEnd = this.currentIndex >= this.pages.length - 1, this.updateProgressText(), this.schedulePersist(), this.atEnd && this.persistNow(), this.enqueue(this.currentIndex), this.enqueue(this.currentIndex + 1), this.enqueue(this.currentIndex + 2), this.viewportImpl.slideTo(index));
+    }
+    // Chapter navigation ------------------------------------------------------
+    gotoChapter(c) {
+      var _a;
+      this.navigate({
+        view: "reader",
+        seriesPermalink: (_a = this.seriesPermalink) != null ? _a : void 0,
+        seriesName: this.seriesName,
+        chapterPermalink: c.permalink,
+        chapterTitle: c.title,
+        chapterList: this.chapterList
+      });
+    }
+    updateChapterNav() {
+      let curIdx = this.chapterList.findIndex((c) => c.permalink === this.permalink);
+      this.prevChapterBtn.disabled = curIdx <= 0, this.nextChapterBtn.disabled = curIdx < 0 || curIdx >= this.chapterList.length - 1;
+    }
+    /** Background legacy-filename standardization. Zero network traffic. */
+    standardizeCachePaths() {
+      window.setTimeout(async () => {
+        var _a;
+        if (this.disposed) return;
+        let cleanSeries = (this.seriesPermalink || "_singles").replace(/[^a-zA-Z0-9_-]/g, "_"), cleanChapter = this.permalink.replace(/[^a-zA-Z0-9_-]/g, "_");
+        for (let i = 0; i < this.pages.length; i++) {
+          if (this.disposed) return;
+          let page = this.pages[i];
           if (!page) continue;
-          let targetPath = pageOutputPath(seriesPermalink != null ? seriesPermalink : "", permalink, i, page.url), alreadyThere = await fileResolve(targetPath);
+          let targetPath = this.pageOutputPath(i, page.url), alreadyThere = await this.fileResolve(targetPath);
           if (alreadyThere) {
-            cachedMap.get(i) !== targetPath && (await setCachedPage(permalink, i, alreadyThere), cachedMap.set(i, alreadyThere), !disposed && slots[i] && renderSlotImg(slots[i], alreadyThere, i + 1), updateCacheCount());
+            this.cachedMap.get(i) !== targetPath && (await this.setCachedPage(i, alreadyThere, 0), this.cachedMap.set(i, alreadyThere), !this.disposed && this.slots[i] && this.renderSlotImg(this.slots[i], alreadyThere, i + 1), this.updateCacheCount());
             continue;
           }
-          let origName = page.url.split("/").pop() || "", ext = ((_a2 = origName.split(".").pop()) == null ? void 0 : _a2.split("?")[0]) || "webp", pad3 = String(i + 1).padStart(3, "0"), pad4 = String(i + 1).padStart(4, "0"), candidates = [
-            // Series/chapter nesting with old 3-digit pad + original name
+          let origName = page.url.split("/").pop() || "", ext = ((_a = origName.split(".").pop()) == null ? void 0 : _a.split("?")[0]) || "webp", pad3 = String(i + 1).padStart(3, "0"), pad4 = String(i + 1).padStart(4, "0"), candidates = [
             `${PAGES_PREFIX}/${cleanSeries}/${cleanChapter}/${pad3}_${origName}`,
-            // Flat chapter-only folder with original name
             `${PAGES_PREFIX}/${cleanChapter}/${origName}`,
-            // Singles folder
             `${PAGES_PREFIX}/_singles/${cleanChapter}/${origName}`,
-            // Series folder with original name (no pad)
             `${PAGES_PREFIX}/${cleanSeries}/${cleanChapter}/${origName}`,
-            // Old flat page_NNNN inside chapter-only folder
             `${PAGES_PREFIX}/${cleanChapter}/page_${pad4}.${ext}`
           ], found = null;
           for (let candidate of candidates)
-            if (found = await fileResolve(candidate), found) break;
+            if (found = await this.fileResolve(candidate), found) break;
           if (found)
             try {
               let newAbsPath = await fileMove(found, targetPath);
-              await setCachedPage(permalink, i, newAbsPath), cachedMap.set(i, newAbsPath), !disposed && slots[i] && renderSlotImg(slots[i], newAbsPath, i + 1), updateCacheCount();
+              await this.setCachedPage(i, newAbsPath, 0), this.cachedMap.set(i, newAbsPath), !this.disposed && this.slots[i] && this.renderSlotImg(this.slots[i], newAbsPath, i + 1), this.updateCacheCount();
             } catch (e) {
               console.warn(`dynasty-scans: could not move page ${i + 1} to canonical path:`, e);
             }
         }
       }, 2500);
-      let updateProgressText = () => {
-        let pct = pages.length > 0 ? Math.round((currentIndex + 1) / pages.length * 100) : 0, cachedNote = cachedCount > 0 ? ` \xB7 ${cachedCount}/${pages.length} cached` : "";
-        positionLabel.textContent = `Page ${currentIndex + 1} of ${pages.length} (${pct}%)${cachedNote}`, progressFill.style.width = `${pct}%`, prevPageBtn.disabled = currentIndex <= 0, nextPageBtn.disabled = currentIndex >= pages.length - 1;
-      }, lastPersistedIndex = -1, atEnd = !1, persistTimer, persistNow = async () => {
-        if (!(lastPersistedIndex === currentIndex && !atEnd)) {
-          lastPersistedIndex = currentIndex;
-          try {
-            await setReadingProgress({
-              chapterPermalink: permalink,
-              seriesPermalink: seriesPermalink != null ? seriesPermalink : "",
-              seriesName: seriesName != null ? seriesName : "",
-              chapterTitle,
-              pageIndex: currentIndex,
-              pageTotal: pages.length,
-              completed: atEnd
-            });
-          } catch (err) {
-            console.error("dynasty-scans: failed to persist reading progress:", err);
-          }
-        }
-      }, schedulePersist = () => {
-        window.clearTimeout(persistTimer), persistTimer = window.setTimeout(() => void persistNow(), 400);
-      }, isProgrammaticScroll = !1, programmaticScrollTimer = null, scrollRaf = null, setPage = (index) => {
-        if (!(index < 0 || index >= pages.length))
-          if (currentIndex = index, atEnd = currentIndex >= pages.length - 1, updateProgressText(), schedulePersist(), atEnd && persistNow(), enqueue(currentIndex), enqueue(currentIndex + 1), enqueue(currentIndex + 2), isHorizontal)
-            scrollLock ? (strip.style.transition = "", strip.style.transform = `translateX(${-currentIndex * 100}%)`) : (strip.style.transition = "none", strip.offsetWidth, strip.style.transform = `translateX(${-currentIndex * 100}%)`);
-          else {
-            isProgrammaticScroll = !0, programmaticScrollTimer !== null && clearTimeout(programmaticScrollTimer), programmaticScrollTimer = window.setTimeout(() => {
-              isProgrammaticScroll = !1;
-            }, 350);
-            let target = slots[currentIndex];
-            target && target.scrollIntoView({ behavior: "smooth", block: "start" });
-          }
-      };
-      resetToCurrentPage = (smooth = !1) => {
-        if (updateViewportHeight(), isHorizontal)
-          smooth ? strip.style.transform = `translateX(${-currentIndex * 100}%)` : (strip.style.transition = "none", strip.offsetWidth, strip.style.transform = `translateX(${-currentIndex * 100}%)`, requestAnimationFrame(() => {
-            strip.style.transition = "";
-          }));
-        else {
-          isProgrammaticScroll = !0, programmaticScrollTimer !== null && clearTimeout(programmaticScrollTimer), programmaticScrollTimer = window.setTimeout(() => {
-            isProgrammaticScroll = !1;
-          }, 350);
-          let target = slots[currentIndex];
-          target && target.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
-        }
-        updateProgressText();
-      }, prevPageBtn.addEventListener("click", () => setPage(currentIndex - 1)), nextPageBtn.addEventListener("click", () => setPage(currentIndex + 1));
-      let applyLayoutMode = () => {
-        if (isHorizontal)
-          modeBtn.innerHTML = '<i class="bi bi-distribute-vertical"></i> Scroll', viewport.classList.add("horizontal"), strip.style.transition = "none", strip.style.transform = `translateX(${-currentIndex * 100}%)`, requestAnimationFrame(() => {
-            strip.style.transition = "";
-          });
-        else {
-          modeBtn.innerHTML = '<i class="bi bi-arrow-left-right"></i> Paged', viewport.classList.remove("horizontal"), strip.style.transform = "", strip.style.transition = "";
-          let target = slots[currentIndex];
-          target && target.scrollIntoView({ block: "start" });
-        }
-      };
-      isHorizontal && applyLayoutMode();
-      let updateScrollLockBtn = () => {
-        isHorizontal ? (scrollLockBtn.className = `win-button${scrollLock ? " primary" : ""}`, scrollLockBtn.innerHTML = '<i class="bi bi-arrow-left-right"></i> Scroll Smooth') : (scrollLockBtn.className = `win-button${scrollLock ? " primary" : ""}`, scrollLockBtn.innerHTML = scrollLock ? '<i class="bi bi-lock-fill"></i> Scroll Lock' : '<i class="bi bi-unlock"></i> Scroll Lock');
-      };
-      scrollLockBtn.addEventListener("click", () => {
-        scrollLock = !scrollLock, localStorage.setItem("ds-reader-scroll-lock", scrollLock ? "1" : "0"), updateScrollLockBtn();
-      }), updateScrollLockBtn();
-      let wheelDebounce = 0, onWheel = (ev) => {
-        if (!scrollLock && !isHorizontal) return;
-        ev.preventDefault();
-        let now = Date.now();
-        if (now - wheelDebounce < 180 || Math.abs(ev.deltaY) < 10 && Math.abs(ev.deltaX) < 10) return;
-        wheelDebounce = now;
-        let delta = Math.abs(ev.deltaY) >= Math.abs(ev.deltaX) ? ev.deltaY : ev.deltaX;
-        if (isHorizontal)
-          delta > 0 ? setPage(currentIndex + 1) : setPage(currentIndex - 1);
-        else {
-          let vpRect = viewport.getBoundingClientRect();
-          if (delta > 0) {
-            let targetIdx = currentIndex + 1;
-            for (let i = 0; i < slots.length; i++)
-              if (slots[i].getBoundingClientRect().top > vpRect.top + 20) {
-                targetIdx = i;
-                break;
-              }
-            setPage(Math.min(pages.length - 1, targetIdx));
-          } else {
-            let targetIdx = currentIndex - 1;
-            for (let i = slots.length - 1; i >= 0; i--)
-              if (slots[i].getBoundingClientRect().top < vpRect.top - 20) {
-                targetIdx = i;
-                break;
-              }
-            setPage(Math.max(0, targetIdx));
-          }
-        }
-      };
-      viewport.addEventListener("wheel", onWheel, { passive: !1 }), onDispose(() => viewport.removeEventListener("wheel", onWheel)), modeBtn.addEventListener("click", () => {
-        isHorizontal = !isHorizontal, localStorage.setItem("ds-reader-mode", isHorizontal ? "paged" : "scroll"), applyLayoutMode(), updateScrollLockBtn();
-      }), fitSelect.addEventListener("change", () => {
-        fitMode = fitSelect.value, localStorage.setItem("ds-reader-fit", fitMode), readerContainer.className = `fit-${fitMode}`;
-      });
-      let computeCurrentPageFromScroll = () => {
-        if (isHorizontal || isProgrammaticScroll) return;
-        let vpRect = viewport.getBoundingClientRect(), focalY = vpRect.top + vpRect.height * 0.35, bestIdx = currentIndex;
-        for (let i = 0; i < slots.length; i++) {
-          let r = slots[i].getBoundingClientRect();
-          if (r.top <= focalY && r.bottom > focalY) {
-            bestIdx = i;
-            break;
-          }
-          if (r.top > focalY) {
-            bestIdx = i > 0 ? i - 1 : 0;
-            break;
-          }
-          bestIdx = i;
-        }
-        bestIdx !== currentIndex && (currentIndex = bestIdx, atEnd = currentIndex >= pages.length - 1, updateProgressText(), schedulePersist(), atEnd && persistNow());
-      }, onViewportScroll = () => {
-        isHorizontal || isProgrammaticScroll || (scrollRaf !== null && cancelAnimationFrame(scrollRaf), scrollRaf = requestAnimationFrame(() => {
-          computeCurrentPageFromScroll(), scrollRaf = null;
-        }));
-      };
-      viewport.addEventListener("scroll", onViewportScroll, { passive: !0 }), onDispose(() => {
-        viewport.removeEventListener("scroll", onViewportScroll), scrollRaf !== null && cancelAnimationFrame(scrollRaf);
-      });
-      let observer = new IntersectionObserver(
-        (entries) => {
-          for (let entry of entries)
-            if (entry.isIntersecting) {
-              let idx = Number(entry.target.dataset.index);
-              enqueue(idx), enqueue(idx + 1), enqueue(idx + 2);
-            }
-        },
-        { root: viewport, rootMargin: "400px 0px", threshold: 0 }
-      );
-      slots.forEach((s) => observer.observe(s)), onDispose(() => observer.disconnect());
-      let onKeyDown = (ev) => {
+    }
+    // Main bootstrap -----------------------------------------------------------
+    async init() {
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
+      let route = this.route, container = this.container;
+      this.permalink = (_a = route.chapterPermalink) != null ? _a : "";
+      let chapter;
+      try {
+        chapter = await fetchChapter(this.permalink);
+      } catch (err) {
+        if (this.disposed) return;
+        let msg = err instanceof Error ? err.message : String(err);
+        this.setBanner(`Failed to load chapter: ${msg}`);
+        let retry = document.createElement("button");
+        retry.type = "button", retry.className = "win-button", retry.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Retry', retry.addEventListener("click", () => this.retry()), container.appendChild(retry);
+        return;
+      }
+      if (this.disposed) return;
+      let seriesTag = ((_b = chapter.tags) != null ? _b : []).find((t) => t.type === "Series");
+      if (this.seriesPermalink = (_d = (_c = route.seriesPermalink) != null ? _c : seriesTag == null ? void 0 : seriesTag.permalink) != null ? _d : null, this.seriesName = (_f = (_e = route.seriesName) != null ? _e : seriesTag == null ? void 0 : seriesTag.name) != null ? _f : chapter.title, this.chapterTitle = (_g = route.chapterTitle) != null ? _g : chapter.title, this.chapterList = (_h = route.chapterList) != null ? _h : [], this.pages = (_i = chapter.pages) != null ? _i : [], this.currentIndex = Math.min((_j = route.startPage) != null ? _j : 0, Math.max(0, this.pages.length - 1)), container.innerHTML = "", this.pages.length === 0) {
+        let empty = document.createElement("div");
+        empty.className = "ds-muted", empty.textContent = "This chapter has no pages.", container.appendChild(empty);
+        return;
+      }
+      this.chapterList.length === 0 && this.seriesPermalink && fetchSeries(this.seriesPermalink).then((s) => {
         var _a2;
-        let tag = (_a2 = ev.target) == null ? void 0 : _a2.tagName;
-        tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (ev.key === "ArrowLeft" ? (ev.preventDefault(), setPage(currentIndex - 1)) : ev.key === "ArrowRight" || ev.key === " " ? (ev.preventDefault(), setPage(currentIndex + 1)) : ev.key === "f" || ev.key === "F" ? (ev.preventDefault(), setFullscreen(!isFullscreen)) : ev.key === "t" || ev.key === "T" ? (ev.preventDefault(), readerTheme = readerTheme === "light" ? "dark" : "light", localStorage.setItem("ds-reader-theme", readerTheme), applyTheme()) : ev.key === "Escape" && isFullscreen && (ev.preventDefault(), setFullscreen(!1)));
-      };
-      window.addEventListener("keydown", onKeyDown), onDispose(() => window.removeEventListener("keydown", onKeyDown)), updateProgressText();
+        if (this.disposed) return;
+        let cl = [];
+        for (let t of (_a2 = s.taggings) != null ? _a2 : [])
+          t.title && t.permalink && cl.push({ title: t.title, permalink: t.permalink, released_on: t.released_on });
+        cl.length > 0 && (this.chapterList = cl, this.updateChapterNav());
+      }), this.isHorizontal = localStorage.getItem("ds-reader-mode") === "paged", this.fitMode = localStorage.getItem("ds-reader-fit") || "width", this.scrollLock = localStorage.getItem("ds-reader-scroll-lock") === "1", this.readerTheme = localStorage.getItem("ds-reader-theme") || "light", this.readerContainer = document.createElement("div"), this.readerContainer.id = "ds-reader-container", this.readerContainer.className = `fit-${this.fitMode}`, container.appendChild(this.readerContainer), this.toolbarImpl = new ReaderToolbar(this), this.viewportImpl = new ReaderViewport(this), this.queue = new ReaderQueue(this), this.shortcutsImpl = new ReaderShortcuts(this);
+      let cachedRows;
+      try {
+        cachedRows = await getCachedPages(this.permalink);
+      } catch (err) {
+        cachedRows = [], this.setBanner(`Page cache lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      for (let row of cachedRows)
+        row.page_index >= 0 && row.page_index < this.pages.length && row.file_path && this.cachedMap.set(row.page_index, row.file_path);
+      this.cachedCount = this.cachedMap.size;
+      for (let i = 0; i < this.pages.length; i++) {
+        let slot = document.createElement("div");
+        slot.className = "ds-slot", slot.dataset.index = String(i);
+        let absPath = this.cachedMap.get(i);
+        absPath ? this.renderSlotImg(slot, absPath, i + 1) : isOnline() ? (this.renderSlotState(slot, "spinner", "Queued for download\u2026"), this.enqueue(i)) : this.renderSlotState(slot, "offline", "Offline \u2014 not downloaded"), this.strip.appendChild(slot), this.slots.push(slot);
+      }
+      this.cachedMap.has(this.currentIndex) || this.enqueue(this.currentIndex, !0), this.cachedMap.has(this.currentIndex + 1) || this.enqueue(this.currentIndex + 1, !0), this.cachedMap.has(this.currentIndex + 2) || this.enqueue(this.currentIndex + 2, !0), this.toolbarImpl.wireAfterSlots(), this.viewportImpl.wireAfterSlots(), this.updateProgressText(), this.standardizeCachePaths();
       try {
         await addHistory({
-          chapterPermalink: permalink,
-          seriesPermalink: seriesPermalink != null ? seriesPermalink : "",
-          seriesName: seriesName != null ? seriesName : "",
-          chapterTitle
+          chapterPermalink: this.permalink,
+          seriesPermalink: (_k = this.seriesPermalink) != null ? _k : "",
+          seriesName: (_l = this.seriesName) != null ? _l : "",
+          chapterTitle: this.chapterTitle
         });
       } catch (err) {
         console.error("dynasty-scans: failed to record history:", err);
       }
       let bookmarked = !1;
       try {
-        bookmarked = await getBookmark(permalink) !== null;
+        bookmarked = await getBookmark(this.permalink) !== null;
       } catch (e) {
         bookmarked = !1;
       }
-      setActions((host) => {
-        if (seriesPermalink) {
+      this.setActions((host) => {
+        if (this.seriesPermalink) {
           let seriesBtn = document.createElement("button");
           seriesBtn.type = "button", seriesBtn.className = "win-button", seriesBtn.title = "Open the containing series", seriesBtn.innerHTML = '<i class="bi bi-collection"></i> Series', seriesBtn.addEventListener("click", () => {
-            navigate({
+            var _a2, _b2;
+            this.navigate({
               view: "series",
-              seriesPermalink,
-              seriesName: seriesName != null ? seriesName : chapterTitle
+              seriesPermalink: (_a2 = this.seriesPermalink) != null ? _a2 : void 0,
+              seriesName: (_b2 = this.seriesName) != null ? _b2 : this.chapterTitle
             });
           }), host.appendChild(seriesBtn);
         }
         let bmBtn = document.createElement("button");
         bmBtn.type = "button", bmBtn.className = "win-button", bmBtn.title = bookmarked ? "Remove bookmark" : "Bookmark this chapter", bmBtn.innerHTML = bookmarked ? '<i class="bi bi-bookmark-fill"></i>' : '<i class="bi bi-bookmark"></i>', bmBtn.addEventListener("click", async () => {
+          var _a2, _b2;
           bmBtn.disabled = !0;
           try {
-            bookmarked ? (await removeBookmark(permalink), bookmarked = !1) : (await addBookmark({
-              chapterPermalink: permalink,
-              seriesPermalink: seriesPermalink != null ? seriesPermalink : "",
-              seriesName: seriesName != null ? seriesName : "",
-              chapterTitle,
-              pageIndex: currentIndex
+            bookmarked ? (await removeBookmark(this.permalink), bookmarked = !1) : (await addBookmark({
+              chapterPermalink: this.permalink,
+              seriesPermalink: (_a2 = this.seriesPermalink) != null ? _a2 : "",
+              seriesName: (_b2 = this.seriesName) != null ? _b2 : "",
+              chapterTitle: this.chapterTitle,
+              pageIndex: this.currentIndex
             }), bookmarked = !0), bmBtn.innerHTML = bookmarked ? '<i class="bi bi-bookmark-fill"></i>' : '<i class="bi bi-bookmark"></i>', bmBtn.title = bookmarked ? "Remove bookmark" : "Bookmark this chapter";
           } catch (err) {
             let msg = err instanceof Error ? err.message : String(err);
-            setBanner(`Bookmark failed: ${msg}`);
+            this.setBanner(`Bookmark failed: ${msg}`);
           }
           bmBtn.disabled = !1;
         }), host.appendChild(bmBtn);
         let cacheBtn = document.createElement("button");
         cacheBtn.type = "button", cacheBtn.className = "win-button", cacheBtn.title = "Download every uncached page of this chapter", cacheBtn.innerHTML = '<i class="bi bi-download"></i> Cache Chapter', cacheBtn.addEventListener("click", () => {
-          for (let i = 0; i < pages.length; i++)
-            !cachedMap.has(i) && !failed.has(i) && enqueue(i);
-          setBanner("Caching chapter\u2026");
+          for (let i = 0; i < this.pages.length; i++)
+            !this.cachedMap.has(i) && !this.isPageFailed(i) && this.enqueue(i);
+          this.setBanner("Caching chapter\u2026");
         }), host.appendChild(cacheBtn);
         let openBtn = document.createElement("button");
         openBtn.type = "button", openBtn.className = "win-button", openBtn.title = "Open this chapter in your browser", openBtn.innerHTML = '<i class="bi bi-box-arrow-up-right"></i>', openBtn.addEventListener("click", () => {
-          openExternal(`https://dynasty-scans.com/chapters/${permalink}`);
+          openExternal(`https://dynasty-scans.com/chapters/${this.permalink}`);
         }), host.appendChild(openBtn);
       });
-      let startPage = (_i = route.startPage) != null ? _i : 0;
-      startPage > 0 && setPage(startPage);
-    })(), () => {
-      disposed = !0;
-      for (let fn of cleanup) fn();
-    };
+      let startPage = (_m = route.startPage) != null ? _m : 0;
+      startPage > 0 && this.setPage(startPage);
+    }
+    retry() {
+      this.dispose(), this.container.innerHTML = "";
+      let loading = document.createElement("div");
+      loading.className = "ds-muted", loading.textContent = "Loading chapter\u2026", this.container.appendChild(loading), new _ReaderController(this.route, this.container).init();
+    }
+    dispose() {
+      this.disposed = !0;
+      for (let fn of this.cleanup) fn();
+    }
+  };
+  function renderReader(container, route) {
+    if (container.innerHTML = "", !route.chapterPermalink) {
+      setBanner("Missing chapter permalink.");
+      return;
+    }
+    let loading = document.createElement("div");
+    loading.className = "ds-muted", loading.textContent = "Loading chapter\u2026", container.appendChild(loading);
+    let ctrl = new ReaderController(route, container);
+    return ctrl.init(), () => ctrl.dispose();
   }
 
   // dynasty-scans/src/ui-cache.ts
-  var PH7 = window.PluginHost;
-  function createConfirmDeleteButton2(title, onConfirm, initialHtml = '<i class="bi bi-trash3"></i>') {
-    let btn = document.createElement("button");
-    btn.type = "button", btn.className = "win-button", btn.style.cssText = "font-size:11px;padding:2px 8px;flex-shrink:0;", btn.title = title, btn.innerHTML = initialHtml;
-    let confirming = !1, originalHtml = initialHtml, reset = () => {
-      confirming = !1, btn.className = "win-button", btn.style.color = "", btn.style.backgroundColor = "", btn.style.borderColor = "", btn.innerHTML = originalHtml, btn.title = title, document.removeEventListener("click", onDocClick);
-    }, onDocClick = (ev) => {
-      btn.contains(ev.target) || reset();
-    };
-    return btn.addEventListener("click", async (ev) => {
-      if (ev.stopPropagation(), !confirming) {
-        originalHtml = btn.innerHTML, confirming = !0, btn.className = "win-button primary", btn.style.color = "#ffffff", btn.style.backgroundColor = "#d13438", btn.style.borderColor = "#a80000", btn.innerHTML = '<i class="bi bi-check-lg"></i> Delete?', btn.title = "Click again to confirm deletion, or click outside to cancel", setTimeout(() => {
-          document.addEventListener("click", onDocClick);
-        }, 0);
-        return;
-      }
-      document.removeEventListener("click", onDocClick), btn.disabled = !0, btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
-      try {
-        await onConfirm();
-      } catch (err) {
-        btn.disabled = !1, reset();
-        let msg = err instanceof Error ? err.message : String(err);
-        setBanner(`Deletion failed: ${msg}`);
-      }
-    }), btn;
-  }
   function renderCache(container, _route) {
     container.innerHTML = "";
     let root = document.createElement("div");
@@ -2605,7 +2844,7 @@
         actHead.className = "group-box-title", actHead.innerHTML = '<i class="bi bi-tools"></i> Global Maintenance', actBox.appendChild(actHead);
         let actRow = document.createElement("div");
         actRow.className = "ds-cache-actions";
-        let clearAllBtn = createConfirmDeleteButton2(
+        let clearAllBtn = createConfirmDeleteButton(
           "Purge all cached pages, covers, and metadata",
           async () => {
             await clearAllCacheStorage(), setBanner("All cache storage successfully purged."), await loadView();
@@ -2613,7 +2852,7 @@
           '<i class="bi bi-trash3"></i> Clear All Cache Storage'
         );
         actRow.appendChild(clearAllBtn);
-        let clearPagesBtn = createConfirmDeleteButton2(
+        let clearPagesBtn = createConfirmDeleteButton(
           "Purge only high-res reader page scans on disk",
           async () => {
             await clearAllCachedPages(), setBanner("All cached reader page scans cleared."), await loadView();
@@ -2621,7 +2860,7 @@
           '<i class="bi bi-images"></i> Clear Page Scans Only'
         );
         actRow.appendChild(clearPagesBtn);
-        let clearCoversBtn = createConfirmDeleteButton2(
+        let clearCoversBtn = createConfirmDeleteButton(
           "Purge only cached cover thumbnails on disk",
           async () => {
             await clearAllCachedCovers(), setBanner("All cached covers cleared."), await loadView();
@@ -2683,13 +2922,13 @@
             for (let item of filtered) {
               let row = document.createElement("div");
               if (row.className = "ds-cache-item", row.style.cssText = "padding:8px 10px;", item.coverPath) {
-                let img = document.createElement("img");
-                img.className = "ds-feed-cover", img.style.cssText = "width:36px;height:50px;cursor:pointer;", img.src = PH7.convertFileSrc(item.coverPath), img.title = "Click to view", img.addEventListener("click", () => {
+                let img = renderFeedCover(item.coverPath, item.seriesName, "width:36px;height:50px;cursor:pointer;");
+                img.title = "Click to view", img.addEventListener("click", () => {
                   item.isStandalone ? navigate({ view: "reader", chapterPermalink: item.seriesPermalink, chapterTitle: item.seriesName }) : navigate({ view: "series", seriesPermalink: item.seriesPermalink, seriesName: item.seriesName });
                 }), row.appendChild(img);
               } else {
-                let ph = document.createElement("div");
-                ph.className = "ds-feed-cover-placeholder", ph.style.cssText = "width:36px;height:50px;font-size:12px;", ph.innerHTML = '<i class="bi bi-book"></i>', row.appendChild(ph);
+                let ph = renderFeedCover(null, item.seriesName, "width:36px;height:50px;font-size:12px;");
+                ph.innerHTML = '<i class="bi bi-book"></i>', row.appendChild(ph);
               }
               let info = document.createElement("div");
               info.style.cssText = "flex:1;min-width:0;";
@@ -2699,7 +2938,7 @@
               });
               let meta = document.createElement("div");
               meta.className = "ds-item-meta", meta.innerHTML = `<strong>${formatBytes(item.totalSizeBytes)}</strong> \xB7 ${item.chapterCount} chapter${item.chapterCount > 1 ? "s" : ""} \xB7 ${item.pageCount} page${item.pageCount > 1 ? "s" : ""} cached \xB7 Cached ${formatDate(item.lastCachedAt)}`, info.appendChild(name), info.appendChild(meta), row.appendChild(info);
-              let delBtn = createConfirmDeleteButton2(`Delete all cached files for "${item.seriesName}"`, async () => {
+              let delBtn = createConfirmDeleteButton(`Delete all cached files for "${item.seriesName}"`, async () => {
                 await clearCachedGroupPages(item.chapterPermalinks), setBanner(`Cleared cache for "${item.seriesName}".`), await loadView();
               });
               row.appendChild(delBtn), listEl.appendChild(row);
@@ -2717,13 +2956,9 @@
     loadView();
   }
 
-  // dynasty-scans/src/index.ts
-  var PH8 = window.PluginHost;
-  PH8 ? (registerRenderer("library", renderLibrary), registerRenderer("browse", renderBrowse), registerRenderer("series", renderSeries), registerRenderer("reader", renderReader), registerRenderer("cache", renderCache), injectStyles(), PH8.registerTab(TAB_ID, "Dynasty Scans", "bi bi-book", renderTab), console.log("dynasty-scans: registered tab and renderers.")) : console.error("dynasty-scans: PluginHost not available; aborting.");
-  function injectStyles() {
-    if (document.getElementById("ds-style")) return;
-    let style = document.createElement("style");
-    style.id = "ds-style", style.textContent = `
+  // dynasty-scans/src/styles/index.css
+  var styles_default = `/* Root layout, top bar, banner, and generic content helpers. */
+
 #view-extensions-dynasty-scans.active {
   display: flex !important;
   flex-direction: column;
@@ -2800,63 +3035,6 @@
 #ds-view:has(#ds-library-container) {
   overflow: hidden !important;
   height: 100%;
-}
-#ds-library-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  gap: 8px;
-  padding-top: 8px;
-  box-sizing: border-box;
-}
-.ds-library-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 8px;
-  flex: 1;
-  min-height: 0;
-  padding-top: 4px;
-}
-.ds-library-panel {
-  display: flex !important;
-  flex-direction: column !important;
-  flex: 1;
-  min-height: 0;
-  margin-top: 10px !important;
-  margin-bottom: 0 !important;
-  padding: 16px 8px 6px 8px !important;
-  position: relative;
-}
-.ds-library-panel-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 2px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.ds-library-panel-footer {
-  flex-shrink: 0;
-  border-top: 1px solid var(--sys-border-light, #e0e0e0);
-  padding-top: 4px;
-  margin-top: 4px;
-}
-.ds-library-followed-box {
-  flex-shrink: 0;
-  max-height: 150px;
-  display: flex !important;
-  flex-direction: column !important;
-  margin-bottom: 0 !important;
-}
-.ds-library-followed-scroll {
-  overflow-y: auto;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 6px;
-  padding-right: 2px;
 }
 
 /* Generic content helpers */
@@ -2960,105 +3138,137 @@
   margin-top: 2px;
 }
 
-/* Cache Management Modal */
-.ds-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  z-index: 9999;
+/* Series page */
+.ds-series-head {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.ds-cover {
+  width: 90px;
+  height: 126px;
+  object-fit: cover;
+  border: 1px solid var(--sys-border-light, #ccc);
+  background: #eee;
+  flex-shrink: 0;
+}
+.ds-cover-placeholder {
+  width: 90px;
+  height: 126px;
+  border: 1px solid var(--sys-border-light, #ccc);
+  background: #eee;
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(2px);
+  color: #aaa;
+  flex-shrink: 0;
 }
-.ds-cache-dialog {
-  width: 720px;
-  max-width: 92vw;
-  height: 560px;
-  max-height: 88vh;
-  background: var(--sys-window-bg, #fff);
-  border: 1px solid var(--sys-border-light, #ccc);
-  border-radius: 4px;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  color: var(--sys-text-color, #111);
-}
-.ds-cache-titlebar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 12px;
-  background: var(--sys-control-bg, #f3f3f3);
-  border-bottom: 1px solid var(--sys-border-light, #ddd);
-  font-weight: 600;
-  font-size: 12px;
-}
-.ds-cache-body {
-  flex: 1;
-  padding: 12px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.ds-stats-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-top: 4px;
-}
-.ds-stat-card {
-  padding: 8px 10px;
-  background: var(--sys-control-bg, #f8f8f8);
-  border: 1px solid var(--sys-border-light, #e0e0e0);
-  border-radius: 3px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.ds-stat-val {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--sys-primary, #0078d4);
-}
-.ds-stat-lbl {
+.ds-series-desc {
   font-size: 11px;
-  color: var(--sys-text-muted, #666);
+  color: #555;
+  margin: 6px 0;
+  white-space: pre-wrap;
 }
-.ds-cache-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+.ds-vol-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  margin: 10px 0 4px;
 }
-.ds-cache-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 8px;
-  width: 100%;
-  box-sizing: border-box;
-  overflow-y: auto;
-  border: 1px solid var(--sys-border-light, #e0e0e0);
-  padding: 8px;
-  background: var(--sys-window-bg, #fff);
-  border-radius: 3px;
-}
-.ds-cache-item {
+.ds-chapter-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px;
-  border: 1px solid var(--sys-border-light, #e4e4e4);
-  background: var(--sys-window-bg, #fafafa);
-  border-radius: 3px;
-  transition: background 0.1s ease, border-color 0.1s ease;
+  padding: 4px 6px;
+  border: 1px solid var(--sys-border-light, #e0e0e0);
+  margin-bottom: 3px;
+  cursor: pointer;
+  font-size: 12px;
 }
-.ds-cache-item:hover {
-  background: var(--sys-hover-bg, #f3f3f3);
-  border-color: var(--sys-border-medium, #ccc);
+.ds-chapter-row:hover {
+  background: var(--sys-hover-bg, #f0f0f0);
 }
+.ds-chapter-read {
+  opacity: 0.75;
+  background: var(--sys-hover-bg, #f9f9f9);
+  border-left: 3px solid #10b981;
+}
+.ds-chapter-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-chapter-badge {
+  font-size: 10px;
+  color: #666;
+  flex-shrink: 0;
+}`;
+
+  // dynasty-scans/src/styles/library.css
+  var library_default = `/* Library grid, followed panels, and library container layout. */
+
+#ds-library-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: 8px;
+  padding-top: 8px;
+  box-sizing: border-box;
+}
+.ds-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  padding-top: 4px;
+}
+.ds-library-panel {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1;
+  min-height: 0;
+  margin-top: 10px !important;
+  margin-bottom: 0 !important;
+  padding: 16px 8px 6px 8px !important;
+  position: relative;
+}
+.ds-library-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ds-library-panel-footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--sys-border-light, #e0e0e0);
+  padding-top: 4px;
+  margin-top: 4px;
+}
+.ds-library-followed-box {
+  flex-shrink: 0;
+  max-height: 150px;
+  display: flex !important;
+  flex-direction: column !important;
+  margin-bottom: 0 !important;
+}
+.ds-library-followed-scroll {
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 6px;
+  padding-right: 2px;
+}`;
+
+  // dynasty-scans/src/styles/browse.css
+  var browse_default = `/* Feeds, directories, typeahead, and feed status bar. */
 
 /* Feed item cover thumbnail */
 .ds-feed-cover-wrap {
@@ -3200,73 +3410,141 @@
   to { transform: rotate(360deg); }
 }
 
-/* Series page */
-.ds-series-head {
+/* Typeahead */
+.ds-search-wrap {
+  position: relative;
+}
+.ds-typeahead {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 50;
+  background: var(--sys-window-bg, #fff);
+  border: 1px solid var(--sys-border-light, #ccc);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.ds-typeahead-item {
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
   display: flex;
-  gap: 12px;
-  margin-bottom: 10px;
+  gap: 8px;
+  align-items: center;
 }
-.ds-cover {
-  width: 90px;
-  height: 126px;
-  object-fit: cover;
-  border: 1px solid var(--sys-border-light, #ccc);
-  background: #eee;
-  flex-shrink: 0;
+.ds-typeahead-item:hover {
+  background: var(--sys-hover-bg, #f0f0f0);
 }
-.ds-cover-placeholder {
-  width: 90px;
-  height: 126px;
-  border: 1px solid var(--sys-border-light, #ccc);
-  background: #eee;
+.ds-typeahead-type {
+  font-size: 10px;
+  color: #888;
+}`;
+
+  // dynasty-scans/src/styles/cache.css
+  var cache_default = `/* Cache Management modal, stat cards, and cached-works list. */
+
+.ds-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #aaa;
-  flex-shrink: 0;
+  backdrop-filter: blur(2px);
 }
-.ds-series-desc {
-  font-size: 11px;
-  color: #555;
-  margin: 6px 0;
-  white-space: pre-wrap;
+.ds-cache-dialog {
+  width: 720px;
+  max-width: 92vw;
+  height: 560px;
+  max-height: 88vh;
+  background: var(--sys-window-bg, #fff);
+  border: 1px solid var(--sys-border-light, #ccc);
+  border-radius: 4px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--sys-text-color, #111);
 }
-.ds-vol-header {
-  font-size: 11px;
+.ds-cache-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--sys-control-bg, #f3f3f3);
+  border-bottom: 1px solid var(--sys-border-light, #ddd);
   font-weight: 600;
-  color: #555;
-  margin: 10px 0 4px;
+  font-size: 12px;
 }
-.ds-chapter-row {
+.ds-cache-body {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ds-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+.ds-stat-card {
+  padding: 8px 10px;
+  background: var(--sys-control-bg, #f8f8f8);
+  border: 1px solid var(--sys-border-light, #e0e0e0);
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ds-stat-val {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--sys-primary, #0078d4);
+}
+.ds-stat-lbl {
+  font-size: 11px;
+  color: var(--sys-text-muted, #666);
+}
+.ds-cache-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ds-cache-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+  border: 1px solid var(--sys-border-light, #e0e0e0);
+  padding: 8px;
+  background: var(--sys-window-bg, #fff);
+  border-radius: 3px;
+}
+.ds-cache-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 6px;
-  border: 1px solid var(--sys-border-light, #e0e0e0);
-  margin-bottom: 3px;
-  cursor: pointer;
-  font-size: 12px;
+  padding: 8px;
+  border: 1px solid var(--sys-border-light, #e4e4e4);
+  background: var(--sys-window-bg, #fafafa);
+  border-radius: 3px;
+  transition: background 0.1s ease, border-color 0.1s ease;
 }
-.ds-chapter-row:hover {
-  background: var(--sys-hover-bg, #f0f0f0);
-}
-.ds-chapter-read {
-  opacity: 0.75;
-  background: var(--sys-hover-bg, #f9f9f9);
-  border-left: 3px solid #10b981;
-}
-.ds-chapter-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ds-chapter-badge {
-  font-size: 10px;
-  color: #666;
-  flex-shrink: 0;
-}
+.ds-cache-item:hover {
+  background: var(--sys-hover-bg, #f3f3f3);
+  border-color: var(--sys-border-medium, #ccc);
+}`;
+
+  // dynasty-scans/src/styles/reader.css
+  var reader_default = `/* Reader viewport, slots, shimmer, fullscreen, dark theme, fit modes. */
 
 /* Reader View (Light Mode Default) */
 #ds-reader-container {
@@ -3611,39 +3889,16 @@
   font-size: 11px;
   font-weight: 500;
   color: #333;
-}
+}`;
 
-/* Typeahead */
-.ds-search-wrap {
-  position: relative;
-}
-.ds-typeahead {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  z-index: 50;
-  background: var(--sys-window-bg, #fff);
-  border: 1px solid var(--sys-border-light, #ccc);
-  max-height: 260px;
-  overflow-y: auto;
-}
-.ds-typeahead-item {
-  padding: 4px 8px;
-  font-size: 12px;
-  cursor: pointer;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.ds-typeahead-item:hover {
-  background: var(--sys-hover-bg, #f0f0f0);
-}
-.ds-typeahead-type {
-  font-size: 10px;
-  color: #888;
-}
-`, document.head.appendChild(style);
+  // dynasty-scans/src/index.ts
+  var PLUGIN_STYLES = [styles_default, library_default, browse_default, cache_default, reader_default], PH9 = window.PluginHost;
+  PH9 ? (registerRenderer("library", renderLibrary), registerRenderer("browse", renderBrowse), registerRenderer("series", renderSeries), registerRenderer("reader", renderReader), registerRenderer("cache", renderCache), injectStyles(), PH9.registerTab(TAB_ID, "Dynasty Scans", "bi bi-book", renderTab), console.log("dynasty-scans: registered tab and renderers.")) : console.error("dynasty-scans: PluginHost not available; aborting.");
+  function injectStyles() {
+    if (document.getElementById("ds-style")) return;
+    let style = document.createElement("style");
+    style.id = "ds-style", style.textContent = PLUGIN_STYLES.join(`
+`), document.head.appendChild(style);
   }
   function renderTab() {
     let container = document.createElement("div");

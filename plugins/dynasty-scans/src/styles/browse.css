@@ -1,0 +1,172 @@
+/* Feeds, directories, typeahead, and feed status bar. */
+
+/* Feed item cover thumbnail */
+.ds-feed-cover-wrap {
+  width: 42px;
+  height: 58px;
+  flex-shrink: 0;
+  overflow: hidden;
+  contain: strict;
+  border-radius: 2px;
+}
+.ds-feed-cover {
+  width: 42px;
+  height: 58px;
+  object-fit: cover;
+  border: 1px solid var(--sys-border-light, #ccc);
+  background: var(--sys-control-bg, #eee);
+  border-radius: 2px;
+  flex-shrink: 0;
+  display: block;
+}
+.ds-feed-cover-placeholder {
+  width: 42px;
+  height: 58px;
+  border: 1px solid var(--sys-border-light, #ccc);
+  background: var(--sys-control-bg, #eee);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sys-text-muted, #aaa);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.ds-feed-update-banner {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.ds-feed-update-btn {
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--sys-highlight-bg, #0284c7);
+  border-color: var(--sys-highlight-bg, #0284c7);
+  background: var(--sys-window-bg, #fff);
+  padding: 3px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+}
+.ds-feed-update-btn:hover {
+  background: var(--sys-hover-bg, #f0f8ff);
+}
+
+/* Feed bottom status bar */
+.ds-feed-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  margin-top: 10px;
+  background: var(--sys-control-bg, #f5f5f5);
+  border: 1px solid var(--sys-border-light, #e0e0e0);
+  border-radius: 3px;
+  font-size: 11px;
+}
+.ds-feed-status-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--sys-text-muted, #666);
+}
+.ds-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ds-status-item b {
+  color: var(--sys-window-text, #333);
+}
+.ds-status-pill {
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.ds-status-pill.fresh {
+  background: #e6f4ea;
+  color: #137333;
+  border: 1px solid #ceead6;
+}
+.ds-status-pill.stale {
+  background: #fef7e0;
+  color: #b06000;
+  border: 1px solid #feefc3;
+}
+.ds-etag-tag {
+  font-family: monospace;
+  font-size: 10px;
+  background: var(--sys-window-bg, #fff);
+  border: 1px solid var(--sys-border-light, #ccc);
+  padding: 1px 5px;
+  border-radius: 2px;
+  color: var(--sys-text-muted, #777);
+}
+.ds-status-refresh-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ds-feed-status-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ds-scroll-top-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ds-etag-status-label {
+  font-weight: 600;
+  color: var(--sys-window-text, #333);
+}
+.ds-spin {
+  animation: ds-spin-anim 0.8s linear infinite;
+  display: inline-block;
+}
+@keyframes ds-spin-anim {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Typeahead */
+.ds-search-wrap {
+  position: relative;
+}
+.ds-typeahead {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 50;
+  background: var(--sys-window-bg, #fff);
+  border: 1px solid var(--sys-border-light, #ccc);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.ds-typeahead-item {
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.ds-typeahead-item:hover {
+  background: var(--sys-hover-bg, #f0f0f0);
+}
+.ds-typeahead-type {
+  font-size: 10px;
+  color: #888;
+}

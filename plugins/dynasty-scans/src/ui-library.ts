@@ -16,29 +16,9 @@ import {
   removeHistory,
   clearHistory,
 } from "./db";
-
-const PH = window.PluginHost;
-
-function coverImg(path: string | null, alt: string): HTMLElement {
-  if (path) {
-    const img = document.createElement("img");
-    img.className = "ds-cover";
-    img.alt = alt;
-    img.src = PH.convertFileSrc(path);
-    img.addEventListener("error", () => {
-      img.style.display = "none";
-      const ph = document.createElement("div");
-      ph.className = "ds-cover-placeholder";
-      ph.innerHTML = '<i class="bi bi-image"></i>';
-      img.parentElement?.replaceChild(ph, img);
-    });
-    return img;
-  }
-  const ph = document.createElement("div");
-  ph.className = "ds-cover-placeholder";
-  ph.innerHTML = '<i class="bi bi-image"></i>';
-  return ph;
-}
+import { createConfirmDeleteButton } from "./components/button";
+import { renderCoverImage } from "./components/cover";
+import { renderPager } from "./components/pager";
 
 function createLibraryPanel(titleHtml: string): { panel: HTMLElement; head: HTMLElement; body: HTMLElement; footer: HTMLElement } {
   const panel = document.createElement("div");
@@ -59,38 +39,6 @@ function createLibraryPanel(titleHtml: string): { panel: HTMLElement; head: HTML
   panel.appendChild(body);
   panel.appendChild(footer);
   return { panel, head, body, footer };
-}
-
-function pager(totalPages: number, currentPage: number, onPage: (p: number) => void): HTMLElement {
-  const row = document.createElement("div");
-  row.className = "ds-row";
-  row.style.cssText = "align-items:center;justify-content:space-between;";
-  
-  const prev = document.createElement("button");
-  prev.type = "button";
-  prev.className = "win-button";
-  prev.style.cssText = "font-size:10px;padding:1px 8px;";
-  prev.innerHTML = '<i class="bi bi-chevron-left"></i> Prev';
-  prev.disabled = currentPage <= 1;
-  prev.addEventListener("click", () => onPage(currentPage - 1));
-
-  const label = document.createElement("span");
-  label.className = "ds-progress-text";
-  label.style.cssText = "font-size:11px;color:var(--sys-text-muted, #666);";
-  label.textContent = `Page ${currentPage} of ${totalPages}`;
-
-  const next = document.createElement("button");
-  next.type = "button";
-  next.className = "win-button";
-  next.style.cssText = "font-size:10px;padding:1px 8px;";
-  next.innerHTML = 'Next <i class="bi bi-chevron-right"></i>';
-  next.disabled = currentPage >= totalPages;
-  next.addEventListener("click", () => onPage(currentPage + 1));
-
-  row.appendChild(prev);
-  row.appendChild(label);
-  row.appendChild(next);
-  return row;
 }
 
 export function renderLibrary(container: HTMLElement, _route: Route): void {
@@ -226,7 +174,7 @@ function renderFollowed(
     const card = document.createElement("div");
     card.className = "group-box";
     card.style.cssText = "display:flex;gap:10px;align-items:center;cursor:pointer;margin-bottom:4px;";
-    card.appendChild(coverImg(row.cover, row.name));
+    card.appendChild(renderCoverImage(row.cover, row.name));
 
     const info = document.createElement("div");
     info.style.cssText = "flex:1;min-width:0;";
@@ -274,7 +222,7 @@ function renderFollowed(
 
   if (totalPages > 1) {
     footer.style.display = "block";
-    footer.appendChild(pager(totalPages, currentPage, onPage));
+    footer.appendChild(renderPager(totalPages, currentPage, onPage, { showLabels: true }));
   } else {
     footer.style.display = "none";
   }
@@ -301,71 +249,6 @@ async function loadBookmarksPage(body: HTMLElement, footer: HTMLElement, page: n
     errEl.textContent = `Failed to load bookmarks: ${msg}`;
     body.appendChild(errEl);
   }
-}
-
-function createConfirmDeleteButton(
-  title: string,
-  onConfirm: () => Promise<void>,
-  initialHtml = '<i class="bi bi-trash3"></i>'
-): HTMLElement {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "win-button";
-  btn.style.cssText = "font-size:11px;padding:2px 8px;flex-shrink:0;";
-  btn.title = title;
-  btn.innerHTML = initialHtml;
-
-  let confirming = false;
-  let originalHtml = initialHtml;
-
-  const reset = (): void => {
-    confirming = false;
-    btn.className = "win-button";
-    btn.style.color = "";
-    btn.style.backgroundColor = "";
-    btn.style.borderColor = "";
-    btn.innerHTML = originalHtml;
-    btn.title = title;
-    document.removeEventListener("click", onDocClick);
-  };
-
-  const onDocClick = (ev: MouseEvent): void => {
-    if (!btn.contains(ev.target as Node)) {
-      reset();
-    }
-  };
-
-  btn.addEventListener("click", async (ev) => {
-    ev.stopPropagation();
-    if (!confirming) {
-      originalHtml = btn.innerHTML;
-      confirming = true;
-      btn.className = "win-button primary";
-      btn.style.color = "#ffffff";
-      btn.style.backgroundColor = "#d13438";
-      btn.style.borderColor = "#a80000";
-      btn.innerHTML = '<i class="bi bi-check-lg"></i> Delete?';
-      btn.title = "Click again to confirm deletion, or click outside to cancel";
-      setTimeout(() => {
-        document.addEventListener("click", onDocClick);
-      }, 0);
-      return;
-    }
-
-    document.removeEventListener("click", onDocClick);
-    btn.disabled = true;
-    btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
-    try {
-      await onConfirm();
-    } catch (err) {
-      btn.disabled = false;
-      reset();
-      const msg = err instanceof Error ? err.message : String(err);
-      setBanner(`Deletion failed: ${msg}`);
-    }
-  });
-
-  return btn;
 }
 
 function renderBookmarks(
@@ -436,7 +319,7 @@ function renderBookmarks(
 
   if (totalPages > 1) {
     footer.style.display = "block";
-    footer.appendChild(pager(totalPages, currentPage, onPage));
+    footer.appendChild(renderPager(totalPages, currentPage, onPage, { showLabels: true }));
   } else {
     footer.style.display = "none";
   }
@@ -532,7 +415,7 @@ function renderHistory(
 
   if (totalPages > 1) {
     footer.style.display = "block";
-    footer.appendChild(pager(totalPages, currentPage, onPage));
+    footer.appendChild(renderPager(totalPages, currentPage, onPage, { showLabels: true }));
   } else {
     footer.style.display = "none";
   }

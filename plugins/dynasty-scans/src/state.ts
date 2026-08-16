@@ -16,32 +16,8 @@ export const DB_NAME = "dynasty_reader.db";
 export const PAGES_PREFIX = ".curator/plugin_data/dynasty-scans/pages";
 export const COVERS_PREFIX = ".curator/plugin_data/dynasty-scans/covers";
 
-export type ViewName = "library" | "browse" | "series" | "reader" | "cache";
-
-export interface ChapterRef {
-  title: string;
-  permalink: string;
-  released_on?: string;
-}
-
-export interface Route {
-  view: ViewName;
-  /** Which browse sub-tab to show. */
-  browseTab?: string;
-  seriesPermalink?: string;
-  seriesName?: string;
-  chapterPermalink?: string;
-  chapterTitle?: string;
-  /** Ordered chapter list of the containing series (drives prev/next). */
-  chapterList?: ChapterRef[];
-  /** Page index to jump to when opening the reader. */
-  startPage?: number;
-}
-
-export interface SessionMangaTab {
-  title: string;
-  route: Route;
-}
+export type { ViewName, ChapterRef, Route, SessionMangaTab } from "./types/routes";
+import type { Route } from "./types/routes";
 
 export interface PluginState {
   route: Route;
@@ -249,13 +225,7 @@ export function routeTitle(r: Route): string {
 }
 
 /** Formats a byte count into a clean human-readable string (e.g. "45.2 MB"). */
-export function formatBytes(bytes: number): string {
-  if (!bytes || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  const val = bytes / Math.pow(1024, i);
-  return `${val.toFixed(val >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
-}
+export { formatBytes } from "../../lib";
 
 /** Returns true when the webview believes it has a network connection. */
 export function isOnline(): boolean {
@@ -268,41 +238,12 @@ export function absUrl(u: string): string {
   return SITE_ROOT + u;
 }
 
-/** Escapes a string for safe use inside an HTML attribute value. */
-export function esc(s: string): string {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+import { decodeEntities } from "./utils/html";
+export { decodeEntities, esc } from "./utils/html";
+export { formatDate, formatDateTime } from "./utils/formatting";
 
 /**
- * Decodes HTML entities into clean human-readable unicode text for safe DOM textContent rendering.
- */
-export function decodeEntities(str: string | null | undefined): string {
-  if (!str) return "";
-  let s = String(str);
-  // Iteratively unescape entities (handles double-escaped &amp;quot; -> &quot; -> ")
-  for (let i = 0; i < 2; i++) {
-    if (!s.includes("&")) break;
-    s = s
-      .replace(/&amp;/g, "&")
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;|&#039;|&apos;/g, "'")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&ndash;/g, "–")
-      .replace(/&mdash;/g, "—")
-      .replace(/&hellip;/g, "…")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
-      .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
-  }
-  return s;
-}
-
-/** Maps a Dynasty Scans tag type or name to a styled tag-pill class or inline style. */
+ * Maps a Dynasty Scans tag type or name to a styled tag-pill class or inline style. */
 export function tagClass(type: string, name?: string): string {
   const t = (type ?? "").toLowerCase();
   switch (t) {
@@ -384,24 +325,4 @@ export function tagStyle(type: string, name: string): string {
   ];
   const p = PALETTES[Math.abs(hash) % PALETTES.length];
   return `background-color: ${p.bg}; border: 1px solid ${p.border}; color: ${p.text}; font-weight: 500;`;
-}
-
-/** Formats a unix-ms timestamp as a short date. */
-export function formatDate(ms: number): string {
-  if (!ms) return "";
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
-}
-
-/** Formats a unix-ms timestamp as a full date and time. */
-export function formatDateTime(ms?: number | null): string {
-  if (!ms) return "Never";
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(
-    d.getMinutes()
-  ).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
 }

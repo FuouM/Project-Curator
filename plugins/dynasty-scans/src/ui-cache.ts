@@ -14,73 +14,8 @@ import {
   getCacheOverviewStats,
   getCachedSeriesGroups,
 } from "./db";
-
-const PH = window.PluginHost;
-
-function createConfirmDeleteButton(
-  title: string,
-  onConfirm: () => Promise<void>,
-  initialHtml = '<i class="bi bi-trash3"></i>'
-): HTMLElement {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "win-button";
-  btn.style.cssText = "font-size:11px;padding:2px 8px;flex-shrink:0;";
-  btn.title = title;
-  btn.innerHTML = initialHtml;
-
-  let confirming = false;
-  let originalHtml = initialHtml;
-
-  const reset = (): void => {
-    confirming = false;
-    btn.className = "win-button";
-    btn.style.color = "";
-    btn.style.backgroundColor = "";
-    btn.style.borderColor = "";
-    btn.innerHTML = originalHtml;
-    btn.title = title;
-    document.removeEventListener("click", onDocClick);
-  };
-
-  const onDocClick = (ev: MouseEvent): void => {
-    if (!btn.contains(ev.target as Node)) {
-      reset();
-    }
-  };
-
-  btn.addEventListener("click", async (ev) => {
-    ev.stopPropagation();
-    if (!confirming) {
-      originalHtml = btn.innerHTML;
-      confirming = true;
-      btn.className = "win-button primary";
-      btn.style.color = "#ffffff";
-      btn.style.backgroundColor = "#d13438";
-      btn.style.borderColor = "#a80000";
-      btn.innerHTML = '<i class="bi bi-check-lg"></i> Delete?';
-      btn.title = "Click again to confirm deletion, or click outside to cancel";
-      setTimeout(() => {
-        document.addEventListener("click", onDocClick);
-      }, 0);
-      return;
-    }
-
-    document.removeEventListener("click", onDocClick);
-    btn.disabled = true;
-    btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
-    try {
-      await onConfirm();
-    } catch (err) {
-      btn.disabled = false;
-      reset();
-      const msg = err instanceof Error ? err.message : String(err);
-      setBanner(`Deletion failed: ${msg}`);
-    }
-  });
-
-  return btn;
-}
+import { createConfirmDeleteButton } from "./components/button";
+import { renderFeedCover } from "./components/cover";
 
 export function renderCache(container: HTMLElement, _route: Route): void {
   container.innerHTML = "";
@@ -304,10 +239,7 @@ export function renderCache(container: HTMLElement, _route: Route): void {
 
             // Cover thumbnail
             if (item.coverPath) {
-              const img = document.createElement("img");
-              img.className = "ds-feed-cover";
-              img.style.cssText = "width:36px;height:50px;cursor:pointer;";
-              img.src = PH.convertFileSrc(item.coverPath);
+              const img = renderFeedCover(item.coverPath, item.seriesName, "width:36px;height:50px;cursor:pointer;");
               img.title = "Click to view";
               img.addEventListener("click", () => {
                 if (item.isStandalone) {
@@ -318,9 +250,7 @@ export function renderCache(container: HTMLElement, _route: Route): void {
               });
               row.appendChild(img);
             } else {
-              const ph = document.createElement("div");
-              ph.className = "ds-feed-cover-placeholder";
-              ph.style.cssText = "width:36px;height:50px;font-size:12px;";
+              const ph = renderFeedCover(null, item.seriesName, "width:36px;height:50px;font-size:12px;");
               ph.innerHTML = '<i class="bi bi-book"></i>';
               row.appendChild(ph);
             }
