@@ -121,36 +121,61 @@ impl SafetyClassifier {
         results.into_iter().next().context("Safety classifier returned no result")
     }
 
-    /// Batched: builds [N,3,380,380], runs one ONNX call, maps outputs back per-image.
+    /// Batched: builds [N,3,380,380] in small memory-safe chunks (max 4 per DirectML run),
+    /// runs ONNX calls, and maps outputs back per-image without blowing VRAM.
     pub fn classify_images_batch(&self, imgs: &[RgbImage]) -> Vec<Result<SafetyClassification>> {
         if imgs.is_empty() {
             return Vec::new();
         }
-        let n = imgs.len();
-        let s = MINI_INPUT_SIZE as usize;
-        let mut tensors = Array4::<f32>::zeros((n, 3, s, s));
+        const MAX_SAFETY_BATCH: usize = 4;
+        let mut all_results = Vec::with_capacity(imgs.len());
 
-        for (i, img) in imgs.iter().enumerate() {
-            if let Err(e) = preprocess_row_for_tensor(img, &mut tensors, i) {
-                return err_results(format!("{e:#}"), n);
-            }
-        }
+        for chunk in imgs.chunks(MAX_SAFETY_BATCH) {
+            let n = chunk.len();
+            let s = MINI_INPUT_SIZE as usize;
+            let mut tensors = Array4::<f32>::zeros((n, 3, s, s));
 
-        match self.run_tensor(&tensors) {
-            Ok(results) if results.len() == n => results.into_iter().map(Ok).collect(),
-            Ok(results) => {
-                let mut out: Vec<Result<SafetyClassification>> =
-                    results.into_iter().map(Ok).collect();
-                while out.len() < n {
-                    out.push(Err(anyhow::anyhow!(
-                        "Safety batch returned fewer rows than requested"
-                    )));
+            let mut valid = true;
+            for (i, img) in chunk.iter().enumerate() {
+                if let Err(e) = preprocess_row_for_tensor(img, &mut tensors, i) {
+                    for _ in 0..n {
+                        all_results.push(Err(anyhow::anyhow!("{:#}", e)));
+                    }
+                    valid = false;
+                    break;
                 }
-                out
             }
-            Err(e) => err_results(format!("{e:#}"), n),
+            if !valid {
+                continue;
+            }
+
+            match self.run_tensor(&tensors) {
+                Ok(results) if results.len() == n => {
+                    for r in results {
+                        all_results.push(Ok(r));
+                    }
+                }
+                Ok(results) => {
+                    for r in results {
+                        all_results.push(Ok(r));
+                    }
+                    for _ in 0..(n.saturating_sub(all_results.len())) {
+                        all_results.push(Err(anyhow::anyhow!(
+                            "Safety batch returned fewer rows than requested"
+                        )));
+                    }
+                }
+                Err(e) => {
+                    let err = format!("{e:#}");
+                    for _ in 0..n {
+                        all_results.push(Err(anyhow::anyhow!("{}", err)));
+                    }
+                }
+            }
         }
+        all_results
     }
+
 
     fn run_tensor(&self, tensor: &Array4<f32>) -> Result<Vec<SafetyClassification>> {
         self.session.with_session(|session| {

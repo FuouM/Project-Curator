@@ -12,9 +12,10 @@ use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 /// Flush the import-path coalescing queue when this many rows are queued...
-pub const SAFETY_BATCH_FLUSH: usize = 16;
+pub const SAFETY_BATCH_FLUSH: usize = 8;
 /// ...or this much time has elapsed since the first queued row, whichever first.
 pub const SAFETY_TICK_MS: u64 = 250;
+
 
 /// Service-side owner of the `SafetyClassifier` and every DB write of the five
 /// per-class safety columns. The DB only ever records what the model produced —
@@ -114,11 +115,13 @@ impl SafetyService {
                 if q.is_empty() {
                     return;
                 }
-                std::mem::take(&mut *q)
+                let take_count = q.len().min(SAFETY_BATCH_FLUSH);
+                q.drain(..take_count).collect::<Vec<_>>()
             };
             self.classify_and_write(db, batch).await;
         }
     }
+
 
     /// Classify one batch and write the per-class columns. Absent model file or a
     /// failed run simply leaves the columns `NULL` (a later rescan retries).
@@ -308,25 +311,41 @@ async fn classify_paths(
     let rows_owned = rows.to_vec();
     let rows_for_error = rows_owned.clone();
     tokio::task::spawn_blocking(move || {
-        let mut imgs: Vec<(i64, curator_core::image::RgbImage)> = Vec::with_capacity(rows_owned.len());
-        for (id, path) in &rows_owned {
-            match decode_rgb(std::path::Path::new(path)) {
-                Ok((buffer, width, height)) => match curator_core::image::RgbImage::from_raw(
-                    width,
-                    height,
-                    buffer,
-                ) {
-                    Some(img) => imgs.push((*id, img)),
-                    None => warn!("Safety: invalid RGB buffer for {:?}", path),
-                },
-                Err(e) => warn!("Safety: skipping unreadable {:?}: {:#}", path, e),
+        let mut all_results = Vec::with_capacity(rows_owned.len());
+        const CHUNK_SIZE: usize = 4;
+
+        for chunk in rows_owned.chunks(CHUNK_SIZE) {
+            let mut imgs: Vec<(i64, curator_core::image::RgbImage)> =
+                Vec::with_capacity(chunk.len());
+            for (id, path) in chunk {
+                match decode_rgb(std::path::Path::new(path)) {
+                    Ok((buffer, width, height)) => {
+                        match curator_core::image::RgbImage::from_raw(width, height, buffer) {
+                            Some(img) => imgs.push((*id, img)),
+                            None => {
+                                warn!("Safety: invalid RGB buffer for {:?}", path);
+                                all_results.push((*id, Err(anyhow::anyhow!("Invalid RGB buffer"))));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Safety: skipping unreadable {:?}: {:#}", path, e);
+                        all_results.push((*id, Err(e)));
+                    }
+                }
+            }
+
+            if !imgs.is_empty() {
+                let ids: Vec<i64> = imgs.iter().map(|(id, _)| *id).collect();
+                let images: Vec<curator_core::image::RgbImage> =
+                    imgs.into_iter().map(|(_, img)| img).collect();
+                let results = classifier.classify_images_batch(&images);
+                for (id, res) in ids.into_iter().zip(results) {
+                    all_results.push((id, res));
+                }
             }
         }
-        let ids: Vec<i64> = imgs.iter().map(|(id, _)| *id).collect();
-        let images: Vec<curator_core::image::RgbImage> =
-            imgs.into_iter().map(|(_, img)| img).collect();
-        let results = classifier.classify_images_batch(&images);
-        ids.into_iter().zip(results).collect()
+        all_results
     })
     .await
     .unwrap_or_else(|e| {
@@ -337,6 +356,7 @@ async fn classify_paths(
             .collect()
     })
 }
+
 
 /// Persist per-class columns for a batch of classification results. Rows whose
 /// classification errored are skipped (columns stay `NULL`). Retries a bounded
