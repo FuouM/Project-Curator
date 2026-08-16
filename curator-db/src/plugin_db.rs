@@ -5,10 +5,16 @@
 //! via `plugin_db_execute` / `plugin_db_query`. The `<plugin_id>` and `db` name are
 //! guarded so a plugin cannot read or write outside its own directory.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 use anyhow::{bail, Result};
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Arguments, Column, Row, SqlitePool};
+use tokio::sync::RwLock;
+
+static PLUGIN_POOLS: LazyLock<RwLock<HashMap<PathBuf, SqlitePool>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 /// Root directory for all plugin data. Created on first use.
 pub fn plugin_data_root(data_dir: &Path) -> PathBuf {
@@ -30,6 +36,7 @@ fn is_safe_name(s: &str) -> bool {
 }
 
 /// Resolve and open (creating if needed) a plugin-owned database.
+/// Cached in-memory across calls for instant sub-millisecond query execution.
 pub async fn open_plugin_db(data_dir: &Path, plugin_id: &str, db: &str) -> Result<SqlitePool> {
     if !is_safe_name(plugin_id) {
         bail!("invalid plugin id");
@@ -40,14 +47,31 @@ pub async fn open_plugin_db(data_dir: &Path, plugin_id: &str, db: &str) -> Resul
     let plugin_dir = plugin_data_root(data_dir).join(plugin_id);
     std::fs::create_dir_all(&plugin_dir)?;
     let path = plugin_dir.join(db);
+
+    {
+        let pools = PLUGIN_POOLS.read().await;
+        if let Some(pool) = pools.get(&path) {
+            return Ok(pool.clone());
+        }
+    }
+
+    let mut pools = PLUGIN_POOLS.write().await;
+    if let Some(pool) = pools.get(&path) {
+        return Ok(pool.clone());
+    }
+
     let options = SqliteConnectOptions::new()
         .filename(&path)
-        .create_if_missing(true);
+        .create_if_missing(true)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+        .synchronous(sqlx::sqlite::SqliteSynchronous::Normal);
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
-        .max_connections(1)
+        .max_connections(5)
         .connect_with(options)
         .await
         .map_err(|e| anyhow::anyhow!("failed to open plugin database: {e}"))?;
+
+    pools.insert(path, pool.clone());
     Ok(pool)
 }
 

@@ -10,6 +10,14 @@ use curator_core::grpc::plugins::{
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
 
+static HTTP_AGENT: std::sync::LazyLock<ureq::Agent> = std::sync::LazyLock::new(|| {
+    ureq::config::Config::builder()
+        .max_redirects(10)
+        .timeout_global(Some(std::time::Duration::from_secs(30)))
+        .build()
+        .new_agent()
+});
+
 pub struct PluginsServiceImpl {
     ctx: Arc<ClientContext>,
 }
@@ -584,6 +592,147 @@ async fn dispatch_plugin_command(
             Ok(serde_json::json!("Success"))
         }
 
+        "HttpGet" => {
+            let url = params["url"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing url"))?;
+            let method = params["method"].as_str().unwrap_or("GET").to_ascii_uppercase();
+            let result = if method == "POST" {
+                let content_type = params["content_type"]
+                    .as_str()
+                    .unwrap_or("application/x-www-form-urlencoded");
+                let mut req = HTTP_AGENT
+                    .post(url)
+                    .header("Content-Type", content_type)
+                    .header(
+                        "User-Agent",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Curator/1.0",
+                    );
+                if let Some(headers_obj) = params["headers"].as_object() {
+                    for (k, v) in headers_obj {
+                        if let Some(v_str) = v.as_str() {
+                            req = req.header(k.as_str(), v_str);
+                        }
+                    }
+                }
+                let body = params["body"].as_str().unwrap_or("");
+                req.send(body)
+            } else {
+                let mut req = HTTP_AGENT.get(url).header(
+                    "User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Curator/1.0",
+                );
+                if let Some(headers_obj) = params["headers"].as_object() {
+                    for (k, v) in headers_obj {
+                        if let Some(v_str) = v.as_str() {
+                            req = req.header(k.as_str(), v_str);
+                        }
+                    }
+                }
+                req.call()
+            };
+            match result {
+                Ok(mut resp) => {
+                    let status = resp.status().as_u16();
+                    let etag = resp
+                        .headers()
+                        .get("etag")
+                        .and_then(|v| v.to_str().ok())
+                        .map(|s| s.to_string());
+                    let mut body = String::new();
+                    if status != 304 {
+                        const MAX_GET_BODY: usize = 8 * 1024 * 1024;
+                        use std::io::Read;
+                        let read = resp
+                            .body_mut()
+                            .as_reader()
+                            .take(MAX_GET_BODY as u64 + 1)
+                            .read_to_string(&mut body);
+                        if let Err(e) = read {
+                            return Ok(serde_json::json!({
+                                "Error": { "message": format!("failed reading response body: {e}") }
+                            }));
+                        }
+                    }
+                    Ok(serde_json::json!({
+                        "HttpGetResult": {
+                            "status": status,
+                            "body": body,
+                            "etag": etag
+                        }
+                    }))
+                }
+                Err(e) => Ok(serde_json::json!({
+                    "Error": { "message": e.to_string() }
+                })),
+            }
+        }
+
+        "HttpDownload" => {
+            let url = params["url"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing url"))?;
+            let raw_output = params["output_path"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing output_path"))?;
+            let target = std::path::PathBuf::from(handlers::resolve_relative_path(
+                &ctx.data_dir,
+                raw_output,
+            ));
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(internal_status)?;
+            }
+            let mut response = match HTTP_AGENT
+                .get(url)
+                .header(
+                    "User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Curator/1.0",
+                )
+                .call()
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    return Ok(serde_json::json!({
+                        "Error": { "message": e.to_string() }
+                    }));
+                }
+            };
+            if !response.status().is_success() {
+                return Ok(serde_json::json!({
+                    "Error": {
+                        "message": format!("http download failed: status {}", response.status())
+                    }
+                }));
+            }
+            let tmp = target.with_extension("tmp");
+            let copy_result = (|| -> std::io::Result<()> {
+                let mut file = std::fs::File::create(&tmp)?;
+                let mut reader = response.body_mut().as_reader();
+                std::io::copy(&mut reader, &mut file)?;
+                Ok(())
+            })();
+            if let Err(e) = copy_result {
+                let _ = std::fs::remove_file(&tmp);
+                return Ok(serde_json::json!({
+                    "Error": { "message": format!("failed writing download: {e}") }
+                }));
+            }
+            if let Err(e) = std::fs::rename(&tmp, &target) {
+                let _ = std::fs::remove_file(&tmp);
+                return Ok(serde_json::json!({
+                    "Error": { "message": format!("failed finalizing download: {e}") }
+                }));
+            }
+            let size = target.metadata().map(|m| m.len()).unwrap_or(0);
+            Ok(serde_json::json!({
+                "HttpDownloadResult": {
+                    "written_to": raw_output,
+                    "size_bytes": size,
+                    "absolute_path": target.to_string_lossy().into_owned()
+                }
+            }))
+        }
+
         "PluginDbExecute" => {
             let db = params["db"].as_str().unwrap_or("plugin.db");
             let sql = params["sql"]
@@ -624,6 +773,178 @@ async fn dispatch_plugin_command(
             }
         }
 
+        // ── Plugin File CRUD (sandboxed to plugin_data/<plugin_id>/) ──────────
+
+        "FileExists" => {
+            if plugin_id.is_empty() {
+                return Err(Status::invalid_argument("missing plugin_id"));
+            }
+            let raw_path = params["path"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing path"))?;
+            let plugin_root = ctx.data_dir.join("plugin_data").join(plugin_id);
+            let resolved = if raw_path.is_empty() {
+                plugin_root.clone()
+            } else {
+                let p = std::path::Path::new(raw_path);
+                if p.is_absolute() {
+                    p.to_path_buf()
+                } else if raw_path.starts_with(".curator") {
+                    std::path::PathBuf::from(handlers::resolve_relative_path(&ctx.data_dir, raw_path))
+                } else {
+                    plugin_root.join(raw_path)
+                }
+            };
+            if !resolved.starts_with(&plugin_root) {
+                return Ok(serde_json::json!({
+                    "Error": { "message": "path escapes plugin data directory" }
+                }));
+            }
+            let meta = resolved.metadata().ok();
+            let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let exists = resolved.is_file() && size > 0;
+            Ok(serde_json::json!({
+                "FileExistsResult": {
+                    "exists": exists,
+                    "size_bytes": size,
+                    "absolute_path": resolved.to_string_lossy().into_owned()
+                }
+            }))
+        }
+
+        "DirStat" => {
+            if plugin_id.is_empty() {
+                return Err(Status::invalid_argument("missing plugin_id"));
+            }
+            let raw_path = params["path"].as_str().unwrap_or("");
+            let plugin_root = ctx.data_dir.join("plugin_data").join(plugin_id);
+            let resolved = if raw_path.is_empty() {
+                plugin_root.clone()
+            } else {
+                let p = std::path::Path::new(raw_path);
+                if p.is_absolute() {
+                    p.to_path_buf()
+                } else if raw_path.starts_with(".curator") {
+                    std::path::PathBuf::from(handlers::resolve_relative_path(&ctx.data_dir, raw_path))
+                } else {
+                    plugin_root.join(raw_path)
+                }
+            };
+            if !resolved.starts_with(&plugin_root) {
+                return Ok(serde_json::json!({
+                    "Error": { "message": "path escapes plugin data directory" }
+                }));
+            }
+            let mut total_bytes: u64 = 0;
+            let mut file_count: u64 = 0;
+            fn dir_size_recursive(path: &std::path::Path, total_bytes: &mut u64, file_count: &mut u64) {
+                if let Ok(entries) = std::fs::read_dir(path) {
+                    for entry in entries.flatten() {
+                        if let Ok(file_type) = entry.file_type() {
+                            if file_type.is_dir() {
+                                dir_size_recursive(&entry.path(), total_bytes, file_count);
+                            } else if file_type.is_file() {
+                                if let Ok(meta) = entry.metadata() {
+                                    *total_bytes += meta.len();
+                                    *file_count += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if resolved.is_dir() {
+                dir_size_recursive(&resolved, &mut total_bytes, &mut file_count);
+            } else if resolved.is_file() {
+                if let Ok(meta) = resolved.metadata() {
+                    total_bytes = meta.len();
+                    file_count = 1;
+                }
+            }
+            Ok(serde_json::json!({
+                "DirStatResult": {
+                    "total_bytes": total_bytes,
+                    "file_count": file_count,
+                    "absolute_path": resolved.to_string_lossy().into_owned()
+                }
+            }))
+        }
+
+        "FileMove" => {
+            if plugin_id.is_empty() {
+                return Err(Status::invalid_argument("missing plugin_id"));
+            }
+            let plugin_root = ctx.data_dir.join("plugin_data").join(plugin_id);
+            let raw_src = params["src"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing src"))?;
+            let raw_dst = params["dst"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing dst"))?;
+            let src = if raw_src.starts_with(".curator") {
+                std::path::PathBuf::from(handlers::resolve_relative_path(&ctx.data_dir, raw_src))
+            } else {
+                plugin_root.join(raw_src)
+            };
+            let dst = if raw_dst.starts_with(".curator") {
+                std::path::PathBuf::from(handlers::resolve_relative_path(&ctx.data_dir, raw_dst))
+            } else {
+                plugin_root.join(raw_dst)
+            };
+            if !src.starts_with(&plugin_root) || !dst.starts_with(&plugin_root) {
+                return Ok(serde_json::json!({
+                    "Error": { "message": "path escapes plugin data directory" }
+                }));
+            }
+            if let Some(parent) = dst.parent() {
+                std::fs::create_dir_all(parent).map_err(internal_status)?;
+            }
+            match std::fs::rename(&src, &dst) {
+                Ok(()) => Ok(serde_json::json!({
+                    "FileMoveResult": {
+                        "absolute_path": dst.to_string_lossy().into_owned()
+                    }
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "Error": { "message": format!("file move failed: {e}") }
+                })),
+            }
+        }
+
+        "FileDelete" => {
+            if plugin_id.is_empty() {
+                return Err(Status::invalid_argument("missing plugin_id"));
+            }
+            let plugin_root = ctx.data_dir.join("plugin_data").join(plugin_id);
+            let raw_path = params["path"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("missing path"))?;
+            let resolved = if raw_path.starts_with(".curator") {
+                std::path::PathBuf::from(handlers::resolve_relative_path(&ctx.data_dir, raw_path))
+            } else {
+                plugin_root.join(raw_path)
+            };
+            if !resolved.starts_with(&plugin_root) {
+                return Ok(serde_json::json!({
+                    "Error": { "message": "path escapes plugin data directory" }
+                }));
+            }
+            if resolved.is_dir() {
+                match std::fs::remove_dir_all(&resolved) {
+                    Ok(()) => Ok(serde_json::json!("Success")),
+                    Err(e) => Ok(serde_json::json!({
+                        "Error": { "message": format!("directory delete failed: {e}") }
+                    })),
+                }
+            } else {
+                match std::fs::remove_file(&resolved) {
+                    Ok(()) => Ok(serde_json::json!("Success")),
+                    Err(e) => Ok(serde_json::json!({
+                        "Error": { "message": format!("file delete failed: {e}") }
+                    })),
+                }
+            }
+        }
 
         unknown => Err(Status::invalid_argument(format!("Unknown plugin command: {unknown}"))),
     }

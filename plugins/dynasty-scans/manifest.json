@@ -1,0 +1,12 @@
+{
+  "name": "dynasty-scans",
+  "version": "1.0.0",
+  "description": "Offline-first reader and tracker for dynasty-scans.com: SQLite metadata cache, one-request-per-page on-disk cache, and local reading progress.",
+  "author": "Project Curator",
+  "permissions": ["ui:inject"],
+  "components": {
+    "ui": "index.js",
+    "type": "javascript"
+  },
+  "hooks": []
+}
