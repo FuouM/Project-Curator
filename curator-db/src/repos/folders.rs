@@ -49,6 +49,8 @@ impl FolderRepo {
             video_count: i64,
             vector_ready: i64,
             vector_pending: i64,
+            safety_classified: i64,
+            safety_pending: i64,
         }
 
         let rows: Vec<FolderRow> = sqlx::query_as(
@@ -61,14 +63,15 @@ impl FolderRepo {
                 COUNT(CASE WHEN LOWER(i.current_filepath) NOT LIKE '%.mp4' AND LOWER(i.current_filepath) NOT LIKE '%.webm' THEN 1 END) as image_count,
                 COALESCE(SUM(CASE WHEN LOWER(i.current_filepath) LIKE '%.mp4' OR LOWER(i.current_filepath) LIKE '%.webm' THEN 1 ELSE 0 END), 0) as video_count,
                 COALESCE(SUM(CASE WHEN iv.vector_state = 'ready' THEN 1 ELSE 0 END), 0) as vector_ready,
-                COALESCE(SUM(CASE WHEN iv.vector_state IN ('pending', 'preprocessing') THEN 1 ELSE 0 END), 0) as vector_pending
+                COALESCE(SUM(CASE WHEN iv.vector_state IN ('pending', 'preprocessing') THEN 1 ELSE 0 END), 0) as vector_pending,
+                COALESCE(SUM(CASE WHEN i.safe_score IS NOT NULL THEN 1 ELSE 0 END), 0) as safety_classified,
+                COALESCE(SUM(CASE WHEN i.safe_score IS NULL AND i.id IS NOT NULL AND i.is_missing = 0 THEN 1 ELSE 0 END), 0) as safety_pending
             FROM folders f
             LEFT JOIN images i ON i.folder_id = f.id AND i.deleted_at IS NULL
             LEFT JOIN image_vectors iv ON iv.image_id = i.id
             GROUP BY f.id
             ORDER BY f.imported_at DESC
             "#,
-
         )
         .fetch_all(db)
         .await?;
@@ -117,9 +120,12 @@ impl FolderRepo {
                     missing_image_count,
                     missing_video_count,
                     is_missing,
+                    safety_classified: r.safety_classified,
+                    safety_pending: r.safety_pending,
                 }
             })
             .collect())
+
     }
 
     /// Update folder path and derived name.

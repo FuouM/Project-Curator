@@ -250,7 +250,10 @@ message FolderDetails {
   int64 missing_image_count = 9;
   int64 missing_video_count = 10;
   bool is_missing = 11;
+  int64 safety_classified = 12;
+  int64 safety_pending = 13;
 }
+
 
 // Info about a folder in a duplicate group.
 message DuplicateFolderInfo {

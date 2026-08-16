@@ -11,9 +11,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::common::resolve_source_id;
-use super::safety::SafetyService;
 
 #[derive(Debug, Clone, Default)]
+
 pub struct ImportProgressState {
     pub running: bool,
     pub phase: String, // "idle" | "discovering" | "extracting" | "writing_db" | "complete" | "cancelled" | "failed"

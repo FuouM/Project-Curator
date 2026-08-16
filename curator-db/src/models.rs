@@ -225,7 +225,10 @@ pub struct FolderDetails {
     pub missing_image_count: i64,
     pub missing_video_count: i64,
     pub is_missing: bool,
+    pub safety_classified: i64,
+    pub safety_pending: i64,
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DuplicateFolderInfo {

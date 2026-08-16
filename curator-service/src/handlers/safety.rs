@@ -227,6 +227,36 @@ impl SafetyService {
         );
     }
 
+    /// Classify all unclassified images belonging to a specific folder on demand.
+    pub async fn classify_folder_safety(&self, db: &SqlitePool, folder_id: i64) -> Result<(i64, i64)> {
+        let unclassified: Vec<(i64, String, Option<String>)> = sqlx::query_as(
+            "SELECT id, current_filepath, video_frame_path FROM images 
+             WHERE folder_id = ? AND safe_score IS NULL AND deleted_at IS NULL AND is_missing = 0",
+        )
+        .bind(folder_id)
+        .fetch_all(db)
+        .await?;
+
+        let total = unclassified.len() as i64;
+        if total == 0 {
+            return Ok((0, 0));
+        }
+
+        let batch: Vec<(i64, String)> = unclassified
+            .into_iter()
+            .map(|(id, fp, vfp)| {
+                let p = curator_core::video::decode_path(&fp, vfp.as_deref())
+                    .to_string_lossy()
+                    .into_owned();
+                (id, p)
+            })
+            .collect();
+
+        self.classify_and_write(db, batch).await;
+        Ok((total, total))
+    }
+
+
     pub async fn rescan_progress(&self) -> SafetyRescanProgress {
         let prog = self.progress.lock().await;
         SafetyRescanProgress {

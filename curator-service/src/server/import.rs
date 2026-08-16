@@ -3,11 +3,12 @@ use crate::server::internal_status;
 use crate::ClientContext;
 use curator_core::grpc::import::{
     import_service_server::ImportService, BackfillResult, CancelImportResult,
-    EphemeralClassifySafetyRequest, EphemeralClassifySafetyResult, ImportImageRequest,
-    ImportProgress, ImportResult, ImportedFoldersResult, IndexFolderRequest, IndexFolderResult,
-    MediaMetadataBackfillResult, RescanFolderRequest, RescanFolderResult, RescanSafetyResult,
-    SafetyRescanProgress,
+    ClassifyFolderSafetyRequest, ClassifyFolderSafetyResult, EphemeralClassifySafetyRequest,
+    EphemeralClassifySafetyResult, ImportImageRequest, ImportProgress, ImportResult,
+    ImportedFoldersResult, IndexFolderRequest, IndexFolderResult, MediaMetadataBackfillResult,
+    RescanFolderRequest, RescanFolderResult, RescanSafetyResult, SafetyRescanProgress,
 };
+
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
 
@@ -203,6 +204,25 @@ impl ImportService for ImportServiceImpl {
             .map_err(internal_status)?;
         Ok(TonicResponse::new(result))
     }
+
+    async fn classify_folder_safety(
+        &self,
+        request: TonicRequest<ClassifyFolderSafetyRequest>,
+    ) -> Result<TonicResponse<ClassifyFolderSafetyResult>, Status> {
+        let req = request.into_inner();
+        let (processed, updated) = self
+            .ctx
+            .safety
+            .classify_folder_safety(&self.ctx.db, req.folder_id)
+            .await
+            .map_err(internal_status)?;
+        Ok(TonicResponse::new(ClassifyFolderSafetyResult {
+            folder_id: req.folder_id,
+            processed,
+            updated,
+        }))
+    }
+
 
     async fn get_safety_rescan_progress(
         &self,

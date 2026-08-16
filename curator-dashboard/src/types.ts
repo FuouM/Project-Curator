@@ -134,7 +134,10 @@ export interface FolderDetails {
   missing_image_count: number;
   missing_video_count: number;
   is_missing: boolean;
+  safety_classified: number;
+  safety_pending: number;
 }
+
 
 export interface DuplicateFolderInfo {
   id: number;

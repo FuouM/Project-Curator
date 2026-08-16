@@ -182,8 +182,11 @@ export function folderDetailsFromProto(p: PFolderDetails): FolderDetails {
     missing_image_count: n(p.missingImageCount),
     missing_video_count: n(p.missingVideoCount),
     is_missing: p.isMissing,
+    safety_classified: n(p.safetyClassified),
+    safety_pending: n(p.safetyPending),
   };
 }
+
 
 export function duplicateFolderInfoFromProto(p: PDuplicateFolderInfo): DuplicateFolderInfo {
   return {

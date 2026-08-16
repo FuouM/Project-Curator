@@ -3,7 +3,15 @@ import { typedCall } from "../ipc";
 import { logJS, escapeHtml, formatDate } from "../utils";
 import { maskPath, SafeHtml, html } from "../components";
 import { folderDetailsFromProto, duplicateFolderInfoFromProto } from "../proto-adapters";
-import { RescanFolderRequestSchema, RescanFolderResultSchema, IndexFolderRequestSchema, IndexFolderResultSchema, ImportedFoldersResultSchema } from "../gen/import_pb";
+import {
+  RescanFolderRequestSchema,
+  RescanFolderResultSchema,
+  IndexFolderRequestSchema,
+  IndexFolderResultSchema,
+  ImportedFoldersResultSchema,
+  ClassifyFolderSafetyRequestSchema,
+  ClassifyFolderSafetyResultSchema,
+} from "../gen/import_pb";
 import { UpdateFolderPathRequestSchema, UpdateFolderPathResultSchema, DeleteFolderRequestSchema, DeleteFolderResultSchema, DuplicateFoldersResultSchema, MergeFoldersRequestSchema, MergeFoldersResultSchema } from "../gen/folders_pb";
 import type { DuplicateFolderGroup as PDuplicateFolderGroup } from "../gen/common_pb";
 import type { DuplicateFolderGroup, FolderDetails } from "../types";
@@ -29,6 +37,11 @@ function folderRowHtml(folder: FolderDetails): string {
   const needsIndexCount = Math.max(0,
     totalMedia - folder.vector_ready - folder.vector_pending - folder.missing_image_count - folder.missing_video_count);
 
+  const safetyText = totalMedia > 0
+    ? `<span style="color: #2e7d32;">${folder.safety_classified}</span> / ${totalMedia}`
+    : '<span style="color: #999;">0</span>';
+  const safetyPending = folder.safety_pending;
+
   const statusIcon = folder.is_missing
     ? '<i class="bi bi-exclamation-triangle" style="color: #e8912d;" title="Folder missing from disk"></i>'
     : folder.missing_image_count > 0 || folder.missing_video_count > 0
@@ -45,6 +58,7 @@ function folderRowHtml(folder: FolderDetails): string {
     <td style="white-space: nowrap;"><div style="display: flex; justify-content: flex-end; align-items: center;">${folder.image_count}<i class="bi bi-image" style="color: #1a7f37; margin-left: 4px; font-size: 11px;" title="Image files"></i><span style="display: inline-block; width: 34px; text-align: left; font-size: 10px; color: #e8912d; margin-left: 4px;" title="${folder.missing_image_count} missing">${folder.missing_image_count > 0 ? `(-${folder.missing_image_count})` : ''}</span></div></td>
     <td style="white-space: nowrap;"><div style="display: flex; justify-content: flex-end; align-items: center;">${folder.video_count}<i class="bi bi-film" style="color: #6a3fa0; margin-left: 4px; font-size: 11px;" title="Video files (mp4/webm)"></i><span style="display: inline-block; width: 34px; text-align: left; font-size: 10px; color: #e8912d; margin-left: 4px;" title="${folder.missing_video_count} missing">${folder.missing_video_count > 0 ? `(-${folder.missing_video_count})` : ''}</span></div></td>
     <td style="text-align: right;">${vectorText}${needsIndexCount > 0 ? ` <span style="color: #e8912d; font-size: 10px; font-weight: 600;" title="Media without a vector">(+${needsIndexCount} unindexed)</span>` : ''}</td>
+    <td style="text-align: right;">${safetyText}${safetyPending > 0 ? ` <span style="color: #e8912d; font-size: 10px; font-weight: 600;" title="Media without safety classification">(+${safetyPending} unclassified)</span>` : ''}</td>
     <td style="font-size: 11px; color: #555;">${formatDate(folder.imported_at)}</td>
     <td style="text-align: center; white-space: nowrap;">`;
 
@@ -66,6 +80,9 @@ function folderRowHtml(folder: FolderDetails): string {
       </button>
       <button class="win-button folders-index-btn" data-folder-id="${folder.id}" style="font-size: 11px; padding: 2px 8px; margin-left: 4px;" title="Queue vector indexing for media without a ready vector">
         <i class="bi bi-cpu"></i> Index
+      </button>
+      <button class="win-button folders-safety-btn" data-folder-id="${folder.id}" style="font-size: 11px; padding: 2px 8px; margin-left: 4px;" title="Classify content safety for unclassified media in this folder">
+        <i class="bi bi-shield-check"></i> Safety
       </button>`;
   }
 
@@ -138,6 +155,37 @@ function bindFolderActions(container: HTMLElement) {
       btn.innerHTML = original;
     });
   });
+
+  container.querySelectorAll<HTMLButtonElement>(".folders-safety-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const folderId = parseInt(btn.getAttribute("data-folder-id") || "0");
+      if (!folderId) return;
+
+      const original = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<i class="bi bi-shield-shaded"></i> Classifying...`;
+      try {
+        const resp = await typedCall(
+          "ImportService.ClassifyFolderSafety",
+          ClassifyFolderSafetyRequestSchema,
+          { folderId: BigInt(folderId) },
+          ClassifyFolderSafetyResultSchema
+        );
+        const processed = Number(resp.processed);
+        const msg = processed > 0
+          ? `Classified content safety for ${processed} media file(s) in this folder.`
+          : "All media in this folder is already classified.";
+        logJS(msg);
+        refreshFolders();
+      } catch (err: any) {
+        logJS("Safety classification error: " + (err?.message || String(err)));
+      }
+      btn.disabled = false;
+      btn.innerHTML = original;
+    });
+  });
+
 
   container.querySelectorAll<HTMLElement>(".folders-update-btn").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
@@ -218,7 +266,9 @@ export async function refreshFolders() {
               <th style="text-align: right; padding-right: 54px;">Images</th>
               <th style="text-align: right; padding-right: 54px;">Videos</th>
               <th style="text-align: right;">Vectors</th>
+              <th style="text-align: right;">Safety</th>
               <th style="text-align: left;">Imported</th>
+
               <th style="text-align: center;">Actions</th>
             </tr>
           </thead>

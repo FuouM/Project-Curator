@@ -127,9 +127,12 @@ impl From<FolderDetails> for commonpb::FolderDetails {
             missing_image_count: v.missing_image_count,
             missing_video_count: v.missing_video_count,
             is_missing: v.is_missing,
+            safety_classified: v.safety_classified,
+            safety_pending: v.safety_pending,
         }
     }
 }
+
 
 impl From<DuplicateFolderInfo> for commonpb::DuplicateFolderInfo {
     fn from(v: DuplicateFolderInfo) -> Self {
