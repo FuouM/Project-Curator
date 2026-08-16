@@ -39,14 +39,26 @@ impl ImportService for ImportServiceImpl {
         request: TonicRequest<ImportImageRequest>,
     ) -> Result<TonicResponse<ImportResult>, Status> {
         let req = request.into_inner();
+        let paths: Vec<String> = if !req.paths.is_empty() {
+            req.paths
+        } else if !req.path.is_empty() {
+            req.path
+                .split(|c| c == ';' || c == '\n' || c == '\r')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         // Import performs a long burst of SQLite writes; serialize against
         // concurrent scan/import operations (see `dispatch`).
         let _write_guard = self.ctx.import_lock.lock().await;
         let active = self.active_embedding_model().await;
         let ffmpeg = self.resolved_ffmpeg().await;
-        let (image_id, sha256, imported_count, folder_id) =
-            handlers::import::import_image_logic(
-                &req.path,
+        let (image_id, sha256, imported_count, folder_ids) =
+            handlers::import::import_paths_logic(
+                &paths,
                 &self.ctx.db,
                 active,
                 ffmpeg.as_deref(),
@@ -60,8 +72,10 @@ impl ImportService for ImportServiceImpl {
             image_id,
             sha256,
             imported_count: imported_count as u32,
-            folder_id,
+            folder_id: folder_ids.first().copied(),
+            folder_ids,
         }))
+
     }
 
     async fn get_import_progress(

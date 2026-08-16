@@ -36,6 +36,7 @@ message CancelImportResult {
 
 message ImportImageRequest {
   string path = 1;
+  repeated string paths = 2;
 }
 
 message ImportResult {
@@ -43,7 +44,9 @@ message ImportResult {
   string sha256 = 2;
   uint32 imported_count = 3;
   optional int64 folder_id = 4;
+  repeated int64 folder_ids = 5;
 }
+
 
 
 message ImportedFoldersResult {

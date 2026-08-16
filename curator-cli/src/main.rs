@@ -221,9 +221,13 @@ async fn main() -> Result<(), Error> {
         Commands::Import { path } => {
             let mut client = ImportServiceClient::new(channel);
             let resp = client
-                .import_image(ImportImageRequest { path })
+                .import_image(ImportImageRequest {
+                    path,
+                    paths: Vec::new(),
+                })
                 .await
                 .context("gRPC ImportImage request failed")?
+
                 .into_inner();
             println!(
                 "Successfully imported image/folder ({} item(s)):",

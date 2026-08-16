@@ -933,4 +933,19 @@ export function setupBrowseButton(btnId: string, targetInput: HTMLInputElement, 
   });
 }
 
+export function setupBrowseMultiButton(btnId: string, targetInput: HTMLInputElement, isDirectory: boolean) {
+  document.getElementById(btnId)?.addEventListener("click", async () => {
+    try {
+      const selected: string[] = await invoke("select_paths", { isDirectory });
+      if (selected && selected.length > 0) {
+        targetInput.value = selected.join("; ");
+        targetInput.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    } catch (err) {
+      console.error(`${isDirectory ? "Folders" : "Files"} dialog error: `, err);
+    }
+  });
+}
+
+
 

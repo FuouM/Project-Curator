@@ -278,6 +278,23 @@ async fn select_path(is_directory: bool) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+async fn select_paths(is_directory: bool) -> Result<Vec<String>, String> {
+    let dialog = rfd::AsyncFileDialog::new();
+    if is_directory {
+        let folders = dialog.pick_folders().await;
+        Ok(folders
+            .map(|list| list.into_iter().map(|f| f.path().to_string_lossy().to_string()).collect())
+            .unwrap_or_default())
+    } else {
+        let files = dialog.pick_files().await;
+        Ok(files
+            .map(|list| list.into_iter().map(|f| f.path().to_string_lossy().to_string()).collect())
+            .unwrap_or_default())
+    }
+}
+
+
+#[tauri::command]
 async fn get_file_size(path: String) -> Result<Option<u64>, String> {
     let p = std::path::Path::new(&path);
     if p.is_file() {
@@ -650,7 +667,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             send_to_service_typed,
             select_path,
+            select_paths,
             save_file_dialog,
+
             save_edited_image,
             get_file_size,
             read_logs,

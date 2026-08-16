@@ -10,7 +10,7 @@ import {
 import { StatusResultSchema } from "../gen/system_pb";
 import { SafeHtml, html } from "../components";
 import { setStatusMessage } from "../utils";
-import { setupBrowseButton } from "../cards";
+import { setupBrowseMultiButton } from "../cards";
 import { refreshDashboard } from "./dashboard";
 import { refreshGallery } from "./gallery";
 
@@ -25,8 +25,8 @@ export function setupImport() {
   const dismissBtn = document.getElementById("import-dismiss-btn") as HTMLButtonElement | null;
 
   if (importInput) {
-    setupBrowseButton("browse-file-btn", importInput, false);
-    setupBrowseButton("browse-folder-btn", importInput, true);
+    setupBrowseMultiButton("browse-file-btn", importInput, false);
+    setupBrowseMultiButton("browse-folder-btn", importInput, true);
   }
 
   dismissBtn?.addEventListener("click", () => {
@@ -60,7 +60,18 @@ export function setupImport() {
     e.preventDefault();
     if (!importInput || !importMsg) return;
 
-    setStatusMessage(importMsg, "Starting import scan...", "loading");
+    const rawValue = importInput.value;
+    const paths = rawValue
+      .split(/[\r\n;]+/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+
+    if (paths.length === 0) {
+      setStatusMessage(importMsg, "Please specify at least one valid path.", "error");
+      return;
+    }
+
+    setStatusMessage(importMsg, `Starting import scan for ${paths.length} path(s)...`, "loading");
 
     const panel = document.getElementById("import-progress-panel");
     const title = document.getElementById("import-progress-title");
@@ -72,7 +83,7 @@ export function setupImport() {
     const dismissBtn = document.getElementById("import-dismiss-btn") as HTMLButtonElement | null;
 
     if (panel) panel.style.display = "block";
-    if (title) title.textContent = "Scanning directory...";
+    if (title) title.textContent = "Scanning directories...";
     if (bar) bar.style.width = "0%";
     if (percent) percent.textContent = "0%";
     if (indexedCount) indexedCount.textContent = "Discovering files...";
@@ -87,13 +98,20 @@ export function setupImport() {
     startScanProgressPolling();
 
     try {
-      const resp = await typedCall("ImportService.ImportImage", ImportImageRequestSchema, { path: importInput.value }, ImportResultSchema);
+      const resp = await typedCall(
+        "ImportService.ImportImage",
+        ImportImageRequestSchema,
+        { paths, path: paths[0] || "" },
+        ImportResultSchema
+      );
       stopScanProgressPolling();
 
-      const { importedCount, folderId } = resp;
-      if (folderId && importedCount) {
-        setStatusMessage(importMsg, `Import completed! Queued ${importedCount} image(s) for indexing...`, "loading");
-        startImportProgressPolling(Number(folderId), importedCount);
+      const { importedCount, folderId, folderIds } = resp;
+      const targetFolderIds = folderIds && folderIds.length > 0 ? folderIds.map(Number) : (folderId ? [Number(folderId)] : []);
+
+      if (importedCount && targetFolderIds.length > 0) {
+        setStatusMessage(importMsg, `Import completed! Queued ${importedCount} image(s) across ${targetFolderIds.length} folder(s) for indexing...`, "loading");
+        startImportProgressPolling(targetFolderIds, importedCount);
       } else {
         if (cancelBtn) cancelBtn.style.display = "none";
         if (dismissBtn) dismissBtn.style.display = "inline-flex";
@@ -198,7 +216,7 @@ function stopScanProgressPolling() {
   }
 }
 
-function startImportProgressPolling(targetFolderId: number, expectedBatchCount: number) {
+function startImportProgressPolling(targetFolderIds: number[], expectedBatchCount: number) {
   const panel = document.getElementById("import-progress-panel");
   const title = document.getElementById("import-progress-title");
   const percent = document.getElementById("import-progress-percent");
@@ -227,10 +245,13 @@ function startImportProgressPolling(targetFolderId: number, expectedBatchCount: 
       const statusResp = await typedCall("SystemService.GetStatus", null, null, StatusResultSchema);
 
       const pendingWorkerJobs = Number(statusResp.pendingJobs) + Number(statusResp.preprocessingJobs);
-      const folder = foldersResp.folders.map(folderDetailsFromProto).find((f) => f.id === targetFolderId);
-      if (folder) {
-        const total = folder.image_count || expectedBatchCount;
-        const ready = folder.vector_ready;
+      const targetFolders = foldersResp.folders
+        .map(folderDetailsFromProto)
+        .filter((f) => targetFolderIds.includes(f.id));
+
+      if (targetFolders.length > 0) {
+        const total = targetFolders.reduce((acc, f) => acc + f.image_count, 0) || expectedBatchCount;
+        const ready = targetFolders.reduce((acc, f) => acc + f.vector_ready, 0);
 
         if (indexedCount) indexedCount.textContent = `Indexed Vectors: ${ready} / Total Images: ${total}`;
         if (pendingCount) pendingCount.textContent = `Pending Jobs: ${pendingWorkerJobs}`;
@@ -244,7 +265,7 @@ function startImportProgressPolling(targetFolderId: number, expectedBatchCount: 
             bar.style.width = "100%";
             percent.textContent = "100%";
             if (title) title.textContent = "✓ Import & Vector Indexing Complete!";
-            if (statusMsg) setStatusMessage(statusMsg, `Successfully imported and indexed all ${total} images!`, "success");
+            if (statusMsg) setStatusMessage(statusMsg, `Successfully imported and indexed all ${total} images across ${targetFolders.length} folder(s)!`, "success");
             if (dismissBtn) dismissBtn.style.display = "inline-flex";
             clearInterval(importProgressTimer);
             importProgressTimer = null;
@@ -268,11 +289,11 @@ export function renderImportHtml(): SafeHtml {
       <form id="import-form">
         <div class="form-group">
           <div class="input-wrapper" style="flex: 1; min-width: 250px;">
-            <input class="input-field has-clear" id="import-path-input" placeholder="Enter file or folder path (e.g. C:\\Photos)..." style="width: 100%;" required />
+            <input class="input-field has-clear" id="import-path-input" placeholder="Enter file or folder path(s) (e.g. C:\\Photos; D:\\Art)..." style="width: 100%;" required />
             <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
           </div>
-          <button type="button" class="win-button" id="browse-file-btn"><i class="bi bi-file-earmark"></i> File...</button>
-          <button type="button" class="win-button" id="browse-folder-btn"><i class="bi bi-folder"></i> Folder...</button>
+          <button type="button" class="win-button" id="browse-file-btn"><i class="bi bi-file-earmark"></i> Files...</button>
+          <button type="button" class="win-button" id="browse-folder-btn"><i class="bi bi-folder"></i> Folders...</button>
           <button type="submit" class="win-button primary" id="start-import-btn"><i class="bi bi-download"></i> Start Import</button>
         </div>
       </form>
@@ -302,5 +323,6 @@ export function renderImportHtml(): SafeHtml {
     </div>
   `;
 }
+
 
 
