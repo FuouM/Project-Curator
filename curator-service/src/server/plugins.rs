@@ -43,7 +43,7 @@ async fn dispatch_plugin_command(
             let job_id = params["job_id"]
                 .as_str()
                 .ok_or_else(|| Status::invalid_argument("missing job_id"))?;
-            let progress = handlers::transcode::get_transcode_progress(job_id, &ctx.transcode_progress).await;
+            let progress = curator_core::transcode::get_transcode_progress(job_id, &ctx.transcode_progress).await;
             Ok(serde_json::json!({
                 "TranscodeProgressResult": {
                     "running": progress.running,
@@ -65,14 +65,22 @@ async fn dispatch_plugin_command(
             let path = params["path"]
                 .as_str()
                 .ok_or_else(|| Status::invalid_argument("missing path"))?;
-            match handlers::transcode::get_media_metadata(&ctx.data_dir, &ctx.settings, path).await {
-                Ok(meta) => Ok(serde_json::json!({
-                    "MediaMetadataResult": {
-                        "duration_ms": meta.duration_ms,
-                        "fps": meta.fps,
-                        "total_frames": meta.total_frames,
+            let resolved = handlers::resolve_relative_path(&ctx.data_dir, path);
+            match handlers::resolve_ffmpeg_path(&ctx.data_dir, &ctx.settings).await {
+                Ok(ffmpeg) => {
+                    match curator_core::transcode::read_media_metadata(std::path::Path::new(&resolved), &ffmpeg) {
+                        Ok(meta) => Ok(serde_json::json!({
+                            "MediaMetadataResult": {
+                                "duration_ms": meta.duration_ms,
+                                "fps": meta.fps,
+                                "total_frames": meta.total_frames,
+                            }
+                        })),
+                        Err(e) => Ok(serde_json::json!({
+                            "Error": { "message": e.to_string() }
+                        })),
                     }
-                })),
+                }
                 Err(e) => Ok(serde_json::json!({
                     "Error": { "message": e.to_string() }
                 })),
@@ -91,7 +99,7 @@ async fn dispatch_plugin_command(
                     conversions.push((resolved_src, resolved_dst));
                 }
             }
-            let converted = handlers::convert::convert_images(conversions, quality)
+            let converted = curator_core::convert::convert_images(conversions, quality)
                 .await
                 .map_err(internal_status)?;
             let converted_json: Vec<serde_json::Value> = converted
@@ -134,7 +142,7 @@ async fn dispatch_plugin_command(
                 .await
                 .map_err(internal_status)?;
 
-            let opts = handlers::transcode::TranscodeOptions {
+            let opts = curator_core::transcode::TranscodeOptions {
                 vcodec,
                 acodec,
                 crf,
@@ -147,7 +155,7 @@ async fn dispatch_plugin_command(
                 custom_args,
             };
 
-            if let Err(e) = handlers::transcode::start_transcode(
+            if let Err(e) = curator_core::transcode::start_transcode(
                 job_id,
                 &input_path,
                 &output_path,
@@ -184,14 +192,14 @@ async fn dispatch_plugin_command(
                 .await
                 .map_err(internal_status)?;
 
-            let opts = handlers::gif::CreateGifOptions {
+            let opts = curator_core::gif::CreateGifOptions {
                 frame_rate: Some(frame_rate),
                 width,
                 height,
                 loop_count,
             };
 
-            if let Err(e) = handlers::gif::create_gif_from_images(
+            if let Err(e) = curator_core::gif::create_gif_from_images(
                 job_id.to_string(),
                 image_pattern,
                 output_path,
@@ -245,7 +253,7 @@ async fn dispatch_plugin_command(
                 .await
                 .map_err(internal_status)?;
 
-            let opts = handlers::gif::GifEffectsOptions {
+            let opts = curator_core::gif::GifEffectsOptions {
                 crop,
                 scale,
                 speed_multiplier,
@@ -269,7 +277,7 @@ async fn dispatch_plugin_command(
                 trim_end,
             };
 
-            if let Err(e) = handlers::gif::process_gif_effects(
+            if let Err(e) = curator_core::gif::process_gif_effects(
                 job_id.to_string(),
                 input_path,
                 output_path,
@@ -301,7 +309,7 @@ async fn dispatch_plugin_command(
                 .await
                 .map_err(internal_status)?;
 
-            if let Err(e) = handlers::gif::split_gif(
+            if let Err(e) = curator_core::gif::split_gif(
                 job_id.to_string(),
                 input_path,
                 output_dir,
@@ -316,6 +324,7 @@ async fn dispatch_plugin_command(
             }
             Ok(serde_json::json!("Success"))
         }
+
         "CheckPluginRuntimeInstalled" => {
             let plugin = params["plugin"]
                 .as_str()
@@ -584,7 +593,7 @@ async fn dispatch_plugin_command(
                 return Err(Status::invalid_argument("missing plugin_id"));
             }
             let params_arr = params["params"].as_array().cloned().unwrap_or_default();
-            match handlers::plugin_db::plugin_db_execute(&ctx.data_dir, plugin_id, db, sql, &params_arr)
+            match curator_core::plugin_db_execute(&ctx.data_dir, plugin_id, db, sql, &params_arr)
                 .await
             {
                 Ok(rows_affected) => Ok(serde_json::json!({
@@ -605,7 +614,7 @@ async fn dispatch_plugin_command(
                 return Err(Status::invalid_argument("missing plugin_id"));
             }
             let params_arr = params["params"].as_array().cloned().unwrap_or_default();
-            match handlers::plugin_db::plugin_db_query(&ctx.data_dir, plugin_id, db, sql, &params_arr).await {
+            match curator_core::plugin_db_query(&ctx.data_dir, plugin_id, db, sql, &params_arr).await {
                 Ok(rows) => Ok(serde_json::json!({
                     "PluginDbQueryResult": { "rows": rows }
                 })),
@@ -614,6 +623,7 @@ async fn dispatch_plugin_command(
                 })),
             }
         }
+
 
         unknown => Err(Status::invalid_argument(format!("Unknown plugin command: {unknown}"))),
     }

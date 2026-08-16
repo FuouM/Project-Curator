@@ -66,13 +66,14 @@ impl ImportService for ImportServiceImpl {
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<ImportedFoldersResult>, Status> {
-        let folders = handlers::import::get_imported_folders_logic(&self.ctx.db)
+        let folders = curator_core::FolderRepo::get_imported_folders(&self.ctx.db)
             .await
             .map_err(internal_status)?;
         Ok(TonicResponse::new(ImportedFoldersResult {
             folders: folders.into_iter().map(Into::into).collect(),
         }))
     }
+
 
     async fn backfill_image_folders(
         &self,

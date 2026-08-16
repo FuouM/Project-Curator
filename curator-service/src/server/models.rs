@@ -296,13 +296,12 @@ impl ModelsService for ModelsServiceImpl {
         request: TonicRequest<GetMediaMetadataRequest>,
     ) -> Result<TonicResponse<MediaMetadataResult>, Status> {
         let req = request.into_inner();
-        let meta = handlers::transcode::get_media_metadata(
-            &self.ctx.data_dir,
-            &self.ctx.settings,
-            &req.path,
-        )
-        .await
-        .map_err(internal_status)?;
+        let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
+            .await
+            .map_err(internal_status)?;
+        let resolved = handlers::resolve_relative_path(&self.ctx.data_dir, &req.path);
+        let meta = curator_core::transcode::read_media_metadata(std::path::Path::new(&resolved), &ffmpeg)
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(MediaMetadataResult {
             duration_ms: meta.duration_ms,
             fps: meta.fps,
@@ -310,3 +309,4 @@ impl ModelsService for ModelsServiceImpl {
         }))
     }
 }
+

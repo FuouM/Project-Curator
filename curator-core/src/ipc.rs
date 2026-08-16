@@ -24,26 +24,14 @@ pub struct TaggerBenchmarkInfo {
     pub gpu_error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StorageTypeStat {
-    pub category: String, // "Images", "GIFs", "Videos", "Other"
-    pub extension: String,
-    pub size_bytes: u64,
-    pub count: u64,
-}
+pub use curator_filename_parser::ParsedMetadata;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StorageStats {
-    pub stats: Vec<StorageTypeStat>,
-}
+// Canonical models from curator_db
+pub use curator_db::models::{
+    AnimationSummary, CharacterIdentitySummary, DuplicateFolderGroup, DuplicateFolderInfo,
+    FolderDetails, ImageDetails, StorageStats, StorageTypeStat, TagStat, TagSummary, VideoSummary,
+};
 
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct TagStat {
-    pub tag: String,
-    pub category: String,
-    pub count: i64,
-}
 
 /// Metadata describing a discovered plugin (parsed from `manifest.json`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,136 +95,6 @@ pub struct SearchMatch {
     pub drawing_score: Option<f32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImageDetails {
-    pub id: i64,
-    pub sha256: String,
-    pub current_filepath: String,
-    pub mtime: i64,
-    pub created_at: String,
-    pub tags: Vec<TagSummary>,
-    #[serde(default)]
-    pub blacklisted_tags: Vec<TagSummary>,
-    pub vector_state: String,
-    pub favorite: bool,
-    #[serde(default)]
-    pub parsed_metadata: Option<ParsedMetadata>,
-    #[serde(default)]
-    pub is_missing: bool,
-    #[serde(default)]
-    pub character_identities: Vec<CharacterIdentitySummary>,
-    #[serde(default)]
-    pub ocr_text: Option<String>,
-    #[serde(default)]
-    pub width: Option<i64>,
-    #[serde(default)]
-    pub height: Option<i64>,
-    #[serde(default)]
-    pub animation: Option<AnimationSummary>,
-    /// Video stream & container details (present only for mp4/webm assets).
-    #[serde(default)]
-    pub video: Option<VideoSummary>,
-    #[serde(default)]
-    pub note: Option<String>,
-    /// NSFW safety per-class probabilities (optional; `None` = unclassified).
-    #[serde(default)]
-    pub safe_score: Option<f32>,
-    #[serde(default)]
-    pub hentai_score: Option<f32>,
-    #[serde(default)]
-    pub porn_score: Option<f32>,
-    #[serde(default)]
-    pub sexy_score: Option<f32>,
-    #[serde(default)]
-    pub drawing_score: Option<f32>,
-}
-
-/// Animated media details (present only for animated files, e.g. GIF).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnimationSummary {
-    pub format: String,
-    pub frame_count: i64,
-    /// Raw sum of per-frame delays in milliseconds.
-    pub duration_ms: i64,
-    /// Netscape loop count: `None` = no loop extension, `0` = infinite.
-    pub loop_count: Option<i64>,
-    pub is_animated: bool,
-}
-
-/// Video stream & container details for mp4/webm assets.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VideoSummary {
-    pub format: String,
-    pub duration_ms: i64,
-    pub fps: f64,
-    pub video_codec: String,
-    pub audio_codec: Option<String>,
-    pub bitrate: Option<i64>,
-    pub width: Option<i64>,
-    pub height: Option<i64>,
-}
-
-/// Lightweight character identity reference for card display.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CharacterIdentitySummary {
-    pub id: i64,
-    pub name: String,
-}
-
-// ParsedMetadata is defined in filename_parser and re-used here
-pub use crate::filename_parser::ParsedMetadata;
-
-/// A single predicted or user tag returned.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct TagSummary {
-    pub tag: String,
-    pub category: String,
-    pub confidence: f32,
-    #[serde(default)]
-    #[sqlx(default)]
-    pub source_name: Option<String>,
-    #[serde(default)]
-    #[sqlx(default)]
-    pub is_blacklisted: bool,
-}
-
-/// Folder details with statistics for the Imported Folders tab.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FolderDetails {
-    pub id: i64,
-    pub path: String,
-    pub name: String,
-    pub imported_at: String,
-    pub image_count: i64,
-    /// Count of video files (mp4/webm) in this folder.
-    pub video_count: i64,
-    pub vector_ready: i64,
-    pub vector_pending: i64,
-    pub missing_image_count: i64,
-    /// Count of missing (deleted from disk) video files in this folder.
-    pub missing_video_count: i64,
-    pub is_missing: bool,
-}
-
-/// A group of folders that share images (potential duplicates).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DuplicateFolderGroup {
-    /// The folders in this group, sorted by image count (largest first).
-    pub folders: Vec<DuplicateFolderInfo>,
-    /// Number of shared images between the folders in this group.
-    pub shared_image_count: i64,
-}
-
-/// Info about a folder in a duplicate group.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DuplicateFolderInfo {
-    pub id: i64,
-    pub path: String,
-    pub name: String,
-    pub image_count: i64,
-    /// Number of images in this folder that overlap with other folders in the group.
-    pub overlap_count: i64,
-}
 
 /// Stored OCR detection representation.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

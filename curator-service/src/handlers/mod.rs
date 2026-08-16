@@ -1,7 +1,6 @@
 pub mod benchmarks;
 pub mod common;
 pub mod concepts;
-pub mod convert;
 pub mod dashboard;
 pub mod download;
 pub mod ffmpeg;
@@ -10,7 +9,6 @@ pub mod import;
 pub mod misc;
 pub mod models;
 pub mod ocr;
-pub mod plugin_db;
 pub mod plugins;
 pub mod plugin_runtime;
 pub mod safety;
@@ -19,10 +17,9 @@ pub mod settings;
 pub mod tags;
 pub mod tagging;
 pub mod tools;
-pub mod transcode;
-pub mod gif;
 
 use std::path::Path;
+
 use std::sync::Arc;
 
 use crate::AppSettings;

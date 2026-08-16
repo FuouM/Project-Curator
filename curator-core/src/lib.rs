@@ -14,18 +14,26 @@ pub use curator_filename_parser::{FilenameParser, ParsedMetadata};
 
 // ── curator-media ───────────────────────────────────────────────────────
 pub use curator_media as media_engine;
+pub use curator_media::convert;
 pub use curator_media::crop_cache;
 pub use curator_media::decode as image_decode;
+pub use curator_media::gif;
 pub use curator_media::media;
 pub use curator_media::thumbnail;
+pub use curator_media::transcode;
 pub use curator_media::video;
 pub use curator_media::CropCache;
 pub use curator_media::media::{is_gif, read_dimensions, read_gif_animation, sha256_file, AnimationInfo};
 pub use curator_media::video::{decode_path, is_video, VideoInfo};
 
+
 // ── curator-db ──────────────────────────────────────────────────────────
 pub use curator_db as db;
-pub use curator_db::{init_db, models, VectorIndex};
+pub use curator_db::{
+    init_db, models, open_plugin_db, plugin_data_root, plugin_db_execute, plugin_db_query,
+    ConceptRepo, CustomConceptRecord, FolderRepo, ImageRepo, SourceRepo, TagRepo, VectorIndex,
+};
+
 
 // ── curator-ml ──────────────────────────────────────────────────────────
 pub use curator_ml::{benchmark, concept, detection, onnx, preprocess, tagger};

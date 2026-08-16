@@ -2,9 +2,15 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use std::path::Path;
 use tracing::info;
 
+pub mod grpc_convert;
 pub mod models;
+pub mod plugin_db;
+pub mod repos;
 pub mod vector_index;
 
+
+pub use plugin_db::{open_plugin_db, plugin_data_root, plugin_db_execute, plugin_db_query};
+pub use repos::{ConceptRepo, CustomConceptRecord, FolderRepo, ImageRepo, SourceRepo, TagRepo};
 pub use vector_index::VectorIndex;
 
 pub async fn init_db<P: AsRef<Path>>(db_path: P) -> Result<SqlitePool, anyhow::Error> {

@@ -14,3 +14,5 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 sha2 = { workspace = true }
+curator-proto = { path = "../curator-proto" }
+curator-filename-parser = { path = "../curator-filename-parser" }

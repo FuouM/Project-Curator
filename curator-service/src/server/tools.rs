@@ -36,11 +36,11 @@ impl ToolsService for ToolsServiceImpl {
             .into_iter()
             .map(|pair| (pair.source_path, pair.target_path))
             .collect();
-        let converted = handlers::convert::convert_images(conversions, req.quality as u8)
+        let converted = curator_core::convert::convert_images(conversions, req.quality as u8)
             .await
             .map_err(internal_status)?;
         Ok(TonicResponse::new(ConvertImagesResult {
-            converted: converted.into_iter().map(Into::into).collect(),
+            converted,
         }))
     }
 
@@ -49,9 +49,7 @@ impl ToolsService for ToolsServiceImpl {
         request: TonicRequest<PathExistsRequest>,
     ) -> Result<TonicResponse<PathExistsResult>, Status> {
         let req = request.into_inner();
-        let exists = handlers::misc::path_exists(&req.path)
-            .await
-            .map_err(internal_status)?;
+        let exists = std::path::Path::new(&req.path).exists();
         Ok(TonicResponse::new(PathExistsResult { exists }))
     }
 
@@ -65,7 +63,7 @@ impl ToolsService for ToolsServiceImpl {
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
             .map_err(internal_status)?;
-        let opts = handlers::transcode::TranscodeOptions {
+        let opts = curator_core::transcode::TranscodeOptions {
             vcodec: req.vcodec,
             acodec: req.acodec,
             crf: req.crf,
@@ -77,7 +75,7 @@ impl ToolsService for ToolsServiceImpl {
             sample_rate: req.sample_rate,
             custom_args: req.custom_args,
         };
-        handlers::transcode::start_transcode(
+        curator_core::transcode::start_transcode(
             &req.job_id,
             &resolved_input,
             &resolved_output,
@@ -97,7 +95,7 @@ impl ToolsService for ToolsServiceImpl {
     ) -> Result<TonicResponse<TranscodeProgressResult>, Status> {
         let req = request.into_inner();
         let state =
-            handlers::transcode::get_transcode_progress(&req.job_id, &self.ctx.transcode_progress)
+            curator_core::transcode::get_transcode_progress(&req.job_id, &self.ctx.transcode_progress)
                 .await;
         Ok(TonicResponse::new(TranscodeProgressResult {
             job_id: req.job_id,
@@ -127,13 +125,13 @@ impl ToolsService for ToolsServiceImpl {
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
             .map_err(internal_status)?;
-        let opts = handlers::gif::CreateGifOptions {
+        let opts = curator_core::gif::CreateGifOptions {
             frame_rate: Some(req.frame_rate),
             width: req.width,
             height: req.height,
             loop_count: req.loop_count,
         };
-        handlers::gif::create_gif_from_images(
+        curator_core::gif::create_gif_from_images(
             req.job_id,
             resolved_pattern,
             resolved_output,
@@ -157,7 +155,7 @@ impl ToolsService for ToolsServiceImpl {
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
             .map_err(internal_status)?;
-        let opts = handlers::gif::GifEffectsOptions {
+        let opts = curator_core::gif::GifEffectsOptions {
             crop: req.crop,
             scale: req.scale,
             speed_multiplier: req.speed_multiplier,
@@ -180,7 +178,7 @@ impl ToolsService for ToolsServiceImpl {
             trim_start: req.trim_start,
             trim_end: req.trim_end,
         };
-        handlers::gif::process_gif_effects(
+        curator_core::gif::process_gif_effects(
             req.job_id,
             resolved_input,
             resolved_output,
@@ -205,7 +203,7 @@ impl ToolsService for ToolsServiceImpl {
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
             .map_err(internal_status)?;
-        handlers::gif::split_gif(
+        curator_core::gif::split_gif(
             req.job_id,
             resolved_input,
             resolved_output_dir,
@@ -216,6 +214,7 @@ impl ToolsService for ToolsServiceImpl {
         .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
+
 
     async fn get_benchmark_images(
         &self,

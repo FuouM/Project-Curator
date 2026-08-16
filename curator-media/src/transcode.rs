@@ -1,12 +1,9 @@
-use anyhow::Context;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::{error, info};
-
-use crate::AppSettings;
 
 /// Resolved metadata of a media file, surfaced by `GetMediaMetadata`.
 #[derive(Debug, Clone)]
@@ -16,16 +13,12 @@ pub struct MediaMetadata {
     pub total_frames: u32,
 }
 
-/// Read video metadata (duration, fps, derived frame count) via the resolved
-/// FFmpeg/ffprobe. Fails fast when FFmpeg is missing or the file is invalid.
-pub async fn get_media_metadata(
-    data_dir: &Path,
-    settings: &Arc<tokio::sync::Mutex<AppSettings>>,
-    path: &str,
+/// Read video metadata (duration, fps, derived frame count) via the resolved FFmpeg/ffprobe.
+pub fn read_media_metadata(
+    path: &Path,
+    ffmpeg_path: &Path,
 ) -> Result<MediaMetadata> {
-    let resolved_path = crate::handlers::resolve_relative_path(data_dir, path);
-    let ffmpeg = crate::handlers::resolve_ffmpeg_path(data_dir, settings).await?;
-    let meta = curator_core::video::read_video_metadata(Path::new(&resolved_path), &ffmpeg)
+    let meta = crate::video::read_video_metadata(path, ffmpeg_path)
         .map_err(|e| anyhow::anyhow!("Failed to read metadata: {}", e))?;
     let duration_secs = meta.duration_ms as f64 / 1000.0;
     let total_frames = (duration_secs * meta.fps).round() as u32;
@@ -36,13 +29,11 @@ pub async fn get_media_metadata(
     })
 }
 
-/// Shared state for active FFmpeg transcode jobs, keyed by `job_id`. Progress
-/// is written by the spawned ffmpeg task and polled via `GetTranscodeProgress`
-/// (the gRPC-over-pipe transport is unary request/response).
+/// Shared state for active FFmpeg transcode jobs, keyed by `job_id`.
 pub type TranscodeProgressMap =
     Arc<tokio::sync::Mutex<std::collections::HashMap<String, TranscodeJobState>>>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TranscodeJobState {
     pub running: bool,
     pub percent: f32,
@@ -51,7 +42,7 @@ pub struct TranscodeJobState {
     pub out_time_ms: i64,
     pub output_path: Option<String>,
     pub error: Option<String>,
-    /// Full FFmpeg command line, exposed for verbose plugin logging.
+    /// Full FFmpeg command line, exposed for verbose logging.
     pub command: Option<String>,
     pub input_size_bytes: Option<u64>,
     pub output_size_bytes: Option<u64>,
@@ -60,10 +51,7 @@ pub struct TranscodeJobState {
 }
 
 /// Spawn a task that parses FFmpeg `-progress pipe:` stdout key=value lines.
-/// Shared by the transcode and GIF pipelines: it updates the job's fps, speed,
-/// and out_time_ms, computing `percent` via the caller-supplied closure
-/// `(current_percent, out_time_ms, done) -> percent`.
-pub(crate) fn spawn_progress_reader<F>(
+pub fn spawn_progress_reader<F>(
     stdout: tokio::process::ChildStdout,
     progress_map: TranscodeProgressMap,
     job_id: String,
@@ -104,8 +92,7 @@ where
 }
 
 /// Spawn a task that drains an FFmpeg stderr pipe, keeping the last 20 lines.
-/// Prevents pipe-buffer deadlock and captures the tail for failure diagnostics.
-pub(crate) fn spawn_stderr_tail_drainer(
+pub fn spawn_stderr_tail_drainer(
     stderr: tokio::process::ChildStderr,
 ) -> tokio::task::JoinHandle<String> {
     tokio::spawn(async move {
@@ -141,9 +128,6 @@ fn default_job_state(job_id: &str, output_path: String, input_size: Option<u64>)
     )
 }
 
-/// Map a codec/format hint onto explicit FFmpeg args. Preset names follow the
-/// `-preset` values of the target encoder. `crf` and `video_bitrate_kbps` are
-/// mutually exclusive quality controls.
 fn transcode_encoder_args(
     target_format: &str,
     vcodec: Option<&str>,
@@ -228,10 +212,6 @@ fn probe_bitrate_overshoot(input_path: &Path, ffmpeg_path: &Path, video_kbps: u3
     }
 }
 
-/// Tokenize a raw command string into arguments, respecting single and double
-/// quotes. No shell is spawned, so quotes only group tokens that contain
-/// spaces (e.g. filter chains); a backslash escapes a quote inside double
-/// quotes, matching typical shell quoting for ffmpeg filter expressions.
 fn tokenize_args(input: &str) -> Vec<String> {
     let mut tokens: Vec<String> = Vec::new();
     let mut current = String::new();
@@ -264,11 +244,6 @@ fn tokenize_args(input: &str) -> Vec<String> {
     tokens
 }
 
-/// Build the argument list for a fully custom command. `{input}` and
-/// `{output}` placeholders are required and substituted with the real paths;
-/// the guided encoder/audio/quality controls are skipped entirely. Fails fast
-/// when a required placeholder is missing rather than silently appending a
-/// default input/output block.
 fn build_custom_args(
     custom_args: &str,
     input_path: &str,
@@ -314,9 +289,8 @@ pub struct TranscodeOptions {
     pub custom_args: Option<String>,
 }
 
-/// Start an async FFmpeg transcode. Progress is streamed via `-progress
-/// pipe:1` and recorded into `map` under `job_id`; callers poll it with
-/// `get_transcode_progress`. Fails fast when the input file is missing.
+/// Start an async FFmpeg transcode. Progress is streamed via `-progress pipe:1`
+/// and recorded into `map` under `job_id`.
 pub async fn start_transcode(
     job_id: &str,
     input_path: &str,
@@ -325,7 +299,7 @@ pub async fn start_transcode(
     opts: TranscodeOptions,
     ffmpeg_path: &Path,
     map: &TranscodeProgressMap,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let TranscodeOptions {
         vcodec,
         acodec,
@@ -347,10 +321,8 @@ pub async fn start_transcode(
         fs::create_dir_all(parent)?;
     }
 
-    // Read video metadata. Propagate the error if ffprobe fails or parsing fails.
-    let metadata = curator_core::video::read_video_metadata(input, ffmpeg_path)?;
+    let metadata = crate::video::read_video_metadata(input, ffmpeg_path)?;
     let total_duration_ms = metadata.duration_ms.max(1);
-
     let input_size = std::fs::metadata(input).map(|m| m.len()).ok();
 
     {
@@ -394,35 +366,30 @@ pub async fn start_transcode(
             let audio_packets_per_sec = match acodec.as_deref().unwrap_or("") {
                 "libopus" | "opus" => 50.0,
                 "libvorbis" | "vorbis" => 45.0,
-                _ => sample_rate / 1024.0, // standard AAC/MP3 sample frame size is 1024
+                _ => sample_rate / 1024.0,
             };
 
-            // Estimate container overhead mathematically based on frame indexing and packet frequency
             let container_overhead_bytes = match target_format {
                 "webm" => {
-                    let video_overhead = duration_secs * fps * 8.0; // WebM EBML video blocks
-                    let audio_overhead = if has_audio { duration_secs * audio_packets_per_sec * 6.0 } else { 0.0 }; // EBML audio blocks
-                    let cluster_overhead = (duration_secs / 2.0).ceil() * 12.0; // 1 Cluster header (12 bytes) every 2 seconds
-                    video_overhead + audio_overhead + cluster_overhead + 4096.0 // base global metadata
+                    let video_overhead = duration_secs * fps * 8.0;
+                    let audio_overhead = if has_audio { duration_secs * audio_packets_per_sec * 6.0 } else { 0.0 };
+                    let cluster_overhead = (duration_secs / 2.0).ceil() * 12.0;
+                    video_overhead + audio_overhead + cluster_overhead + 4096.0
                 }
-                _ => { // mp4
-                    let video_overhead = duration_secs * fps * 16.0; // stsz + stco index entries & chunk descriptors
+                _ => {
+                    let video_overhead = duration_secs * fps * 16.0;
                     let audio_overhead = if has_audio { duration_secs * audio_packets_per_sec * 16.0 } else { 0.0 };
-                    video_overhead + audio_overhead + 16384.0 // base global moov atom / headers
+                    video_overhead + audio_overhead + 16384.0
                 }
             };
 
-            // Deduct exact calculated container overhead from total budget
             let budget_bytes = budget_mb * 1024.0 * 1024.0;
-            // Strict 90% base payload safety margin
             let available_payload_bytes = (budget_bytes * 0.90 - container_overhead_bytes).max(1024.0);
 
-            // Compute total available bitrate in kbps (1 kbps = 1000 bps for ffmpeg)
             let total_budget_bits = available_payload_bytes * 8.0;
             let total_bitrate_bps = total_budget_bits / duration_secs;
             let total_bitrate_kbps = (total_bitrate_bps / 1000.0) as u32;
 
-            // Audio bitrate estimation
             let audio_kbps = if !has_audio {
                 0
             } else if let Some(ab) = audio_bitrate {
@@ -436,7 +403,6 @@ pub async fn start_transcode(
                 }
             };
 
-            // Limit audio to a maximum of 30% of total budget on tight budgets, keeping it above 32 kbps
             let final_audio_kbps = if has_audio {
                 if audio_kbps * 3 > total_bitrate_kbps {
                     (total_bitrate_kbps / 3).max(32)
@@ -449,18 +415,15 @@ pub async fn start_transcode(
 
             calculated_audio_bitrate = if has_audio { Some(final_audio_kbps) } else { None };
 
-            // Calculate remaining raw video bitrate
             let raw_video_kbps = if total_bitrate_kbps > final_audio_kbps {
                 total_bitrate_kbps - final_audio_kbps
             } else {
                 50
             };
 
-            // Calculate total frames and clamp probe window between 15 and 100 frames to allow VBV rate control stabilization
             let total_frames = (duration_secs * fps).round() as usize;
             let probe_frames = total_frames.clamp(15, 100);
 
-            // Probe target overshoot using a fast target-bitrate transcode
             let overshoot_factor = probe_bitrate_overshoot(input, ffmpeg_path, raw_video_kbps, fps, target_format, probe_frames);
             let final_video_kbps = (raw_video_kbps as f64 / overshoot_factor) as u32;
 
@@ -524,7 +487,6 @@ pub async fn start_transcode(
     cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
-    // Expose the full command line so plugins can log exactly what ran.
     let command_string = {
         let mut parts = vec![ffmpeg_path.display().to_string()];
         for arg in cmd.as_std().get_args() {
@@ -559,12 +521,8 @@ pub async fn start_transcode(
         },
     );
 
-    // Drain stderr so the FFmpeg process never blocks on a full pipe; keep the
-    // tail of the output for the failure diagnostics reported to the UI.
     let stderr_task = spawn_stderr_tail_drainer(stderr);
 
-    // Finalize job state once the process exits. Runs detached so the IPC
-    // request returns immediately and callers poll via GetTranscodeProgress.
     let map_fin = map.clone();
     let job_id_fin = job_id.to_string();
     let output_fin = output_path.to_string();
@@ -583,8 +541,7 @@ pub async fn start_transcode(
                     let out_path = std::path::Path::new(&output_fin);
                     if out_path.is_file() {
                         state.output_size_bytes = std::fs::metadata(out_path).map(|m| m.len()).ok();
-                        // Probe final output file size breakdown
-                        if let Ok(out_meta) = curator_core::video::read_video_metadata(out_path, &ffmpeg_path_clone) {
+                        if let Ok(out_meta) = crate::video::read_video_metadata(out_path, &ffmpeg_path_clone) {
                             let dur_secs = out_meta.duration_ms as f64 / 1000.0;
                             if dur_secs > 0.0 {
                                 if let Some(v_bps) = out_meta.bitrate {
@@ -623,8 +580,7 @@ pub async fn start_transcode(
     Ok(())
 }
 
-/// Poll the current state of a transcode job. Unknown job ids return a
-/// not-running state whose `error` field explains the miss.
+/// Poll the current state of a transcode job.
 pub async fn get_transcode_progress(job_id: &str, map: &TranscodeProgressMap) -> TranscodeJobState {
     let guard = map.lock().await;
     match guard.get(job_id) {

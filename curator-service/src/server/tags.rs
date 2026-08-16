@@ -26,7 +26,7 @@ impl TagsService for TagsServiceImpl {
         request: TonicRequest<AddTagRequest>,
     ) -> Result<TonicResponse<()>, Status> {
         let req = request.into_inner();
-        handlers::tags::add_tag_logic(req.image_id, &req.tag, &req.category, &self.ctx.db)
+        curator_core::TagRepo::add_user_tag(&self.ctx.db, req.image_id, &req.tag, &req.category)
             .await
             .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
@@ -37,7 +37,7 @@ impl TagsService for TagsServiceImpl {
         request: TonicRequest<RemoveTagRequest>,
     ) -> Result<TonicResponse<()>, Status> {
         let req = request.into_inner();
-        handlers::tags::remove_tag_logic(req.image_id, &req.tag, &self.ctx.db)
+        curator_core::TagRepo::remove_tag(&self.ctx.db, req.image_id, &req.tag)
             .await
             .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
@@ -48,7 +48,7 @@ impl TagsService for TagsServiceImpl {
         request: TonicRequest<UnblacklistTagRequest>,
     ) -> Result<TonicResponse<()>, Status> {
         let req = request.into_inner();
-        handlers::tags::unblacklist_tag_logic(req.image_id, &req.tag, &self.ctx.db)
+        curator_core::TagRepo::unblacklist_tag(&self.ctx.db, req.image_id, &req.tag)
             .await
             .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
@@ -59,13 +59,14 @@ impl TagsService for TagsServiceImpl {
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<commonpb::TagStatisticsResult>, Status> {
         let preferred_source = super::preferred_source(&self.ctx).await;
-        let tags = handlers::tags::get_tag_statistics_logic(&preferred_source, &self.ctx.db)
+        let tags = curator_core::TagRepo::get_tag_statistics(&self.ctx.db, &preferred_source)
             .await
             .map_err(|e| internal_status(format!("Failed to fetch tag statistics: {:?}", e)))?;
         Ok(TonicResponse::new(commonpb::TagStatisticsResult {
             tags: tags.into_iter().map(Into::into).collect(),
         }))
     }
+
 
     async fn backfill_tag_source(
         &self,

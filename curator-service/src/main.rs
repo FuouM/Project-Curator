@@ -56,8 +56,9 @@ struct ClientContext {
     download_progress: handlers::models::DownloadProgressMap,
     cancel_tokens: handlers::models::CancelTokens,
     benchmark_progress: handlers::BenchmarkProgressMap,
-    transcode_progress: handlers::transcode::TranscodeProgressMap,
+    transcode_progress: curator_core::transcode::TranscodeProgressMap,
     plugin_runtime_progress: handlers::plugin_runtime::PluginRuntimeProgressMap,
+
     /// Generic download-job state, engine registry, and per-job cancel handles
     /// (aria2 now; future yt-dlp is additive). Plugins drive downloads through
     /// the generic `DownloadStart` / `DownloadProgress` / `DownloadCancel`.
@@ -373,9 +374,10 @@ async fn main() -> Result<(), Error> {
     let download_progress: handlers::models::DownloadProgressMap = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
     let cancel_tokens: handlers::models::CancelTokens = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
     let benchmark_progress: handlers::BenchmarkProgressMap = Arc::new(tokio::sync::Mutex::new(None));
-    let transcode_progress: handlers::transcode::TranscodeProgressMap =
+    let transcode_progress: curator_core::transcode::TranscodeProgressMap =
         Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
     let plugin_runtime_progress: handlers::plugin_runtime::PluginRuntimeProgressMap =
+
         Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
 
     let download_jobs: handlers::download::DownloadJobsMap =

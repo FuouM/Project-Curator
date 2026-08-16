@@ -28,7 +28,7 @@ impl GalleryService for GalleryServiceImpl {
         let req = request.into_inner();
         let preferred_source = super::preferred_source(&self.ctx).await;
         let image =
-            handlers::image::get_image_logic(req.image_id, &preferred_source, &self.ctx.db)
+            curator_core::ImageRepo::get_image(req.image_id, &preferred_source, &self.ctx.db)
                 .await
                 .map_err(internal_status)?;
         Ok(TonicResponse::new(ImageResult {
@@ -42,7 +42,7 @@ impl GalleryService for GalleryServiceImpl {
     ) -> Result<TonicResponse<ListResult>, Status> {
         let req = request.into_inner();
         let preferred_source = super::preferred_source(&self.ctx).await;
-        let (images, total_count) = handlers::image::list_images_logic(
+        let (images, total_count) = curator_core::ImageRepo::list_images(
             req.limit as usize,
             req.offset as usize,
             req.only_favorites,
@@ -62,7 +62,7 @@ impl GalleryService for GalleryServiceImpl {
         request: TonicRequest<SetFavoriteRequest>,
     ) -> Result<TonicResponse<()>, Status> {
         let req = request.into_inner();
-        handlers::tags::set_favorite_logic(req.image_id, req.favorite, &self.ctx.db)
+        curator_core::ImageRepo::set_favorite(&self.ctx.db, req.image_id, req.favorite)
             .await
             .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
@@ -73,11 +73,12 @@ impl GalleryService for GalleryServiceImpl {
         request: TonicRequest<SetNoteRequest>,
     ) -> Result<TonicResponse<()>, Status> {
         let req = request.into_inner();
-        handlers::image::set_note_logic(req.image_id, req.note, &self.ctx.db)
+        curator_core::ImageRepo::set_note(&self.ctx.db, req.image_id, req.note)
             .await
             .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
     }
+
 
     async fn get_thumbnail(
         &self,

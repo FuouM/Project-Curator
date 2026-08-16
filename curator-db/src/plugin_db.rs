@@ -1,18 +1,17 @@
-//! Generic plugin-data SQLite primitive (§3.4 C).
+//! Generic plugin-data SQLite primitive.
 //!
 //! Any plugin gets an isolated, backend-owned SQLite database under
-//! `.curator/plugin_data/<plugin_id>/` and may run parameterized SQL against it
-//! via `PluginDbExecute` / `PluginDbQuery`. The `<plugin_id>` and `db` name are
-//! hard-guarded so a plugin can never read or write outside its own directory.
+//! `<data_dir>/plugin_data/<plugin_id>/` and may run parameterized SQL against it
+//! via `plugin_db_execute` / `plugin_db_query`. The `<plugin_id>` and `db` name are
+//! guarded so a plugin cannot read or write outside its own directory.
 
-use std::path::Path;
-
+use std::path::{Path, PathBuf};
 use anyhow::{bail, Result};
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Arguments, Column, Row, SqlitePool};
 
 /// Root directory for all plugin data. Created on first use.
-pub fn plugin_data_root(data_dir: &Path) -> std::path::PathBuf {
+pub fn plugin_data_root(data_dir: &Path) -> PathBuf {
     let dir = data_dir.join("plugin_data");
     let _ = std::fs::create_dir_all(&dir);
     dir
@@ -30,9 +29,8 @@ fn is_safe_name(s: &str) -> bool {
         && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
 
-/// Resolve and open (creating if needed) a plugin-owned database. `db` is the
-/// full file name (e.g. `download_history.db`).
-async fn open_plugin_db(data_dir: &Path, plugin_id: &str, db: &str) -> Result<SqlitePool> {
+/// Resolve and open (creating if needed) a plugin-owned database.
+pub async fn open_plugin_db(data_dir: &Path, plugin_id: &str, db: &str) -> Result<SqlitePool> {
     if !is_safe_name(plugin_id) {
         bail!("invalid plugin id");
     }
@@ -87,7 +85,6 @@ fn build_arguments(params: &[serde_json::Value]) -> Result<sqlx::sqlite::SqliteA
                 bind_value(&mut args, s.clone())?;
             }
             other => {
-                // Arrays/objects are encoded as JSON strings.
                 bind_value(&mut args, serde_json::to_string(other).unwrap_or_default())?;
             }
         }

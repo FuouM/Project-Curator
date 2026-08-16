@@ -1,6 +1,6 @@
-use crate::handlers;
 use crate::server::internal_status;
 use crate::ClientContext;
+
 use curator_core::grpc::folders::{
     folders_service_server::FoldersService, DeleteFolderRequest, DeleteFolderResult,
     DuplicateFoldersResult, MergeFoldersRequest, MergeFoldersResult,
@@ -25,7 +25,7 @@ impl FoldersService for FoldersServiceImpl {
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<StorageStatsResult>, Status> {
-        let stats = handlers::image::get_storage_stats_logic(&self.ctx.db)
+        let stats = curator_core::ImageRepo::get_storage_stats(&self.ctx.db)
             .await
             .map_err(internal_status)?;
         Ok(TonicResponse::new(StorageStatsResult {
@@ -38,7 +38,7 @@ impl FoldersService for FoldersServiceImpl {
         request: TonicRequest<UpdateFolderPathRequest>,
     ) -> Result<TonicResponse<UpdateFolderPathResult>, Status> {
         let req = request.into_inner();
-        let success = handlers::import::update_folder_path_logic(req.id, &req.new_path, &self.ctx.db)
+        let success = curator_core::FolderRepo::update_folder_path(req.id, &req.new_path, &self.ctx.db)
             .await
             .map_err(internal_status)?;
         Ok(TonicResponse::new(UpdateFolderPathResult { success }))
@@ -49,7 +49,7 @@ impl FoldersService for FoldersServiceImpl {
         request: TonicRequest<DeleteFolderRequest>,
     ) -> Result<TonicResponse<DeleteFolderResult>, Status> {
         let req = request.into_inner();
-        let success = handlers::import::delete_folder_logic(req.id, &self.ctx.db)
+        let success = curator_core::FolderRepo::delete_folder(req.id, &self.ctx.db)
             .await
             .map_err(internal_status)?;
         Ok(TonicResponse::new(DeleteFolderResult { success }))
@@ -59,7 +59,7 @@ impl FoldersService for FoldersServiceImpl {
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<DuplicateFoldersResult>, Status> {
-        let groups = handlers::import::detect_duplicate_folders_logic(&self.ctx.db)
+        let groups = curator_core::FolderRepo::detect_duplicate_folders(&self.ctx.db)
             .await
             .map_err(internal_status)?;
         Ok(TonicResponse::new(DuplicateFoldersResult {
@@ -72,11 +72,9 @@ impl FoldersService for FoldersServiceImpl {
         request: TonicRequest<MergeFoldersRequest>,
     ) -> Result<TonicResponse<MergeFoldersResult>, Status> {
         let req = request.into_inner();
-        // Merge performs a long burst of SQLite writes; serialize against
-        // concurrent scan/import operations (see `dispatch`).
         let _write_guard = self.ctx.import_lock.lock().await;
         let (success, images_moved) =
-            handlers::import::merge_folders_logic(req.keep_folder_id, req.merge_folder_id, &self.ctx.db)
+            curator_core::FolderRepo::merge_folders(req.keep_folder_id, req.merge_folder_id, &self.ctx.db)
                 .await
                 .map_err(internal_status)?;
         Ok(TonicResponse::new(MergeFoldersResult {
@@ -85,3 +83,5 @@ impl FoldersService for FoldersServiceImpl {
         }))
     }
 }
+
+

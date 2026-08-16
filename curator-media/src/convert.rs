@@ -1,16 +1,19 @@
 use anyhow::Result;
-use curator_core::image::{
-    codecs::{avif::AvifEncoder, bmp::BmpEncoder, gif::GifEncoder, hdr::HdrEncoder, ico::IcoEncoder, jpeg::JpegEncoder, openexr::OpenExrEncoder, png::PngEncoder, pnm::PnmEncoder, qoi::QoiEncoder, tga::TgaEncoder, tiff::TiffEncoder, webp::WebPEncoder},
+use image::{
+    codecs::{
+        avif::AvifEncoder, bmp::BmpEncoder, gif::GifEncoder, hdr::HdrEncoder, ico::IcoEncoder,
+        jpeg::JpegEncoder, openexr::OpenExrEncoder, png::PngEncoder, pnm::PnmEncoder,
+        qoi::QoiEncoder, tga::TgaEncoder, tiff::TiffEncoder, webp::WebPEncoder,
+    },
     DynamicImage, ExtendedColorType, GenericImageView, ImageEncoder,
 };
-use curator_core::ipc::ConvertedFileInfo;
+use curator_proto::grpc::common::ConvertedFileInfo;
 use std::fs;
 use std::io::{Cursor, Write};
 use std::path::Path;
 
 /// Target formats accepted by `EphemeralConvertImages`, restricted to the
-/// `image` crate's default-feature encode set. `avif` is encode-only here
-/// (decoding would require the rejected native-dav1d `avif-native` feature).
+/// `image` crate's default-feature encode set.
 const ENCODE_FORMATS: &[&str] = &[
     "png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff", "qoi", "tga", "pnm", "hdr", "ico", "exr",
     "avif",
@@ -27,7 +30,7 @@ pub async fn convert_images(
     Ok(converted)
 }
 
-async fn convert_one(source: &str, target: &str, quality: u8) -> ConvertedFileInfo {
+pub async fn convert_one(source: &str, target: &str, quality: u8) -> ConvertedFileInfo {
     let src = Path::new(source);
     let failure = |error: String| ConvertedFileInfo {
         source_path: source.to_string(),
@@ -53,7 +56,6 @@ async fn convert_one(source: &str, target: &str, quality: u8) -> ConvertedFileIn
         ));
     }
 
-    // Ensure output parent directory exists
     if let Some(parent) = tgt.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
             return failure(format!("Failed to create output directory: {:?}", e));
@@ -66,7 +68,6 @@ async fn convert_one(source: &str, target: &str, quality: u8) -> ConvertedFileIn
     let ext_buf = ext.clone();
     let quality = quality.clamp(1, 100);
 
-    // Decode/encode is CPU- and disk-bound — off the reactor thread.
     let res = tokio::task::spawn_blocking(move || encode_image(&source_buf, &out_buf_for_task, &ext_buf, quality)).await;
 
     match res {
@@ -80,15 +81,15 @@ async fn convert_one(source: &str, target: &str, quality: u8) -> ConvertedFileIn
     }
 }
 
-fn encode_image(source: &str, output: &str, ext: &str, quality: u8) -> Result<(), String> {
-    let img = curator_core::image::open(source)
+pub fn encode_image(source: &str, output: &str, ext: &str, quality: u8) -> Result<(), String> {
+    let img = image::open(source)
         .map_err(|e| format!("Failed to open/decode source: {:?}", e))?;
 
     let bytes = encode_dynamic(&img, ext, quality)?;
     write_file(output, &bytes)
 }
 
-fn encode_dynamic(img: &DynamicImage, ext: &str, quality: u8) -> Result<Vec<u8>, String> {
+pub fn encode_dynamic(img: &DynamicImage, ext: &str, quality: u8) -> Result<Vec<u8>, String> {
     let (w, h) = img.dimensions();
     let mut buf = Vec::new();
 
@@ -105,8 +106,6 @@ fn encode_dynamic(img: &DynamicImage, ext: &str, quality: u8) -> Result<Vec<u8>,
                 .write_image(&rgb, w, h, ExtendedColorType::Rgb8)
                 .map_err(|e| format!("JPEG encode failed: {:?}", e))?;
         }
-        // The `image` crate's WebP encoder is lossless-only (VP8L); `quality`
-        // does not apply.
         "webp" => {
             let rgb = img.to_rgb8();
             WebPEncoder::new_lossless(&mut buf)
@@ -177,9 +176,6 @@ fn encode_dynamic(img: &DynamicImage, ext: &str, quality: u8) -> Result<Vec<u8>,
                 .write_image(&rgba, w, h, ExtendedColorType::Rgba8)
                 .map_err(|e| format!("AVIF encode failed: {:?}", e))?;
         }
-        // Callers pre-validate `ext` against ENCODE_FORMATS (see `convert_one`),
-        // so every variant above is covered; this arm is unreachable by
-        // construction.
         _ => unreachable!("ext was pre-validated against ENCODE_FORMATS"),
     }
 
@@ -193,8 +189,6 @@ fn write_file(path: &str, bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-/// Reinterpret a `f32` pixel buffer as native-endian bytes (the byte order
-/// `HdrEncoder`/`OpenExrEncoder` `write_image` expects for `Rgb32F`).
 fn f32_bytes(raw: &[f32]) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(raw.len() * 4);
     for v in raw {

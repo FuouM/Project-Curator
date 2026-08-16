@@ -1,11 +1,9 @@
 use anyhow::Context;
-
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::error;
 
-use crate::handlers::transcode::{TranscodeProgressMap, TranscodeJobState};
-
+use crate::transcode::{TranscodeJobState, TranscodeProgressMap};
 
 /// Helper to set default job state in progress map
 async fn start_job(job_id: &str, output_path: &str, progress_map: &TranscodeProgressMap) {
@@ -66,7 +64,7 @@ async fn run_ffmpeg_job(
     let job_id_task = job_id.clone();
 
     // Spawn stdout parser task
-    let reader_task = super::transcode::spawn_progress_reader(
+    let reader_task = crate::transcode::spawn_progress_reader(
         stdout,
         progress_map_task,
         job_id_task,
@@ -76,7 +74,7 @@ async fn run_ffmpeg_job(
     );
 
     // Spawn stderr logger/drainer task
-    let stderr_task = super::transcode::spawn_stderr_tail_drainer(stderr);
+    let stderr_task = crate::transcode::spawn_stderr_tail_drainer(stderr);
 
     let status = child.wait().await;
     let stderr_tail = stderr_task.await.unwrap_or_default();
@@ -118,7 +116,7 @@ pub struct CreateGifOptions {
     pub loop_count: Option<i32>,
 }
 
-/// Create a GIF or Video from multiple images (with custom delays)
+/// Create a GIF or Video from multiple images
 pub async fn create_gif_from_images(
     job_id: String,
     image_pattern: String,
@@ -269,19 +267,15 @@ pub async fn process_gif_effects(
                 base64_str
             };
 
-            use base64::Engine;
-            match base64::engine::general_purpose::STANDARD.decode(clean_base64) {
-                Ok(bytes) => {
-                    let temp_file_path = std::env::temp_dir().join(format!("caption_{}.png", job_id));
-                    if std::fs::write(&temp_file_path, bytes).is_ok() {
-                        caption_file = Some(temp_file_path);
-                        caption_height = caption_image_height.unwrap_or(0);
-                    } else {
-                        error!("Failed to write decoded caption bytes to file");
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to decode base64 caption image: {:?}", e);
+            // Using simple hex/base64 decode if base64 crate available
+            // Let's decode cleanly
+            if let Ok(bytes) = base64_decode(clean_base64) {
+                let temp_file_path = std::env::temp_dir().join(format!("caption_{}.png", job_id));
+                if std::fs::write(&temp_file_path, bytes).is_ok() {
+                    caption_file = Some(temp_file_path);
+                    caption_height = caption_image_height.unwrap_or(0);
+                } else {
+                    error!("Failed to write decoded caption bytes to file");
                 }
             }
         }
@@ -440,9 +434,6 @@ pub async fn process_gif_effects(
 
     if !filters.is_empty() {
         cmd.arg("-filter_complex").arg(filters.join(";"));
-        // For GIF: the palettegen/paletteuse chain consumes the last labelled stream and
-        // produces an implicit output — adding -map would reference a now-consumed label.
-        // For other formats: -map the final labelled stream explicitly.
         if !is_gif && last_stream != "[0:v]" {
             cmd.arg("-map").arg(&last_stream);
         }
@@ -477,6 +468,31 @@ pub async fn process_gif_effects(
     });
 
     Ok(())
+}
+
+/// Helper for base64 decode
+fn base64_decode(input: &str) -> Result<Vec<u8>, anyhow::Error> {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut dbg = Vec::new();
+    let mut buf = 0u32;
+    let mut bits = 0;
+    for &byte in input.as_bytes() {
+        if byte == b'=' || byte.is_ascii_whitespace() {
+            continue;
+        }
+        let val = match TABLE.iter().position(|&c| c == byte) {
+            Some(v) => v as u32,
+            None => continue,
+        };
+        buf = (buf << 6) | val;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            dbg.push((buf >> bits) as u8);
+            buf &= (1 << bits) - 1;
+        }
+    }
+    Ok(dbg)
 }
 
 /// Split GIF frames into target directory

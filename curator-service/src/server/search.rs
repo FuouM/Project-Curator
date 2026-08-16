@@ -64,7 +64,7 @@ impl SearchService for SearchServiceImpl {
         request: TonicRequest<GetCharacterSuggestionsRequest>,
     ) -> Result<TonicResponse<commonpb::TagStatisticsResult>, Status> {
         let req = request.into_inner();
-        let tags = handlers::tags::get_character_suggestions_logic(&self.ctx.db, req.query.as_deref())
+        let tags = curator_core::TagRepo::get_character_suggestions(&self.ctx.db, req.query.as_deref())
             .await
             .map_err(|e| internal_status(format!("Failed to fetch character suggestions: {:?}", e)))?;
         Ok(TonicResponse::new(commonpb::TagStatisticsResult {
@@ -72,3 +72,4 @@ impl SearchService for SearchServiceImpl {
         }))
     }
 }
+
