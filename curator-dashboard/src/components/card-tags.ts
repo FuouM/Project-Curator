@@ -29,10 +29,34 @@ export function renderIdentityListHtml(names: { name: string }[] | undefined, st
   return html`<div class="identity-list"${styleAttr}>${names.map(ci => `<span class="tag-pill tag-identity"><i class="bi bi-person-fill"></i> ${ci.name}</span>`).join("")}</div>`;
 }
 
+export function renderUserTagsListHtml(tags: TagSummary[] | undefined, style = ""): SafeHtml {
+  if (!tags || tags.length === 0) return "" as SafeHtml;
+  const styleAttr = style ? ` style="${style}"` : "";
+  return html`<div class="user-tags-list"${styleAttr}>${tags.map(t => getTagPillHtml(t)).join("")}</div>`;
+}
+
 export function renderCardTagsContainerHtml(img: { tags: TagSummary[] }, isFeatured = false): SafeHtml {
   const tags = img.tags || [];
+
+  // Separate user and custom concept tags from AI model tags
+  const userAndConceptTags = tags.filter(
+    t => t.category === "user" || t.source_name === "user" || t.source_name === "ai:custom-concepts" || t.source_name === "custom-concept"
+  );
+  const aiTags = tags.filter(
+    t => !(t.category === "user" || t.source_name === "user" || t.source_name === "ai:custom-concepts" || t.source_name === "custom-concept")
+  );
+
+  let userTagsHtml = "";
+  if (userAndConceptTags.length > 0) {
+    userTagsHtml = renderUserTagsListHtml(userAndConceptTags);
+  }
+
+  if (aiTags.length === 0) {
+    return userTagsHtml as SafeHtml;
+  }
+
   let taggerLabel = "";
-  const firstAITag = tags.find(t => t.source_name && t.source_name.startsWith("ai:"));
+  const firstAITag = aiTags.find(t => t.source_name && t.source_name.startsWith("ai:"));
   if (firstAITag) {
     if (firstAITag.source_name === "ai:camie-tagger-v2") {
       taggerLabel = "Camie Tagger v2";
@@ -42,22 +66,14 @@ export function renderCardTagsContainerHtml(img: { tags: TagSummary[] }, isFeatu
       taggerLabel = (firstAITag.source_name ?? "").replace("ai:", "").toUpperCase();
     }
   } else {
-    const hasUser = tags.some(t => t.category === "user");
-    taggerLabel = hasUser ? "USER" : "";
+    taggerLabel = "AI TAGGER";
   }
 
-  if (!taggerLabel && tags.length === 0) {
-    return "" as SafeHtml;
-  }
-  
-  if (!taggerLabel) {
-    taggerLabel = "GENERAL";
-  }
-
-  const tagHtml = isFeatured ? renderTagListHtml(tags, tags.length) : renderTagListHtml(tags);
+  const tagHtml = isFeatured ? renderTagListHtml(aiTags, aiTags.length) : renderTagListHtml(aiTags);
   const copyText = tags.map(t => t.tag).join(", ").replace(/"/g, "&quot;");
 
   return html`
+    ${userTagsHtml}
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; width: 100%;">
       <div style="font-family: monospace; font-size: 10px; font-weight: bold; background-color: var(--sys-control-bg, #fff); border: 1px solid var(--sys-border-dark, #b0b0b0); border-radius: 2px; padding: 2px 6px; color: var(--sys-text-secondary, #666); text-transform: uppercase; letter-spacing: 0.5px; line-height: 1; white-space: nowrap;">${taggerLabel}</div>
       <div style="flex: 1; height: 1px; background-color: var(--sys-border-dark, #b0b0b0);"></div>
@@ -70,6 +86,7 @@ export function renderCardTagsContainerHtml(img: { tags: TagSummary[] }, isFeatu
     </div>
   `;
 }
+
 
 export function renderParsedMetadataHtml(meta: ParsedMetadata): SafeHtml {
   const parts: string[] = [];

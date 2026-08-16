@@ -97,14 +97,16 @@
 .tag-pill.tag-identity i {
   margin-right: 2px;
 }
-.identity-list {
+.identity-list,
+.user-tags-list {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   padding-bottom: 4px;
   border-bottom: 1px solid var(--sys-border-light, #d0d0d0);
 }
+
 .tag-confirm-btn {
   cursor: pointer;
   color: #107c41;

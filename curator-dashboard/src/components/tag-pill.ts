@@ -35,13 +35,18 @@ export function renderTagPill(t: TagSummary, options?: { isDeletable?: boolean; 
   const isDeletable = options?.isDeletable ?? false;
   const imageId = options?.imageId ?? 0;
 
-  const sparkIcon = styleClass === "custom-concept" ? `<i class="bi bi-stars concept-spark"></i>` : "";
+  const icon = styleClass === "custom-concept"
+    ? `<i class="bi bi-stars concept-spark"></i> `
+    : styleClass === "tag-user"
+    ? `<i class="bi bi-tag-fill" style="font-size: 9px; opacity: 0.85;"></i> `
+    : "";
 
   const deleteBtn = isDeletable && imageId > 0
     ? ` <span class="tag-remove-btn" data-action="remove-tag" data-image-id="${imageId}" data-tag-name="${t.tag.replace(/'/g, "\\'")}" title="Remove tag"><i class="bi bi-x-lg"></i></span>`
     : "";
 
-  return html`<span class="tag-pill ${styleClass}">${sparkIcon}${t.tag.replace(/_/g, '_\u200B')}${deleteBtn}</span>`;
+  return html`<span class="tag-pill ${styleClass}">${icon}${t.tag.replace(/_/g, '_\u200B')}${deleteBtn}</span>`;
+
 }
 
 export const meta: ComponentMeta = {
