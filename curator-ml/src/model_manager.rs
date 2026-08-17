@@ -43,6 +43,33 @@ impl ModelManager {
         *self.active_model.lock().unwrap()
     }
 
+    /// Resolve the required files for an embedding model: tokenizer, vision
+    /// ONNX, and text ONNX paths relative to the model directory.
+    fn model_files(active: EmbeddingModel) -> (PathBuf, PathBuf, PathBuf) {
+        match active {
+            EmbeddingModel::ClipVitB32 => (
+                PathBuf::from("clip-vit-b32").join("tokenizer.json"),
+                PathBuf::from("clip-vit-b32").join("vision_model.onnx"),
+                PathBuf::from("clip-vit-b32").join("text_model.onnx"),
+            ),
+            EmbeddingModel::MobileClipS2 => (
+                PathBuf::from("mobileclip-s2").join("tokenizer.json"),
+                PathBuf::from("mobileclip-s2").join("onnx").join("vision_model.onnx"),
+                PathBuf::from("mobileclip-s2").join("onnx").join("text_model.onnx"),
+            ),
+        }
+    }
+
+    /// True when every file required by the active embedding model exists on
+    /// disk. Callers use this to skip vector-index work (e.g. import queuing)
+    /// until the user downloads the model instead of failing silently.
+    pub fn is_active_model_available(&self) -> bool {
+        let (tokenizer, vision, text) = Self::model_files(self.active_model());
+        self.model_dir.join(tokenizer).is_file()
+            && self.model_dir.join(vision).is_file()
+            && self.model_dir.join(text).is_file()
+    }
+
     /// Return true if ONNX sessions are loaded in memory.
     pub fn is_loaded(&self) -> bool {
         let vs = self.vision_session.lock().unwrap();
@@ -139,27 +166,29 @@ impl ModelManager {
         }
 
         let active = self.active_model();
-        let (tokenizer_path, vision_path, text_path) = match active {
-            EmbeddingModel::ClipVitB32 => (
-                self.model_dir.join("clip-vit-b32").join("tokenizer.json"),
-                self.model_dir
-                    .join("clip-vit-b32")
-                    .join("vision_model.onnx"),
-                self.model_dir.join("clip-vit-b32").join("text_model.onnx"),
-            ),
-            EmbeddingModel::MobileClipS2 => (
-                self.model_dir.join("mobileclip-s2").join("tokenizer.json"),
-                self.model_dir
-                    .join("mobileclip-s2")
-                    .join("onnx")
-                    .join("vision_model.onnx"),
-                self.model_dir
-                    .join("mobileclip-s2")
-                    .join("onnx")
-                    .join("text_model.onnx"),
-            ),
-        };
+        let (tokenizer_path, vision_path, text_path) = Self::model_files(active);
+        let tokenizer_path = self.model_dir.join(tokenizer_path);
+        let vision_path = self.model_dir.join(vision_path);
+        let text_path = self.model_dir.join(text_path);
         let device = self.device.lock().unwrap().clone();
+
+        for (what, p) in [
+            ("tokenizer.json", &tokenizer_path),
+            ("vision_model.onnx", &vision_path),
+            ("text_model.onnx", &text_path),
+        ] {
+            if !p.exists() {
+                let label = match active {
+                    curator_proto::contracts::EmbeddingModel::ClipVitB32 => "CLIP ViT-B/32",
+                    curator_proto::contracts::EmbeddingModel::MobileClipS2 => "MobileCLIP-S2",
+                };
+                anyhow::bail!(
+                    "The {label} embedding model is not downloaded yet (missing {what} at {:?}). \
+                     Download it in Settings > Models.",
+                    p
+                );
+            }
+        }
 
         // Tokenizer
         {

@@ -47,6 +47,7 @@ message ImportResult {
   uint32 imported_count = 3;
   optional int64 folder_id = 4;
   repeated int64 folder_ids = 5;
+  string warning = 6;
 }
 
 

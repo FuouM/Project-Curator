@@ -356,6 +356,7 @@ async fn upsert_image_row(
     folder_id: Option<i64>,
     clip_source_id: i64,
     existing: Option<(i64, String)>,
+    queue_indexing: bool,
 ) -> Result<i64> {
     if let Some((id, _old_path)) = existing {
         sqlx::query(
@@ -373,23 +374,25 @@ async fn upsert_image_row(
         .execute(&mut *exec)
         .await?;
 
-        let vec_exists: Option<(String,)> = sqlx::query_as(
-            "SELECT vector_state FROM image_vectors WHERE image_id = ? AND source_id = ? LIMIT 1",
-        )
-        .bind(id)
-        .bind(clip_source_id)
-        .fetch_optional(&mut *exec)
-        .await
-        .unwrap_or(None);
-
-        if vec_exists.is_none() {
-            sqlx::query(
-                "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
+        if queue_indexing {
+            let vec_exists: Option<(String,)> = sqlx::query_as(
+                "SELECT vector_state FROM image_vectors WHERE image_id = ? AND source_id = ? LIMIT 1",
             )
             .bind(id)
             .bind(clip_source_id)
-            .execute(&mut *exec)
-            .await?;
+            .fetch_optional(&mut *exec)
+            .await
+            .unwrap_or(None);
+
+            if vec_exists.is_none() {
+                sqlx::query(
+                    "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
+                )
+                .bind(id)
+                .bind(clip_source_id)
+                .execute(&mut *exec)
+                .await?;
+            }
         }
         Ok(id)
     } else {
@@ -408,13 +411,15 @@ async fn upsert_image_row(
         .await?
         .last_insert_rowid();
 
-        sqlx::query(
-            "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
-        )
-        .bind(id)
-        .bind(clip_source_id)
-        .execute(&mut *exec)
-        .await?;
+        if queue_indexing {
+            sqlx::query(
+                "INSERT INTO image_vectors (image_id, source_id, vector_id, vector_state) VALUES (?, ?, '', 'pending')",
+            )
+            .bind(id)
+            .bind(clip_source_id)
+            .execute(&mut *exec)
+            .await?;
+        }
         Ok(id)
     }
 }
@@ -426,6 +431,7 @@ pub async fn import_paths_logic(
     ffmpeg: Option<&Path>,
     data_dir: &Path,
     controller: &ImportController,
+    queue_indexing: bool,
 ) -> Result<(i64, String, usize, Vec<i64>)> {
     controller.reset();
 
@@ -645,6 +651,7 @@ pub async fn import_paths_logic(
             Some(item_folder_id),
             clip_source_id,
             existing,
+            queue_indexing,
         )
         .await?;
 
@@ -683,6 +690,7 @@ pub async fn import_image_logic(
     ffmpeg: Option<&Path>,
     data_dir: &Path,
     controller: &ImportController,
+    queue_indexing: bool,
 ) -> Result<(i64, String, usize, Option<i64>)> {
     let (id, sha, count, folder_ids) = import_paths_logic(
         &[path_str.to_string()],
@@ -691,6 +699,7 @@ pub async fn import_image_logic(
         ffmpeg,
         data_dir,
         controller,
+        queue_indexing,
     )
     .await?;
     Ok((id, sha, count, folder_ids.into_iter().next()))
@@ -824,6 +833,7 @@ pub async fn rescan_folder_logic(
     ffmpeg: Option<&Path>,
     data_dir: &Path,
     controller: &ImportController,
+    queue_indexing: bool,
 ) -> Result<(i64, i64)> {
     let folder_path: Option<String> = sqlx::query_scalar("SELECT path FROM folders WHERE id = ?")
         .bind(folder_id)
@@ -849,7 +859,8 @@ pub async fn rescan_folder_logic(
     .await?;
 
     let (_id, _sha, found, _folder_id) =
-        import_image_logic(&path, db, active, ffmpeg, data_dir, controller).await?;
+        import_image_logic(&path, db, active, ffmpeg, data_dir, controller, queue_indexing)
+            .await?;
 
     let after: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM images WHERE folder_id = ? AND deleted_at IS NULL",

@@ -136,6 +136,14 @@ impl BackgroundWorker {
                 };
 
                 // Query for images that have pending vector indexing (fetch up to 16 for batching)
+                if !mm_pre.is_active_model_available() {
+                    warn!(
+                        "Active embedding model files missing; deferring vector indexing. Download models in Settings > Models."
+                    );
+                    sleep(Duration::from_secs(10)).await;
+                    continue;
+                }
+
                 let pending_images: Vec<Image> = match sqlx::query_as::<_, Image>(
                     "SELECT i.* FROM images i
                      JOIN image_vectors iv ON i.id = iv.image_id

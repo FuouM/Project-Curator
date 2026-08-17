@@ -299,7 +299,7 @@ export function setupImport() {
       );
       stopScanProgressPolling();
 
-      const { importedCount, folderId, folderIds } = resp;
+      const { importedCount, folderId, folderIds, warning } = resp;
       const targetFolderIds =
         folderIds && folderIds.length > 0
           ? folderIds.map(Number)
@@ -307,7 +307,25 @@ export function setupImport() {
             ? [Number(folderId)]
             : [];
 
-      if (importedCount && targetFolderIds.length > 0) {
+      if (warning) {
+        setStatusMessage(importMsg, warning, "error");
+        if (cancelBtn) cancelBtn.style.display = "none";
+        if (dismissBtn) dismissBtn.style.display = "inline-flex";
+        const title = document.getElementById("import-progress-title");
+        const percent = document.getElementById("import-progress-percent");
+        const bar = document.getElementById("import-progress-bar");
+        const indexedCount = document.getElementById("import-indexed-count");
+        const pendingCount = document.getElementById("import-pending-count");
+        if (title) title.textContent = "Import Complete";
+        if (bar) bar.style.width = "100%";
+        if (percent) percent.textContent = "Done";
+        if (indexedCount)
+          indexedCount.textContent = `Imported: ${importedCount} image(s)`;
+        if (pendingCount)
+          pendingCount.textContent = "Vector indexing skipped (models not downloaded)";
+        refreshDashboard();
+        refreshGallery();
+      } else if (importedCount && targetFolderIds.length > 0) {
         setStatusMessage(
           importMsg,
           `Import completed! Queued ${importedCount} image(s) across ${targetFolderIds.length} folder(s) for indexing...`,

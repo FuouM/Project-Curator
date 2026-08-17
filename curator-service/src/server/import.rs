@@ -57,6 +57,7 @@ impl ImportService for ImportServiceImpl {
         let _write_guard = self.ctx.import_lock.lock().await;
         let active = self.active_embedding_model().await;
         let ffmpeg = self.resolved_ffmpeg().await;
+        let queue_indexing = self.ctx.model_manager.is_active_model_available();
         let (image_id, sha256, imported_count, folder_ids) = handlers::import::import_paths_logic(
             &paths,
             &self.ctx.db,
@@ -64,9 +65,16 @@ impl ImportService for ImportServiceImpl {
             ffmpeg.as_deref(),
             &self.ctx.data_dir,
             &self.ctx.import_controller,
+            queue_indexing,
         )
         .await
         .map_err(internal_status)?;
+
+        let warning = if queue_indexing {
+            String::new()
+        } else {
+            "AI models are not downloaded yet. Images were imported, but vector indexing was skipped. Download models in Settings > Models to enable AI features and indexing.".to_string()
+        };
 
         Ok(TonicResponse::new(ImportResult {
             image_id,
@@ -74,6 +82,7 @@ impl ImportService for ImportServiceImpl {
             imported_count: imported_count as u32,
             folder_id: folder_ids.first().copied(),
             folder_ids,
+            warning,
         }))
     }
 
@@ -156,6 +165,7 @@ impl ImportService for ImportServiceImpl {
         let _write_guard = self.ctx.import_lock.lock().await;
         let active = self.active_embedding_model().await;
         let ffmpeg = self.resolved_ffmpeg().await;
+        let queue_indexing = self.ctx.model_manager.is_active_model_available();
         let (imported, found) = handlers::import::rescan_folder_logic(
             req.folder_id,
             &self.ctx.db,
@@ -163,6 +173,7 @@ impl ImportService for ImportServiceImpl {
             ffmpeg.as_deref(),
             &self.ctx.data_dir,
             &self.ctx.import_controller,
+            queue_indexing,
         )
         .await
         .map_err(internal_status)?;
