@@ -3,13 +3,14 @@ import { checkFeedOnline, fetchFeedWithRevalidation, openExternal } from "../api
 import {
   addBookmark,
   getBookmarkPermalinks,
+  getCached,
   getHistoryPermalinks,
   removeBookmark,
 } from "../db";
 import { renderTagPill } from "../components/tag-pill";
 import { renderPager } from "../components/pager";
 import { browseCovers } from "./browse-covers";
-import type { FeedChapter } from "../types/api";
+import type { Feed, FeedChapter } from "../types/api";
 
 export const FEED_TAB_TO_URL: Record<string, string> = {
   releases: "/chapters.json",
@@ -101,8 +102,20 @@ export async function renderFeed(
       const prevHtml = btn.innerHTML;
       btn.innerHTML = '<i class="bi bi-arrow-clockwise ds-spin"></i> Checking...';
       try {
-        const res = await checkFeedOnline(url, key, currentEtag);
-        if (res.status === 304) {
+        const head = await revalidateFeedHead(tabId);
+        if (head.status === "new-chapters") {
+          currentEtag = head.etag || currentEtag;
+          updateFeedStatusFooter(statusFooter, {
+            cachedAt: Date.now(),
+            etag: currentEtag,
+            status: "New releases available",
+            etagStatus: "Updated (200 OK)",
+            isStale: false,
+          });
+          showFeedUpdateBanner(host, tabId, reload);
+          btn.innerHTML = '<i class="bi bi-arrow-up-circle"></i> Update Ready';
+          btn.disabled = false;
+        } else if (head.status === "unchanged") {
           updateFeedStatusFooter(statusFooter, {
             cachedAt: Date.now(),
             etag: currentEtag,
@@ -115,19 +128,9 @@ export async function renderFeed(
             btn.innerHTML = prevHtml;
             btn.disabled = false;
           }, 2000);
-        } else if (res.status === 200 && res.data) {
-          currentEtag = res.etag || currentEtag;
-          updateFeedStatusFooter(statusFooter, {
-            cachedAt: Date.now(),
-            etag: currentEtag,
-            status: "New releases available",
-            etagStatus: "Updated (200 OK)",
-            isStale: false,
-          });
-          showFeedUpdateBanner(host, tabId, page, reload);
-          btn.innerHTML = '<i class="bi bi-arrow-up-circle"></i> Update Ready';
-          btn.disabled = false;
         } else {
+          // no-baseline / error: nothing to compare against — keep the footer
+          // as-is and just restore the button (no banner, no false claims).
           btn.innerHTML = prevHtml;
           btn.disabled = false;
         }
@@ -182,15 +185,20 @@ export async function renderFeed(
   });
   host.appendChild(statusFooter);
 
-  // Background revalidation: if new releases arrive, show a non-intrusive notification banner
-  if (revalidatePromise) {
+  // Background revalidation (stale-while-revalidate). The footer reports the
+  // current page's own freshness, but the "new chapters available" banner is
+  // driven by the feed HEAD (page 1, position 0) — the only place new releases
+  // ever land. Comparing a deeper page's top against its cached copy fires on
+  // mere list-shifting, so the banner never uses the viewed page's data.
+  if (page === 1 && revalidatePromise) {
+    // The viewed page IS the head: reuse the in-flight page-1 revalidation.
     void revalidatePromise.then((reval) => {
       if (host !== browseCovers.currentHydrationHost) return;
       if (reval) {
         currentEtag = reval.etag || currentEtag;
         const freshTop = reval.data.chapters?.[0]?.permalink;
         if (freshTop && freshTop !== currentTopPermalink) {
-          showFeedUpdateBanner(host, tabId, page, reload);
+          showFeedUpdateBanner(host, tabId, reload);
         }
         updateFeedStatusFooter(statusFooter, {
           cachedAt: Date.now(),
@@ -209,6 +217,77 @@ export async function renderFeed(
         });
       }
     });
+  } else if (revalidatePromise) {
+    // Deeper page: keep the viewed page's cache fresh for its footer, but never
+    // let its shifted top drive the banner. New chapters are detected against
+    // the head separately.
+    void revalidatePromise.then((reval) => {
+      if (host !== browseCovers.currentHydrationHost) return;
+      if (reval) {
+        currentEtag = reval.etag || currentEtag;
+        updateFeedStatusFooter(statusFooter, {
+          cachedAt: Date.now(),
+          etag: currentEtag,
+          status: "Updated (200 OK)",
+          etagStatus: "Updated (200 OK)",
+          isStale: false,
+        });
+      } else {
+        updateFeedStatusFooter(statusFooter, {
+          cachedAt: feedResult.cachedAt,
+          etag: currentEtag,
+          status: "Synced (304 Not Modified)",
+          etagStatus: "Matches Server (304)",
+          isStale: false,
+        });
+      }
+    });
+    void revalidateFeedHead(tabId).then((head) => {
+      if (host !== browseCovers.currentHydrationHost) return;
+      if (head.hasNew) showFeedUpdateBanner(host, tabId, reload);
+    });
+  }
+}
+
+/**
+ * Revalidates the feed HEAD (page 1) to detect genuinely new chapters.
+ *
+ * New releases always land at position 0 of page 1, so this is the only page
+ * whose top permalink can signal "new chapters". `hasNew` is true when the
+ * fresh head differs from the last cached head. A deeper page revalidating
+ * 200 simply means its contents shifted — never a new-chapters signal.
+ */
+async function revalidateFeedHead(
+  tabId: string
+): Promise<{ hasNew: boolean; etag?: string; status: "unchanged" | "new-chapters" | "no-baseline" | "error" }> {
+  const url = FEED_TAB_TO_URL[tabId]; // head = page 1
+  const key = `${FEED_TAB_TO_KEY[tabId]}:1`;
+  const cached = await getCached(key);
+  const cachedTop = cached ? parseFeedTop(cached.json_payload) : undefined;
+  try {
+    const res = await checkFeedOnline(url, key, cached?.etag);
+    if (res.status === 200 && res.data) {
+      const freshTop = res.data.chapters?.[0]?.permalink;
+      if (cachedTop !== undefined && freshTop && freshTop !== cachedTop) {
+        return { hasNew: true, etag: res.etag, status: "new-chapters" };
+      }
+      return { hasNew: false, etag: res.etag, status: cachedTop === undefined ? "no-baseline" : "unchanged" };
+    }
+    if (res.status === 304) {
+      return { hasNew: false, etag: res.etag ?? cached?.etag, status: "unchanged" };
+    }
+    return { hasNew: false, etag: cached?.etag, status: "error" };
+  } catch {
+    return { hasNew: false, etag: cached?.etag, status: "error" };
+  }
+}
+
+/** First chapter permalink from a cached feed payload, or undefined. */
+function parseFeedTop(json: string): string | undefined {
+  try {
+    return (JSON.parse(json) as Feed).chapters?.[0]?.permalink;
+  } catch {
+    return undefined;
   }
 }
 
@@ -306,7 +385,6 @@ function updateFeedStatusFooter(
 function showFeedUpdateBanner(
   host: HTMLElement,
   tabId: string,
-  page: number,
   reload: FeedTabReload
 ): void {
   if (host.querySelector(".ds-feed-update-banner")) return;
@@ -319,7 +397,9 @@ function showFeedUpdateBanner(
   `;
   const btn = banner.querySelector("button");
   btn?.addEventListener("click", () => {
-    void reload(host, tabId, page);
+    // New chapters always land at the head of the feed, so "update" must jump
+    // to page 1 — reloading the current deeper page would not surface them.
+    void reload(host, tabId, 1);
   });
   host.insertBefore(banner, host.firstChild);
 }

@@ -20,6 +20,7 @@ export {
   getChapterCover,
   getOrHydrateSeriesCover,
   getOrHydrateItemCover,
+  refreshFollowedSeriesCover,
 } from "./series";
 export { fetchChapter } from "./chapter";
 export { openExternal, parseDynastyUrl, pageOutputPath } from "./navigation";

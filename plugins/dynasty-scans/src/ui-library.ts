@@ -4,7 +4,7 @@
  */
 
 import { Route, decodeEntities, formatDate, navigate, setActions, setBanner } from "./state";
-import { openExternal } from "./api";
+import { openExternal, refreshFollowedSeriesCover } from "./api";
 import {
   FollowedSeriesRow,
   BookmarkRow,
@@ -174,7 +174,22 @@ function renderFollowed(
     const card = document.createElement("div");
     card.className = "group-box";
     card.style.cssText = "display:flex;gap:10px;align-items:center;cursor:pointer;margin-bottom:4px;";
-    card.appendChild(renderCoverImage(row.cover, row.name));
+
+    const coverSlot = document.createElement("div");
+    coverSlot.style.cssText = "flex-shrink:0;";
+    coverSlot.appendChild(renderCoverImage(row.cover, row.name));
+    card.appendChild(coverSlot);
+
+    // A cache clear deletes the cover file but leaves `followed_series.cover`
+    // pointing at the removed path. Verify on disk and re-download when stale,
+    // updating the DB so the next render shows the fresh thumbnail.
+    void (async () => {
+      const fresh = await refreshFollowedSeriesCover(row.permalink, row.cover);
+      if (fresh && fresh !== row.cover) {
+        coverSlot.innerHTML = "";
+        coverSlot.appendChild(renderCoverImage(fresh, row.name));
+      }
+    })();
 
     const info = document.createElement("div");
     info.style.cssText = "flex:1;min-width:0;";

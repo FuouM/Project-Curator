@@ -9,6 +9,7 @@ export {
   getFollowedSeriesRow,
   followSeries,
   unfollowSeries,
+  updateFollowedSeriesCover,
   getReadingProgress,
   setReadingProgress,
   getProgressForSeries,

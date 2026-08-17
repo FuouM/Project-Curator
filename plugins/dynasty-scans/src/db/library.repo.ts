@@ -82,6 +82,14 @@ export async function unfollowSeries(permalink: string): Promise<void> {
   await execute(`DELETE FROM followed_series WHERE permalink = ?`, [permalink]);
 }
 
+/**
+ * Updates only the stored cover path of a followed series. Keeps the library
+ * cover in sync after a cover cache clear re-downloads a fresh thumbnail.
+ */
+export async function updateFollowedSeriesCover(permalink: string, cover: string | null): Promise<void> {
+  await execute(`UPDATE followed_series SET cover = ? WHERE permalink = ?`, [cover, permalink]);
+}
+
 export async function getReadingProgress(chapterPermalink: string): Promise<ReadingProgressRow | null> {
   const rows = await query<ReadingProgressRow>(
     `SELECT chapter_permalink, series_permalink, series_name, chapter_title,

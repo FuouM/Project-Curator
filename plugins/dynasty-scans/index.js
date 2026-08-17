@@ -420,6 +420,9 @@
   async function unfollowSeries(permalink) {
     await execute("DELETE FROM followed_series WHERE permalink = ?", [permalink]);
   }
+  async function updateFollowedSeriesCover(permalink, cover) {
+    await execute("UPDATE followed_series SET cover = ? WHERE permalink = ?", [cover, permalink]);
+  }
   async function setReadingProgress(p) {
     await execute(
       `INSERT INTO reading_progress (chapter_permalink, series_permalink, series_name,
@@ -764,6 +767,9 @@
     let resp = await PH6.callService("FileExists", { path });
     return resp != null && resp.Error || !((_a = resp == null ? void 0 : resp.FileExistsResult) != null && _a.exists) ? null : String(resp.FileExistsResult.absolute_path);
   }
+  async function fileExists2(path) {
+    return await fileResolve2(path) !== null;
+  }
   async function fileMove2(src, dst) {
     var _a, _b;
     let resp = await PH6.callService("FileMove", { src, dst });
@@ -906,7 +912,13 @@
     var _a;
     if (!coverUrl) return null;
     let key = `cover:${permalink}`, cached = await getCached(key);
-    if (cached && cached.json_payload) return cached.json_payload;
+    if (cached && cached.json_payload) {
+      try {
+        if (await fileExists2(cached.json_payload)) return cached.json_payload;
+      } catch (e) {
+      }
+      await deleteCached(key);
+    }
     let extMatch = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(coverUrl), ext = extMatch ? extMatch[1] : "jpg", tmpOutPath = `${COVERS_PREFIX}/raw_${permalink}.${ext}`, webpOutPath = `${COVERS_PREFIX}/${permalink}.webp`, finalPath = await httpDownload2(absUrl(coverUrl), tmpOutPath, 3e4);
     try {
       let convResp = await PH7.callService("EphemeralConvertImages", {
@@ -926,6 +938,20 @@
       console.warn("Failed to transcode series cover to WebP, keeping raw download:", err);
     }
     return await setCached(key, "cover", finalPath), finalPath;
+  }
+  async function refreshFollowedSeriesCover(permalink, currentCover) {
+    if (currentCover)
+      try {
+        if (await fileExists2(currentCover)) return currentCover;
+      } catch (e) {
+      }
+    let fresh = await getOrHydrateSeriesCover(permalink);
+    if (fresh)
+      try {
+        await updateFollowedSeriesCover(permalink, fresh);
+      } catch (e) {
+      }
+    return fresh;
   }
   async function getLocalCover(coverKey) {
     var _a;
@@ -947,7 +973,13 @@
     var _a;
     if (!firstPageUrl) return null;
     let key = `cover:chapter:${permalink}`, cached = await getCached(key);
-    if (cached && cached.json_payload) return cached.json_payload;
+    if (cached && cached.json_payload) {
+      try {
+        if (await fileExists2(cached.json_payload)) return cached.json_payload;
+      } catch (e) {
+      }
+      await deleteCached(key);
+    }
     let extMatch = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(firstPageUrl), ext = extMatch ? extMatch[1] : "jpg", tmpOutPath = `${COVERS_PREFIX}/raw_ch_${permalink}.${ext}`, webpOutPath = `${COVERS_PREFIX}/ch_${permalink}.webp`, finalPath = await httpDownload2(absUrl(firstPageUrl), tmpOutPath, 3e4);
     try {
       let convResp = await PH7.callService("EphemeralConvertImages", {
@@ -1213,7 +1245,12 @@
     }
     for (let row of rows) {
       let card = document.createElement("div");
-      card.className = "group-box", card.style.cssText = "display:flex;gap:10px;align-items:center;cursor:pointer;margin-bottom:4px;", card.appendChild(renderCoverImage(row.cover, row.name));
+      card.className = "group-box", card.style.cssText = "display:flex;gap:10px;align-items:center;cursor:pointer;margin-bottom:4px;";
+      let coverSlot = document.createElement("div");
+      coverSlot.style.cssText = "flex-shrink:0;", coverSlot.appendChild(renderCoverImage(row.cover, row.name)), card.appendChild(coverSlot), (async () => {
+        let fresh = await refreshFollowedSeriesCover(row.permalink, row.cover);
+        fresh && fresh !== row.cover && (coverSlot.innerHTML = "", coverSlot.appendChild(renderCoverImage(fresh, row.name)));
+      })();
       let info = document.createElement("div");
       info.style.cssText = "flex:1;min-width:0;";
       let name = document.createElement("div");
@@ -1625,8 +1662,14 @@
         let prevHtml = btn.innerHTML;
         btn.innerHTML = '<i class="bi bi-arrow-clockwise ds-spin"></i> Checking...';
         try {
-          let res = await checkFeedOnline(url, key, currentEtag);
-          res.status === 304 ? (updateFeedStatusFooter(statusFooter, {
+          let head = await revalidateFeedHead(tabId);
+          head.status === "new-chapters" ? (currentEtag = head.etag || currentEtag, updateFeedStatusFooter(statusFooter, {
+            cachedAt: Date.now(),
+            etag: currentEtag,
+            status: "New releases available",
+            etagStatus: "Updated (200 OK)",
+            isStale: !1
+          }), showFeedUpdateBanner(host, tabId, reload), btn.innerHTML = '<i class="bi bi-arrow-up-circle"></i> Update Ready', btn.disabled = !1) : head.status === "unchanged" ? (updateFeedStatusFooter(statusFooter, {
             cachedAt: Date.now(),
             etag: currentEtag,
             status: "Synced (304 Not Modified)",
@@ -1634,13 +1677,7 @@
             isStale: !1
           }), btn.innerHTML = '<i class="bi bi-check-lg"></i> Up to Date', setTimeout(() => {
             btn.innerHTML = prevHtml, btn.disabled = !1;
-          }, 2e3)) : res.status === 200 && res.data ? (currentEtag = res.etag || currentEtag, updateFeedStatusFooter(statusFooter, {
-            cachedAt: Date.now(),
-            etag: currentEtag,
-            status: "New releases available",
-            etagStatus: "Updated (200 OK)",
-            isStale: !1
-          }), showFeedUpdateBanner(host, tabId, page, reload), btn.innerHTML = '<i class="bi bi-arrow-up-circle"></i> Update Ready', btn.disabled = !1) : (btn.innerHTML = prevHtml, btn.disabled = !1);
+          }, 2e3)) : (btn.innerHTML = prevHtml, btn.disabled = !1);
         } catch (err) {
           console.warn("Manual check updates failed:", err), btn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Failed', setTimeout(() => {
             btn.innerHTML = prevHtml, btn.disabled = !1;
@@ -1661,13 +1698,13 @@
         }, 200);
       }
     });
-    host.appendChild(statusFooter), revalidatePromise && revalidatePromise.then((reval) => {
+    host.appendChild(statusFooter), page === 1 && revalidatePromise ? revalidatePromise.then((reval) => {
       var _a2, _b;
       if (host === browseCovers.currentHydrationHost)
         if (reval) {
           currentEtag = reval.etag || currentEtag;
           let freshTop = (_b = (_a2 = reval.data.chapters) == null ? void 0 : _a2[0]) == null ? void 0 : _b.permalink;
-          freshTop && freshTop !== currentTopPermalink && showFeedUpdateBanner(host, tabId, page, reload), updateFeedStatusFooter(statusFooter, {
+          freshTop && freshTop !== currentTopPermalink && showFeedUpdateBanner(host, tabId, reload), updateFeedStatusFooter(statusFooter, {
             cachedAt: Date.now(),
             etag: currentEtag,
             status: "Updated (200 OK)",
@@ -1682,7 +1719,45 @@
             etagStatus: "Matches Server (304)",
             isStale: !1
           });
-    });
+    }) : revalidatePromise && (revalidatePromise.then((reval) => {
+      host === browseCovers.currentHydrationHost && (reval ? (currentEtag = reval.etag || currentEtag, updateFeedStatusFooter(statusFooter, {
+        cachedAt: Date.now(),
+        etag: currentEtag,
+        status: "Updated (200 OK)",
+        etagStatus: "Updated (200 OK)",
+        isStale: !1
+      })) : updateFeedStatusFooter(statusFooter, {
+        cachedAt: feedResult.cachedAt,
+        etag: currentEtag,
+        status: "Synced (304 Not Modified)",
+        etagStatus: "Matches Server (304)",
+        isStale: !1
+      }));
+    }), revalidateFeedHead(tabId).then((head) => {
+      host === browseCovers.currentHydrationHost && head.hasNew && showFeedUpdateBanner(host, tabId, reload);
+    }));
+  }
+  async function revalidateFeedHead(tabId) {
+    var _a, _b, _c;
+    let url = FEED_TAB_TO_URL[tabId], key = `${FEED_TAB_TO_KEY[tabId]}:1`, cached = await getCached(key), cachedTop = cached ? parseFeedTop(cached.json_payload) : void 0;
+    try {
+      let res = await checkFeedOnline(url, key, cached == null ? void 0 : cached.etag);
+      if (res.status === 200 && res.data) {
+        let freshTop = (_b = (_a = res.data.chapters) == null ? void 0 : _a[0]) == null ? void 0 : _b.permalink;
+        return cachedTop !== void 0 && freshTop && freshTop !== cachedTop ? { hasNew: !0, etag: res.etag, status: "new-chapters" } : { hasNew: !1, etag: res.etag, status: cachedTop === void 0 ? "no-baseline" : "unchanged" };
+      }
+      return res.status === 304 ? { hasNew: !1, etag: (_c = res.etag) != null ? _c : cached == null ? void 0 : cached.etag, status: "unchanged" } : { hasNew: !1, etag: cached == null ? void 0 : cached.etag, status: "error" };
+    } catch (e) {
+      return { hasNew: !1, etag: cached == null ? void 0 : cached.etag, status: "error" };
+    }
+  }
+  function parseFeedTop(json) {
+    var _a, _b;
+    try {
+      return (_b = (_a = JSON.parse(json).chapters) == null ? void 0 : _a[0]) == null ? void 0 : _b.permalink;
+    } catch (e) {
+      return;
+    }
   }
   function feedStatusFooter(info) {
     let footer = document.createElement("div");
@@ -1732,7 +1807,7 @@
       etagEl && (etagEl.setAttribute("title", `HTTP ETag: ${info.etag}`), etagEl.innerHTML = `<i class="bi bi-hash"></i> ${info.etag.replace(/^"|"$/g, "").slice(0, 8)}`);
     }
   }
-  function showFeedUpdateBanner(host, tabId, page, reload) {
+  function showFeedUpdateBanner(host, tabId, reload) {
     if (host.querySelector(".ds-feed-update-banner")) return;
     let banner = document.createElement("div");
     banner.className = "ds-feed-update-banner", banner.innerHTML = `
@@ -1742,7 +1817,7 @@
   `;
     let btn = banner.querySelector("button");
     btn == null || btn.addEventListener("click", () => {
-      reload(host, tabId, page);
+      reload(host, tabId, 1);
     }), host.insertBefore(banner, host.firstChild);
   }
   function feedItem(ch, isRead = !1, isBookmarked = !1) {

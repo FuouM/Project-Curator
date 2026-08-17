@@ -1,6 +1,6 @@
 import { absUrl, COVERS_PREFIX, SITE_ROOT } from "../state";
-import { getCached, setCached, deleteCached } from "../db";
-import { httpGetText, httpDownload, fileDelete } from "./client";
+import { getCached, setCached, deleteCached, updateFollowedSeriesCover } from "../db";
+import { httpGetText, httpDownload, fileDelete, fileExists } from "./client";
 import { fetchChapter } from "./chapter";
 import type { Series } from "../types/api";
 
@@ -58,7 +58,14 @@ export async function getSeriesCover(permalink: string, coverUrl: string | null)
   if (!coverUrl) return null;
   const key = `cover:${permalink}`;
   const cached = await getCached(key);
-  if (cached && cached.json_payload) return cached.json_payload;
+  if (cached && cached.json_payload) {
+    // The cached path may point at a file that was purged (e.g. "Clear Cached
+    // Covers"). Verify on disk before trusting it; purge + refetch when stale.
+    try {
+      if (await fileExists(cached.json_payload)) return cached.json_payload;
+    } catch {}
+    await deleteCached(key);
+  }
   const extMatch = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(coverUrl);
   const ext = extMatch ? extMatch[1] : "jpg";
   const tmpOutPath = `${COVERS_PREFIX}/raw_${permalink}.${ext}`;
@@ -90,6 +97,29 @@ export async function getSeriesCover(permalink: string, coverUrl: string | null)
 
   await setCached(key, "cover", finalPath);
   return finalPath;
+}
+
+/**
+ * Ensures a followed series' stored cover path still points at a real file.
+ * Cache clears delete the cover file but leave `followed_series.cover`
+ * stale; when the path is gone, refetch the thumbnail and persist the new
+ * path so the Library never renders a dead image.
+ */
+export async function refreshFollowedSeriesCover(permalink: string, currentCover: string | null): Promise<string | null> {
+  if (currentCover) {
+    try {
+      if (await fileExists(currentCover)) return currentCover;
+    } catch {}
+  }
+  const fresh = await getOrHydrateSeriesCover(permalink);
+  if (fresh) {
+    try {
+      await updateFollowedSeriesCover(permalink, fresh);
+    } catch {
+      // The DB write must never break cover rendering; the fresh path still wins.
+    }
+  }
+  return fresh;
 }
 
 /**
@@ -130,7 +160,12 @@ export async function getChapterCover(permalink: string, firstPageUrl: string): 
   if (!firstPageUrl) return null;
   const key = `cover:chapter:${permalink}`;
   const cached = await getCached(key);
-  if (cached && cached.json_payload) return cached.json_payload;
+  if (cached && cached.json_payload) {
+    try {
+      if (await fileExists(cached.json_payload)) return cached.json_payload;
+    } catch {}
+    await deleteCached(key);
+  }
 
   const extMatch = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(firstPageUrl);
   const ext = extMatch ? extMatch[1] : "jpg";
