@@ -104,7 +104,6 @@ if (!PH) {
       .querySelector<HTMLButtonElement>("#minipaint-send-asset")
       ?.addEventListener("click", () => {
         closeInfoModal();
-        if (PH.loadTab) PH.loadTab(TAB_ID);
         navigateToTab(TAB_ID);
         ensureEditor(asset.path);
       });
@@ -199,7 +198,7 @@ if (!PH) {
         if (installed) {
           launcherHost.appendChild(settingsBox);
           const shouldAutoload = PH.isAutoloadEnabled ? PH.isAutoloadEnabled(TAB_ID) : true;
-          if (shouldAutoload) {
+          if (shouldAutoload || editorMounted) {
             ensureEditor();
           } else {
             unloadEditor();

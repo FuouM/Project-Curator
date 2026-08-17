@@ -334,8 +334,11 @@ export function isTabLoaded(tabId?: string): boolean {
 }
 
 export function setTabLoadedState(tabId: string, loaded: boolean): void {
+  const current = isTabLoaded(tabId);
   tabLoadedStates.set(tabId, loaded);
-  renderTabState(tabId);
+  if (current !== loaded) {
+    renderTabState(tabId);
+  }
   updateHeaderPluginActions();
 }
 
@@ -353,9 +356,11 @@ export function renderTabState(tabId: string): void {
   // Chrome-less plugins (like miniPaint or custom-header readers) render directly
   // and manage their own internal toolbar/load controls.
   if (tab.chromeLess) {
-    section.innerHTML = "";
-    const el = tab.render();
-    if (el) section.appendChild(el);
+    if (section.childElementCount === 0) {
+      section.innerHTML = "";
+      const el = tab.render();
+      if (el) section.appendChild(el);
+    }
     return;
   }
 
