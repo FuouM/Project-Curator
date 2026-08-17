@@ -131,7 +131,9 @@ def build_metadata_json(csv_path: str, num_classes: int) -> dict:
             try:
                 cat = int(row[cat_idx].strip())
             except ValueError as e:
-                raise RuntimeError(f"bad category at row {row_index}: {row[cat_idx]}") from e
+                raise RuntimeError(
+                    f"bad category at row {row_index}: {row[cat_idx]}"
+                ) from e
             idx_to_tag[str(row_index)] = name
             tag_to_category[name] = CATEGORY_MAP.get(cat, "general")
 
@@ -142,7 +144,12 @@ def build_metadata_json(csv_path: str, num_classes: int) -> dict:
 
     return {
         "model_info": {"img_size": INPUT_SIZE},
-        "dataset_info": {"tag_mapping": {"idx_to_tag": idx_to_tag, "tag_to_category": tag_to_category}},
+        "dataset_info": {
+            "tag_mapping": {
+                "idx_to_tag": idx_to_tag,
+                "tag_to_category": tag_to_category,
+            }
+        },
     }
 
 
@@ -154,37 +161,57 @@ def validate_onnx(onnx_path: str, num_classes: int) -> None:
     sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
     inp = sess.get_inputs()[0]
     out = sess.get_outputs()[0]
-    if inp.shape != [1, 3, INPUT_SIZE, INPUT_SIZE] and tuple(inp.shape[1:]) != (3, INPUT_SIZE, INPUT_SIZE):
+    if inp.shape != [1, 3, INPUT_SIZE, INPUT_SIZE] and tuple(inp.shape[1:]) != (
+        3,
+        INPUT_SIZE,
+        INPUT_SIZE,
+    ):
         raise RuntimeError(f"unexpected input shape {inp.shape}")
     if out.shape != [1, num_classes]:
-        raise RuntimeError(f"unexpected output shape {out.shape} (expected [1,{num_classes}])")
+        raise RuntimeError(
+            f"unexpected output shape {out.shape} (expected [1,{num_classes}])"
+        )
     rng = np.random.default_rng(0)
     x = (rng.standard_normal((1, 3, INPUT_SIZE, INPUT_SIZE)) * 0.5).astype(np.float32)
     res = sess.run([out.name], {inp.name: x})[0]
     if res.shape != (1, num_classes):
-        raise RuntimeError(f"runtime output shape {res.shape} does not match [1,{num_classes}]")
+        raise RuntimeError(
+            f"runtime output shape {res.shape} does not match [1,{num_classes}]"
+        )
     log(f"onnxruntime OK: input={inp.name}{inp.shape} output={out.name}{out.shape}")
     log(f"logits sample: min={res.min():.4f} max={res.max():.4f} mean={res.mean():.4f}")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Convert WD tagger safetensors to Project Curator ONNX")
+    parser = argparse.ArgumentParser(
+        description="Convert WD tagger safetensors to Project Curator ONNX"
+    )
     parser.add_argument("--repo", default=DEFAULT_REPO, help="Hugging Face repo id")
-    parser.add_argument("--out-dir", default=".curator/models/wd-eva02-tagger-2026-canary",
-                        help="Output directory (relative to repo root, or absolute)")
+    parser.add_argument(
+        "--out-dir",
+        default=".curator/models/wd-eva02-tagger-2026-canary",
+        help="Output directory (relative to repo root, or absolute)",
+    )
     parser.add_argument("--arch", default=DEFAULT_ARCH, help="timm architecture name")
-    parser.add_argument("--skip-download", action="store_true",
-                        help="Require model.safetensors/selected_tags.csv already present in out-dir")
+    parser.add_argument(
+        "--skip-download",
+        action="store_true",
+        help="Require model.safetensors/selected_tags.csv already present in out-dir",
+    )
     args = parser.parse_args()
 
     out_dir = resolve_out_dir(args.out_dir)
     os.makedirs(out_dir, exist_ok=True)
     log(f"output directory: {out_dir}")
 
-    paths = download_files(args.repo, out_dir) if not args.skip_download else {
-        fn: os.path.join(out_dir, fn)
-        for fn in ("model.safetensors", "selected_tags.csv", "config.json")
-    }
+    paths = (
+        download_files(args.repo, out_dir)
+        if not args.skip_download
+        else {
+            fn: os.path.join(out_dir, fn)
+            for fn in ("model.safetensors", "selected_tags.csv", "config.json")
+        }
+    )
     for fn, p in paths.items():
         if not os.path.exists(p):
             raise RuntimeError(f"required file missing: {p}")
@@ -200,7 +227,9 @@ def main() -> int:
     meta_path = os.path.join(out_dir, "wd-eva02-tagger-2026-canary-metadata.json")
     with open(meta_path, "w", encoding="utf-8") as fh:
         json.dump(metadata, fh, ensure_ascii=False)
-    log(f"wrote metadata JSON -> {meta_path} ({len(metadata['dataset_info']['tag_mapping']['idx_to_tag'])} tags)")
+    log(
+        f"wrote metadata JSON -> {meta_path} ({len(metadata['dataset_info']['tag_mapping']['idx_to_tag'])} tags)"
+    )
 
     validate_onnx(onnx_path, NUM_CLASSES)
 

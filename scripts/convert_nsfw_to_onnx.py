@@ -27,11 +27,20 @@ def resolve_out_dir(out_dir: str) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Convert nsfw-detection-2-mini safetensors to Project Curator ONNX")
-    parser.add_argument("--out-dir", default=".curator/models/nsfw-detection-2-mini",
-                        help="Output directory (relative to repo root, or absolute)")
-    parser.add_argument("--skip-download", action="store_true", help="Skip downloading files")
-    parser.add_argument("--repo", default="viddexa/nsfw-detection-2-mini", help="Hugging Face repo")
+    parser = argparse.ArgumentParser(
+        description="Convert nsfw-detection-2-mini safetensors to Project Curator ONNX"
+    )
+    parser.add_argument(
+        "--out-dir",
+        default=".curator/models/nsfw-detection-2-mini",
+        help="Output directory (relative to repo root, or absolute)",
+    )
+    parser.add_argument(
+        "--skip-download", action="store_true", help="Skip downloading files"
+    )
+    parser.add_argument(
+        "--repo", default="viddexa/nsfw-detection-2-mini", help="Hugging Face repo"
+    )
     args = parser.parse_args()
 
     out_dir = resolve_out_dir(args.out_dir)
@@ -61,7 +70,7 @@ def main() -> int:
             output_names=["logits"],
             opset_version=OPSET,
             do_constant_folding=True,
-            dynamic_axes={"image": {0: "batch_size"}, "logits": {0: "batch_size"}}
+            dynamic_axes={"image": {0: "batch_size"}, "logits": {0: "batch_size"}},
         )
 
     log(f"exported ONNX -> {onnx_path} ({os.path.getsize(onnx_path)} bytes)")
@@ -69,6 +78,7 @@ def main() -> int:
     # Convert AveragePool nodes with erroneous kernel_shape to GlobalAveragePool for DirectML compatibility
     try:
         import onnx
+
         onnx_model = onnx.load(onnx_path)
         modified = False
         for node in onnx_model.graph.node:
@@ -78,13 +88,16 @@ def main() -> int:
                 modified = True
         if modified:
             onnx.save(onnx_model, onnx_path)
-            log("converted AveragePool to GlobalAveragePool for DirectML GPU compatibility")
+            log(
+                "converted AveragePool to GlobalAveragePool for DirectML GPU compatibility"
+            )
     except Exception as e:
         log(f"GlobalAveragePool conversion skipped: {e}")
 
     # Validate ONNX model with onnxruntime
-    import numpy as np
+    # import numpy as np
     import onnxruntime as ort
+
     log("validating with onnxruntime ...")
     sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
     inp = sess.get_inputs()[0]
