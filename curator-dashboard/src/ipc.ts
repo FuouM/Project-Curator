@@ -7,6 +7,7 @@ import {
   type MessageInitShape,
 } from "@bufbuild/protobuf";
 import type { GenMessage } from "@bufbuild/protobuf/codegenv2";
+import { EmptySchema } from "@bufbuild/protobuf/wkt";
 import { logJS } from "./utils";
 import {
   RescanSafetyResultSchema,
@@ -14,6 +15,19 @@ import {
   RescanSafetyResult,
   SafetyRescanProgress,
 } from "./gen/import_pb";
+import {
+  CheckToolRequestSchema,
+  ToolStatusResultSchema,
+  ToolStatusResult,
+  SetToolPathRequestSchema,
+  InstallToolRequestSchema,
+  InstallToolResultSchema,
+  InstallToolResult,
+  GetToolInstallProgressRequestSchema,
+  ToolInstallProgressResultSchema,
+  ToolInstallProgressResult,
+  MediaTransformRequestSchema,
+} from "./gen/tools_pb";
 
 /**
  * Invoke a typed protobuf gRPC method over the shared Named Pipe bridge.
@@ -60,4 +74,55 @@ export async function triggerSafetyRescan(): Promise<RescanSafetyResult> {
 
 export async function getSafetyRescanProgress(): Promise<SafetyRescanProgress> {
   return typedCall("ImportService.GetSafetyRescanProgress", null, null, SafetyRescanProgressSchema);
+}
+
+// ── ToolsService (universal tool detection & auto-installation) ─────────
+
+export async function checkTool(tool: string): Promise<ToolStatusResult> {
+  return typedCall("ToolsService.CheckTool", CheckToolRequestSchema, { tool }, ToolStatusResultSchema);
+}
+
+export async function setToolPath(tool: string, path: string | null): Promise<void> {
+  await typedCall(
+    "ToolsService.SetToolPath",
+    SetToolPathRequestSchema,
+    { tool, path: path ?? undefined },
+    EmptySchema,
+  );
+}
+
+export async function installTool(tool: string): Promise<InstallToolResult> {
+  return typedCall("ToolsService.InstallTool", InstallToolRequestSchema, { tool }, InstallToolResultSchema);
+}
+
+export async function getToolInstallProgress(tool: string): Promise<ToolInstallProgressResult> {
+  return typedCall(
+    "ToolsService.GetToolInstallProgress",
+    GetToolInstallProgressRequestSchema,
+    { tool },
+    ToolInstallProgressResultSchema,
+  );
+}
+
+export async function mediaTransform(req: {
+  jobId: string;
+  inputPath: string;
+  outputPath: string;
+  targetFormat?: string;
+  videoFilters?: string[];
+  customArgs?: string[];
+}): Promise<void> {
+  await typedCall(
+    "ToolsService.MediaTransform",
+    MediaTransformRequestSchema,
+    {
+      jobId: req.jobId,
+      inputPath: req.inputPath,
+      outputPath: req.outputPath,
+      targetFormat: req.targetFormat,
+      videoFilters: req.videoFilters,
+      customArgs: req.customArgs,
+    },
+    EmptySchema,
+  );
 }

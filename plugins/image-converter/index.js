@@ -27,18 +27,7 @@
     return !!((_a = resp == null ? void 0 : resp.PathExistsResult) != null && _a.exists);
   }
   async function pickDirectory() {
-    return pickPath(!0);
-  }
-  async function pickPath(isDirectory) {
-    var _a;
-    let api = window.__TAURI__;
-    if (!((_a = api == null ? void 0 : api.core) != null && _a.invoke)) return null;
-    try {
-      let selected = await api.core.invoke("select_path", { isDirectory });
-      return typeof selected == "string" && selected.length > 0 ? selected : null;
-    } catch (e) {
-      return null;
-    }
+    return PH.dialogs.pickDirectory();
   }
   async function getUniqueOutputPath(sourcePath, outputDir, targetExt) {
     let base = sourcePath.split(/[/\\]/).pop(), dotIdx = base.lastIndexOf("."), stem = dotIdx !== -1 ? base.substring(0, dotIdx) : base, sep = outputDir.includes("\\") ? "\\" : "/", cleanDir = outputDir.replace(/[/\\]+$/, ""), n = 0;
@@ -97,40 +86,37 @@
   var boundTabs = /* @__PURE__ */ new Set();
   function setupDropZone(tabId, dropZoneIds, onFiles) {
     var _a;
-    let api = window.__TAURI__;
-    if (!((_a = api == null ? void 0 : api.webview) != null && _a.getCurrentWebview) || boundTabs.has(tabId)) return;
+    let PH7 = window.PluginHost;
+    if (!((_a = PH7 == null ? void 0 : PH7.ui) != null && _a.onDragDrop) || boundTabs.has(tabId)) return;
     boundTabs.add(tabId);
-    let ids = Array.isArray(dropZoneIds) ? dropZoneIds : [dropZoneIds];
-    api.webview.getCurrentWebview().onDragDropEvent((event) => {
-      var _a2, _b, _c;
+    let ids = Array.isArray(dropZoneIds) ? dropZoneIds : [dropZoneIds], getHitZoneId = (position) => {
+      let cx = position.x / window.devicePixelRatio, cy = position.y / window.devicePixelRatio, hit = document.elementFromPoint(cx, cy);
+      if (!hit) return null;
+      for (let id of ids) {
+        let zone = document.getElementById(id);
+        if (zone && (zone === hit || zone.contains(hit))) return id;
+      }
+      return null;
+    };
+    PH7.ui.onDragDrop((paths, position, type) => {
+      var _a2, _b;
       let tabEl = document.getElementById(`view-extensions-${tabId}`);
-      if (!(tabEl != null && tabEl.classList.contains("active"))) return;
-      let drop = event.payload, getHitZoneId = () => {
-        let pos = drop.position;
-        if (!pos || typeof pos.x != "number") return null;
-        let cx = pos.x / window.devicePixelRatio, cy = pos.y / window.devicePixelRatio, hit = document.elementFromPoint(cx, cy);
-        if (!hit) return null;
-        for (let id of ids) {
-          let zone = document.getElementById(id);
-          if (zone && (zone === hit || zone.contains(hit))) return id;
+      if (tabEl != null && tabEl.classList.contains("active")) {
+        if (type === "enter" || type === "over") {
+          let hitId = getHitZoneId(position);
+          for (let id of ids) {
+            let zone = document.getElementById(id);
+            zone && (id === hitId ? zone.classList.add("toolbox-drop-active") : zone.classList.remove("toolbox-drop-active"));
+          }
+        } else if (type === "leave")
+          for (let id of ids)
+            (_a2 = document.getElementById(id)) == null || _a2.classList.remove("toolbox-drop-active");
+        else if (type === "drop") {
+          let hitId = getHitZoneId(position);
+          for (let id of ids)
+            (_b = document.getElementById(id)) == null || _b.classList.remove("toolbox-drop-active");
+          paths.length > 0 && onFiles(paths, hitId);
         }
-        return null;
-      };
-      if (drop.type === "enter" || drop.type === "over") {
-        let hitId = getHitZoneId();
-        for (let id of ids) {
-          let zone = document.getElementById(id);
-          zone && (id === hitId ? zone.classList.add("toolbox-drop-active") : zone.classList.remove("toolbox-drop-active"));
-        }
-      } else if (drop.type === "leave")
-        for (let id of ids)
-          (_a2 = document.getElementById(id)) == null || _a2.classList.remove("toolbox-drop-active");
-      else if (drop.type === "drop") {
-        let hitId = getHitZoneId();
-        for (let id of ids)
-          (_b = document.getElementById(id)) == null || _b.classList.remove("toolbox-drop-active");
-        let paths = (_c = drop.paths) != null ? _c : [];
-        paths.length > 0 && onFiles(paths, hitId);
       }
     });
   }
@@ -272,13 +258,13 @@
     PH5 && PH5.loadTab && PH5.loadTab(TAB_ID);
   }
   function renderTab() {
-    var _a, _b, _c;
+    var _a, _b;
     let container = document.createElement("div");
     container.innerHTML = '<div class="group-box">  <div class="group-box-title"><i class="bi bi-arrow-repeat"></i> Image Converter</div>  <div style="display:flex;flex-direction:column;gap:12px;">    <div class="form-group">      <label for="converter-output-dir" style="min-width:110px;">Output folder:</label>      <div class="input-wrapper" style="flex:1;">        <input class="input-field has-clear" id="converter-output-dir"          placeholder="Where converted files should be written..." />        <button type="button" class="input-clear-btn" tabindex="-1">          <i class="bi bi-x-lg"></i>        </button>      </div>      <button type="button" class="win-button" id="converter-browse-btn">        <i class="bi bi-folder2-open"></i> Browse...      </button>    </div>    <div class="form-group">      <label for="converter-format" style="min-width:110px;">Target format:</label>      <select class="input-field" id="converter-format" style="width:160px;height:24px;">' + CONVERT_FORMATS.map((f) => `<option value="${f}">${f.toUpperCase()}</option>`).join("") + `      </select>      <div id="converter-quality-group" class="form-group" style="margin:0;flex:1;">        <label for="converter-quality" style="min-width:70px;">          Quality: <span id="converter-quality-value">90</span>        </label>        <input type="range" id="converter-quality" min="1" max="100" value="90"          style="flex:1;max-width:200px;" />      </div>    </div>    <div id="converter-quality-note" style="font-size:10px;color:#777;margin-top:-6px;"></div>    <div id="converter-drop-host">      <div class="toolbox-drop-zone" id="converter-drop-zone" style="flex:none;height:130px;">        <div class="toolbox-drop-icon"><i class="bi bi-images"></i></div>        <span>Drop image files here to queue them</span>      </div>    </div>    <div class="group-box" style="margin-top:8px;">      <div class="group-box-title">Queue        <span id="converter-queue-count"          style="font-weight:400;color:#777;font-size:10px;">0 file(s) queued</span>        <button type="button" class="win-button" id="converter-clear-btn"          style="font-size:10px;padding:1px 8px;margin-left:8px;">          <i class="bi bi-trash3"></i> Clear        </button>      </div>      <div id="converter-queue-empty"        style="font-size:11px;color:#999;font-style:italic;padding:4px 0;">No files queued.</div>      <div id="converter-queue-list"        style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;"></div>    </div>    <div style="display:flex;align-items:center;gap:12px;">      <button type="button" class="win-button primary" id="converter-run-btn"        style="padding:4px 14px;">        <i class="bi bi-arrow-repeat"></i> Convert      </button>      <div class="progress-bar" style="flex:1;max-width:300px;">        <div class="progress-fill" id="converter-progress-fill" style="width:0%;"></div>      </div>      <span id="converter-progress-text" style="font-size:11px;color:#555;">0 / 0 (0%)</span>    </div>    <div class="group-box" style="margin-top:8px;">      <div class="group-box-title"><i class="bi bi-terminal"></i> Output Log</div>      <div id="converter-log" style="height:140px;overflow-y:auto;background-color:#1e1e1e;color:#cccccc;border:1px solid #7a7a7a;padding:8px;font-family:'Consolas',monospace;font-size:11px;white-space:pre-wrap;"></div>    </div>  </div></div>`, (_a = container.querySelector("#converter-run-btn")) == null || _a.addEventListener("click", () => void runConversion()), (_b = container.querySelector("#converter-clear-btn")) == null || _b.addEventListener("click", () => {
       state.queue.length = 0, state.inQueue = {}, updateQueueList(), updateProgress(0, 0), log("Queue cleared.", "info");
     });
     let browseBtn = container.querySelector("#converter-browse-btn"), outInput = container.querySelector("#converter-output-dir");
-    outInput && (outInput.value = state.outputDir), browseBtn && outInput && ((_c = window.__TAURI__) != null && _c.core) && browseBtn.addEventListener("click", async () => {
+    outInput && (outInput.value = state.outputDir), browseBtn && outInput && browseBtn.addEventListener("click", async () => {
       let path = await pickDirectory();
       path && (outInput.value = path, setOutputDir(path), log(`Output directory set: ${path}`, "success"));
     });

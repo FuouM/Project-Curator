@@ -13,10 +13,57 @@ service ToolsService {
   rpc CreateGifFromImages (CreateGifFromImagesRequest) returns (google.protobuf.Empty);
   rpc ProcessGifEffects (ProcessGifEffectsRequest) returns (google.protobuf.Empty);
   rpc SplitGif (SplitGifRequest) returns (google.protobuf.Empty);
+  rpc CheckTool (CheckToolRequest) returns (ToolStatusResult);
+  rpc SetToolPath (SetToolPathRequest) returns (google.protobuf.Empty);
+  rpc InstallTool (InstallToolRequest) returns (InstallToolResult);
+  rpc GetToolInstallProgress (GetToolInstallProgressRequest) returns (ToolInstallProgressResult);
+  rpc MediaTransform (MediaTransformRequest) returns (google.protobuf.Empty);
   rpc GetBenchmarkImages (GetBenchmarkImagesRequest) returns (BenchmarkImagesResult);
   rpc BenchmarkSingleImage (BenchmarkSingleImageRequest) returns (SingleImageBenchmarkResult);
   rpc RunImageProcessingBenchmark (RunImageProcessingBenchmarkRequest) returns (stream ImageProcessingBenchmarkProgress);
   rpc GetImageProcessingBenchmarkProgress (google.protobuf.Empty) returns (ImageProcessingBenchmarkProgress);
+}
+
+// ── Tool management (universal tool detection & auto-installation) ──────
+
+message CheckToolRequest {
+  string tool = 1;
+}
+
+message ToolStatusResult {
+  string tool = 1;
+  bool available = 2;
+  optional string resolved_path = 3;
+  optional string version = 4;
+  optional string portable_path = 5;
+}
+
+message SetToolPathRequest {
+  string tool = 1;
+  // Persisted explicit path; None reverts to auto-detection.
+  optional string path = 2;
+}
+
+message InstallToolRequest {
+  string tool = 1;
+}
+
+message InstallToolResult {
+  bool started = 1;
+  optional string error = 2;
+}
+
+message GetToolInstallProgressRequest {
+  string tool = 1;
+}
+
+message ToolInstallProgressResult {
+  string tool = 1;
+  // `"idle"` | `"downloading"` | `"extracting"` | `"completed"` | `"failed"`
+  string status = 2;
+  uint32 percent = 3;
+  repeated string logs = 4;
+  optional string error = 5;
 }
 
 // Explicit (source_path, target_path) mapping for ephemeral conversion.
@@ -137,6 +184,21 @@ message SplitGifRequest {
   string job_id = 1;
   string input_path = 2;
   string output_dir = 3;
+}
+
+// Generic FFmpeg pipeline: filter chains plus optional raw overrides. Progress
+// is surfaced via the existing GetTranscodeProgress / GetTranscodeProgress.
+message MediaTransformRequest {
+  string job_id = 1;
+  string input_path = 2;
+  string output_path = 3;
+  // Output container hint passed as `-f` (e.g. mp4, webm, gif).
+  optional string target_format = 4;
+  // Individual filter expressions joined with `,` into a single `-vf` chain.
+  repeated string video_filters = 5;
+  // Raw FFmpeg arguments appended verbatim after the input so callers can
+  // override encoding parameters (e.g. `-c:v`, `-crf`, `-an`).
+  repeated string custom_args = 6;
 }
 
 message GetBenchmarkImagesRequest {

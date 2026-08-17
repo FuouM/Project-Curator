@@ -356,7 +356,7 @@ export function renderTab(): HTMLElement {
   const browseBtn = container.querySelector<HTMLButtonElement>("#converter-browse-btn");
   const outInput = container.querySelector<HTMLInputElement>("#converter-output-dir");
   if (outInput) outInput.value = state.outputDir;
-  if (browseBtn && outInput && window.__TAURI__?.core) {
+  if (browseBtn && outInput) {
     browseBtn.addEventListener("click", async () => {
       const path = await pickDirectory();
       if (path) {

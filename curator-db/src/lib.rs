@@ -6,10 +6,12 @@ pub mod grpc_convert;
 pub mod models;
 pub mod plugin_db;
 pub mod repos;
+pub mod sandbox_path;
 pub mod vector_index;
 
 pub use plugin_db::{open_plugin_db, plugin_data_root, plugin_db_execute, plugin_db_query};
 pub use repos::{FolderRepo, ImageRepo, SourceRepo, TagRepo};
+pub use sandbox_path::{SandboxError, SandboxedPath, is_safe_name, is_safe_plugin_id};
 
 pub use vector_index::VectorIndex;
 

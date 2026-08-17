@@ -70,40 +70,37 @@
   var boundTabs = /* @__PURE__ */ new Set();
   function setupDropZone(tabId, dropZoneIds, onFiles) {
     var _a;
-    let api = window.__TAURI__;
-    if (!((_a = api == null ? void 0 : api.webview) != null && _a.getCurrentWebview) || boundTabs.has(tabId)) return;
+    let PH7 = window.PluginHost;
+    if (!((_a = PH7 == null ? void 0 : PH7.ui) != null && _a.onDragDrop) || boundTabs.has(tabId)) return;
     boundTabs.add(tabId);
-    let ids = Array.isArray(dropZoneIds) ? dropZoneIds : [dropZoneIds];
-    api.webview.getCurrentWebview().onDragDropEvent((event) => {
-      var _a2, _b, _c;
+    let ids = Array.isArray(dropZoneIds) ? dropZoneIds : [dropZoneIds], getHitZoneId = (position) => {
+      let cx = position.x / window.devicePixelRatio, cy = position.y / window.devicePixelRatio, hit = document.elementFromPoint(cx, cy);
+      if (!hit) return null;
+      for (let id of ids) {
+        let zone = document.getElementById(id);
+        if (zone && (zone === hit || zone.contains(hit))) return id;
+      }
+      return null;
+    };
+    PH7.ui.onDragDrop((paths, position, type) => {
+      var _a2, _b;
       let tabEl = document.getElementById(`view-extensions-${tabId}`);
-      if (!(tabEl != null && tabEl.classList.contains("active"))) return;
-      let drop = event.payload, getHitZoneId = () => {
-        let pos = drop.position;
-        if (!pos || typeof pos.x != "number") return null;
-        let cx = pos.x / window.devicePixelRatio, cy = pos.y / window.devicePixelRatio, hit = document.elementFromPoint(cx, cy);
-        if (!hit) return null;
-        for (let id of ids) {
-          let zone = document.getElementById(id);
-          if (zone && (zone === hit || zone.contains(hit))) return id;
+      if (tabEl != null && tabEl.classList.contains("active")) {
+        if (type === "enter" || type === "over") {
+          let hitId = getHitZoneId(position);
+          for (let id of ids) {
+            let zone = document.getElementById(id);
+            zone && (id === hitId ? zone.classList.add("toolbox-drop-active") : zone.classList.remove("toolbox-drop-active"));
+          }
+        } else if (type === "leave")
+          for (let id of ids)
+            (_a2 = document.getElementById(id)) == null || _a2.classList.remove("toolbox-drop-active");
+        else if (type === "drop") {
+          let hitId = getHitZoneId(position);
+          for (let id of ids)
+            (_b = document.getElementById(id)) == null || _b.classList.remove("toolbox-drop-active");
+          paths.length > 0 && onFiles(paths, hitId);
         }
-        return null;
-      };
-      if (drop.type === "enter" || drop.type === "over") {
-        let hitId = getHitZoneId();
-        for (let id of ids) {
-          let zone = document.getElementById(id);
-          zone && (id === hitId ? zone.classList.add("toolbox-drop-active") : zone.classList.remove("toolbox-drop-active"));
-        }
-      } else if (drop.type === "leave")
-        for (let id of ids)
-          (_a2 = document.getElementById(id)) == null || _a2.classList.remove("toolbox-drop-active");
-      else if (drop.type === "drop") {
-        let hitId = getHitZoneId();
-        for (let id of ids)
-          (_b = document.getElementById(id)) == null || _b.classList.remove("toolbox-drop-active");
-        let paths = (_c = drop.paths) != null ? _c : [];
-        paths.length > 0 && onFiles(paths, hitId);
       }
     });
   }

@@ -41,24 +41,13 @@
   // lib/ipc-utils.ts
   var PH = window.PluginHost;
   async function pickDirectory() {
-    return pickPath(!0);
-  }
-  async function pickPath(isDirectory) {
-    var _a;
-    let api = window.__TAURI__;
-    if (!((_a = api == null ? void 0 : api.core) != null && _a.invoke)) return null;
-    try {
-      let selected = await api.core.invoke("select_path", { isDirectory });
-      return typeof selected == "string" && selected.length > 0 ? selected : null;
-    } catch (e) {
-      return null;
-    }
+    return PH.dialogs.pickDirectory();
   }
   function getPluginDirs() {
-    var _a, _b;
+    var _a, _b, _c, _d;
     return {
-      pluginDir: (_a = window.__curator_plugin_dir__) != null ? _a : "",
-      workspaceRoot: (_b = window.__curator_workspace_root__) != null ? _b : ""
+      pluginDir: (_b = (_a = PH.context) == null ? void 0 : _a.pluginDir) != null ? _b : "",
+      workspaceRoot: (_d = (_c = PH.context) == null ? void 0 : _c.workspaceRoot) != null ? _d : ""
     };
   }
 
@@ -673,11 +662,8 @@ ${r.label} \u2014 ${statusText}`, chip.textContent = statusText, chips.appendChi
     return createPluginDb(db).execute(sql, params);
   }
   async function revealInFolder(path) {
-    var _a;
-    let api = (_a = window.__TAURI__) == null ? void 0 : _a.core;
-    if (!(api != null && api.invoke)) return !1;
     try {
-      return await api.invoke("reveal_in_folder", { path }), !0;
+      return await PH6.system.revealInFolder(path), !0;
     } catch (e) {
       return !1;
     }
@@ -1150,14 +1136,11 @@ ${r.label} \u2014 ${statusText}`, chip.textContent = statusText, chips.appendChi
     };
     return item.status === "queued" && mk("bi bi-play-fill", "Start", () => void startQueuedItem(item.jobId)), item.status === "running" && mk("bi bi-stop-circle", "Cancel (graceful)", () => void cancelDownload(item.jobId)), item.status === "completed" && mk("bi bi-folder2-open", "Reveal in Explorer", () => {
       (async () => {
-        var _a;
-        let api = (_a = window.__TAURI__) == null ? void 0 : _a.core;
-        if (api != null && api.invoke)
-          try {
-            await api.invoke("reveal_in_folder", { path: item.outputPath });
-          } catch (e) {
-            log("Could not reveal output file.", "error");
-          }
+        try {
+          await PH5.system.revealInFolder(item.outputPath);
+        } catch (e) {
+          log("Could not reveal output file.", "error");
+        }
       })();
     }), (item.status === "failed" || item.status === "cancelled") && mk("bi bi-arrow-clockwise", "Retry", () => void retryDownload(item.jobId)), mk("bi bi-clipboard", "Copy URL", () => {
       var _a;
@@ -1368,9 +1351,9 @@ ${r.label} \u2014 ${statusText}`, chip.textContent = statusText, chips.appendChi
       let dir = state.settings.outputDir;
       if (dir)
         try {
-          await PH5.callService("OpenFolder", { path: dir });
+          await PH5.system.openExternally(dir);
         } catch (e) {
-          window.open("file://" + dir.replace(/\\/g, "/"));
+          log("Could not open output folder: " + e, "error");
         }
     });
     let conns = root.querySelector("#ad-conns");

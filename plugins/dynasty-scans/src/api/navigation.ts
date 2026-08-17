@@ -1,18 +1,17 @@
 import { PAGES_PREFIX } from "../state";
 import type { ParsedDynastyUrl } from "../types/api";
 
-/** Opens a URL in the user's default browser via the Tauri opener plugin. */
+/**
+ * Opens a URL in the user's default browser via the dashboard's
+ * `PluginHost.system.openUrl` bridge (which delegates to the Tauri opener).
+ */
 export async function openExternal(url: string): Promise<void> {
-  const api = window.__TAURI__?.core;
-  if (api?.invoke) {
-    try {
-      await api.invoke("plugin:opener|open_url", { url });
-      return;
-    } catch {
-      // fall through to window.open below
-    }
+  try {
+    await window.PluginHost.system.openUrl(url);
+    return;
+  } catch {
+    window.open(url, "_blank", "noopener");
   }
-  window.open(url, "_blank", "noopener");
 }
 
 /** Extracts a series/chapter permalink from a dynasty-scans.com URL. */

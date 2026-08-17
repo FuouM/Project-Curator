@@ -209,15 +209,12 @@ export async function dbExecute(
   return client.execute(sql, params);
 }
 
-// ── Tauri desktop helpers ───────────────────────────────────────────────────
+// ── PluginHost desktop helpers ──────────────────────────────────────────────
 
 /** Opens the native folder picker; resolves the chosen directory or null. */
 export async function selectDirectory(): Promise<string | null> {
-  const api = (window as any).__TAURI__?.core;
-  if (!api?.invoke) return null;
   try {
-    const selected = await api.invoke("select_path", { isDirectory: true });
-    return typeof selected === "string" && selected.length > 0 ? selected : null;
+    return await PH.dialogs.pickDirectory();
   } catch {
     return null;
   }
@@ -225,10 +222,8 @@ export async function selectDirectory(): Promise<string | null> {
 
 /** Reveals a file in Explorer with the file highlighted. */
 export async function revealInFolder(path: string): Promise<boolean> {
-  const api = (window as any).__TAURI__?.core;
-  if (!api?.invoke) return false;
   try {
-    await api.invoke("reveal_in_folder", { path });
+    await PH.system.revealInFolder(path);
     return true;
   } catch {
     return false;
@@ -237,10 +232,8 @@ export async function revealInFolder(path: string): Promise<boolean> {
 
 /** Opens a folder directly in Explorer. */
 export async function openFolder(path: string): Promise<boolean> {
-  const api = (window as any).__TAURI__?.core;
-  if (!api?.invoke) return false;
   try {
-    await api.invoke("open_file_externally", { path });
+    await PH.system.openExternally(path);
     return true;
   } catch {
     return false;

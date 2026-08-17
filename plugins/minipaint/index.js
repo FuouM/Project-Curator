@@ -32,24 +32,13 @@
   // lib/ipc-utils.ts
   var PH = window.PluginHost;
   async function pickDirectory() {
-    return pickPath(!0);
-  }
-  async function pickPath(isDirectory) {
-    var _a;
-    let api = window.__TAURI__;
-    if (!((_a = api == null ? void 0 : api.core) != null && _a.invoke)) return null;
-    try {
-      let selected = await api.core.invoke("select_path", { isDirectory });
-      return typeof selected == "string" && selected.length > 0 ? selected : null;
-    } catch (e) {
-      return null;
-    }
+    return PH.dialogs.pickDirectory();
   }
   function getPluginDirs() {
-    var _a, _b;
+    var _a, _b, _c, _d;
     return {
-      pluginDir: (_a = window.__curator_plugin_dir__) != null ? _a : "",
-      workspaceRoot: (_b = window.__curator_workspace_root__) != null ? _b : ""
+      pluginDir: (_b = (_a = PH.context) == null ? void 0 : _a.pluginDir) != null ? _b : "",
+      workspaceRoot: (_d = (_c = PH.context) == null ? void 0 : _c.workspaceRoot) != null ? _d : ""
     };
   }
 
@@ -150,17 +139,11 @@
     return (_a = resp == null ? void 0 : resp.GetPluginRuntimeInstallProgressResult) != null ? _a : { status: "idle", percent: 0, logs: [] };
   }
   async function saveEditedImage(p) {
-    var _a;
-    let tauriCore = (_a = window.__TAURI__) == null ? void 0 : _a.core;
-    if (!tauriCore)
-      throw new Error("Tauri core API not available; cannot save edited image.");
-    return { ok: !0, path: await tauriCore.invoke("save_edited_image", new Uint8Array(p.bytes), {
-      headers: {
-        "x-filename": encodeURIComponent(p.name),
-        "x-format": p.format,
-        "x-out-dir": encodeURIComponent(p.outputDir)
-      }
-    }) };
+    let sep = p.outputDir.includes("\\") ? "\\" : "/";
+    return { ok: !0, path: await PH5.storage.writeBinary(
+      `${p.outputDir}${sep}${p.name}.${p.format}`,
+      new Uint8Array(p.bytes)
+    ) };
   }
 
   // minipaint/src/installer.ts

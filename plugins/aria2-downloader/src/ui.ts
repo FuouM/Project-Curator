@@ -235,9 +235,9 @@ export function buildWorkspaceRoot(): HTMLElement {
     const dir = state.settings.outputDir;
     if (!dir) return;
     try {
-      await PH.callService("OpenFolder", { path: dir });
-    } catch {
-      window.open("file://" + dir.replace(/\\/g, "/"));
+      await PH.system.openExternally(dir);
+    } catch (e) {
+      log("Could not open output folder: " + e, "error");
     }
   });
 

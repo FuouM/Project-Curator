@@ -38,6 +38,60 @@ pub async fn get_transcode_progress(
     }))
 }
 
+pub async fn media_transform(
+    ctx: &Arc<ClientContext>,
+    params: &serde_json::Value,
+) -> Result<serde_json::Value, Status> {
+    let job_id = params["job_id"].as_str().unwrap_or_default();
+    let input_path = handlers::resolve_relative_path(
+        &ctx.data_dir,
+        params["input_path"].as_str().unwrap_or_default(),
+    );
+    let output_path = handlers::resolve_relative_path(
+        &ctx.data_dir,
+        params["output_path"].as_str().unwrap_or_default(),
+    );
+    let target_format = params["target_format"].as_str().map(|s| s.to_string());
+    let video_filters = params["video_filters"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let custom_args = params["custom_args"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let ffmpeg = handlers::resolve_ffmpeg_path(&ctx.data_dir, &ctx.settings)
+        .await
+        .map_err(crate::server::internal_status)?;
+
+    if let Err(e) = curator_core::transcode::start_media_transform(
+        job_id,
+        &input_path,
+        &output_path,
+        target_format.as_deref(),
+        video_filters,
+        custom_args,
+        &ffmpeg,
+        &ctx.transcode_progress,
+    )
+    .await
+    {
+        return Ok(serde_json::json!({
+            "Error": { "message": e.to_string() }
+        }));
+    }
+    Ok(serde_json::json!("Success"))
+}
+
 pub async fn get_media_metadata(
     ctx: &Arc<ClientContext>,
     params: &serde_json::Value,

@@ -623,6 +623,145 @@ pub async fn start_transcode(
     Ok(())
 }
 
+/// Start a generic FFmpeg media transform. `video_filters` is joined into a single
+/// `-vf` filter chain; `custom_args` are appended verbatim after the input so callers
+/// can override encoding parameters. Progress is recorded into `map` under `job_id`
+/// exactly like `start_transcode`.
+pub async fn start_media_transform(
+    job_id: &str,
+    input_path: &str,
+    output_path: &str,
+    target_format: Option<&str>,
+    video_filters: Vec<String>,
+    custom_args: Vec<String>,
+    ffmpeg_path: &Path,
+    map: &TranscodeProgressMap,
+) -> Result<()> {
+    let input = Path::new(input_path);
+    if !input.is_file() {
+        anyhow::bail!("Input file not found: {}", input_path);
+    }
+    let output = Path::new(output_path);
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let metadata = crate::video::read_video_metadata(input, ffmpeg_path)?;
+    let total_duration_ms = metadata.duration_ms.max(1);
+    let input_size = std::fs::metadata(input).map(|m| m.len()).ok();
+
+    {
+        let mut guard = map.lock().await;
+        let (key, state) = default_job_state(job_id, output_path.to_string(), input_size);
+        guard.insert(key, state);
+    }
+
+    let mut cmd = tokio::process::Command::new(ffmpeg_path);
+    cmd.arg("-hide_banner")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-progress")
+        .arg("pipe:1")
+        .arg("-y")
+        .arg("-i")
+        .arg(input_path);
+    if !video_filters.is_empty() {
+        cmd.arg("-vf").arg(video_filters.join(","));
+    }
+    if !custom_args.is_empty() {
+        cmd.args(&custom_args);
+    }
+    if let Some(fmt) = target_format {
+        cmd.arg("-f").arg(fmt);
+    }
+    cmd.arg(output_path);
+
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let command_string = {
+        let mut parts = vec![ffmpeg_path.display().to_string()];
+        for arg in cmd.as_std().get_args() {
+            parts.push(format!("{}", arg.to_string_lossy()));
+        }
+        parts.join(" ")
+    };
+    {
+        let mut guard = map.lock().await;
+        if let Some(state) = guard.get_mut(job_id) {
+            state.command = Some(command_string);
+        }
+    }
+
+    let mut child = cmd.spawn().context("Failed to spawn FFmpeg")?;
+    let stdout = child.stdout.take().expect("ffmpeg stdout piped");
+    let stderr = child.stderr.take().expect("ffmpeg stderr piped");
+    let map_task = map.clone();
+    let job_id_task = job_id.to_string();
+    let total_task = total_duration_ms;
+
+    let reader_task = spawn_progress_reader(
+        stdout,
+        map_task,
+        job_id_task,
+        move |_current, out_time_ms, done| {
+            if done {
+                100.0
+            } else {
+                ((out_time_ms as f64 / total_task as f64) * 100.0).clamp(0.0, 100.0) as f32
+            }
+        },
+    );
+
+    let stderr_task = spawn_stderr_tail_drainer(stderr);
+
+    let map_fin = map.clone();
+    let job_id_fin = job_id.to_string();
+    let output_fin = output_path.to_string();
+    tokio::spawn(async move {
+        let status = child.wait().await.context("FFmpeg process wait failed");
+        let stderr_tail = stderr_task.await.unwrap_or_default();
+        let _ = reader_task.await;
+
+        let mut guard = map_fin.lock().await;
+        if let Some(state) = guard.get_mut(&job_id_fin) {
+            state.running = false;
+            match status {
+                Ok(s) if s.success() => {
+                    state.percent = 100.0;
+                    let out_path = std::path::Path::new(&output_fin);
+                    if out_path.is_file() {
+                        state.output_size_bytes =
+                            std::fs::metadata(out_path).map(|m| m.len()).ok();
+                    }
+                }
+                Ok(s) => {
+                    state.error = Some(format!("FFmpeg exited with status: {}", s));
+                }
+                Err(e) => {
+                    state.error = Some(format!("{}", e));
+                }
+            }
+            if state.error.is_some() && !stderr_tail.is_empty() {
+                state.error = Some(format!(
+                    "{}\n{}",
+                    state.error.clone().unwrap_or_default(),
+                    stderr_tail
+                ));
+            }
+            if state.error.is_some() {
+                error!(
+                    "Media transform job {} failed for {:?}: {:?}",
+                    job_id_fin, output_fin, state.error
+                );
+            }
+        }
+    });
+
+    info!("Media transform job {} started for {:?}", job_id, output_path);
+    Ok(())
+}
+
 /// Poll the current state of a transcode job.
 pub async fn get_transcode_progress(job_id: &str, map: &TranscodeProgressMap) -> TranscodeJobState {
     let guard = map.lock().await;

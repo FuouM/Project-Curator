@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use tokio::sync::RwLock;
 
+use crate::sandbox_path::is_safe_name;
+
 static PLUGIN_POOLS: LazyLock<RwLock<HashMap<PathBuf, SqlitePool>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 
@@ -21,19 +23,6 @@ pub fn plugin_data_root(data_dir: &Path) -> PathBuf {
     let dir = data_dir.join("plugin_data");
     let _ = std::fs::create_dir_all(&dir);
     dir
-}
-
-/// A safe bare file/dir name: no separators, no leading dot, no `..`.
-fn is_safe_name(s: &str) -> bool {
-    !s.is_empty()
-        && s != "."
-        && s != ".."
-        && !s.starts_with('.')
-        && !s.contains('/')
-        && !s.contains('\\')
-        && !s.contains("..")
-        && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
 
 /// Resolve and open (creating if needed) a plugin-owned database.

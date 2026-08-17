@@ -34,6 +34,7 @@ pub use curator_db::{
     FolderRepo, ImageRepo, SourceRepo, TagRepo, VectorIndex, init_db, models, open_plugin_db,
     plugin_data_root, plugin_db_execute, plugin_db_query,
 };
+pub use curator_db::{SandboxError, SandboxedPath};
 
 // ── curator-ml ──────────────────────────────────────────────────────────
 pub use curator_ml::detection::{

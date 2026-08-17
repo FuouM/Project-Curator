@@ -419,11 +419,6 @@ export async function handleSaveFinal(): Promise<void> {
   if (state.historyIndex < 0 || state.historyIndex >= state.history.length) return;
   const activeState = state.history[state.historyIndex];
 
-  if (!window.__TAURI__ || !window.__TAURI__.core) {
-    logConsole("Tauri core API not available.", "error");
-    return;
-  }
-
   const srcName = activeState.path.split(/[\\/]/).pop() || "output";
   const ext = srcName.split(".").pop()?.toLowerCase() || "gif";
   const baseName = srcName.substring(0, srcName.lastIndexOf(".")) || srcName;
@@ -441,16 +436,7 @@ export async function handleSaveFinal(): Promise<void> {
   const filterExts = extMap[ext] || [ext];
   const filterName = ext.toUpperCase() + " File";
 
-  const finalDest = await window.__TAURI__.core
-    .invoke("save_file_dialog", {
-      suggestedName,
-      filterName,
-      extensions: filterExts,
-    })
-    .catch((err: unknown) => {
-      logConsole("Save dialog error: " + err, "error");
-      return null;
-    });
+  const finalDest = await PH.dialogs.saveFile({ suggestedName, filterName, extensions: filterExts });
 
   if (!finalDest) return;
 

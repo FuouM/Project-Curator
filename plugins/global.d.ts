@@ -18,6 +18,112 @@ export {};
 declare global {
   interface Window {
     PluginHost: {
+      readonly context: {
+        readonly pluginId: string;
+        readonly pluginDir: string;
+        readonly workspaceRoot: string;
+      };
+      readonly storage: {
+        stat(path?: string): Promise<{ totalBytes: number; fileCount: number; exists: boolean }>;
+        exists(path: string): Promise<boolean>;
+        resolve(path: string): Promise<string | null>;
+        readText(path: string): Promise<string>;
+        writeText(path: string, content: string): Promise<void>;
+        readBinary(path: string): Promise<Uint8Array>;
+        writeBinary(path: string, bytes: Uint8Array): Promise<string>;
+        getFileSize(path: string): Promise<number | null>;
+        move(src: string, dst: string): Promise<string>;
+        delete(path: string): Promise<void>;
+        list(path?: string): Promise<Array<{ name: string; isDir: boolean; sizeBytes: number }>>;
+      };
+      readonly db: {
+        execute(
+          dbName: string,
+          sql: string,
+          params?: unknown[],
+        ): Promise<{ rowsAffected: number }>;
+        query<T = Record<string, unknown>>(
+          dbName: string,
+          sql: string,
+          params?: unknown[],
+        ): Promise<T[]>;
+      };
+      readonly media: {
+        getMetadata(path: string): Promise<{ durationMs: number; fps: number; totalFrames: number }>;
+        convertImages(
+          conversions: Array<[string, string]>,
+          opts?: { quality?: number; maxDimension?: number; maxBytes?: number },
+        ): Promise<Array<{ sourcePath: string; outputPath: string; error?: string }>>;
+        transform(req: {
+          jobId: string;
+          inputPath: string;
+          outputPath: string;
+          targetFormat?: string;
+          videoFilters?: string[];
+          customArgs?: string[];
+        }): Promise<void>;
+        getProgress(jobId: string): Promise<{
+          running: boolean;
+          percent: number;
+          fps: number;
+          xSpeed: number;
+          outTimeMs: number;
+          outputPath: string | null;
+          error: string | null;
+          command: string | null;
+          inputSizeBytes: number | null;
+          outputSizeBytes: number | null;
+        }>;
+      };
+      readonly network: {
+        get(
+          url: string,
+          opts?: { headers?: Record<string, string>; timeoutMs?: number },
+        ): Promise<{ status: number; body: string; etag?: string }>;
+        download(
+          url: string,
+          outputPath: string,
+          opts?: { timeoutMs?: number },
+        ): Promise<{ absolutePath: string; sizeBytes: number }>;
+      };
+      readonly dialogs: {
+        pickFile(): Promise<string | null>;
+        pickDirectory(): Promise<string | null>;
+        saveFile(opts?: {
+          suggestedName?: string;
+          filterName?: string;
+          extensions?: string[];
+        }): Promise<string | null>;
+      };
+      readonly system: {
+        revealInFolder(path: string): Promise<void>;
+        openExternally(path: string): Promise<void>;
+        openUrl(url: string): Promise<void>;
+      };
+      readonly ui: {
+        onDragDrop(
+          cb: (
+            paths: string[],
+            position: { x: number; y: number },
+            type: "enter" | "over" | "leave" | "drop",
+          ) => void,
+        ): void;
+      };
+      readonly tools: {
+        check(
+          tool: string,
+        ): Promise<{
+          installed: boolean;
+          path: string | null;
+          version: string | null;
+          portablePath: string | null;
+        }>;
+        setPath(tool: string, path: string | null): Promise<void>;
+        install(tool: string): Promise<{ started: boolean; error?: string }>;
+        getProgress(
+          tool: string,
+        ): Promise<{ status: string; percent: number; logs: string[]; error?: string }>;
+      };
       /** Strongly typed overloads for the generic service commands every plugin uses. */
       callService(
         method: "PluginDbExecute",

@@ -1294,15 +1294,12 @@
   // dynasty-scans/src/api/navigation.ts
   init_state();
   async function openExternal(url) {
-    var _a;
-    let api = (_a = window.__TAURI__) == null ? void 0 : _a.core;
-    if (api != null && api.invoke)
-      try {
-        await api.invoke("plugin:opener|open_url", { url });
-        return;
-      } catch (e) {
-      }
-    window.open(url, "_blank", "noopener");
+    try {
+      await window.PluginHost.system.openUrl(url);
+      return;
+    } catch (e) {
+      window.open(url, "_blank", "noopener");
+    }
   }
   function parseDynastyUrl(input) {
     let t = input.trim().replace(/\/+$/, ""), m = /^https?:\/\/(?:www\.)?dynasty-scans\.com\/(series|chapters|anthologies|doujins|issues)\/([^\/?#]+)$/i.exec(

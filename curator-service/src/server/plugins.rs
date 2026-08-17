@@ -31,8 +31,10 @@ async fn dispatch_plugin_command(
     use handlers::plugin_commands as pc;
     match command {
         "PathExists" => pc::storage::path_exists(ctx, params).await,
+        "GetFileSize" => pc::storage::get_file_size(ctx, params).await,
         "GetTranscodeProgress" => pc::media::get_transcode_progress(ctx, params).await,
         "GetMediaMetadata" => pc::media::get_media_metadata(ctx, params).await,
+        "MediaTransform" => pc::media::media_transform(ctx, params).await,
         "EphemeralConvertImages" => pc::media::ephemeral_convert_images(ctx, params).await,
         "TranscodeVideo" => pc::media::transcode_video(ctx, params).await,
         "CreateGifFromImages" => pc::media::create_gif_from_images(ctx, params).await,
@@ -54,6 +56,9 @@ async fn dispatch_plugin_command(
         "PluginDbExecute" => pc::db::execute(ctx, plugin_id, params).await,
         "PluginDbQuery" => pc::db::query(ctx, plugin_id, params).await,
         "FileExists" => pc::storage::file_exists(ctx, plugin_id, params).await,
+        "FileRead" => pc::storage::file_read(ctx, plugin_id, params).await,
+        "FileWrite" => pc::storage::file_write(ctx, plugin_id, params).await,
+        "FileList" => pc::storage::file_list(ctx, plugin_id, params).await,
         "DirStat" => pc::storage::dir_stat(ctx, plugin_id, params).await,
         "FileMove" => pc::storage::file_move(ctx, plugin_id, params).await,
         "FileDelete" => pc::storage::file_delete(ctx, plugin_id, params).await,

@@ -590,6 +590,39 @@ pub async fn call_typed(
             let resp = client.split_gif(req).await.map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
+        "ToolsService.CheckTool" => {
+            let req = decode::<tools_pb::CheckToolRequest>(request_bytes)?;
+            let mut client = ToolsServiceClient::new(channel);
+            let resp = client.check_tool(req).await.map_err(status_err)?;
+            Ok(resp.into_inner().encode_to_vec())
+        }
+        "ToolsService.SetToolPath" => {
+            let req = decode::<tools_pb::SetToolPathRequest>(request_bytes)?;
+            let mut client = ToolsServiceClient::new(channel);
+            let resp = client.set_tool_path(req).await.map_err(status_err)?;
+            Ok(resp.into_inner().encode_to_vec())
+        }
+        "ToolsService.InstallTool" => {
+            let req = decode::<tools_pb::InstallToolRequest>(request_bytes)?;
+            let mut client = ToolsServiceClient::new(channel);
+            let resp = client.install_tool(req).await.map_err(status_err)?;
+            Ok(resp.into_inner().encode_to_vec())
+        }
+        "ToolsService.GetToolInstallProgress" => {
+            let req = decode::<tools_pb::GetToolInstallProgressRequest>(request_bytes)?;
+            let mut client = ToolsServiceClient::new(channel);
+            let resp = client
+                .get_tool_install_progress(req)
+                .await
+                .map_err(status_err)?;
+            Ok(resp.into_inner().encode_to_vec())
+        }
+        "ToolsService.MediaTransform" => {
+            let req = decode::<tools_pb::MediaTransformRequest>(request_bytes)?;
+            let mut client = ToolsServiceClient::new(channel);
+            let resp = client.media_transform(req).await.map_err(status_err)?;
+            Ok(resp.into_inner().encode_to_vec())
+        }
         "ToolsService.GetBenchmarkImages" => {
             let req = decode::<tools_pb::GetBenchmarkImagesRequest>(request_bytes)?;
             let mut client = ToolsServiceClient::new(channel);

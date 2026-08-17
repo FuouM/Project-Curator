@@ -9,7 +9,7 @@
 
 import { formatBytes, pickFile, pickDirectory } from "../../lib";
 import { state } from "./state";
-import { el, logConsole } from "./ui-core";
+import { PH, el, logConsole } from "./ui-core";
 import { loadCustomFontFile, renderWysiwygCanvas, updateOverlayPosition } from "./effects";
 import {
   compileImagesToAnimation,
@@ -68,10 +68,10 @@ export function setupToolboxPane(): void {
   if (mountedTool === state.currentTool) {
     if (state.currentTool === "optimize" && state.currentMedia) {
       const beforeEl = content.querySelector("#gm-opt-size-before");
-      if (beforeEl && window.__TAURI__?.core) {
-        window.__TAURI__.core
-          .invoke("get_file_size", { path: state.currentMedia.path })
-          .then((size: number) => {
+      if (beforeEl) {
+        PH.storage
+          .getFileSize(state.currentMedia.path)
+          .then((size: number | null) => {
             if (size !== null && size !== undefined) {
               beforeEl.textContent = formatBytes(size);
             }
@@ -723,10 +723,10 @@ export function setupToolboxPane(): void {
         `;
 
         if (sizeBefore === "Scanning...") {
-          if (state.currentMedia && window.__TAURI__?.core) {
-            window.__TAURI__.core
-              .invoke("get_file_size", { path: state.currentMedia.path })
-              .then((size: number) => {
+          if (state.currentMedia) {
+            PH.storage
+              .getFileSize(state.currentMedia.path)
+              .then((size: number | null) => {
                 if (size !== null && size !== undefined) {
                   const beforeEl = content.querySelector("#gm-opt-size-before");
                   if (beforeEl) beforeEl.textContent = formatBytes(size);

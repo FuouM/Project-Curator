@@ -31,27 +31,16 @@
   // lib/ipc-utils.ts
   var PH = window.PluginHost;
   async function pickDirectory() {
-    return pickPath(!0);
+    return PH.dialogs.pickDirectory();
   }
   async function pickFile() {
-    return pickPath(!1);
-  }
-  async function pickPath(isDirectory) {
-    var _a;
-    let api = window.__TAURI__;
-    if (!((_a = api == null ? void 0 : api.core) != null && _a.invoke)) return null;
-    try {
-      let selected = await api.core.invoke("select_path", { isDirectory });
-      return typeof selected == "string" && selected.length > 0 ? selected : null;
-    } catch (e) {
-      return null;
-    }
+    return PH.dialogs.pickFile();
   }
   function getPluginDirs() {
-    var _a, _b;
+    var _a, _b, _c, _d;
     return {
-      pluginDir: (_a = window.__curator_plugin_dir__) != null ? _a : "",
-      workspaceRoot: (_b = window.__curator_workspace_root__) != null ? _b : ""
+      pluginDir: (_b = (_a = PH.context) == null ? void 0 : _a.pluginDir) != null ? _b : "",
+      workspaceRoot: (_d = (_c = PH.context) == null ? void 0 : _c.workspaceRoot) != null ? _d : ""
     };
   }
 
@@ -65,40 +54,37 @@
   var boundTabs = /* @__PURE__ */ new Set();
   function setupDropZone(tabId, dropZoneIds, onFiles) {
     var _a;
-    let api = window.__TAURI__;
-    if (!((_a = api == null ? void 0 : api.webview) != null && _a.getCurrentWebview) || boundTabs.has(tabId)) return;
+    let PH7 = window.PluginHost;
+    if (!((_a = PH7 == null ? void 0 : PH7.ui) != null && _a.onDragDrop) || boundTabs.has(tabId)) return;
     boundTabs.add(tabId);
-    let ids = Array.isArray(dropZoneIds) ? dropZoneIds : [dropZoneIds];
-    api.webview.getCurrentWebview().onDragDropEvent((event) => {
-      var _a2, _b, _c;
+    let ids = Array.isArray(dropZoneIds) ? dropZoneIds : [dropZoneIds], getHitZoneId = (position) => {
+      let cx = position.x / window.devicePixelRatio, cy = position.y / window.devicePixelRatio, hit = document.elementFromPoint(cx, cy);
+      if (!hit) return null;
+      for (let id of ids) {
+        let zone = document.getElementById(id);
+        if (zone && (zone === hit || zone.contains(hit))) return id;
+      }
+      return null;
+    };
+    PH7.ui.onDragDrop((paths, position, type) => {
+      var _a2, _b;
       let tabEl = document.getElementById(`view-extensions-${tabId}`);
-      if (!(tabEl != null && tabEl.classList.contains("active"))) return;
-      let drop = event.payload, getHitZoneId = () => {
-        let pos = drop.position;
-        if (!pos || typeof pos.x != "number") return null;
-        let cx = pos.x / window.devicePixelRatio, cy = pos.y / window.devicePixelRatio, hit = document.elementFromPoint(cx, cy);
-        if (!hit) return null;
-        for (let id of ids) {
-          let zone = document.getElementById(id);
-          if (zone && (zone === hit || zone.contains(hit))) return id;
+      if (tabEl != null && tabEl.classList.contains("active")) {
+        if (type === "enter" || type === "over") {
+          let hitId = getHitZoneId(position);
+          for (let id of ids) {
+            let zone = document.getElementById(id);
+            zone && (id === hitId ? zone.classList.add("toolbox-drop-active") : zone.classList.remove("toolbox-drop-active"));
+          }
+        } else if (type === "leave")
+          for (let id of ids)
+            (_a2 = document.getElementById(id)) == null || _a2.classList.remove("toolbox-drop-active");
+        else if (type === "drop") {
+          let hitId = getHitZoneId(position);
+          for (let id of ids)
+            (_b = document.getElementById(id)) == null || _b.classList.remove("toolbox-drop-active");
+          paths.length > 0 && onFiles(paths, hitId);
         }
-        return null;
-      };
-      if (drop.type === "enter" || drop.type === "over") {
-        let hitId = getHitZoneId();
-        for (let id of ids) {
-          let zone = document.getElementById(id);
-          zone && (id === hitId ? zone.classList.add("toolbox-drop-active") : zone.classList.remove("toolbox-drop-active"));
-        }
-      } else if (drop.type === "leave")
-        for (let id of ids)
-          (_a2 = document.getElementById(id)) == null || _a2.classList.remove("toolbox-drop-active");
-      else if (drop.type === "drop") {
-        let hitId = getHitZoneId();
-        for (let id of ids)
-          (_b = document.getElementById(id)) == null || _b.classList.remove("toolbox-drop-active");
-        let paths = (_c = drop.paths) != null ? _c : [];
-        paths.length > 0 && onFiles(paths, hitId);
       }
     });
   }
@@ -791,12 +777,7 @@
   async function handleSaveFinal() {
     var _a;
     if (state.historyIndex < 0 || state.historyIndex >= state.history.length) return;
-    let activeState = state.history[state.historyIndex];
-    if (!window.__TAURI__ || !window.__TAURI__.core) {
-      logConsole("Tauri core API not available.", "error");
-      return;
-    }
-    let srcName = activeState.path.split(/[\\/]/).pop() || "output", ext = ((_a = srcName.split(".").pop()) == null ? void 0 : _a.toLowerCase()) || "gif", suggestedName = (srcName.substring(0, srcName.lastIndexOf(".")) || srcName) + "." + ext, filterExts = {
+    let activeState = state.history[state.historyIndex], srcName = activeState.path.split(/[\\/]/).pop() || "output", ext = ((_a = srcName.split(".").pop()) == null ? void 0 : _a.toLowerCase()) || "gif", suggestedName = (srcName.substring(0, srcName.lastIndexOf(".")) || srcName) + "." + ext, filterExts = {
       gif: ["gif"],
       mp4: ["mp4"],
       webm: ["webm"],
@@ -804,11 +785,7 @@
       png: ["png"],
       jpg: ["jpg", "jpeg"],
       jpeg: ["jpg", "jpeg"]
-    }[ext] || [ext], filterName = ext.toUpperCase() + " File", finalDest = await window.__TAURI__.core.invoke("save_file_dialog", {
-      suggestedName,
-      filterName,
-      extensions: filterExts
-    }).catch((err) => (logConsole("Save dialog error: " + err, "error"), null));
+    }[ext] || [ext], filterName = ext.toUpperCase() + " File", finalDest = await PH5.dialogs.saveFile({ suggestedName, filterName, extensions: filterExts });
     if (!finalDest) return;
     logConsole("Saving final compiled media to disk...", "info");
     let resp = await PH5.callService("PathExists", { path: activeState.path });
@@ -849,7 +826,7 @@
 
   // gif-maker/src/toolbox.ts
   function setupToolboxPane() {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e, _f;
     let title = el("gm-control-title"), content = el("gm-panel-content"), rect = el("gm-crop-rect"), container = el("gm-overlay-interactive");
     if (!title || !content) return;
     let prevVid = el("gm-preview-video");
@@ -870,7 +847,7 @@
     if (content.getAttribute("data-mounted-tool") === state.currentTool) {
       if (state.currentTool === "optimize" && state.currentMedia) {
         let beforeEl = content.querySelector("#gm-opt-size-before");
-        beforeEl && ((_a = window.__TAURI__) != null && _a.core) && window.__TAURI__.core.invoke("get_file_size", { path: state.currentMedia.path }).then((size) => {
+        beforeEl && PH5.storage.getFileSize(state.currentMedia.path).then((size) => {
           size != null && (beforeEl.textContent = formatBytes(size));
         }).catch(() => {
         });
@@ -912,7 +889,7 @@
               <i class="bi bi-gear-wide-connected"></i> Compile to Animation
             </button>
           </div>
-        `, (_b = content.querySelector("#gm-btn-compile-gif")) == null || _b.addEventListener("click", () => void compileMakerVideo());
+        `, (_a = content.querySelector("#gm-btn-compile-gif")) == null || _a.addEventListener("click", () => void compileMakerVideo());
           let nativeFpsChk = content.querySelector("#gm-chk-native-fps"), fpsInp = content.querySelector("#gm-inp-fps");
           fpsInp.disabled = !0, fpsInp.style.opacity = "0.4", nativeFpsChk.addEventListener("change", function() {
             fpsInp.disabled = this.checked, fpsInp.style.opacity = this.checked ? "0.4" : "1";
@@ -955,9 +932,9 @@
               <i class="bi bi-gear-wide-connected"></i> Compile Sequence
             </button>
           </div>
-        `, (_c = content.querySelector("#gm-inp-seq-pattern")) == null || _c.addEventListener("input", function() {
+        `, (_b = content.querySelector("#gm-inp-seq-pattern")) == null || _b.addEventListener("input", function() {
             state.sequencePattern = this.value.trim();
-          }), (_d = content.querySelector("#gm-btn-compile-gif")) == null || _d.addEventListener("click", () => void compileImagesToAnimation());
+          }), (_c = content.querySelector("#gm-btn-compile-gif")) == null || _c.addEventListener("click", () => void compileImagesToAnimation());
         break;
       case "trim":
         title.textContent = "Video Trimming & FPS", (() => {
@@ -1141,7 +1118,7 @@
             let rectEl = el("gm-crop-rect");
             rectEl && (rectEl.style.left = state.cropState.x + "px", rectEl.style.top = state.cropState.y + "px", rectEl.style.width = state.cropState.w + "px", rectEl.style.height = state.cropState.h + "px");
           });
-        }), (_e = content.querySelector("#gm-btn-apply-crop")) == null || _e.addEventListener("click", () => void handleApplyCrop());
+        }), (_d = content.querySelector("#gm-btn-apply-crop")) == null || _d.addEventListener("click", () => void handleApplyCrop());
         break;
       case "caption":
         title.textContent = "Caption & Text Overlays", (() => {
@@ -1243,11 +1220,11 @@
         let slider = content.querySelector("#gm-inp-speed"), valTxt = content.querySelector("#gm-txt-speed");
         slider.addEventListener("input", () => {
           valTxt.textContent = slider.value + "x";
-        }), (_f = content.querySelector("#gm-btn-apply-effects")) == null || _f.addEventListener("click", () => void handleApplyEffects());
+        }), (_e = content.querySelector("#gm-btn-apply-effects")) == null || _e.addEventListener("click", () => void handleApplyEffects());
         break;
       case "optimize":
         title.textContent = "Optimize & Reduce Size", (() => {
-          var _a2, _b2;
+          var _a2;
           let sizeBefore = "Scanning...", sizeAfter = "&mdash;", compressionLine = "";
           if (state.historyIndex >= 0 && state.historyIndex < state.history.length) {
             let aState = state.history[state.historyIndex];
@@ -1300,13 +1277,13 @@
           <button type="button" class="win-button primary" id="gm-btn-apply-optimize" style="width:100%;">
             <i class="bi bi-speedometer2"></i> Optimize Size
           </button>
-        `, sizeBefore === "Scanning..." && state.currentMedia && (_a2 = window.__TAURI__) != null && _a2.core && window.__TAURI__.core.invoke("get_file_size", { path: state.currentMedia.path }).then((size) => {
+        `, sizeBefore === "Scanning..." && state.currentMedia && PH5.storage.getFileSize(state.currentMedia.path).then((size) => {
             if (size != null) {
               let beforeEl = content.querySelector("#gm-opt-size-before");
               beforeEl && (beforeEl.textContent = formatBytes(size)), state.historyIndex >= 0 && state.historyIndex < state.history.length && (state.history[state.historyIndex].fileSize = size);
             }
           }).catch(() => {
-          }), (_b2 = content.querySelector("#gm-btn-apply-optimize")) == null || _b2.addEventListener("click", () => void handleApplyOptimize());
+          }), (_a2 = content.querySelector("#gm-btn-apply-optimize")) == null || _a2.addEventListener("click", () => void handleApplyOptimize());
         })();
         break;
       case "split":
@@ -1404,7 +1381,7 @@
               Math.max(1, Math.round(parseInt(hInp.value || String(origH)) * origW / origH))
             )), syncPctFromDims();
           });
-        })(), (_g = content.querySelector("#gm-btn-export")) == null || _g.addEventListener("click", () => void handleExportResize());
+        })(), (_f = content.querySelector("#gm-btn-export")) == null || _f.addEventListener("click", () => void handleExportResize());
         break;
     }
   }
@@ -1471,11 +1448,10 @@
   async function pushHistoryState(filePath, description) {
     state.historyIndex < state.history.length - 1 && (state.history = state.history.slice(0, state.historyIndex + 1));
     let size = null;
-    if (window.__TAURI__ && window.__TAURI__.core)
-      try {
-        size = await window.__TAURI__.core.invoke("get_file_size", { path: filePath });
-      } catch (e) {
-      }
+    try {
+      size = await PH5.storage.getFileSize(filePath);
+    } catch (e) {
+    }
     state.history.push({ path: filePath, description, fileSize: size }), state.historyIndex = state.history.length - 1, restoreHistoryState();
   }
   function restoreHistoryState() {

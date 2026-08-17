@@ -21,44 +21,31 @@ export async function checkFileExists(path: string): Promise<boolean> {
 /**
  * Opens the native folder picker and resolves the chosen directory.
  *
- * Returns `null` when the user cancels, the picker fails, or the Tauri core
- * API is unavailable — never throws. Callers decide how to surface the
- * cancellation/no-API case.
+ * Returns `null` when the user cancels or the picker fails — never throws.
+ * Callers decide how to surface the cancellation/no-API case.
  */
 export async function pickDirectory(): Promise<string | null> {
-  return pickPath(true);
+  return PH.dialogs.pickDirectory();
 }
 
 /**
  * Opens the native file picker and resolves the chosen file path.
  *
- * Returns `null` when the user cancels, the picker fails, or the Tauri core
- * API is unavailable — never throws. Callers decide how to surface the
- * cancellation/no-API case.
+ * Returns `null` when the user cancels or the picker fails — never throws.
+ * Callers decide how to surface the cancellation/no-API case.
  */
 export async function pickFile(): Promise<string | null> {
-  return pickPath(false);
-}
-
-async function pickPath(isDirectory: boolean): Promise<string | null> {
-  const api = window.__TAURI__;
-  if (!api?.core?.invoke) return null;
-  try {
-    const selected = await api.core.invoke("select_path", { isDirectory });
-    return typeof selected === "string" && selected.length > 0 ? selected : null;
-  } catch {
-    return null;
-  }
+  return PH.dialogs.pickFile();
 }
 
 /**
- * Reads the plugin's runtime context (absolute dirs injected by the host
- * before each bundle executes). Returns empty strings when unavailable.
+ * Reads the plugin's runtime context (absolute dirs provided by the host
+ * via `PluginHost.context`). Returns empty strings when unavailable.
  */
 export function getPluginDirs(): { pluginDir: string; workspaceRoot: string } {
   return {
-    pluginDir: (window as any).__curator_plugin_dir__ ?? "",
-    workspaceRoot: (window as any).__curator_workspace_root__ ?? "",
+    pluginDir: PH.context?.pluginDir ?? "",
+    workspaceRoot: PH.context?.workspaceRoot ?? "",
   };
 }
 

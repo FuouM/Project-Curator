@@ -2,13 +2,13 @@
  * Shared sandboxed filesystem + download helpers for plugin data dirs.
  *
  * These primitives operate inside the plugin's scoped `plugin_data/<plugin_id>/`
- * directory via the service's sandboxed `FileExists` / `FileMove` /
- * `FileDelete` / `DirStat` / `HttpDownload` commands. They are the canonical
- * version of the helpers first introduced by `dynasty-scans/src/api/client.ts`.
+ * directory via the typed `PluginHost.storage` / `PluginHost.network`
+ * namespaces. They are the canonical version of the helpers first introduced
+ * by `dynasty-scans/src/api/client.ts`.
  *
  * IMPORTANT — semantic split between path probes:
- *  - Sandboxed `FileExists`/`FileMove`/`FileDelete`/`DirStat` here are confined
- *    to `plugin_data/<plugin_id>/` (paths that escape it are rejected by the
+ *  - Sandboxed `PluginHost.storage.*` calls are confined to
+ *    `plugin_data/<plugin_id>/` (paths that escape it are rejected by the
  *    service).
  *  - `lib/ipc-utils.ts` `checkFileExists` calls the core `PathExists` command,
  *    which probes arbitrary workspace / `.curator` paths and is the correct
@@ -30,39 +30,29 @@ export interface DirStatResult {
 
 /** Resolves a plugin-relative path if it exists and is non-empty; otherwise null. */
 export async function fileResolve(path: string): Promise<string | null> {
-  const resp = await PH.callService("FileExists", { path });
-  if (resp?.Error || !resp?.FileExistsResult?.exists) return null;
-  return String(resp.FileExistsResult.absolute_path);
+  return PH.storage.resolve(path);
 }
 
 /** Returns true when the file exists on disk in the plugin's data dir and is non-empty. */
 export async function fileExists(path: string): Promise<boolean> {
-  return (await fileResolve(path)) !== null;
+  return PH.storage.exists(path);
 }
 
 /** Renames/moves a file within the plugin's data dir. Returns the new absolute path. */
 export async function fileMove(src: string, dst: string): Promise<string> {
-  const resp = await PH.callService("FileMove", { src, dst });
-  if (resp?.Error) throw new Error(String(resp.Error.message));
-  return String(resp?.FileMoveResult?.absolute_path ?? "");
+  return PH.storage.move(src, dst);
 }
 
 /** Deletes a file or directory within the plugin's data dir. */
 export async function fileDelete(path: string): Promise<void> {
-  const resp = await PH.callService("FileDelete", { path });
-  if (resp?.Error) throw new Error(String(resp.Error.message));
+  await PH.storage.delete(path);
 }
 
 /** Calculates recursive on-disk byte footprint and file count for a directory. */
 export async function dirStat(path = ""): Promise<DirStatResult> {
   try {
-    const resp = await PH.callService("DirStat", { path });
-    if (resp?.DirStatResult) {
-      return {
-        totalBytes: Number(resp.DirStatResult.total_bytes ?? 0),
-        fileCount: Number(resp.DirStatResult.file_count ?? 0),
-      };
-    }
+    const s = await PH.storage.stat(path);
+    return { totalBytes: s.totalBytes, fileCount: s.fileCount };
   } catch {}
   return { totalBytes: 0, fileCount: 0 };
 }
@@ -73,13 +63,7 @@ export async function httpDownload(
   outputPath: string,
   timeoutMs = 30000,
 ): Promise<string> {
-  const resp = await PH.callService("HttpDownload", {
-    url,
-    output_path: outputPath,
-    timeout_ms: timeoutMs,
-  });
-  if (resp?.Error) throw new Error(String(resp.Error.message));
-  return String(resp?.HttpDownloadResult?.absolute_path ?? "");
+  return (await PH.network.download(url, outputPath, { timeoutMs })).absolutePath;
 }
 
 /** Like `httpDownload`, but also resolves the exact written size in bytes. */
@@ -88,14 +72,5 @@ export async function httpDownloadFull(
   outputPath: string,
   timeoutMs = 30000,
 ): Promise<{ absolutePath: string; sizeBytes: number }> {
-  const resp = await PH.callService("HttpDownload", {
-    url,
-    output_path: outputPath,
-    timeout_ms: timeoutMs,
-  });
-  if (resp?.Error) throw new Error(String(resp.Error.message));
-  return {
-    absolutePath: String(resp?.HttpDownloadResult?.absolute_path ?? ""),
-    sizeBytes: Number(resp?.HttpDownloadResult?.size_bytes ?? 0),
-  };
+  return PH.network.download(url, outputPath, { timeoutMs });
 }

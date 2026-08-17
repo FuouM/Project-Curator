@@ -24,6 +24,7 @@ import {
 import { splitUrls, updateChips } from "./chips";
 import { defaultBannerText, setToolBanner } from "./tool-status";
 import { appendLogDelta } from "./log-dock";
+import { PH } from "./ui-core";
 import { refreshHistoryUI } from "./history-view";
 import type { DownloadProgress } from "./ipc";
 
@@ -504,13 +505,10 @@ function renderQueueRow(item: QueueItem): HTMLTableRowElement {
   if (item.status === "completed") {
     mk("bi bi-folder2-open", "Reveal in Explorer", () => {
       void (async () => {
-        const api = (window as any).__TAURI__?.core;
-        if (api?.invoke) {
-          try {
-            await api.invoke("reveal_in_folder", { path: item.outputPath });
-          } catch {
-            log("Could not reveal output file.", "error");
-          }
+        try {
+          await PH.system.revealInFolder(item.outputPath);
+        } catch {
+          log("Could not reveal output file.", "error");
         }
       })();
     });

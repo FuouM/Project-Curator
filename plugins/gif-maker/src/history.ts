@@ -145,12 +145,10 @@ export async function pushHistoryState(filePath: string, description: string): P
   }
 
   let size = null;
-  if (window.__TAURI__ && window.__TAURI__.core) {
-    try {
-      size = await window.__TAURI__.core.invoke("get_file_size", { path: filePath });
-    } catch {
-      // ignore silently
-    }
+  try {
+    size = await PH.storage.getFileSize(filePath);
+  } catch {
+    // ignore silently
   }
 
   state.history.push({ path: filePath, description, fileSize: size });

@@ -14,7 +14,180 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file tools.proto.
  */
 export const file_tools: GenFile = /*@__PURE__*/
-  fileDesc("Cgt0b29scy5wcm90bxINY3VyYXRvci50b29scyI0CghQYXRoUGFpchITCgtzb3VyY2VfcGF0aBgBIAEoCRITCgt0YXJnZXRfcGF0aBgCIAEoCSKyAQodRXBoZW1lcmFsQ29udmVydEltYWdlc1JlcXVlc3QSLAoLY29udmVyc2lvbnMYASADKAsyFy5jdXJhdG9yLnRvb2xzLlBhdGhQYWlyEg8KB3F1YWxpdHkYAiABKA0SGgoNbWF4X2RpbWVuc2lvbhgDIAEoDUgAiAEBEhYKCW1heF9ieXRlcxgEIAEoDUgBiAEBQhAKDl9tYXhfZGltZW5zaW9uQgwKCl9tYXhfYnl0ZXMiSwoTQ29udmVydEltYWdlc1Jlc3VsdBI0Cgljb252ZXJ0ZWQYASADKAsyIS5jdXJhdG9yLmNvbW1vbi5Db252ZXJ0ZWRGaWxlSW5mbyIhChFQYXRoRXhpc3RzUmVxdWVzdBIMCgRwYXRoGAEgASgJIiIKEFBhdGhFeGlzdHNSZXN1bHQSDgoGZXhpc3RzGAEgASgIIuMDChVUcmFuc2NvZGVWaWRlb1JlcXVlc3QSDgoGam9iX2lkGAEgASgJEhIKCmlucHV0X3BhdGgYAiABKAkSEwoLb3V0cHV0X3BhdGgYAyABKAkSFQoNdGFyZ2V0X2Zvcm1hdBgEIAEoCRITCgZ2Y29kZWMYBSABKAlIAIgBARITCgZhY29kZWMYBiABKAlIAYgBARIQCgNjcmYYByABKA1IAogBARIaCg12aWRlb19iaXRyYXRlGAggASgNSAOIAQESEwoGcHJlc2V0GAkgASgJSASIAQESGwoOdGFyZ2V0X3NpemVfbWIYCiABKAFIBYgBARIaCg1hdWRpb19iaXRyYXRlGAsgASgNSAaIAQESFAoHbWl4ZG93bhgMIAEoCUgHiAEBEhgKC3NhbXBsZV9yYXRlGA0gASgNSAiIAQESGAoLY3VzdG9tX2FyZ3MYDiABKAlICYgBAUIJCgdfdmNvZGVjQgkKB19hY29kZWNCBgoEX2NyZkIQCg5fdmlkZW9fYml0cmF0ZUIJCgdfcHJlc2V0QhEKD190YXJnZXRfc2l6ZV9tYkIQCg5fYXVkaW9fYml0cmF0ZUIKCghfbWl4ZG93bkIOCgxfc2FtcGxlX3JhdGVCDgoMX2N1c3RvbV9hcmdzIi0KG0dldFRyYW5zY29kZVByb2dyZXNzUmVxdWVzdBIOCgZqb2JfaWQYASABKAki1gMKF1RyYW5zY29kZVByb2dyZXNzUmVzdWx0Eg4KBmpvYl9pZBgBIAEoCRIPCgdydW5uaW5nGAIgASgIEg8KB3BlcmNlbnQYAyABKAISCwoDZnBzGAQgASgCEg8KB3hfc3BlZWQYBSABKAISEwoLb3V0X3RpbWVfbXMYBiABKAMSGAoLb3V0cHV0X3BhdGgYByABKAlIAIgBARISCgVlcnJvchgIIAEoCUgBiAEBEhQKB2NvbW1hbmQYCSABKAlIAogBARIdChBpbnB1dF9zaXplX2J5dGVzGAogASgESAOIAQESHgoRb3V0cHV0X3NpemVfYnl0ZXMYCyABKARIBIgBARIkChdvdXRwdXRfdmlkZW9fc2l6ZV9ieXRlcxgMIAEoBEgFiAEBEiQKF291dHB1dF9hdWRpb19zaXplX2J5dGVzGA0gASgESAaIAQFCDgoMX291dHB1dF9wYXRoQggKBl9lcnJvckIKCghfY29tbWFuZEITChFfaW5wdXRfc2l6ZV9ieXRlc0IUChJfb3V0cHV0X3NpemVfYnl0ZXNCGgoYX291dHB1dF92aWRlb19zaXplX2J5dGVzQhoKGF9vdXRwdXRfYXVkaW9fc2l6ZV9ieXRlcyLpAQoaQ3JlYXRlR2lmRnJvbUltYWdlc1JlcXVlc3QSDgoGam9iX2lkGAEgASgJEhUKDWltYWdlX3BhdHRlcm4YAiABKAkSEgoKZnJhbWVfcmF0ZRgDIAEoAhITCgtvdXRwdXRfcGF0aBgEIAEoCRISCgV3aWR0aBgFIAEoDUgAiAEBEhMKBmhlaWdodBgGIAEoDUgBiAEBEhcKCmxvb3BfY291bnQYByABKAVIAogBARIVCg10YXJnZXRfZm9ybWF0GAggASgJQggKBl93aWR0aEIJCgdfaGVpZ2h0Qg0KC19sb29wX2NvdW50Iu4GChhQcm9jZXNzR2lmRWZmZWN0c1JlcXVlc3QSDgoGam9iX2lkGAEgASgJEhIKCmlucHV0X3BhdGgYAiABKAkSEwoLb3V0cHV0X3BhdGgYAyABKAkSEQoEY3JvcBgEIAEoCUgAiAEBEhIKBXNjYWxlGAUgASgJSAGIAQESHQoQc3BlZWRfbXVsdGlwbGllchgGIAEoAkgCiAEBEg8KB3JldmVyc2UYByABKAgSDgoGYm91bmNlGAggASgIEhMKBnJvdGF0ZRgJIAEoCUgDiAEBEhcKCmJyaWdodG5lc3MYCiABKAJIBIgBARIVCghjb250cmFzdBgLIAEoAkgFiAEBEhcKCnNhdHVyYXRpb24YDCABKAJIBogBARIRCglncmF5c2NhbGUYDSABKAgSDgoGaW52ZXJ0GA4gASgIEiEKFGNhcHRpb25faW1hZ2VfYmFzZTY0GA8gASgJSAeIAQESIQoUY2FwdGlvbl9pbWFnZV9oZWlnaHQYECABKA1ICIgBARIaCg1jYXB0aW9uX3N0eWxlGBEgASgJSAmIAQESFwoKbWF4X2NvbG9ycxgSIAEoDUgKiAEBEhgKC2RpdGhlcl90eXBlGBMgASgJSAuIAQESHwoSZHJvcF9mcmFtZXNfZmFjdG9yGBQgASgNSAyIAQESFQoNdGFyZ2V0X2Zvcm1hdBgVIAEoCRIXCgpsb29wX2NvdW50GBYgASgFSA2IAQESEAoDZnBzGBcgASgNSA6IAQESFwoKdHJpbV9zdGFydBgYIAEoAUgPiAEBEhUKCHRyaW1fZW5kGBkgASgBSBCIAQFCBwoFX2Nyb3BCCAoGX3NjYWxlQhMKEV9zcGVlZF9tdWx0aXBsaWVyQgkKB19yb3RhdGVCDQoLX2JyaWdodG5lc3NCCwoJX2NvbnRyYXN0Qg0KC19zYXR1cmF0aW9uQhcKFV9jYXB0aW9uX2ltYWdlX2Jhc2U2NEIXChVfY2FwdGlvbl9pbWFnZV9oZWlnaHRCEAoOX2NhcHRpb25fc3R5bGVCDQoLX21heF9jb2xvcnNCDgoMX2RpdGhlcl90eXBlQhUKE19kcm9wX2ZyYW1lc19mYWN0b3JCDQoLX2xvb3BfY291bnRCBgoEX2Zwc0INCgtfdHJpbV9zdGFydEILCglfdHJpbV9lbmQiSQoPU3BsaXRHaWZSZXF1ZXN0Eg4KBmpvYl9pZBgBIAEoCRISCgppbnB1dF9wYXRoGAIgASgJEhIKCm91dHB1dF9kaXIYAyABKAkiKgoZR2V0QmVuY2htYXJrSW1hZ2VzUmVxdWVzdBINCgVsaW1pdBgBIAEoDSIqChVCZW5jaG1hcmtJbWFnZXNSZXN1bHQSEQoJZmlsZXBhdGhzGAEgAygJIi8KG0JlbmNobWFya1NpbmdsZUltYWdlUmVxdWVzdBIQCghmaWxlcGF0aBgBIAEoCSK7AgoaU2luZ2xlSW1hZ2VCZW5jaG1hcmtSZXN1bHQSFAoMcmVhZF90aW1lX21zGAEgASgBEhYKDmRlY29kZV90aW1lX21zGAIgASgBEhkKEXRodW1ibmFpbF90aW1lX21zGAMgASgBEh8KF2NsaXBfcHJlcHJvY2Vzc190aW1lX21zGAQgASgBEiEKGXRhZ2dlcl9wcmVwcm9jZXNzX3RpbWVfbXMYBSABKAESHwoXeW9sb19wcmVwcm9jZXNzX3RpbWVfbXMYBiABKAESJwofY2NpcF9leHRyYWN0X3ByZXByb2Nlc3NfdGltZV9tcxgHIAEoARIiChpvY3JfZGV0X3ByZXByb2Nlc3NfdGltZV9tcxgIIAEoARIiChpvY3JfcmVjX3ByZXByb2Nlc3NfdGltZV9tcxgJIAEoASI3CiJSdW5JbWFnZVByb2Nlc3NpbmdCZW5jaG1hcmtSZXF1ZXN0EhEKCWZpbGVwYXRocxgBIAMoCSL0AgogSW1hZ2VQcm9jZXNzaW5nQmVuY2htYXJrUHJvZ3Jlc3MSDwoHcnVubmluZxgBIAEoCBIRCglwcm9jZXNzZWQYAiABKA0SDQoFdG90YWwYAyABKA0SFAoMcmVhZF90aW1lX21zGAQgASgBEhYKDmRlY29kZV90aW1lX21zGAUgASgBEhkKEXRodW1ibmFpbF90aW1lX21zGAYgASgBEh8KF2NsaXBfcHJlcHJvY2Vzc190aW1lX21zGAcgASgBEiEKGXRhZ2dlcl9wcmVwcm9jZXNzX3RpbWVfbXMYCCABKAESHwoXeW9sb19wcmVwcm9jZXNzX3RpbWVfbXMYCSABKAESJwofY2NpcF9leHRyYWN0X3ByZXByb2Nlc3NfdGltZV9tcxgKIAEoARIiChpvY3JfZGV0X3ByZXByb2Nlc3NfdGltZV9tcxgLIAEoARIiChpvY3JfcmVjX3ByZXByb2Nlc3NfdGltZV9tcxgMIAEoATLGCAoMVG9vbHNTZXJ2aWNlEmoKFkVwaGVtZXJhbENvbnZlcnRJbWFnZXMSLC5jdXJhdG9yLnRvb2xzLkVwaGVtZXJhbENvbnZlcnRJbWFnZXNSZXF1ZXN0GiIuY3VyYXRvci50b29scy5Db252ZXJ0SW1hZ2VzUmVzdWx0Ek8KClBhdGhFeGlzdHMSIC5jdXJhdG9yLnRvb2xzLlBhdGhFeGlzdHNSZXF1ZXN0Gh8uY3VyYXRvci50b29scy5QYXRoRXhpc3RzUmVzdWx0Ek4KDlRyYW5zY29kZVZpZGVvEiQuY3VyYXRvci50b29scy5UcmFuc2NvZGVWaWRlb1JlcXVlc3QaFi5nb29nbGUucHJvdG9idWYuRW1wdHkSagoUR2V0VHJhbnNjb2RlUHJvZ3Jlc3MSKi5jdXJhdG9yLnRvb2xzLkdldFRyYW5zY29kZVByb2dyZXNzUmVxdWVzdBomLmN1cmF0b3IudG9vbHMuVHJhbnNjb2RlUHJvZ3Jlc3NSZXN1bHQSWAoTQ3JlYXRlR2lmRnJvbUltYWdlcxIpLmN1cmF0b3IudG9vbHMuQ3JlYXRlR2lmRnJvbUltYWdlc1JlcXVlc3QaFi5nb29nbGUucHJvdG9idWYuRW1wdHkSVAoRUHJvY2Vzc0dpZkVmZmVjdHMSJy5jdXJhdG9yLnRvb2xzLlByb2Nlc3NHaWZFZmZlY3RzUmVxdWVzdBoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJCCghTcGxpdEdpZhIeLmN1cmF0b3IudG9vbHMuU3BsaXRHaWZSZXF1ZXN0GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5EmQKEkdldEJlbmNobWFya0ltYWdlcxIoLmN1cmF0b3IudG9vbHMuR2V0QmVuY2htYXJrSW1hZ2VzUmVxdWVzdBokLmN1cmF0b3IudG9vbHMuQmVuY2htYXJrSW1hZ2VzUmVzdWx0Em0KFEJlbmNobWFya1NpbmdsZUltYWdlEiouY3VyYXRvci50b29scy5CZW5jaG1hcmtTaW5nbGVJbWFnZVJlcXVlc3QaKS5jdXJhdG9yLnRvb2xzLlNpbmdsZUltYWdlQmVuY2htYXJrUmVzdWx0EoMBChtSdW5JbWFnZVByb2Nlc3NpbmdCZW5jaG1hcmsSMS5jdXJhdG9yLnRvb2xzLlJ1bkltYWdlUHJvY2Vzc2luZ0JlbmNobWFya1JlcXVlc3QaLy5jdXJhdG9yLnRvb2xzLkltYWdlUHJvY2Vzc2luZ0JlbmNobWFya1Byb2dyZXNzMAESbgojR2V0SW1hZ2VQcm9jZXNzaW5nQmVuY2htYXJrUHJvZ3Jlc3MSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaLy5jdXJhdG9yLnRvb2xzLkltYWdlUHJvY2Vzc2luZ0JlbmNobWFya1Byb2dyZXNzYgZwcm90bzM", [file_google_protobuf_empty, file_common]);
+  fileDesc("Cgt0b29scy5wcm90bxINY3VyYXRvci50b29scyIgChBDaGVja1Rvb2xSZXF1ZXN0EgwKBHRvb2wYASABKAkisQEKEFRvb2xTdGF0dXNSZXN1bHQSDAoEdG9vbBgBIAEoCRIRCglhdmFpbGFibGUYAiABKAgSGgoNcmVzb2x2ZWRfcGF0aBgDIAEoCUgAiAEBEhQKB3ZlcnNpb24YBCABKAlIAYgBARIaCg1wb3J0YWJsZV9wYXRoGAUgASgJSAKIAQFCEAoOX3Jlc29sdmVkX3BhdGhCCgoIX3ZlcnNpb25CEAoOX3BvcnRhYmxlX3BhdGgiPgoSU2V0VG9vbFBhdGhSZXF1ZXN0EgwKBHRvb2wYASABKAkSEQoEcGF0aBgCIAEoCUgAiAEBQgcKBV9wYXRoIiIKEkluc3RhbGxUb29sUmVxdWVzdBIMCgR0b29sGAEgASgJIkIKEUluc3RhbGxUb29sUmVzdWx0Eg8KB3N0YXJ0ZWQYASABKAgSEgoFZXJyb3IYAiABKAlIAIgBAUIICgZfZXJyb3IiLQodR2V0VG9vbEluc3RhbGxQcm9ncmVzc1JlcXVlc3QSDAoEdG9vbBgBIAEoCSJ2ChlUb29sSW5zdGFsbFByb2dyZXNzUmVzdWx0EgwKBHRvb2wYASABKAkSDgoGc3RhdHVzGAIgASgJEg8KB3BlcmNlbnQYAyABKA0SDAoEbG9ncxgEIAMoCRISCgVlcnJvchgFIAEoCUgAiAEBQggKBl9lcnJvciI0CghQYXRoUGFpchITCgtzb3VyY2VfcGF0aBgBIAEoCRITCgt0YXJnZXRfcGF0aBgCIAEoCSKyAQodRXBoZW1lcmFsQ29udmVydEltYWdlc1JlcXVlc3QSLAoLY29udmVyc2lvbnMYASADKAsyFy5jdXJhdG9yLnRvb2xzLlBhdGhQYWlyEg8KB3F1YWxpdHkYAiABKA0SGgoNbWF4X2RpbWVuc2lvbhgDIAEoDUgAiAEBEhYKCW1heF9ieXRlcxgEIAEoDUgBiAEBQhAKDl9tYXhfZGltZW5zaW9uQgwKCl9tYXhfYnl0ZXMiSwoTQ29udmVydEltYWdlc1Jlc3VsdBI0Cgljb252ZXJ0ZWQYASADKAsyIS5jdXJhdG9yLmNvbW1vbi5Db252ZXJ0ZWRGaWxlSW5mbyIhChFQYXRoRXhpc3RzUmVxdWVzdBIMCgRwYXRoGAEgASgJIiIKEFBhdGhFeGlzdHNSZXN1bHQSDgoGZXhpc3RzGAEgASgIIuMDChVUcmFuc2NvZGVWaWRlb1JlcXVlc3QSDgoGam9iX2lkGAEgASgJEhIKCmlucHV0X3BhdGgYAiABKAkSEwoLb3V0cHV0X3BhdGgYAyABKAkSFQoNdGFyZ2V0X2Zvcm1hdBgEIAEoCRITCgZ2Y29kZWMYBSABKAlIAIgBARITCgZhY29kZWMYBiABKAlIAYgBARIQCgNjcmYYByABKA1IAogBARIaCg12aWRlb19iaXRyYXRlGAggASgNSAOIAQESEwoGcHJlc2V0GAkgASgJSASIAQESGwoOdGFyZ2V0X3NpemVfbWIYCiABKAFIBYgBARIaCg1hdWRpb19iaXRyYXRlGAsgASgNSAaIAQESFAoHbWl4ZG93bhgMIAEoCUgHiAEBEhgKC3NhbXBsZV9yYXRlGA0gASgNSAiIAQESGAoLY3VzdG9tX2FyZ3MYDiABKAlICYgBAUIJCgdfdmNvZGVjQgkKB19hY29kZWNCBgoEX2NyZkIQCg5fdmlkZW9fYml0cmF0ZUIJCgdfcHJlc2V0QhEKD190YXJnZXRfc2l6ZV9tYkIQCg5fYXVkaW9fYml0cmF0ZUIKCghfbWl4ZG93bkIOCgxfc2FtcGxlX3JhdGVCDgoMX2N1c3RvbV9hcmdzIi0KG0dldFRyYW5zY29kZVByb2dyZXNzUmVxdWVzdBIOCgZqb2JfaWQYASABKAki1gMKF1RyYW5zY29kZVByb2dyZXNzUmVzdWx0Eg4KBmpvYl9pZBgBIAEoCRIPCgdydW5uaW5nGAIgASgIEg8KB3BlcmNlbnQYAyABKAISCwoDZnBzGAQgASgCEg8KB3hfc3BlZWQYBSABKAISEwoLb3V0X3RpbWVfbXMYBiABKAMSGAoLb3V0cHV0X3BhdGgYByABKAlIAIgBARISCgVlcnJvchgIIAEoCUgBiAEBEhQKB2NvbW1hbmQYCSABKAlIAogBARIdChBpbnB1dF9zaXplX2J5dGVzGAogASgESAOIAQESHgoRb3V0cHV0X3NpemVfYnl0ZXMYCyABKARIBIgBARIkChdvdXRwdXRfdmlkZW9fc2l6ZV9ieXRlcxgMIAEoBEgFiAEBEiQKF291dHB1dF9hdWRpb19zaXplX2J5dGVzGA0gASgESAaIAQFCDgoMX291dHB1dF9wYXRoQggKBl9lcnJvckIKCghfY29tbWFuZEITChFfaW5wdXRfc2l6ZV9ieXRlc0IUChJfb3V0cHV0X3NpemVfYnl0ZXNCGgoYX291dHB1dF92aWRlb19zaXplX2J5dGVzQhoKGF9vdXRwdXRfYXVkaW9fc2l6ZV9ieXRlcyLpAQoaQ3JlYXRlR2lmRnJvbUltYWdlc1JlcXVlc3QSDgoGam9iX2lkGAEgASgJEhUKDWltYWdlX3BhdHRlcm4YAiABKAkSEgoKZnJhbWVfcmF0ZRgDIAEoAhITCgtvdXRwdXRfcGF0aBgEIAEoCRISCgV3aWR0aBgFIAEoDUgAiAEBEhMKBmhlaWdodBgGIAEoDUgBiAEBEhcKCmxvb3BfY291bnQYByABKAVIAogBARIVCg10YXJnZXRfZm9ybWF0GAggASgJQggKBl93aWR0aEIJCgdfaGVpZ2h0Qg0KC19sb29wX2NvdW50Iu4GChhQcm9jZXNzR2lmRWZmZWN0c1JlcXVlc3QSDgoGam9iX2lkGAEgASgJEhIKCmlucHV0X3BhdGgYAiABKAkSEwoLb3V0cHV0X3BhdGgYAyABKAkSEQoEY3JvcBgEIAEoCUgAiAEBEhIKBXNjYWxlGAUgASgJSAGIAQESHQoQc3BlZWRfbXVsdGlwbGllchgGIAEoAkgCiAEBEg8KB3JldmVyc2UYByABKAgSDgoGYm91bmNlGAggASgIEhMKBnJvdGF0ZRgJIAEoCUgDiAEBEhcKCmJyaWdodG5lc3MYCiABKAJIBIgBARIVCghjb250cmFzdBgLIAEoAkgFiAEBEhcKCnNhdHVyYXRpb24YDCABKAJIBogBARIRCglncmF5c2NhbGUYDSABKAgSDgoGaW52ZXJ0GA4gASgIEiEKFGNhcHRpb25faW1hZ2VfYmFzZTY0GA8gASgJSAeIAQESIQoUY2FwdGlvbl9pbWFnZV9oZWlnaHQYECABKA1ICIgBARIaCg1jYXB0aW9uX3N0eWxlGBEgASgJSAmIAQESFwoKbWF4X2NvbG9ycxgSIAEoDUgKiAEBEhgKC2RpdGhlcl90eXBlGBMgASgJSAuIAQESHwoSZHJvcF9mcmFtZXNfZmFjdG9yGBQgASgNSAyIAQESFQoNdGFyZ2V0X2Zvcm1hdBgVIAEoCRIXCgpsb29wX2NvdW50GBYgASgFSA2IAQESEAoDZnBzGBcgASgNSA6IAQESFwoKdHJpbV9zdGFydBgYIAEoAUgPiAEBEhUKCHRyaW1fZW5kGBkgASgBSBCIAQFCBwoFX2Nyb3BCCAoGX3NjYWxlQhMKEV9zcGVlZF9tdWx0aXBsaWVyQgkKB19yb3RhdGVCDQoLX2JyaWdodG5lc3NCCwoJX2NvbnRyYXN0Qg0KC19zYXR1cmF0aW9uQhcKFV9jYXB0aW9uX2ltYWdlX2Jhc2U2NEIXChVfY2FwdGlvbl9pbWFnZV9oZWlnaHRCEAoOX2NhcHRpb25fc3R5bGVCDQoLX21heF9jb2xvcnNCDgoMX2RpdGhlcl90eXBlQhUKE19kcm9wX2ZyYW1lc19mYWN0b3JCDQoLX2xvb3BfY291bnRCBgoEX2Zwc0INCgtfdHJpbV9zdGFydEILCglfdHJpbV9lbmQiSQoPU3BsaXRHaWZSZXF1ZXN0Eg4KBmpvYl9pZBgBIAEoCRISCgppbnB1dF9wYXRoGAIgASgJEhIKCm91dHB1dF9kaXIYAyABKAkiqgEKFU1lZGlhVHJhbnNmb3JtUmVxdWVzdBIOCgZqb2JfaWQYASABKAkSEgoKaW5wdXRfcGF0aBgCIAEoCRITCgtvdXRwdXRfcGF0aBgDIAEoCRIaCg10YXJnZXRfZm9ybWF0GAQgASgJSACIAQESFQoNdmlkZW9fZmlsdGVycxgFIAMoCRITCgtjdXN0b21fYXJncxgGIAMoCUIQCg5fdGFyZ2V0X2Zvcm1hdCIqChlHZXRCZW5jaG1hcmtJbWFnZXNSZXF1ZXN0Eg0KBWxpbWl0GAEgASgNIioKFUJlbmNobWFya0ltYWdlc1Jlc3VsdBIRCglmaWxlcGF0aHMYASADKAkiLwobQmVuY2htYXJrU2luZ2xlSW1hZ2VSZXF1ZXN0EhAKCGZpbGVwYXRoGAEgASgJIrsCChpTaW5nbGVJbWFnZUJlbmNobWFya1Jlc3VsdBIUCgxyZWFkX3RpbWVfbXMYASABKAESFgoOZGVjb2RlX3RpbWVfbXMYAiABKAESGQoRdGh1bWJuYWlsX3RpbWVfbXMYAyABKAESHwoXY2xpcF9wcmVwcm9jZXNzX3RpbWVfbXMYBCABKAESIQoZdGFnZ2VyX3ByZXByb2Nlc3NfdGltZV9tcxgFIAEoARIfChd5b2xvX3ByZXByb2Nlc3NfdGltZV9tcxgGIAEoARInCh9jY2lwX2V4dHJhY3RfcHJlcHJvY2Vzc190aW1lX21zGAcgASgBEiIKGm9jcl9kZXRfcHJlcHJvY2Vzc190aW1lX21zGAggASgBEiIKGm9jcl9yZWNfcHJlcHJvY2Vzc190aW1lX21zGAkgASgBIjcKIlJ1bkltYWdlUHJvY2Vzc2luZ0JlbmNobWFya1JlcXVlc3QSEQoJZmlsZXBhdGhzGAEgAygJIvQCCiBJbWFnZVByb2Nlc3NpbmdCZW5jaG1hcmtQcm9ncmVzcxIPCgdydW5uaW5nGAEgASgIEhEKCXByb2Nlc3NlZBgCIAEoDRINCgV0b3RhbBgDIAEoDRIUCgxyZWFkX3RpbWVfbXMYBCABKAESFgoOZGVjb2RlX3RpbWVfbXMYBSABKAESGQoRdGh1bWJuYWlsX3RpbWVfbXMYBiABKAESHwoXY2xpcF9wcmVwcm9jZXNzX3RpbWVfbXMYByABKAESIQoZdGFnZ2VyX3ByZXByb2Nlc3NfdGltZV9tcxgIIAEoARIfChd5b2xvX3ByZXByb2Nlc3NfdGltZV9tcxgJIAEoARInCh9jY2lwX2V4dHJhY3RfcHJlcHJvY2Vzc190aW1lX21zGAogASgBEiIKGm9jcl9kZXRfcHJlcHJvY2Vzc190aW1lX21zGAsgASgBEiIKGm9jcl9yZWNfcHJlcHJvY2Vzc190aW1lX21zGAwgASgBMvULCgxUb29sc1NlcnZpY2USagoWRXBoZW1lcmFsQ29udmVydEltYWdlcxIsLmN1cmF0b3IudG9vbHMuRXBoZW1lcmFsQ29udmVydEltYWdlc1JlcXVlc3QaIi5jdXJhdG9yLnRvb2xzLkNvbnZlcnRJbWFnZXNSZXN1bHQSTwoKUGF0aEV4aXN0cxIgLmN1cmF0b3IudG9vbHMuUGF0aEV4aXN0c1JlcXVlc3QaHy5jdXJhdG9yLnRvb2xzLlBhdGhFeGlzdHNSZXN1bHQSTgoOVHJhbnNjb2RlVmlkZW8SJC5jdXJhdG9yLnRvb2xzLlRyYW5zY29kZVZpZGVvUmVxdWVzdBoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJqChRHZXRUcmFuc2NvZGVQcm9ncmVzcxIqLmN1cmF0b3IudG9vbHMuR2V0VHJhbnNjb2RlUHJvZ3Jlc3NSZXF1ZXN0GiYuY3VyYXRvci50b29scy5UcmFuc2NvZGVQcm9ncmVzc1Jlc3VsdBJYChNDcmVhdGVHaWZGcm9tSW1hZ2VzEikuY3VyYXRvci50b29scy5DcmVhdGVHaWZGcm9tSW1hZ2VzUmVxdWVzdBoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJUChFQcm9jZXNzR2lmRWZmZWN0cxInLmN1cmF0b3IudG9vbHMuUHJvY2Vzc0dpZkVmZmVjdHNSZXF1ZXN0GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5EkIKCFNwbGl0R2lmEh4uY3VyYXRvci50b29scy5TcGxpdEdpZlJlcXVlc3QaFi5nb29nbGUucHJvdG9idWYuRW1wdHkSTQoJQ2hlY2tUb29sEh8uY3VyYXRvci50b29scy5DaGVja1Rvb2xSZXF1ZXN0Gh8uY3VyYXRvci50b29scy5Ub29sU3RhdHVzUmVzdWx0EkgKC1NldFRvb2xQYXRoEiEuY3VyYXRvci50b29scy5TZXRUb29sUGF0aFJlcXVlc3QaFi5nb29nbGUucHJvdG9idWYuRW1wdHkSUgoLSW5zdGFsbFRvb2wSIS5jdXJhdG9yLnRvb2xzLkluc3RhbGxUb29sUmVxdWVzdBogLmN1cmF0b3IudG9vbHMuSW5zdGFsbFRvb2xSZXN1bHQScAoWR2V0VG9vbEluc3RhbGxQcm9ncmVzcxIsLmN1cmF0b3IudG9vbHMuR2V0VG9vbEluc3RhbGxQcm9ncmVzc1JlcXVlc3QaKC5jdXJhdG9yLnRvb2xzLlRvb2xJbnN0YWxsUHJvZ3Jlc3NSZXN1bHQSTgoOTWVkaWFUcmFuc2Zvcm0SJC5jdXJhdG9yLnRvb2xzLk1lZGlhVHJhbnNmb3JtUmVxdWVzdBoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJkChJHZXRCZW5jaG1hcmtJbWFnZXMSKC5jdXJhdG9yLnRvb2xzLkdldEJlbmNobWFya0ltYWdlc1JlcXVlc3QaJC5jdXJhdG9yLnRvb2xzLkJlbmNobWFya0ltYWdlc1Jlc3VsdBJtChRCZW5jaG1hcmtTaW5nbGVJbWFnZRIqLmN1cmF0b3IudG9vbHMuQmVuY2htYXJrU2luZ2xlSW1hZ2VSZXF1ZXN0GikuY3VyYXRvci50b29scy5TaW5nbGVJbWFnZUJlbmNobWFya1Jlc3VsdBKDAQobUnVuSW1hZ2VQcm9jZXNzaW5nQmVuY2htYXJrEjEuY3VyYXRvci50b29scy5SdW5JbWFnZVByb2Nlc3NpbmdCZW5jaG1hcmtSZXF1ZXN0Gi8uY3VyYXRvci50b29scy5JbWFnZVByb2Nlc3NpbmdCZW5jaG1hcmtQcm9ncmVzczABEm4KI0dldEltYWdlUHJvY2Vzc2luZ0JlbmNobWFya1Byb2dyZXNzEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5Gi8uY3VyYXRvci50b29scy5JbWFnZVByb2Nlc3NpbmdCZW5jaG1hcmtQcm9ncmVzc2IGcHJvdG8z", [file_google_protobuf_empty, file_common]);
+
+/**
+ * @generated from message curator.tools.CheckToolRequest
+ */
+export type CheckToolRequest = Message<"curator.tools.CheckToolRequest"> & {
+  /**
+   * @generated from field: string tool = 1;
+   */
+  tool: string;
+};
+
+/**
+ * Describes the message curator.tools.CheckToolRequest.
+ * Use `create(CheckToolRequestSchema)` to create a new message.
+ */
+export const CheckToolRequestSchema: GenMessage<CheckToolRequest> = /*@__PURE__*/
+  messageDesc(file_tools, 0);
+
+/**
+ * @generated from message curator.tools.ToolStatusResult
+ */
+export type ToolStatusResult = Message<"curator.tools.ToolStatusResult"> & {
+  /**
+   * @generated from field: string tool = 1;
+   */
+  tool: string;
+
+  /**
+   * @generated from field: bool available = 2;
+   */
+  available: boolean;
+
+  /**
+   * @generated from field: optional string resolved_path = 3;
+   */
+  resolvedPath?: string | undefined;
+
+  /**
+   * @generated from field: optional string version = 4;
+   */
+  version?: string | undefined;
+
+  /**
+   * @generated from field: optional string portable_path = 5;
+   */
+  portablePath?: string | undefined;
+};
+
+/**
+ * Describes the message curator.tools.ToolStatusResult.
+ * Use `create(ToolStatusResultSchema)` to create a new message.
+ */
+export const ToolStatusResultSchema: GenMessage<ToolStatusResult> = /*@__PURE__*/
+  messageDesc(file_tools, 1);
+
+/**
+ * @generated from message curator.tools.SetToolPathRequest
+ */
+export type SetToolPathRequest = Message<"curator.tools.SetToolPathRequest"> & {
+  /**
+   * @generated from field: string tool = 1;
+   */
+  tool: string;
+
+  /**
+   * Persisted explicit path; None reverts to auto-detection.
+   *
+   * @generated from field: optional string path = 2;
+   */
+  path?: string | undefined;
+};
+
+/**
+ * Describes the message curator.tools.SetToolPathRequest.
+ * Use `create(SetToolPathRequestSchema)` to create a new message.
+ */
+export const SetToolPathRequestSchema: GenMessage<SetToolPathRequest> = /*@__PURE__*/
+  messageDesc(file_tools, 2);
+
+/**
+ * @generated from message curator.tools.InstallToolRequest
+ */
+export type InstallToolRequest = Message<"curator.tools.InstallToolRequest"> & {
+  /**
+   * @generated from field: string tool = 1;
+   */
+  tool: string;
+};
+
+/**
+ * Describes the message curator.tools.InstallToolRequest.
+ * Use `create(InstallToolRequestSchema)` to create a new message.
+ */
+export const InstallToolRequestSchema: GenMessage<InstallToolRequest> = /*@__PURE__*/
+  messageDesc(file_tools, 3);
+
+/**
+ * @generated from message curator.tools.InstallToolResult
+ */
+export type InstallToolResult = Message<"curator.tools.InstallToolResult"> & {
+  /**
+   * @generated from field: bool started = 1;
+   */
+  started: boolean;
+
+  /**
+   * @generated from field: optional string error = 2;
+   */
+  error?: string | undefined;
+};
+
+/**
+ * Describes the message curator.tools.InstallToolResult.
+ * Use `create(InstallToolResultSchema)` to create a new message.
+ */
+export const InstallToolResultSchema: GenMessage<InstallToolResult> = /*@__PURE__*/
+  messageDesc(file_tools, 4);
+
+/**
+ * @generated from message curator.tools.GetToolInstallProgressRequest
+ */
+export type GetToolInstallProgressRequest = Message<"curator.tools.GetToolInstallProgressRequest"> & {
+  /**
+   * @generated from field: string tool = 1;
+   */
+  tool: string;
+};
+
+/**
+ * Describes the message curator.tools.GetToolInstallProgressRequest.
+ * Use `create(GetToolInstallProgressRequestSchema)` to create a new message.
+ */
+export const GetToolInstallProgressRequestSchema: GenMessage<GetToolInstallProgressRequest> = /*@__PURE__*/
+  messageDesc(file_tools, 5);
+
+/**
+ * @generated from message curator.tools.ToolInstallProgressResult
+ */
+export type ToolInstallProgressResult = Message<"curator.tools.ToolInstallProgressResult"> & {
+  /**
+   * @generated from field: string tool = 1;
+   */
+  tool: string;
+
+  /**
+   * `"idle"` | `"downloading"` | `"extracting"` | `"completed"` | `"failed"`
+   *
+   * @generated from field: string status = 2;
+   */
+  status: string;
+
+  /**
+   * @generated from field: uint32 percent = 3;
+   */
+  percent: number;
+
+  /**
+   * @generated from field: repeated string logs = 4;
+   */
+  logs: string[];
+
+  /**
+   * @generated from field: optional string error = 5;
+   */
+  error?: string | undefined;
+};
+
+/**
+ * Describes the message curator.tools.ToolInstallProgressResult.
+ * Use `create(ToolInstallProgressResultSchema)` to create a new message.
+ */
+export const ToolInstallProgressResultSchema: GenMessage<ToolInstallProgressResult> = /*@__PURE__*/
+  messageDesc(file_tools, 6);
 
 /**
  * Explicit (source_path, target_path) mapping for ephemeral conversion.
@@ -38,7 +211,7 @@ export type PathPair = Message<"curator.tools.PathPair"> & {
  * Use `create(PathPairSchema)` to create a new message.
  */
 export const PathPairSchema: GenMessage<PathPair> = /*@__PURE__*/
-  messageDesc(file_tools, 0);
+  messageDesc(file_tools, 7);
 
 /**
  * @generated from message curator.tools.EphemeralConvertImagesRequest
@@ -75,7 +248,7 @@ export type EphemeralConvertImagesRequest = Message<"curator.tools.EphemeralConv
  * Use `create(EphemeralConvertImagesRequestSchema)` to create a new message.
  */
 export const EphemeralConvertImagesRequestSchema: GenMessage<EphemeralConvertImagesRequest> = /*@__PURE__*/
-  messageDesc(file_tools, 1);
+  messageDesc(file_tools, 8);
 
 /**
  * @generated from message curator.tools.ConvertImagesResult
@@ -92,7 +265,7 @@ export type ConvertImagesResult = Message<"curator.tools.ConvertImagesResult"> &
  * Use `create(ConvertImagesResultSchema)` to create a new message.
  */
 export const ConvertImagesResultSchema: GenMessage<ConvertImagesResult> = /*@__PURE__*/
-  messageDesc(file_tools, 2);
+  messageDesc(file_tools, 9);
 
 /**
  * @generated from message curator.tools.PathExistsRequest
@@ -109,7 +282,7 @@ export type PathExistsRequest = Message<"curator.tools.PathExistsRequest"> & {
  * Use `create(PathExistsRequestSchema)` to create a new message.
  */
 export const PathExistsRequestSchema: GenMessage<PathExistsRequest> = /*@__PURE__*/
-  messageDesc(file_tools, 3);
+  messageDesc(file_tools, 10);
 
 /**
  * @generated from message curator.tools.PathExistsResult
@@ -126,7 +299,7 @@ export type PathExistsResult = Message<"curator.tools.PathExistsResult"> & {
  * Use `create(PathExistsResultSchema)` to create a new message.
  */
 export const PathExistsResultSchema: GenMessage<PathExistsResult> = /*@__PURE__*/
-  messageDesc(file_tools, 4);
+  messageDesc(file_tools, 11);
 
 /**
  * @generated from message curator.tools.TranscodeVideoRequest
@@ -224,7 +397,7 @@ export type TranscodeVideoRequest = Message<"curator.tools.TranscodeVideoRequest
  * Use `create(TranscodeVideoRequestSchema)` to create a new message.
  */
 export const TranscodeVideoRequestSchema: GenMessage<TranscodeVideoRequest> = /*@__PURE__*/
-  messageDesc(file_tools, 5);
+  messageDesc(file_tools, 12);
 
 /**
  * @generated from message curator.tools.GetTranscodeProgressRequest
@@ -241,7 +414,7 @@ export type GetTranscodeProgressRequest = Message<"curator.tools.GetTranscodePro
  * Use `create(GetTranscodeProgressRequestSchema)` to create a new message.
  */
 export const GetTranscodeProgressRequestSchema: GenMessage<GetTranscodeProgressRequest> = /*@__PURE__*/
-  messageDesc(file_tools, 6);
+  messageDesc(file_tools, 13);
 
 /**
  * @generated from message curator.tools.TranscodeProgressResult
@@ -320,7 +493,7 @@ export type TranscodeProgressResult = Message<"curator.tools.TranscodeProgressRe
  * Use `create(TranscodeProgressResultSchema)` to create a new message.
  */
 export const TranscodeProgressResultSchema: GenMessage<TranscodeProgressResult> = /*@__PURE__*/
-  messageDesc(file_tools, 7);
+  messageDesc(file_tools, 14);
 
 /**
  * @generated from message curator.tools.CreateGifFromImagesRequest
@@ -372,7 +545,7 @@ export type CreateGifFromImagesRequest = Message<"curator.tools.CreateGifFromIma
  * Use `create(CreateGifFromImagesRequestSchema)` to create a new message.
  */
 export const CreateGifFromImagesRequestSchema: GenMessage<CreateGifFromImagesRequest> = /*@__PURE__*/
-  messageDesc(file_tools, 8);
+  messageDesc(file_tools, 15);
 
 /**
  * @generated from message curator.tools.ProcessGifEffectsRequest
@@ -509,7 +682,7 @@ export type ProcessGifEffectsRequest = Message<"curator.tools.ProcessGifEffectsR
  * Use `create(ProcessGifEffectsRequestSchema)` to create a new message.
  */
 export const ProcessGifEffectsRequestSchema: GenMessage<ProcessGifEffectsRequest> = /*@__PURE__*/
-  messageDesc(file_tools, 9);
+  messageDesc(file_tools, 16);
 
 /**
  * @generated from message curator.tools.SplitGifRequest
@@ -536,7 +709,59 @@ export type SplitGifRequest = Message<"curator.tools.SplitGifRequest"> & {
  * Use `create(SplitGifRequestSchema)` to create a new message.
  */
 export const SplitGifRequestSchema: GenMessage<SplitGifRequest> = /*@__PURE__*/
-  messageDesc(file_tools, 10);
+  messageDesc(file_tools, 17);
+
+/**
+ * Generic FFmpeg pipeline: filter chains plus optional raw overrides. Progress
+ * is surfaced via the existing GetTranscodeProgress / GetTranscodeProgress.
+ *
+ * @generated from message curator.tools.MediaTransformRequest
+ */
+export type MediaTransformRequest = Message<"curator.tools.MediaTransformRequest"> & {
+  /**
+   * @generated from field: string job_id = 1;
+   */
+  jobId: string;
+
+  /**
+   * @generated from field: string input_path = 2;
+   */
+  inputPath: string;
+
+  /**
+   * @generated from field: string output_path = 3;
+   */
+  outputPath: string;
+
+  /**
+   * Output container hint passed as `-f` (e.g. mp4, webm, gif).
+   *
+   * @generated from field: optional string target_format = 4;
+   */
+  targetFormat?: string | undefined;
+
+  /**
+   * Individual filter expressions joined with `,` into a single `-vf` chain.
+   *
+   * @generated from field: repeated string video_filters = 5;
+   */
+  videoFilters: string[];
+
+  /**
+   * Raw FFmpeg arguments appended verbatim after the input so callers can
+   * override encoding parameters (e.g. `-c:v`, `-crf`, `-an`).
+   *
+   * @generated from field: repeated string custom_args = 6;
+   */
+  customArgs: string[];
+};
+
+/**
+ * Describes the message curator.tools.MediaTransformRequest.
+ * Use `create(MediaTransformRequestSchema)` to create a new message.
+ */
+export const MediaTransformRequestSchema: GenMessage<MediaTransformRequest> = /*@__PURE__*/
+  messageDesc(file_tools, 18);
 
 /**
  * @generated from message curator.tools.GetBenchmarkImagesRequest
@@ -553,7 +778,7 @@ export type GetBenchmarkImagesRequest = Message<"curator.tools.GetBenchmarkImage
  * Use `create(GetBenchmarkImagesRequestSchema)` to create a new message.
  */
 export const GetBenchmarkImagesRequestSchema: GenMessage<GetBenchmarkImagesRequest> = /*@__PURE__*/
-  messageDesc(file_tools, 11);
+  messageDesc(file_tools, 19);
 
 /**
  * @generated from message curator.tools.BenchmarkImagesResult
@@ -570,7 +795,7 @@ export type BenchmarkImagesResult = Message<"curator.tools.BenchmarkImagesResult
  * Use `create(BenchmarkImagesResultSchema)` to create a new message.
  */
 export const BenchmarkImagesResultSchema: GenMessage<BenchmarkImagesResult> = /*@__PURE__*/
-  messageDesc(file_tools, 12);
+  messageDesc(file_tools, 20);
 
 /**
  * @generated from message curator.tools.BenchmarkSingleImageRequest
@@ -587,7 +812,7 @@ export type BenchmarkSingleImageRequest = Message<"curator.tools.BenchmarkSingle
  * Use `create(BenchmarkSingleImageRequestSchema)` to create a new message.
  */
 export const BenchmarkSingleImageRequestSchema: GenMessage<BenchmarkSingleImageRequest> = /*@__PURE__*/
-  messageDesc(file_tools, 13);
+  messageDesc(file_tools, 21);
 
 /**
  * @generated from message curator.tools.SingleImageBenchmarkResult
@@ -644,7 +869,7 @@ export type SingleImageBenchmarkResult = Message<"curator.tools.SingleImageBench
  * Use `create(SingleImageBenchmarkResultSchema)` to create a new message.
  */
 export const SingleImageBenchmarkResultSchema: GenMessage<SingleImageBenchmarkResult> = /*@__PURE__*/
-  messageDesc(file_tools, 14);
+  messageDesc(file_tools, 22);
 
 /**
  * @generated from message curator.tools.RunImageProcessingBenchmarkRequest
@@ -661,7 +886,7 @@ export type RunImageProcessingBenchmarkRequest = Message<"curator.tools.RunImage
  * Use `create(RunImageProcessingBenchmarkRequestSchema)` to create a new message.
  */
 export const RunImageProcessingBenchmarkRequestSchema: GenMessage<RunImageProcessingBenchmarkRequest> = /*@__PURE__*/
-  messageDesc(file_tools, 15);
+  messageDesc(file_tools, 23);
 
 /**
  * Live progress of the running background image processing benchmark.
@@ -735,7 +960,7 @@ export type ImageProcessingBenchmarkProgress = Message<"curator.tools.ImageProce
  * Use `create(ImageProcessingBenchmarkProgressSchema)` to create a new message.
  */
 export const ImageProcessingBenchmarkProgressSchema: GenMessage<ImageProcessingBenchmarkProgress> = /*@__PURE__*/
-  messageDesc(file_tools, 16);
+  messageDesc(file_tools, 24);
 
 /**
  * @generated from service curator.tools.ToolsService
@@ -795,6 +1020,46 @@ export const ToolsService: GenService<{
   splitGif: {
     methodKind: "unary";
     input: typeof SplitGifRequestSchema;
+    output: typeof EmptySchema;
+  },
+  /**
+   * @generated from rpc curator.tools.ToolsService.CheckTool
+   */
+  checkTool: {
+    methodKind: "unary";
+    input: typeof CheckToolRequestSchema;
+    output: typeof ToolStatusResultSchema;
+  },
+  /**
+   * @generated from rpc curator.tools.ToolsService.SetToolPath
+   */
+  setToolPath: {
+    methodKind: "unary";
+    input: typeof SetToolPathRequestSchema;
+    output: typeof EmptySchema;
+  },
+  /**
+   * @generated from rpc curator.tools.ToolsService.InstallTool
+   */
+  installTool: {
+    methodKind: "unary";
+    input: typeof InstallToolRequestSchema;
+    output: typeof InstallToolResultSchema;
+  },
+  /**
+   * @generated from rpc curator.tools.ToolsService.GetToolInstallProgress
+   */
+  getToolInstallProgress: {
+    methodKind: "unary";
+    input: typeof GetToolInstallProgressRequestSchema;
+    output: typeof ToolInstallProgressResultSchema;
+  },
+  /**
+   * @generated from rpc curator.tools.ToolsService.MediaTransform
+   */
+  mediaTransform: {
+    methodKind: "unary";
+    input: typeof MediaTransformRequestSchema;
     output: typeof EmptySchema;
   },
   /**

@@ -14,7 +14,8 @@
  *   - A module-level `boundTabs` set prevents duplicate listener registration.
  *
  * Standard HTML5 `e.dataTransfer.files` is suppressed by Windows WebView2
- * security policies; all plugins must use this Tauri-native API instead.
+ * security policies; all plugins must use the native drag-drop events surfaced
+ * through `PluginHost.ui.onDragDrop`.
  *
  * Used by: image-converter, ffmpeg-transcoder, image-compare, gif-maker
  *
@@ -40,8 +41,8 @@ export function setupDropZone(
   dropZoneIds: string | string[],
   onFiles: (paths: string[], hitZoneId: string | null) => void,
 ): void {
-  const api = window.__TAURI__;
-  if (!api?.webview?.getCurrentWebview) return;
+  const PH = window.PluginHost;
+  if (!PH?.ui?.onDragDrop) return;
 
   // Guard against duplicate listener registration (e.g. if renderTab is
   // called more than once during a plugin re-init cycle).
@@ -50,46 +51,41 @@ export function setupDropZone(
 
   const ids = Array.isArray(dropZoneIds) ? dropZoneIds : [dropZoneIds];
 
-  api.webview.getCurrentWebview().onDragDropEvent((event) => {
+  /** Return the ID of whichever registered drop zone the cursor is over. */
+  const getHitZoneId = (position: { x: number; y: number }): string | null => {
+    const cx = position.x / window.devicePixelRatio;
+    const cy = position.y / window.devicePixelRatio;
+    const hit = document.elementFromPoint(cx, cy);
+    if (!hit) return null;
+    for (const id of ids) {
+      const zone = document.getElementById(id);
+      if (zone && (zone === hit || zone.contains(hit))) return id;
+    }
+    return null;
+  };
+
+  PH.ui.onDragDrop((paths, position, type) => {
     // Ignore events while this plugin's tab is not the active view.
     const tabEl = document.getElementById(`view-extensions-${tabId}`);
     if (!tabEl?.classList.contains("active")) return;
 
-    const drop = event.payload;
-
-    /** Return the ID of whichever registered drop zone the cursor is over. */
-    const getHitZoneId = (): string | null => {
-      const pos = drop.position;
-      if (!pos || typeof pos.x !== "number") return null;
-      const cx = pos.x / window.devicePixelRatio;
-      const cy = pos.y / window.devicePixelRatio;
-      const hit = document.elementFromPoint(cx, cy);
-      if (!hit) return null;
-      for (const id of ids) {
-        const zone = document.getElementById(id);
-        if (zone && (zone === hit || zone.contains(hit))) return id;
-      }
-      return null;
-    };
-
-    if (drop.type === "enter" || drop.type === "over") {
-      const hitId = getHitZoneId();
+    if (type === "enter" || type === "over") {
+      const hitId = getHitZoneId(position);
       for (const id of ids) {
         const zone = document.getElementById(id);
         if (!zone) continue;
         if (id === hitId) zone.classList.add("toolbox-drop-active");
         else zone.classList.remove("toolbox-drop-active");
       }
-    } else if (drop.type === "leave") {
+    } else if (type === "leave") {
       for (const id of ids) {
         document.getElementById(id)?.classList.remove("toolbox-drop-active");
       }
-    } else if (drop.type === "drop") {
-      const hitId = getHitZoneId();
+    } else if (type === "drop") {
+      const hitId = getHitZoneId(position);
       for (const id of ids) {
         document.getElementById(id)?.classList.remove("toolbox-drop-active");
       }
-      const paths = drop.paths ?? [];
       if (paths.length > 0) {
         onFiles(paths, hitId);
       }

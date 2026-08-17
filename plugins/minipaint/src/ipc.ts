@@ -2,9 +2,8 @@
  * Typed IPC wrappers for the minipaint plugin.
  *
  * Install/progress calls go through the PluginHost service dispatcher. The
- * edited-image save goes straight to the Tauri `save_edited_image` command in
- * the dashboard process as a raw binary body (no base64, no number arrays) —
- * see the implementation plan §4.4 for the transport rationale.
+ * edited-image save goes through `PluginHost.storage.writeBinary`, which the
+ * dashboard bridges to the `save_edited_image` raw-byte transport.
  */
 
 const PH = window.PluginHost;
@@ -41,19 +40,13 @@ export interface SaveEditedImageParams {
 export async function saveEditedImage(
   p: SaveEditedImageParams,
 ): Promise<{ ok: boolean; path?: string; error?: string }> {
-  // Raw-byte Tauri invoke: the Uint8Array is sent as the command's raw body
-  // (no base64, no JSON of the bytes); metadata rides in request headers.
-  // The saved path (a tiny string) is the only thing that comes back.
-  const tauriCore = window.__TAURI__?.core;
-  if (!tauriCore) {
-    throw new Error("Tauri core API not available; cannot save edited image.");
-  }
-  const path = await tauriCore.invoke("save_edited_image", new Uint8Array(p.bytes), {
-    headers: {
-      "x-filename": encodeURIComponent(p.name),
-      "x-format": p.format,
-      "x-out-dir": encodeURIComponent(p.outputDir),
-    },
-  });
-  return { ok: true, path: path as string };
+  // The dashboard bridges `writeBinary` to the raw-byte `save_edited_image`
+  // command (no base64, no JSON of the bytes); metadata (output dir, format,
+  // filename) is decomposed from the target path and rides in request headers.
+  const sep = p.outputDir.includes("\\") ? "\\" : "/";
+  const path = await PH.storage.writeBinary(
+    `${p.outputDir}${sep}${p.name}.${p.format}`,
+    new Uint8Array(p.bytes),
+  );
+  return { ok: true, path };
 }

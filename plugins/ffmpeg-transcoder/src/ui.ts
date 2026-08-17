@@ -462,7 +462,7 @@ export function renderTab(): HTMLElement {
   const browseBtn = container.querySelector("#transcoder-browse-btn");
   const outInput = container.querySelector<HTMLInputElement>("#transcoder-output-dir");
   if (outInput) outInput.value = state.outputDir;
-  if (browseBtn && outInput && window.__TAURI__ && window.__TAURI__.core) {
+  if (browseBtn && outInput) {
     browseBtn.addEventListener("click", async () => {
       const path = await pickDirectory();
       if (path) {

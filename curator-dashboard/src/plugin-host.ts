@@ -1,4 +1,5 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { typedCall } from "./ipc";
 import { closeImageViewer } from "./image-viewer";
 import { getPluginViewKeys, registerPluginView, removePluginView } from "./views/navigation";
@@ -118,6 +119,377 @@ async function invokePlugin(
   return JSON.parse(resp.responseJson);
 }
 
+// ---------------------------------------------------------------------------
+// Capability SDK (Phase 3): typed namespaces over the sandboxed backend
+// ---------------------------------------------------------------------------
+
+/** Unwrap a `{ CommandResult: … }` plugin response, throwing on `Error`. */
+function unwrapCommandResult<T = any>(resp: any, expectedKey: string): T {
+  if (resp && typeof resp === "object") {
+    if (resp.Error) {
+      throw new Error(resp.Error.message || "Plugin command failed");
+    }
+    if (expectedKey in resp) {
+      return resp[expectedKey] as T;
+    }
+  }
+  throw new Error(`Unexpected plugin command response (expected ${expectedKey})`);
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+export interface PluginContext {
+  readonly pluginId: string;
+  readonly pluginDir: string;
+  readonly workspaceRoot: string;
+}
+
+export interface MediaTransformRequest {
+  jobId: string;
+  inputPath: string;
+  outputPath: string;
+  targetFormat?: string;
+  videoFilters?: string[];
+  customArgs?: string[];
+}
+
+export interface TranscodeProgressResult {
+  running: boolean;
+  percent: number;
+  fps: number;
+  xSpeed: number;
+  outTimeMs: number;
+  outputPath: string | null;
+  error: string | null;
+  command: string | null;
+  inputSizeBytes: number | null;
+  outputSizeBytes: number | null;
+}
+
+type DragDropEventType = "enter" | "over" | "leave" | "drop";
+
+const dragDropCallbacks: Array<
+  (paths: string[], position: { x: number; y: number }, type: DragDropEventType) => void
+> = [];
+let dragDropBound = false;
+
+function bindDragDropOnce(): void {
+  if (dragDropBound) return;
+  dragDropBound = true;
+  getCurrentWebview().onDragDropEvent((event) => {
+    const drop = event.payload;
+    const type = drop.type;
+    const paths = "paths" in drop ? drop.paths ?? [] : [];
+    const position = type === "leave" ? { x: 0, y: 0 } : drop.position;
+    for (const cb of dragDropCallbacks) {
+      try {
+        cb(paths, position, type);
+      } catch (e) {
+        console.error("PluginHost.ui.onDragDrop callback error:", e);
+      }
+    }
+  });
+}
+
+function makeCapabilities(pluginId: string) {
+  return {
+    storage: {
+      async stat(
+        path?: string,
+      ): Promise<{ totalBytes: number; fileCount: number; exists: boolean }> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "DirStat", { path: path ?? "" }),
+          "DirStatResult",
+        );
+        return {
+          totalBytes: r.total_bytes,
+          fileCount: r.file_count,
+          exists: r.file_count > 0,
+        };
+      },
+      async exists(path: string): Promise<boolean> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "FileExists", { path }),
+          "FileExistsResult",
+        );
+        return r.exists;
+      },
+      async resolve(path: string): Promise<string | null> {
+        try {
+          const r = unwrapCommandResult(
+            await invokePlugin(pluginId, "FileExists", { path }),
+            "FileExistsResult",
+          );
+          return r.absolute_path || null;
+        } catch {
+          return null;
+        }
+      },
+      async readText(path: string): Promise<string> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "FileRead", { path }),
+          "FileReadResult",
+        );
+        return new TextDecoder().decode(base64ToBytes(r.content_base64));
+      },
+      async writeText(path: string, content: string): Promise<void> {
+        await invokePlugin(pluginId, "FileWrite", {
+          path,
+          content_base64: bytesToBase64(new TextEncoder().encode(content)),
+        });
+      },
+      async readBinary(path: string): Promise<Uint8Array> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "FileRead", { path }),
+          "FileReadResult",
+        );
+        return base64ToBytes(r.content_base64);
+      },
+      async writeBinary(path: string, bytes: Uint8Array): Promise<string> {
+        const sep = path.includes("\\") ? "\\" : "/";
+        const name = path.split(sep).pop() || "edited";
+        const dot = name.lastIndexOf(".");
+        const stem = dot !== -1 ? name.substring(0, dot) : name;
+        const format = dot !== -1 ? name.substring(dot + 1) : "png";
+        const outDir = path.substring(0, path.length - name.length - 1);
+        return invoke("save_edited_image", bytes, {
+          headers: {
+            "x-filename": encodeURIComponent(stem),
+            "x-format": format,
+            "x-out-dir": encodeURIComponent(outDir),
+          },
+        });
+      },
+      async getFileSize(path: string): Promise<number | null> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "GetFileSize", { path }),
+          "GetFileSizeResult",
+        );
+        return r.size_bytes ?? null;
+      },
+      async move(src: string, dst: string): Promise<string> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "FileMove", { src, dst }),
+          "FileMoveResult",
+        );
+        return r.absolute_path;
+      },
+      async delete(path: string): Promise<void> {
+        await invokePlugin(pluginId, "FileDelete", { path });
+      },
+      async list(path?: string): Promise<Array<{ name: string; isDir: boolean; sizeBytes: number }>> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "FileList", { path: path ?? "" }),
+          "FileListResult",
+        );
+        return (r.entries || []).map((e: any) => ({
+          name: e.name,
+          isDir: e.is_dir,
+          sizeBytes: e.size_bytes,
+        }));
+      },
+    },
+
+    db: {
+      async execute(
+        dbName: string,
+        sql: string,
+        params: unknown[] = [],
+      ): Promise<{ rowsAffected: number }> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "PluginDbExecute", { db: dbName, sql, params }),
+          "PluginDbExecuteResult",
+        );
+        return { rowsAffected: r.rows_affected };
+      },
+      async query<T = Record<string, unknown>>(
+        dbName: string,
+        sql: string,
+        params: unknown[] = [],
+      ): Promise<T[]> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "PluginDbQuery", { db: dbName, sql, params }),
+          "PluginDbQueryResult",
+        );
+        return (r.rows || []) as T[];
+      },
+    },
+
+    media: {
+      async getMetadata(path: string): Promise<{ durationMs: number; fps: number; totalFrames: number }> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "GetMediaMetadata", { path }),
+          "MediaMetadataResult",
+        );
+        return { durationMs: r.duration_ms, fps: r.fps, totalFrames: r.total_frames };
+      },
+      async convertImages(
+        conversions: Array<[string, string]>,
+        opts?: { quality?: number; maxDimension?: number; maxBytes?: number },
+      ): Promise<Array<{ sourcePath: string; outputPath: string; error?: string }>> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "EphemeralConvertImages", {
+            conversions: conversions.map(([s, d]) => [s, d]),
+            quality: opts?.quality ?? 80,
+            max_dimension: opts?.maxDimension,
+            max_bytes: opts?.maxBytes,
+          }),
+          "ConvertImagesResult",
+        );
+        return (r.converted || []).map((c: any) => ({
+          sourcePath: c.source_path,
+          outputPath: c.output_path,
+          error: c.error,
+        }));
+      },
+      async transform(req: MediaTransformRequest): Promise<void> {
+        await invokePlugin(pluginId, "MediaTransform", {
+          job_id: req.jobId,
+          input_path: req.inputPath,
+          output_path: req.outputPath,
+          target_format: req.targetFormat,
+          video_filters: req.videoFilters,
+          custom_args: req.customArgs,
+        });
+      },
+      async getProgress(jobId: string): Promise<TranscodeProgressResult> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "GetTranscodeProgress", { job_id: jobId }),
+          "TranscodeProgressResult",
+        );
+        return {
+          running: r.running,
+          percent: r.percent,
+          fps: r.fps,
+          xSpeed: r.x_speed,
+          outTimeMs: r.out_time_ms,
+          outputPath: r.output_path ?? null,
+          error: r.error ?? null,
+          command: r.command ?? null,
+          inputSizeBytes: r.input_size_bytes ?? null,
+          outputSizeBytes: r.output_size_bytes ?? null,
+        };
+      },
+    },
+
+    network: {
+      async get(
+        url: string,
+        opts?: { headers?: Record<string, string>; timeoutMs?: number },
+      ): Promise<{ status: number; body: string; etag?: string }> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "HttpGet", { url, headers: opts?.headers ?? {} }),
+          "HttpGetResult",
+        );
+        return { status: r.status, body: r.body, etag: r.etag };
+      },
+      async download(
+        url: string,
+        outputPath: string,
+        opts?: { timeoutMs?: number },
+      ): Promise<{ absolutePath: string; sizeBytes: number }> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "HttpDownload", {
+            url,
+            output_path: outputPath,
+            timeout_ms: opts?.timeoutMs,
+          }),
+          "HttpDownloadResult",
+        );
+        return { absolutePath: r.absolute_path, sizeBytes: r.size_bytes };
+      },
+    },
+
+    dialogs: {
+      async pickFile(): Promise<string | null> {
+        return invoke<string | null>("select_path", { isDirectory: false });
+      },
+      async pickDirectory(): Promise<string | null> {
+        return invoke<string | null>("select_path", { isDirectory: true });
+      },
+      async saveFile(opts?: {
+        suggestedName?: string;
+        filterName?: string;
+        extensions?: string[];
+      }): Promise<string | null> {
+        return invoke<string | null>("save_file_dialog", {
+          suggestedName: opts?.suggestedName ?? "export",
+          filterName: opts?.filterName ?? "All files",
+          extensions: opts?.extensions ?? ["*"],
+        });
+      },
+    },
+
+    system: {
+      async revealInFolder(path: string): Promise<void> {
+        await invoke("reveal_in_folder", { path });
+      },
+      async openExternally(path: string): Promise<void> {
+        await invoke("open_file_externally", { path });
+      },
+      async openUrl(url: string): Promise<void> {
+        await invoke("plugin:opener|open_url", { url });
+      },
+    },
+
+    ui: {
+      onDragDrop(
+        cb: (paths: string[], position: { x: number; y: number }, type: DragDropEventType) => void,
+      ): void {
+        bindDragDropOnce();
+        dragDropCallbacks.push(cb);
+      },
+    },
+
+    tools: {
+      async check(
+        tool: string,
+      ): Promise<{ installed: boolean; path: string | null; version: string | null; portablePath: string | null }> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "CheckTool", { tool }),
+          "CheckToolResult",
+        );
+        return {
+          installed: r.installed,
+          path: r.path ?? null,
+          version: r.version ?? null,
+          portablePath: r.portable_path ?? null,
+        };
+      },
+      async setPath(tool: string, path: string | null): Promise<void> {
+        await invokePlugin(pluginId, "SetToolPath", { tool, path });
+      },
+      async install(tool: string): Promise<{ started: boolean; error?: string }> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "InstallTool", { tool }),
+          "InstallToolResult",
+        );
+        return { started: r.started, error: r.error };
+      },
+      async getProgress(
+        tool: string,
+      ): Promise<{ status: string; percent: number; logs: string[]; error?: string }> {
+        const r = unwrapCommandResult(
+          await invokePlugin(pluginId, "GetToolInstallProgress", { tool }),
+          "GetToolInstallProgressResult",
+        );
+        return { status: r.status, percent: r.percent, logs: r.logs || [], error: r.error };
+      },
+    },
+  };
+}
+
 const PLUGIN_AUTOLOAD_KEY = "curator_plugin_autoload_settings";
 
 export function isPluginAutoloadEnabled(pluginName: string): boolean {
@@ -144,6 +516,15 @@ export function setPluginAutoloadEnabled(pluginName: string, autoload: boolean):
 }
 
 export interface PluginHostApi {
+  readonly context: PluginContext;
+  readonly storage: ReturnType<typeof makeCapabilities>["storage"];
+  readonly db: ReturnType<typeof makeCapabilities>["db"];
+  readonly media: ReturnType<typeof makeCapabilities>["media"];
+  readonly network: ReturnType<typeof makeCapabilities>["network"];
+  readonly dialogs: ReturnType<typeof makeCapabilities>["dialogs"];
+  readonly system: ReturnType<typeof makeCapabilities>["system"];
+  readonly ui: ReturnType<typeof makeCapabilities>["ui"];
+  readonly tools: ReturnType<typeof makeCapabilities>["tools"];
   registerTab(
     id: string,
     label: string,
@@ -176,6 +557,8 @@ export interface PluginHostApi {
 }
 
 const basePluginHost: PluginHostApi = {
+  context: { pluginId: "", pluginDir: "", workspaceRoot: "" },
+  ...makeCapabilities(""),
   registerTab(id, label, iconClass, render, chromeLess) {
     registeredTabs.push({ id, label, iconClass, render, chromeLess });
   },
@@ -232,9 +615,15 @@ const basePluginHost: PluginHostApi = {
  * plugin's `callService` to its own name — the backend uses it to scope
  * `PluginDbExecute`/`PluginDbQuery` to `.curator/plugin_data/<plugin>/`.
  */
-function makePluginHostFacade(pluginName: string): PluginHostApi {
+function makePluginHostFacade(
+  pluginName: string,
+  pluginDir: string,
+  workspaceRoot: string,
+): PluginHostApi {
   return {
     ...basePluginHost,
+    context: { pluginId: pluginName, pluginDir, workspaceRoot },
+    ...makeCapabilities(pluginName),
     callService(method, params) {
       return invokePlugin(pluginName, method, params);
     },
@@ -281,7 +670,7 @@ function executePluginBundle(
   (window as any).__curator_plugin_dir__ = pluginDir;
   (window as any).__curator_workspace_root__ = workspaceRoot;
   // Bind callService to this plugin so the backend can scope plugin DB access.
-  window.PluginHost = makePluginHostFacade(pluginName);
+  window.PluginHost = makePluginHostFacade(pluginName, pluginDir, workspaceRoot);
   const script = document.createElement("script");
   script.textContent = code;
   script.setAttribute("data-plugin", pluginName);

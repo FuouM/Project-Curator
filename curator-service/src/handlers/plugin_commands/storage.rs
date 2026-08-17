@@ -1,45 +1,35 @@
 //! Sandboxed file operations for plugins (`PathExists`, `FileExists`,
-//! `DirStat`, `FileMove`, `FileDelete`).
+//! `FileRead`, `FileWrite`, `FileList`, `DirStat`, `FileMove`, `FileDelete`).
 //!
-//! `FileExists` / `DirStat` / `FileMove` / `FileDelete` are confined to the
-//! plugin's `plugin_data/<plugin_id>/` sandbox: any resolved path that escapes
-//! that root is rejected. `PathExists` intentionally probes arbitrary
-//! workspace / `.curator` paths (used by `plugins/lib/ipc-utils.ts` for
-//! output-collision checks).
+//! `FileExists` / `FileRead` / `FileWrite` / `FileList` / `DirStat` /
+//! `FileMove` / `FileDelete` are confined to the plugin's
+//! `plugin_data/<plugin_id>/` sandbox via the shared `SandboxedPath` type:
+//! any resolved path that escapes that root (absolute input, `..`,
+//! `.curator/…`, NTFS tricks) is rejected. `PathExists` intentionally probes
+//! arbitrary workspace / `.curator` paths (used by `plugins/lib/ipc-utils.ts`
+//! for output-collision checks).
 
+use std::io::Read;
 use std::sync::Arc;
 use tonic::Status;
+
+use base64::Engine;
 
 use crate::ClientContext;
 use crate::handlers;
 
-/// Resolves a plugin-relative (or `.curator`/absolute) path inside the plugin
-/// sandbox root. Mirrors the historical per-command resolution: empty paths
-/// resolve to the plugin root, absolute paths pass through, `.curator` paths
-/// resolve against the workspace root, and everything else joins onto
-/// `plugin_data/<plugin_id>/`.
-fn resolve_plugin_path(
-    data_dir: &std::path::Path,
-    plugin_id: &str,
-    raw_path: &str,
-) -> std::path::PathBuf {
-    let plugin_root = data_dir.join("plugin_data").join(plugin_id);
-    if raw_path.is_empty() {
-        return plugin_root;
-    }
-    let p = std::path::Path::new(raw_path);
-    if p.is_absolute() {
-        p.to_path_buf()
-    } else if raw_path.starts_with(".curator") {
-        std::path::PathBuf::from(handlers::resolve_relative_path(data_dir, raw_path))
-    } else {
-        plugin_root.join(raw_path)
-    }
+use curator_core::db::{SandboxError, SandboxedPath};
+
+/// Cap on a single sandboxed file read/write to bound daemon memory.
+const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
+
+fn sandbox_err(e: SandboxError) -> Status {
+    Status::invalid_argument(e.to_string())
 }
 
-/// True when the resolved path stays inside the plugin sandbox root.
-fn inside_sandbox(resolved: &std::path::Path, plugin_root: &std::path::Path) -> bool {
-    resolved.starts_with(plugin_root)
+/// Resolve a sandboxed path, mapping rejection to the legacy `Error` JSON.
+fn resolve(ctx: &Arc<ClientContext>, plugin_id: &str, raw_path: &str) -> Result<SandboxedPath, Status> {
+    SandboxedPath::resolve(&ctx.data_dir, plugin_id, raw_path).map_err(sandbox_err)
 }
 
 pub async fn path_exists(
@@ -58,33 +48,164 @@ pub async fn path_exists(
     }))
 }
 
+/// Workspace-anchored file-size probe (mirrors `PathExists` semantics): used by
+/// gif-maker to measure `.curator/temp_gif/…` media files that live outside the
+/// plugin sandbox. Returns `size_bytes` when the file exists, else `null`.
+pub async fn get_file_size(
+    ctx: &Arc<ClientContext>,
+    params: &serde_json::Value,
+) -> Result<serde_json::Value, Status> {
+    let raw_path = params["path"]
+        .as_str()
+        .ok_or_else(|| Status::invalid_argument("missing path"))?;
+    let path = handlers::resolve_relative_path(&ctx.data_dir, raw_path);
+    let size = std::fs::metadata(&path).map(|m| m.len()).ok();
+    Ok(serde_json::json!({
+        "GetFileSizeResult": { "size_bytes": size }
+    }))
+}
+
 pub async fn file_exists(
     ctx: &Arc<ClientContext>,
     plugin_id: &str,
     params: &serde_json::Value,
 ) -> Result<serde_json::Value, Status> {
-    if plugin_id.is_empty() {
-        return Err(Status::invalid_argument("missing plugin_id"));
-    }
     let raw_path = params["path"]
         .as_str()
         .ok_or_else(|| Status::invalid_argument("missing path"))?;
-    let plugin_root = ctx.data_dir.join("plugin_data").join(plugin_id);
-    let resolved = resolve_plugin_path(&ctx.data_dir, plugin_id, raw_path);
-    if !inside_sandbox(&resolved, &plugin_root) {
-        return Ok(serde_json::json!({
-            "Error": { "message": "path escapes plugin data directory" }
-        }));
-    }
-    let meta = resolved.metadata().ok();
+    let resolved = resolve(ctx, plugin_id, raw_path)?;
+    let meta = resolved.absolute().metadata().ok();
     let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-    let exists = resolved.is_file() && size > 0;
+    let exists = resolved.absolute().is_file() && size > 0;
     Ok(serde_json::json!({
         "FileExistsResult": {
             "exists": exists,
             "size_bytes": size,
-            "absolute_path": resolved.to_string_lossy().into_owned()
+            "absolute_path": resolved.absolute().to_string_lossy().into_owned()
         }
+    }))
+}
+
+pub async fn file_read(
+    ctx: &Arc<ClientContext>,
+    plugin_id: &str,
+    params: &serde_json::Value,
+) -> Result<serde_json::Value, Status> {
+    let raw_path = params["path"]
+        .as_str()
+        .ok_or_else(|| Status::invalid_argument("missing path"))?;
+    let resolved = resolve(ctx, plugin_id, raw_path)?;
+    let path = resolved.absolute();
+    if !path.is_file() {
+        return Ok(serde_json::json!({
+            "Error": { "message": "file does not exist" }
+        }));
+    }
+    let size = std::fs::metadata(path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    if size > MAX_FILE_BYTES {
+        return Ok(serde_json::json!({
+            "Error": { "message": "file exceeds 16MB sandbox read cap" }
+        }));
+    }
+    let mut bytes = Vec::with_capacity(size as usize);
+    let mut f = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(e) => {
+            return Ok(serde_json::json!({
+                "Error": { "message": format!("failed opening file: {e}") }
+            }));
+        }
+    };
+    if let Err(e) = f.read_to_end(&mut bytes) {
+        return Ok(serde_json::json!({
+            "Error": { "message": format!("failed reading file: {e}") }
+        }));
+    }
+    Ok(serde_json::json!({
+        "FileReadResult": {
+            "content_base64": base64::engine::general_purpose::STANDARD.encode(&bytes),
+            "size_bytes": bytes.len() as u64,
+            "absolute_path": path.to_string_lossy().into_owned()
+        }
+    }))
+}
+
+pub async fn file_write(
+    ctx: &Arc<ClientContext>,
+    plugin_id: &str,
+    params: &serde_json::Value,
+) -> Result<serde_json::Value, Status> {
+    let raw_path = params["path"]
+        .as_str()
+        .ok_or_else(|| Status::invalid_argument("missing path"))?;
+    let content = params["content_base64"]
+        .as_str()
+        .ok_or_else(|| Status::invalid_argument("missing content_base64"))?;
+    let resolved = resolve(ctx, plugin_id, raw_path)?;
+    let path = resolved.absolute();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(content)
+        .map_err(|_| Status::invalid_argument("invalid base64 content"))?;
+    if bytes.len() as u64 > MAX_FILE_BYTES {
+        return Ok(serde_json::json!({
+            "Error": { "message": "payload exceeds 16MB sandbox write cap" }
+        }));
+    }
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            return Ok(serde_json::json!({
+                "Error": { "message": format!("failed creating parent directory: {e}") }
+            }));
+        }
+    }
+    if let Err(e) = std::fs::write(path, &bytes) {
+        return Ok(serde_json::json!({
+            "Error": { "message": format!("failed writing file: {e}") }
+        }));
+    }
+    Ok(serde_json::json!({
+        "FileWriteResult": {
+            "size_bytes": bytes.len() as u64,
+            "absolute_path": path.to_string_lossy().into_owned()
+        }
+    }))
+}
+
+pub async fn file_list(
+    ctx: &Arc<ClientContext>,
+    plugin_id: &str,
+    params: &serde_json::Value,
+) -> Result<serde_json::Value, Status> {
+    let raw_path = params["path"].as_str().unwrap_or("");
+    let resolved = resolve(ctx, plugin_id, raw_path)?;
+    let path = resolved.absolute();
+    if !path.is_dir() {
+        return Ok(serde_json::json!({
+            "Error": { "message": "directory does not exist" }
+        }));
+    }
+    let mut entries = Vec::new();
+    if let Ok(read_dir) = std::fs::read_dir(path) {
+        for entry in read_dir.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let meta = entry.metadata().ok();
+            entries.push(serde_json::json!({
+                "name": name,
+                "is_dir": meta.as_ref().map(|m| m.is_dir()).unwrap_or(false),
+                "size_bytes": meta.map(|m| m.len()).unwrap_or(0),
+            }));
+        }
+    }
+    entries.sort_by(|a, b| {
+        a["name"]
+            .as_str()
+            .unwrap_or("")
+            .cmp(b["name"].as_str().unwrap_or(""))
+    });
+    Ok(serde_json::json!({
+        "FileListResult": { "entries": entries }
     }))
 }
 
@@ -93,17 +214,9 @@ pub async fn dir_stat(
     plugin_id: &str,
     params: &serde_json::Value,
 ) -> Result<serde_json::Value, Status> {
-    if plugin_id.is_empty() {
-        return Err(Status::invalid_argument("missing plugin_id"));
-    }
     let raw_path = params["path"].as_str().unwrap_or("");
-    let plugin_root = ctx.data_dir.join("plugin_data").join(plugin_id);
-    let resolved = resolve_plugin_path(&ctx.data_dir, plugin_id, raw_path);
-    if !inside_sandbox(&resolved, &plugin_root) {
-        return Ok(serde_json::json!({
-            "Error": { "message": "path escapes plugin data directory" }
-        }));
-    }
+    let resolved = resolve(ctx, plugin_id, raw_path)?;
+    let path = resolved.absolute();
     let mut total_bytes: u64 = 0;
     let mut file_count: u64 = 0;
     fn dir_size_recursive(path: &std::path::Path, total_bytes: &mut u64, file_count: &mut u64) {
@@ -122,10 +235,10 @@ pub async fn dir_stat(
             }
         }
     }
-    if resolved.is_dir() {
-        dir_size_recursive(&resolved, &mut total_bytes, &mut file_count);
-    } else if resolved.is_file() {
-        if let Ok(meta) = resolved.metadata() {
+    if path.is_dir() {
+        dir_size_recursive(path, &mut total_bytes, &mut file_count);
+    } else if path.is_file() {
+        if let Ok(meta) = path.metadata() {
             total_bytes = meta.len();
             file_count = 1;
         }
@@ -134,7 +247,7 @@ pub async fn dir_stat(
         "DirStatResult": {
             "total_bytes": total_bytes,
             "file_count": file_count,
-            "absolute_path": resolved.to_string_lossy().into_owned()
+            "absolute_path": path.to_string_lossy().into_owned()
         }
     }))
 }
@@ -144,30 +257,25 @@ pub async fn file_move(
     plugin_id: &str,
     params: &serde_json::Value,
 ) -> Result<serde_json::Value, Status> {
-    if plugin_id.is_empty() {
-        return Err(Status::invalid_argument("missing plugin_id"));
-    }
-    let plugin_root = ctx.data_dir.join("plugin_data").join(plugin_id);
     let raw_src = params["src"]
         .as_str()
         .ok_or_else(|| Status::invalid_argument("missing src"))?;
     let raw_dst = params["dst"]
         .as_str()
         .ok_or_else(|| Status::invalid_argument("missing dst"))?;
-    let src = resolve_plugin_path(&ctx.data_dir, plugin_id, raw_src);
-    let dst = resolve_plugin_path(&ctx.data_dir, plugin_id, raw_dst);
-    if !inside_sandbox(&src, &plugin_root) || !inside_sandbox(&dst, &plugin_root) {
-        return Ok(serde_json::json!({
-            "Error": { "message": "path escapes plugin data directory" }
-        }));
+    let src = resolve(ctx, plugin_id, raw_src)?;
+    let dst = resolve(ctx, plugin_id, raw_dst)?;
+    if let Some(parent) = dst.absolute().parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            return Ok(serde_json::json!({
+                "Error": { "message": format!("failed creating parent directory: {e}") }
+            }));
+        }
     }
-    if let Some(parent) = dst.parent() {
-        std::fs::create_dir_all(parent).map_err(crate::server::internal_status)?;
-    }
-    match std::fs::rename(&src, &dst) {
+    match std::fs::rename(src.absolute(), dst.absolute()) {
         Ok(()) => Ok(serde_json::json!({
             "FileMoveResult": {
-                "absolute_path": dst.to_string_lossy().into_owned()
+                "absolute_path": dst.absolute().to_string_lossy().into_owned()
             }
         })),
         Err(e) => Ok(serde_json::json!({
@@ -181,28 +289,20 @@ pub async fn file_delete(
     plugin_id: &str,
     params: &serde_json::Value,
 ) -> Result<serde_json::Value, Status> {
-    if plugin_id.is_empty() {
-        return Err(Status::invalid_argument("missing plugin_id"));
-    }
-    let plugin_root = ctx.data_dir.join("plugin_data").join(plugin_id);
     let raw_path = params["path"]
         .as_str()
         .ok_or_else(|| Status::invalid_argument("missing path"))?;
-    let resolved = resolve_plugin_path(&ctx.data_dir, plugin_id, raw_path);
-    if !inside_sandbox(&resolved, &plugin_root) {
-        return Ok(serde_json::json!({
-            "Error": { "message": "path escapes plugin data directory" }
-        }));
-    }
-    if resolved.is_dir() {
-        match std::fs::remove_dir_all(&resolved) {
+    let resolved = resolve(ctx, plugin_id, raw_path)?;
+    let path = resolved.absolute();
+    if path.is_dir() {
+        match std::fs::remove_dir_all(path) {
             Ok(()) => Ok(serde_json::json!("Success")),
             Err(e) => Ok(serde_json::json!({
                 "Error": { "message": format!("directory delete failed: {e}") }
             })),
         }
     } else {
-        match std::fs::remove_file(&resolved) {
+        match std::fs::remove_file(path) {
             Ok(()) => Ok(serde_json::json!("Success")),
             Err(e) => Ok(serde_json::json!({
                 "Error": { "message": format!("file delete failed: {e}") }

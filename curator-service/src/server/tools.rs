@@ -2,12 +2,14 @@ use crate::ClientContext;
 use crate::handlers;
 use crate::server::internal_status;
 use curator_core::grpc::tools::{
-    BenchmarkImagesResult, BenchmarkSingleImageRequest, ConvertImagesResult,
+    BenchmarkImagesResult, BenchmarkSingleImageRequest, CheckToolRequest, ConvertImagesResult,
     CreateGifFromImagesRequest, EphemeralConvertImagesRequest, GetBenchmarkImagesRequest,
-    GetTranscodeProgressRequest, ImageProcessingBenchmarkProgress, PathExistsRequest,
+    GetToolInstallProgressRequest, GetTranscodeProgressRequest, ImageProcessingBenchmarkProgress,
+    InstallToolRequest, InstallToolResult, MediaTransformRequest, PathExistsRequest,
     PathExistsResult, ProcessGifEffectsRequest, RunImageProcessingBenchmarkRequest,
-    SingleImageBenchmarkResult, SplitGifRequest, TranscodeProgressResult, TranscodeVideoRequest,
-    tools_service_server::ToolsService,
+    SetToolPathRequest,
+    SingleImageBenchmarkResult, SplitGifRequest, ToolInstallProgressResult, ToolStatusResult,
+    TranscodeProgressResult, TranscodeVideoRequest, tools_service_server::ToolsService,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -218,6 +220,105 @@ impl ToolsService for ToolsServiceImpl {
         .await
         .map_err(internal_status)?;
         Ok(TonicResponse::new(()))
+    }
+
+    async fn media_transform(
+        &self,
+        request: TonicRequest<MediaTransformRequest>,
+    ) -> Result<TonicResponse<()>, Status> {
+        let req = request.into_inner();
+        let resolved_input = handlers::resolve_relative_path(&self.ctx.data_dir, &req.input_path);
+        let resolved_output = handlers::resolve_relative_path(&self.ctx.data_dir, &req.output_path);
+        let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
+            .await
+            .map_err(internal_status)?;
+        curator_core::transcode::start_media_transform(
+            &req.job_id,
+            &resolved_input,
+            &resolved_output,
+            req.target_format.as_deref(),
+            req.video_filters,
+            req.custom_args,
+            &ffmpeg,
+            &self.ctx.transcode_progress,
+        )
+        .await
+        .map_err(internal_status)?;
+        Ok(TonicResponse::new(()))
+    }
+
+    async fn check_tool(
+        &self,
+        request: TonicRequest<CheckToolRequest>,
+    ) -> Result<TonicResponse<ToolStatusResult>, Status> {
+        let req = request.into_inner();
+        let status = handlers::tools::check_tool(
+            &self.ctx.data_dir,
+            &self.ctx.settings,
+            &req.tool,
+        )
+        .await
+        .map_err(internal_status)?;
+        Ok(TonicResponse::new(ToolStatusResult {
+            tool: req.tool,
+            available: status.available,
+            resolved_path: status.resolved_path,
+            version: status.version,
+            portable_path: status.portable_path,
+        }))
+    }
+
+    async fn set_tool_path(
+        &self,
+        request: TonicRequest<SetToolPathRequest>,
+    ) -> Result<TonicResponse<()>, Status> {
+        let req = request.into_inner();
+        handlers::tools::set_tool_path(
+            &self.ctx.data_dir,
+            &self.ctx.settings,
+            &req.tool,
+            req.path,
+        )
+        .await
+        .map_err(internal_status)?;
+        Ok(TonicResponse::new(()))
+    }
+
+    async fn install_tool(
+        &self,
+        request: TonicRequest<InstallToolRequest>,
+    ) -> Result<TonicResponse<InstallToolResult>, Status> {
+        let req = request.into_inner();
+        let outcome = handlers::tools::install_tool(
+            &self.ctx.data_dir,
+            &req.tool,
+            self.ctx.tool_install_progress.clone(),
+        )
+        .await
+        .map_err(internal_status)?;
+        Ok(TonicResponse::new(InstallToolResult {
+            started: outcome.started,
+            error: outcome.error,
+        }))
+    }
+
+    async fn get_tool_install_progress(
+        &self,
+        request: TonicRequest<GetToolInstallProgressRequest>,
+    ) -> Result<TonicResponse<ToolInstallProgressResult>, Status> {
+        let req = request.into_inner();
+        let p = handlers::tools::get_tool_install_progress(
+            &self.ctx.tool_install_progress,
+            &req.tool,
+        )
+        .await;
+        Ok(TonicResponse::new(ToolInstallProgressResult {
+            tool: req.tool,
+            status: p.status,
+            percent: p.percent,
+            logs: p.logs,
+            error: p.error,
+        }))
     }
 
     async fn get_benchmark_images(
