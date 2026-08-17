@@ -96,6 +96,8 @@ async fn dispatch_plugin_command(
         }
         "EphemeralConvertImages" => {
             let quality = params["quality"].as_u64().unwrap_or(80) as u8;
+            let max_dimension = params["max_dimension"].as_u64().map(|v| v as u32);
+            let max_bytes = params["max_bytes"].as_u64();
             let conversions_array = params["conversions"]
                 .as_array()
                 .ok_or_else(|| Status::invalid_argument("missing conversions"))?;
@@ -107,7 +109,7 @@ async fn dispatch_plugin_command(
                     conversions.push((resolved_src, resolved_dst));
                 }
             }
-            let converted = curator_core::convert::convert_images(conversions, quality)
+            let converted = curator_core::convert::convert_images(conversions, quality, max_dimension, max_bytes)
                 .await
                 .map_err(internal_status)?;
             let converted_json: Vec<serde_json::Value> = converted

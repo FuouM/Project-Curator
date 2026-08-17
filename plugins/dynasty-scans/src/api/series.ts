@@ -1,8 +1,10 @@
 import { absUrl, COVERS_PREFIX, SITE_ROOT } from "../state";
-import { getCached, setCached } from "../db";
+import { getCached, setCached, deleteCached } from "../db";
 import { httpGetText, httpDownload, fileDelete } from "./client";
 import { fetchChapter } from "./chapter";
 import type { Series } from "../types/api";
+
+const PH = window.PluginHost;
 
 /** Series / anthology / doujin detail. `force` skips the cache (used by the Refresh button). */
 export async function fetchSeries(permalink: string, force = false, preferredType?: string): Promise<Series> {
@@ -46,7 +48,12 @@ export async function fetchSeries(permalink: string, force = false, preferredTyp
   throw lastErr ?? new Error(`Failed to load ${permalink}`);
 }
 
-/** Returns the on-disk absolute path of a series cover, downloading once. */
+/**
+ * Returns the on-disk absolute path of a series cover, downloading + transcoding
+ * once into a lightweight WebP thumbnail (bounded dimension + <=100KB budget via
+ * the backend media engine). Feed rows render at 42x58 and the series header at
+ * 90px, so a small thumbnail keeps decode cheap while scrolling.
+ */
 export async function getSeriesCover(permalink: string, coverUrl: string | null): Promise<string | null> {
   if (!coverUrl) return null;
   const key = `cover:${permalink}`;
@@ -54,20 +61,58 @@ export async function getSeriesCover(permalink: string, coverUrl: string | null)
   if (cached && cached.json_payload) return cached.json_payload;
   const extMatch = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(coverUrl);
   const ext = extMatch ? extMatch[1] : "jpg";
-  const outPath = `${COVERS_PREFIX}/${permalink}.${ext}`;
-  const absPath = await httpDownload(absUrl(coverUrl), outPath, 30000);
-  await setCached(key, "cover", absPath);
-  return absPath;
+  const tmpOutPath = `${COVERS_PREFIX}/raw_${permalink}.${ext}`;
+  const webpOutPath = `${COVERS_PREFIX}/${permalink}.webp`;
+
+  // 1. Download the original cover.
+  const absRawPath = await httpDownload(absUrl(coverUrl), tmpOutPath, 30000);
+
+  // 2. Transcode to a bounded, size-capped WebP thumbnail via backend media engine.
+  let finalPath = absRawPath;
+  try {
+    const convResp = await PH.callService("EphemeralConvertImages", {
+      quality: 75,
+      max_dimension: 256,
+      max_bytes: 100_000,
+      conversions: [[tmpOutPath, webpOutPath]],
+    });
+    const results = convResp?.ConvertImagesResult?.converted;
+    if (results && results.length > 0 && results[0].output_path && !results[0].error) {
+      finalPath = results[0].output_path;
+      // Clean up the bulky raw download.
+      try {
+        await fileDelete(tmpOutPath);
+      } catch {}
+    }
+  } catch (err) {
+    console.warn("Failed to transcode series cover to WebP, keeping raw download:", err);
+  }
+
+  await setCached(key, "cover", finalPath);
+  return finalPath;
 }
 
 /**
  * Checks local SQLite cache for an already-downloaded cover (series, doujin, or standalone chapter).
+ * Also verifies the cached file actually exists on disk; if missing, purges the stale DB record.
  */
 export async function getLocalCover(coverKey: string): Promise<string | null> {
   if (!coverKey) return null;
   const key = `cover:${coverKey}`;
   const cached = await getCached(key);
-  return cached?.json_payload ?? null;
+  if (!cached || !cached.json_payload) return null;
+
+  // Verify file still exists on disk
+  try {
+    const resp = await PH.callService("FileExists", { path: cached.json_payload });
+    if (resp?.FileExistsResult?.exists) {
+      return cached.json_payload;
+    }
+  } catch {}
+
+  // File is missing or deleted from disk; clean up stale database entry
+  await deleteCached(key);
+  return null;
 }
 
 /**
@@ -95,11 +140,13 @@ export async function getChapterCover(permalink: string, firstPageUrl: string): 
   // 1. Download raw first page
   const absRawPath = await httpDownload(absUrl(firstPageUrl), tmpOutPath, 30000);
 
-  // 2. Transcode to WebP thumbnail via backend media engine
+  // 2. Transcode to WebP thumbnail via backend media engine (bounded + <=100KB)
   let finalPath = absRawPath;
   try {
     const convResp = await PH.callService("EphemeralConvertImages", {
       quality: 75,
+      max_dimension: 256,
+      max_bytes: 100_000,
       conversions: [[tmpOutPath, webpOutPath]],
     });
     const results = convResp?.ConvertImagesResult?.converted;

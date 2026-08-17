@@ -46,3 +46,8 @@ export async function touchCached(key: string): Promise<void> {
     [Date.now(), key]
   );
 }
+
+/** Deletes a cached metadata record by key. */
+export async function deleteCached(key: string): Promise<void> {
+  await execute(`DELETE FROM cached_metadata WHERE cache_key = ?`, [key]);
+}

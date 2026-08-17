@@ -16,6 +16,7 @@ import {
 } from "./db";
 import { createConfirmDeleteButton } from "./components/button";
 import { renderFeedCover } from "./components/cover";
+import { browseCovers } from "./browse/browse-covers";
 
 export function renderCache(container: HTMLElement, _route: Route): void {
   container.innerHTML = "";
@@ -110,6 +111,7 @@ export function renderCache(container: HTMLElement, _route: Route): void {
         "Purge all cached pages, covers, and metadata",
         async () => {
           await clearAllCacheStorage();
+          browseCovers.clearMemoryCache();
           setBanner("All cache storage successfully purged.");
           await loadView();
         },
@@ -132,6 +134,7 @@ export function renderCache(container: HTMLElement, _route: Route): void {
         "Purge only cached cover thumbnails on disk",
         async () => {
           await clearAllCachedCovers();
+          browseCovers.clearMemoryCache();
           setBanner("All cached covers cleared.");
           await loadView();
         },

@@ -120,7 +120,6 @@ export function renderBrowse(container: HTMLElement, route: Route): void {
   coverToggleBtn.addEventListener("click", () => {
     browseCovers.setCoversEnabled(!browseCovers.coversEnabled);
     updateCoverToggleLabel();
-    console.log(`[ds-covers] covers ${browseCovers.coversEnabled ? "enabled" : "disabled"} — re-rendering feed`);
     // Re-render the current tab so feedItem picks up the new flag.
     const activeTab = tabsRow.querySelector<HTMLButtonElement>(".ds-subtab.active");
     const activeTabId = activeTab?.dataset.tabId ?? currentTab;

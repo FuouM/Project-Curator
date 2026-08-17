@@ -1,7 +1,7 @@
 export { execute, query } from "./client";
 export type { Row } from "./client";
 export { initDb } from "./schema";
-export { getCached, getBatchCached, setCached, touchCached } from "./metadata.repo";
+export { getCached, getBatchCached, setCached, touchCached, deleteCached } from "./metadata.repo";
 export {
   getFollowedSeries,
   getFollowedSeriesCount,

@@ -36,9 +36,14 @@ impl ToolsService for ToolsServiceImpl {
             .into_iter()
             .map(|pair| (pair.source_path, pair.target_path))
             .collect();
-        let converted = curator_core::convert::convert_images(conversions, req.quality as u8)
-            .await
-            .map_err(internal_status)?;
+        let converted = curator_core::convert::convert_images(
+            conversions,
+            req.quality as u8,
+            req.max_dimension,
+            req.max_bytes.map(|v| v as u64),
+        )
+        .await
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(ConvertImagesResult {
             converted,
         }))

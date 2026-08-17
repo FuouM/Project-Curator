@@ -22,15 +22,23 @@ const ENCODE_FORMATS: &[&str] = &[
 pub async fn convert_images(
     conversions: Vec<(String, String)>,
     quality: u8,
+    max_dimension: Option<u32>,
+    max_bytes: Option<u64>,
 ) -> Result<Vec<ConvertedFileInfo>> {
     let mut converted = Vec::with_capacity(conversions.len());
     for (source, target) in conversions {
-        converted.push(convert_one(&source, &target, quality).await);
+        converted.push(convert_one(&source, &target, quality, max_dimension, max_bytes).await);
     }
     Ok(converted)
 }
 
-pub async fn convert_one(source: &str, target: &str, quality: u8) -> ConvertedFileInfo {
+pub async fn convert_one(
+    source: &str,
+    target: &str,
+    quality: u8,
+    max_dimension: Option<u32>,
+    max_bytes: Option<u64>,
+) -> ConvertedFileInfo {
     let src = Path::new(source);
     let failure = |error: String| ConvertedFileInfo {
         source_path: source.to_string(),
@@ -68,7 +76,17 @@ pub async fn convert_one(source: &str, target: &str, quality: u8) -> ConvertedFi
     let ext_buf = ext.clone();
     let quality = quality.clamp(1, 100);
 
-    let res = tokio::task::spawn_blocking(move || encode_image(&source_buf, &out_buf_for_task, &ext_buf, quality)).await;
+    let res = tokio::task::spawn_blocking(move || {
+        encode_image(
+            &source_buf,
+            &out_buf_for_task,
+            &ext_buf,
+            quality,
+            max_dimension,
+            max_bytes,
+        )
+    })
+    .await;
 
     match res {
         Ok(Ok(())) => ConvertedFileInfo {
@@ -81,11 +99,51 @@ pub async fn convert_one(source: &str, target: &str, quality: u8) -> ConvertedFi
     }
 }
 
-pub fn encode_image(source: &str, output: &str, ext: &str, quality: u8) -> Result<(), String> {
-    let img = image::open(source)
-        .map_err(|e| format!("Failed to open/decode source: {:?}", e))?;
+pub fn encode_image(
+    source: &str,
+    output: &str,
+    ext: &str,
+    quality: u8,
+    max_dimension: Option<u32>,
+    max_bytes: Option<u64>,
+) -> Result<(), String> {
+    let mut img = image::open(source).map_err(|e| format!("Failed to open/decode source: {:?}", e))?;
 
-    let bytes = encode_dynamic(&img, ext, quality)?;
+    // Bound the larger side, preserving aspect ratio.
+    if let Some(md) = max_dimension {
+        if md > 0 {
+            let (w, h) = img.dimensions();
+            let largest = w.max(h);
+            if largest > md {
+                let scale = md as f64 / largest as f64;
+                let nw = ((w as f64 * scale).round() as u32).max(1);
+                let nh = ((h as f64 * scale).round() as u32).max(1);
+                img = img.resize(nw, nh, image::imageops::FilterType::Lanczos3);
+            }
+        }
+    }
+
+    let mut bytes = encode_dynamic(&img, ext, quality)?;
+
+    // Enforce the output size budget by downscaling until the file fits.
+    if let Some(mb) = max_bytes {
+        if mb > 0 && bytes.len() as u64 > mb {
+            let mut guard = 0;
+            while guard < 32 {
+                let (w, h) = img.dimensions();
+                if w < 8 || h < 8 {
+                    break;
+                }
+                img = img.resize(w / 2, h / 2, image::imageops::FilterType::Lanczos3);
+                bytes = encode_dynamic(&img, ext, quality)?;
+                if bytes.len() as u64 <= mb {
+                    break;
+                }
+                guard += 1;
+            }
+        }
+    }
+
     write_file(output, &bytes)
 }
 

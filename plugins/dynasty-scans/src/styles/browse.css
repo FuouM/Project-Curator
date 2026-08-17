@@ -9,6 +9,14 @@
   contain: strict;
   border-radius: 2px;
 }
+
+/* Feed rows are a long, image-heavy list. Skip rendering of off-screen items so
+   the compositor only ever rasterizes/decodes the visible band of covers (the
+   jank source was re-decoding every cover's bitmap on scroll after idle). */
+.ds-feed-item {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 70px;
+}
 .ds-feed-cover {
   width: 42px;
   height: 58px;

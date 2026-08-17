@@ -1,5 +1,5 @@
 import { getOrHydrateItemCover } from "../api";
-import { getBatchCached } from "../db";
+import { getBatchCached, deleteCached } from "../db";
 import type { FeedChapter } from "../types/api";
 
 const PH = window.PluginHost;
@@ -58,6 +58,14 @@ export class BrowseCovers {
       this.enabled = true;
     }
   }
+
+  clearMemoryCache(): void {
+    this.memoryCache.clear();
+    this.queuedKeys.clear();
+    this.queue.length = 0;
+    this.pendingDomUpdates.length = 0;
+  }
+
 
   get coversEnabled(): boolean {
     return this.enabled;
@@ -120,7 +128,6 @@ export class BrowseCovers {
     if (!this.scrollTrackingAttached) {
       this.scrollTrackingAttached = true;
       this.attachScrollTracking();
-      console.log("[ds-covers] scroll tracking attached to #ds-view");
     }
   }
 
@@ -155,16 +162,47 @@ export class BrowseCovers {
     this.getLazyObserver().observe(wrap);
   }
 
-  /** Tears down hydration state and pauses pumps (used on scroll-to-top). */
+  /** Pauses hydration pumps during the scroll-to-top animation. */
   scrollToTop(): void {
-    if (this.lazyObserver) {
-      this.lazyObserver.disconnect();
-      this.lazyObserver = null;
+    // Keep hydration paused for the whole animation. We must NOT arm the idle
+    // timer here: Chromium's programmatic smooth scroll does not emit JS scroll
+    // events for its full duration, so a 400ms idle timer would fire mid-flight,
+    // flip isScrolling to false, and let the pump run while covers are still
+    // flying past — causing scroll jank.
+    if (this.scrollIdleTimer !== null) {
+      window.clearTimeout(this.scrollIdleTimer);
+      this.scrollIdleTimer = null;
     }
-    this.queue.length = 0;
-    this.queuedKeys.clear();
-    this.pendingDomUpdates.length = 0;
-    this.onScrollActive();
+    this.isScrolling = true;
+    // Deliberately keep the observer connected: covers flying past the
+    // viewport get queued (not pumped — isScrolling is true), so they hydrate
+    // in the background once the scroll settles. Covers that were scrolled past
+    // quickly on the way DOWN were queued but never hydrated; dropping them
+    // here (the old behavior) forced a fresh re-hydration on the way back up.
+    // Keeping the queue + observer lets the idle pump drain them while the user
+    // rests at the top, so the return trip is all cache hits.
+  }
+
+  /**
+   * Re-arms cover observation after a scroll-to-top has fully settled, then
+   * resumes the normal idle-gated pump so covers only load once scrolling is
+   * genuinely stable again.
+   */
+  resumeAfterScrollToTop(host: HTMLElement): void {
+    // Force the paused state so re-observed covers only get queued, never
+    // pumped immediately — even if the idle timer fired mid-animation (scroll
+    // events on a long smooth scroll can be more than SCROLL_IDLE_MS apart).
+    this.isScrolling = true;
+    this.reobserveUnloadedCovers(host);
+    if (this.scrollIdleTimer !== null) {
+      window.clearTimeout(this.scrollIdleTimer);
+    }
+    this.scrollIdleTimer = window.setTimeout(() => {
+      this.isScrolling = false;
+      this.scrollIdleTimer = null;
+      this.flushPendingDomUpdates();
+      this.pumpCoverHydration();
+    }, SCROLL_IDLE_MS);
   }
 
   /** Re-observes wraps that never got an image (e.g. after scroll-to-top). */
@@ -189,14 +227,12 @@ export class BrowseCovers {
 
   private readonly onScrollActive = (): void => {
     if (!this.isScrolling) {
-      console.log("[ds-covers] scroll start — hydration paused");
       this.isScrolling = true;
     }
     if (this.scrollIdleTimer !== null) window.clearTimeout(this.scrollIdleTimer);
     this.scrollIdleTimer = window.setTimeout(() => {
       this.isScrolling = false;
       this.scrollIdleTimer = null;
-      console.log(`[ds-covers] scroll idle — flushing ${this.pendingDomUpdates.length} buffered updates, queue=${this.queue.length}`);
       this.flushPendingDomUpdates();
       this.pumpCoverHydration();
     }, SCROLL_IDLE_MS);
@@ -218,6 +254,9 @@ export class BrowseCovers {
       ph.className = "ds-feed-cover-placeholder";
       ph.innerHTML = '<i class="bi bi-book"></i>';
       node.appendChild(ph);
+      // Evict broken path from memory and SQLite cache
+      this.memoryCache.delete(coverKey);
+      void deleteCached(`cover:${coverKey}`);
     });
     node.appendChild(img);
   }
@@ -226,6 +265,11 @@ export class BrowseCovers {
     if (this.pendingDomUpdates.length === 0) return;
     const updates = this.pendingDomUpdates.splice(0);
     requestAnimationFrame(() => {
+      if (this.isScrolling) {
+        // Scroll resumed before this frame — re-buffer; flushed on next idle.
+        this.pendingDomUpdates.push(...updates);
+        return;
+      }
       for (const { coverKey, coverPath, host } of updates) {
         if (host !== this.hydrationHost) continue;
         const nodes = host.querySelectorAll<HTMLElement>(`[data-feed-cover="${coverKey}"]`);
@@ -241,6 +285,11 @@ export class BrowseCovers {
       return;
     }
     requestAnimationFrame(() => {
+      if (this.isScrolling) {
+        // Scroll resumed before this frame — re-buffer; flushed on next idle.
+        this.pendingDomUpdates.push({ coverKey, coverPath, host });
+        return;
+      }
       if (host !== this.hydrationHost) return;
       const nodes = host.querySelectorAll<HTMLElement>(`[data-feed-cover="${coverKey}"]`);
       for (const node of nodes) this.applyCoverToNode(node, coverKey, coverPath);
@@ -254,7 +303,6 @@ export class BrowseCovers {
           for (const entry of entries) {
             if (entry.isIntersecting) {
               const el = entry.target as HTMLElement;
-              this.lazyObserver?.unobserve(el);
               if (!this.enabled) continue;
 
               const coverKey = el.dataset.feedCover;
@@ -263,17 +311,35 @@ export class BrowseCovers {
               const seriesType = el.dataset.seriesType;
 
               if (coverKey) {
-                const cached = this.memoryCache.get(coverKey);
-                if (cached && this.hydrationHost) {
-                  this.scheduleCoverDomUpdate(coverKey, cached, this.hydrationHost);
-                } else if (chapterPermalink && !this.queuedKeys.has(coverKey)) {
-                  this.queuedKeys.add(coverKey);
-                  this.queue.push({
-                    coverKey,
-                    chapterPermalink,
-                    seriesPermalink: seriesPermalink || null,
-                    seriesType: seriesType || null,
-                  });
+                // undefined = not resolved yet; null = known-missing; string = cached.
+                const resolved = this.memoryCache.get(coverKey);
+                if (resolved !== undefined) {
+                  // Hydration resolved — stop watching this wrap permanently.
+                  this.lazyObserver?.unobserve(el);
+                  if (resolved && this.hydrationHost) {
+                    this.scheduleCoverDomUpdate(coverKey, resolved, this.hydrationHost);
+                  }
+                } else if (chapterPermalink) {
+                  // Unhydrated. Keep observing so a re-entry (up-scroll) moves it
+                  // to the front of the queue — the pump pops nearest-viewport
+                  // first in BOTH directions. A stale down-scroll LIFO order
+                  // would hydrate covers already passed while covers being
+                  // approached stay placeholders.
+                  if (!this.queuedKeys.has(coverKey)) {
+                    this.queuedKeys.add(coverKey);
+                    this.queue.unshift({
+                      coverKey,
+                      chapterPermalink,
+                      seriesPermalink: seriesPermalink || null,
+                      seriesType: seriesType || null,
+                    });
+                  } else {
+                    const idx = this.queue.findIndex((t) => t.coverKey === coverKey);
+                    if (idx > 0) {
+                      const [target] = this.queue.splice(idx, 1);
+                      this.queue.unshift(target);
+                    }
+                  }
                   if (!this.isScrolling) this.pumpCoverHydration();
                 }
               }
@@ -290,16 +356,14 @@ export class BrowseCovers {
     // Hard gate — no IPC work while scrolling.
     if (this.isScrolling || !this.hydrationHost || this.queue.length === 0) return;
 
-    console.log(`[ds-covers] pump: workers=${this.activeWorkers}/${this.MAX_CONCURRENCY} queue=${this.queue.length} scrolling=${this.isScrolling}`);
-
     while (!this.isScrolling && this.activeWorkers < this.MAX_CONCURRENCY && this.queue.length > 0) {
-      // LIFO: prioritise covers closest to current viewport.
-      const target = this.queue.pop();
+      // Front-pop: the observer pushes/re-prioritizes nearest-viewport covers to
+      // the front on every entry, so this stays correct for down- AND up-scrolls.
+      const target = this.queue.shift();
       if (!target) break;
 
       this.activeWorkers++;
       const host = this.hydrationHost;
-      console.log(`[ds-covers] worker start: ${target.coverKey}`);
 
       void (async () => {
         try {
@@ -316,7 +380,6 @@ export class BrowseCovers {
 
           const coverPath = await task;
           this.memoryCache.set(target.coverKey, coverPath);
-          console.log(`[ds-covers] worker done: ${target.coverKey} → ${coverPath ? "hit" : "miss"} isScrolling=${this.isScrolling}`);
 
           if (coverPath && host === this.hydrationHost) {
             this.scheduleCoverDomUpdate(target.coverKey, coverPath, host);

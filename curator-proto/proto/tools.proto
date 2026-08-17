@@ -28,6 +28,11 @@ message PathPair {
 message EphemeralConvertImagesRequest {
   repeated PathPair conversions = 1;
   uint32 quality = 2;
+  // Bound the larger side (width/height) in px before encoding. Aspect ratio is preserved.
+  optional uint32 max_dimension = 3;
+  // Hard output size budget in bytes; the engine downscales further until the
+  // encoded file fits. Mirrors TranscodeVideoRequest's target_size_mb budget.
+  optional uint32 max_bytes = 4;
 }
 
 message ConvertImagesResult {

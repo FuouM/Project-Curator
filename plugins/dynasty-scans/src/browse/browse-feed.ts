@@ -144,29 +144,40 @@ export async function renderFeed(
       const dsView = document.getElementById("ds-view");
       if (!dsView || dsView.scrollTop <= 0) return;
 
-      // Disconnect observer during scroll to top so 20+ flying elements don't trigger observations
+      // Disconnect observer + pause pumps during the animation so 20+ flying
+      // elements never trigger observations. Keep hydration paused until the
+      // scroll has genuinely settled (scrollend / arrival / poll guard).
       browseCovers.scrollToTop();
 
       dsView.scrollTo({ top: 0, behavior: "smooth" });
 
+      let settled = false;
       let topTimer: number | null = null;
-      const done = () => {
+      const settle = () => {
+        if (settled) return;
+        settled = true;
         dsView.removeEventListener("scroll", checkArrival);
-        if (topTimer) {
-          clearTimeout(topTimer);
+        dsView.removeEventListener("scrollend", settle);
+        if (topTimer !== null) {
+          window.clearInterval(topTimer);
           topTimer = null;
         }
         if (host === browseCovers.currentHydrationHost) {
-          browseCovers.reobserveUnloadedCovers(host);
+          browseCovers.resumeAfterScrollToTop(host);
         }
       };
 
       const checkArrival = () => {
-        if (dsView.scrollTop <= 0) done();
+        if (dsView.scrollTop <= 0) settle();
       };
 
+      dsView.addEventListener("scrollend", settle, { passive: true });
       dsView.addEventListener("scroll", checkArrival, { passive: true });
-      topTimer = window.setTimeout(done, 1500);
+      // Poll guard: never re-arm the observer while the view is still moving
+      // (the original 1500ms one-shot could fire mid-animation on long feeds).
+      topTimer = window.setInterval(() => {
+        if (dsView.scrollTop <= 0) settle();
+      }, 200);
     },
   });
   host.appendChild(statusFooter);
@@ -315,7 +326,7 @@ function showFeedUpdateBanner(
 
 function feedItem(ch: FeedChapter, isRead = false, isBookmarked = false): HTMLElement {
   const item = document.createElement("div");
-  item.className = `ds-item${isRead ? " ds-item-read" : ""}`;
+  item.className = `ds-item ds-feed-item${isRead ? " ds-item-read" : ""}`;
   item.style.cssText = "display:flex;align-items:center;gap:10px;padding:6px 8px;";
 
   const coverInfo = browseCovers.getItemCoverInfo(ch);

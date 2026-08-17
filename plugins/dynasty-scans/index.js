@@ -26,10 +26,10 @@
   }
 
   // lib/ipc-utils.ts
-  var PH2 = window.PluginHost;
+  var PH = window.PluginHost;
 
   // lib/poll.ts
-  var PH3 = window.PluginHost;
+  var PH2 = window.PluginHost;
 
   // dynasty-scans/src/utils/html.ts
   function decodeEntities(str) {
@@ -234,10 +234,10 @@
   }
 
   // dynasty-scans/src/db/client.ts
-  var PH4 = window.PluginHost;
+  var PH3 = window.PluginHost;
   async function execute(sql, params = []) {
     var _a, _b;
-    let resp = await PH4.callService("PluginDbExecute", {
+    let resp = await PH3.callService("PluginDbExecute", {
       db: DB_NAME,
       sql,
       params
@@ -247,7 +247,7 @@
   }
   async function query(sql, params = []) {
     var _a, _b;
-    let resp = await PH4.callService("PluginDbQuery", { db: DB_NAME, sql, params });
+    let resp = await PH3.callService("PluginDbQuery", { db: DB_NAME, sql, params });
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
     return (_b = (_a = resp == null ? void 0 : resp.PluginDbQueryResult) == null ? void 0 : _a.rows) != null ? _b : [];
   }
@@ -360,6 +360,9 @@
       "UPDATE cached_metadata SET cached_at = ? WHERE cache_key = ?",
       [Date.now(), key]
     );
+  }
+  async function deleteCached(key) {
+    await execute("DELETE FROM cached_metadata WHERE cache_key = ?", [key]);
   }
 
   // dynasty-scans/src/db/library.repo.ts
@@ -532,7 +535,7 @@
   }
 
   // dynasty-scans/src/db/cache.repo.ts
-  var PH5 = window.PluginHost;
+  var PH4 = window.PluginHost;
   async function getCachedPages(chapterPermalink) {
     return query(
       `SELECT chapter_permalink, page_index, file_path, cached_at
@@ -572,7 +575,7 @@
       (async () => {
         var _a2, _b2;
         try {
-          let resp = await PH5.callService("DirStat", { path: "" });
+          let resp = await PH4.callService("DirStat", { path: "" });
           return Number((_b2 = (_a2 = resp == null ? void 0 : resp.DirStatResult) == null ? void 0 : _a2.total_bytes) != null ? _b2 : 0);
         } catch (e) {
           return 0;
@@ -653,7 +656,7 @@
         try {
           let clean = g.seriesPermalink.replace(/[^a-zA-Z0-9_-]/g, "_"), candidatePaths = g.isStandalone ? [`pages/_singles/${clean}`, `pages/${clean}`] : [`pages/${clean}`], foundBytes = 0;
           for (let p of candidatePaths) {
-            let resp = await PH5.callService("DirStat", { path: p }), bytes = Number((_b = (_a = resp == null ? void 0 : resp.DirStatResult) == null ? void 0 : _a.total_bytes) != null ? _b : 0);
+            let resp = await PH4.callService("DirStat", { path: p }), bytes = Number((_b = (_a = resp == null ? void 0 : resp.DirStatResult) == null ? void 0 : _a.total_bytes) != null ? _b : 0);
             if (bytes > 0) {
               foundBytes = bytes;
               break;
@@ -665,7 +668,7 @@
               g.chapterPermalinks
             );
             for (let row of pathRows) {
-              let resp = await PH5.callService("FileExists", { path: row.file_path });
+              let resp = await PH4.callService("FileExists", { path: row.file_path });
               foundBytes += Number((_d = (_c = resp == null ? void 0 : resp.FileExistsResult) == null ? void 0 : _c.size_bytes) != null ? _d : 0);
             }
           }
@@ -679,7 +682,7 @@
     await Promise.all(
       paths.map(async (p) => {
         try {
-          await PH5.callService("FileDelete", { path: p });
+          await PH4.callService("FileDelete", { path: p });
         } catch (e) {
         }
       })
@@ -711,7 +714,7 @@
   }
 
   // dynasty-scans/src/api/client.ts
-  var PH6 = window.PluginHost;
+  var PH5 = window.PluginHost;
   async function httpGetText(url, opts = {}) {
     var _a, _b, _c, _d, _e, _f, _g, _h;
     let params = {
@@ -719,7 +722,7 @@
       timeout_ms: (_a = opts.timeoutMs) != null ? _a : 15e3
     };
     opts.method === "POST" && (params.method = "POST", params.body = (_b = opts.body) != null ? _b : "", params.content_type = (_c = opts.contentType) != null ? _c : "application/x-www-form-urlencoded"), opts.headers && (params.headers = opts.headers);
-    let resp = await PH6.callService("HttpGet", params);
+    let resp = await PH5.callService("HttpGet", params);
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
     return {
       status: Number((_e = (_d = resp == null ? void 0 : resp.HttpGetResult) == null ? void 0 : _d.status) != null ? _e : 0),
@@ -729,7 +732,7 @@
   }
   async function httpDownload(url, outputPath, timeoutMs = 3e4) {
     var _a, _b;
-    let resp = await PH6.callService("HttpDownload", {
+    let resp = await PH5.callService("HttpDownload", {
       url,
       output_path: outputPath,
       timeout_ms: timeoutMs
@@ -739,7 +742,7 @@
   }
   async function httpDownloadFull(url, outputPath, timeoutMs = 3e4) {
     var _a, _b, _c, _d;
-    let resp = await PH6.callService("HttpDownload", {
+    let resp = await PH5.callService("HttpDownload", {
       url,
       output_path: outputPath,
       timeout_ms: timeoutMs
@@ -752,17 +755,17 @@
   }
   async function fileResolve(path) {
     var _a;
-    let resp = await PH6.callService("FileExists", { path });
+    let resp = await PH5.callService("FileExists", { path });
     return resp != null && resp.Error || !((_a = resp == null ? void 0 : resp.FileExistsResult) != null && _a.exists) ? null : String(resp.FileExistsResult.absolute_path);
   }
   async function fileMove(src, dst) {
     var _a, _b;
-    let resp = await PH6.callService("FileMove", { src, dst });
+    let resp = await PH5.callService("FileMove", { src, dst });
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
     return String((_b = (_a = resp == null ? void 0 : resp.FileMoveResult) == null ? void 0 : _a.absolute_path) != null ? _b : "");
   }
   async function fileDelete(path) {
-    let resp = await PH6.callService("FileDelete", { path });
+    let resp = await PH5.callService("FileDelete", { path });
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
   }
   async function cachedJson(key, url, ttlMs) {
@@ -864,6 +867,7 @@
   }
 
   // dynasty-scans/src/api/series.ts
+  var PH6 = window.PluginHost;
   async function fetchSeries(permalink, force = !1, preferredType) {
     let key = `series:${permalink}`;
     if (!force) {
@@ -893,17 +897,42 @@
     throw lastErr != null ? lastErr : new Error(`Failed to load ${permalink}`);
   }
   async function getSeriesCover(permalink, coverUrl) {
+    var _a;
     if (!coverUrl) return null;
     let key = `cover:${permalink}`, cached = await getCached(key);
     if (cached && cached.json_payload) return cached.json_payload;
-    let extMatch = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(coverUrl), ext = extMatch ? extMatch[1] : "jpg", outPath = `${COVERS_PREFIX}/${permalink}.${ext}`, absPath = await httpDownload(absUrl(coverUrl), outPath, 3e4);
-    return await setCached(key, "cover", absPath), absPath;
+    let extMatch = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(coverUrl), ext = extMatch ? extMatch[1] : "jpg", tmpOutPath = `${COVERS_PREFIX}/raw_${permalink}.${ext}`, webpOutPath = `${COVERS_PREFIX}/${permalink}.webp`, finalPath = await httpDownload(absUrl(coverUrl), tmpOutPath, 3e4);
+    try {
+      let convResp = await PH6.callService("EphemeralConvertImages", {
+        quality: 75,
+        max_dimension: 256,
+        max_bytes: 1e5,
+        conversions: [[tmpOutPath, webpOutPath]]
+      }), results = (_a = convResp == null ? void 0 : convResp.ConvertImagesResult) == null ? void 0 : _a.converted;
+      if (results && results.length > 0 && results[0].output_path && !results[0].error) {
+        finalPath = results[0].output_path;
+        try {
+          await fileDelete(tmpOutPath);
+        } catch (e) {
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to transcode series cover to WebP, keeping raw download:", err);
+    }
+    return await setCached(key, "cover", finalPath), finalPath;
   }
   async function getLocalCover(coverKey) {
     var _a;
     if (!coverKey) return null;
     let key = `cover:${coverKey}`, cached = await getCached(key);
-    return (_a = cached == null ? void 0 : cached.json_payload) != null ? _a : null;
+    if (!cached || !cached.json_payload) return null;
+    try {
+      let resp = await PH6.callService("FileExists", { path: cached.json_payload });
+      if ((_a = resp == null ? void 0 : resp.FileExistsResult) != null && _a.exists)
+        return cached.json_payload;
+    } catch (e) {
+    }
+    return await deleteCached(key), null;
   }
   async function getLocalSeriesCover(permalink) {
     return getLocalCover(`series:${permalink}`);
@@ -915,8 +944,10 @@
     if (cached && cached.json_payload) return cached.json_payload;
     let extMatch = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(firstPageUrl), ext = extMatch ? extMatch[1] : "jpg", tmpOutPath = `${COVERS_PREFIX}/raw_ch_${permalink}.${ext}`, webpOutPath = `${COVERS_PREFIX}/ch_${permalink}.webp`, finalPath = await httpDownload(absUrl(firstPageUrl), tmpOutPath, 3e4);
     try {
-      let convResp = await PH.callService("EphemeralConvertImages", {
+      let convResp = await PH6.callService("EphemeralConvertImages", {
         quality: 75,
+        max_dimension: 256,
+        max_bytes: 1e5,
         conversions: [[tmpOutPath, webpOutPath]]
       }), results = (_a = convResp == null ? void 0 : convResp.ConvertImagesResult) == null ? void 0 : _a.converted;
       if (results && results.length > 0 && results[0].output_path && !results[0].error) {
@@ -1312,8 +1343,8 @@
       this.scrollIdleTimer = null;
       this.scrollTrackingAttached = !1;
       this.onScrollActive = () => {
-        this.isScrolling || (console.log("[ds-covers] scroll start \u2014 hydration paused"), this.isScrolling = !0), this.scrollIdleTimer !== null && window.clearTimeout(this.scrollIdleTimer), this.scrollIdleTimer = window.setTimeout(() => {
-          this.isScrolling = !1, this.scrollIdleTimer = null, console.log(`[ds-covers] scroll idle \u2014 flushing ${this.pendingDomUpdates.length} buffered updates, queue=${this.queue.length}`), this.flushPendingDomUpdates(), this.pumpCoverHydration();
+        this.isScrolling || (this.isScrolling = !0), this.scrollIdleTimer !== null && window.clearTimeout(this.scrollIdleTimer), this.scrollIdleTimer = window.setTimeout(() => {
+          this.isScrolling = !1, this.scrollIdleTimer = null, this.flushPendingDomUpdates(), this.pumpCoverHydration();
         }, SCROLL_IDLE_MS);
       };
       try {
@@ -1322,6 +1353,9 @@
       } catch (e) {
         this.enabled = !0;
       }
+    }
+    clearMemoryCache() {
+      this.memoryCache.clear(), this.queuedKeys.clear(), this.queue.length = 0, this.pendingDomUpdates.length = 0;
     }
     get coversEnabled() {
       return this.enabled;
@@ -1362,7 +1396,7 @@
     }
     /** Resets per-page hydration state and attaches scroll tracking once. */
     beginPage(host) {
-      this.hydrationHost = host, this.queue.length = 0, this.queuedKeys.clear(), this.pendingDomUpdates.length = 0, this.lazyObserver && (this.lazyObserver.disconnect(), this.lazyObserver = null), this.scrollTrackingAttached || (this.scrollTrackingAttached = !0, this.attachScrollTracking(), console.log("[ds-covers] scroll tracking attached to #ds-view"));
+      this.hydrationHost = host, this.queue.length = 0, this.queuedKeys.clear(), this.pendingDomUpdates.length = 0, this.lazyObserver && (this.lazyObserver.disconnect(), this.lazyObserver = null), this.scrollTrackingAttached || (this.scrollTrackingAttached = !0, this.attachScrollTracking());
     }
     /** Pre-loads locally cached covers from SQLite in a single batch query. */
     async preloadBatch(coverTargets) {
@@ -1383,9 +1417,19 @@
     observe(wrap) {
       this.enabled && this.getLazyObserver().observe(wrap);
     }
-    /** Tears down hydration state and pauses pumps (used on scroll-to-top). */
+    /** Pauses hydration pumps during the scroll-to-top animation. */
     scrollToTop() {
-      this.lazyObserver && (this.lazyObserver.disconnect(), this.lazyObserver = null), this.queue.length = 0, this.queuedKeys.clear(), this.pendingDomUpdates.length = 0, this.onScrollActive();
+      this.scrollIdleTimer !== null && (window.clearTimeout(this.scrollIdleTimer), this.scrollIdleTimer = null), this.isScrolling = !0;
+    }
+    /**
+     * Re-arms cover observation after a scroll-to-top has fully settled, then
+     * resumes the normal idle-gated pump so covers only load once scrolling is
+     * genuinely stable again.
+     */
+    resumeAfterScrollToTop(host) {
+      this.isScrolling = !0, this.reobserveUnloadedCovers(host), this.scrollIdleTimer !== null && window.clearTimeout(this.scrollIdleTimer), this.scrollIdleTimer = window.setTimeout(() => {
+        this.isScrolling = !1, this.scrollIdleTimer = null, this.flushPendingDomUpdates(), this.pumpCoverHydration();
+      }, SCROLL_IDLE_MS);
     }
     /** Re-observes wraps that never got an image (e.g. after scroll-to-top). */
     reobserveUnloadedCovers(host) {
@@ -1404,13 +1448,17 @@
       img.className = "ds-feed-cover", img.alt = coverKey, img.width = 42, img.height = 58, img.decoding = "async", img.src = PH8.convertFileSrc(coverPath), img.addEventListener("error", () => {
         img.style.display = "none";
         let ph = document.createElement("div");
-        ph.className = "ds-feed-cover-placeholder", ph.innerHTML = '<i class="bi bi-book"></i>', node.appendChild(ph);
+        ph.className = "ds-feed-cover-placeholder", ph.innerHTML = '<i class="bi bi-book"></i>', node.appendChild(ph), this.memoryCache.delete(coverKey), deleteCached(`cover:${coverKey}`);
       }), node.appendChild(img);
     }
     flushPendingDomUpdates() {
       if (this.pendingDomUpdates.length === 0) return;
       let updates = this.pendingDomUpdates.splice(0);
       requestAnimationFrame(() => {
+        if (this.isScrolling) {
+          this.pendingDomUpdates.push(...updates);
+          return;
+        }
         for (let { coverKey, coverPath, host } of updates) {
           if (host !== this.hydrationHost) continue;
           let nodes = host.querySelectorAll(`[data-feed-cover="${coverKey}"]`);
@@ -1424,6 +1472,10 @@
         return;
       }
       requestAnimationFrame(() => {
+        if (this.isScrolling) {
+          this.pendingDomUpdates.push({ coverKey, coverPath, host });
+          return;
+        }
         if (host !== this.hydrationHost) return;
         let nodes = host.querySelectorAll(`[data-feed-cover="${coverKey}"]`);
         for (let node of nodes) this.applyCoverToNode(node, coverKey, coverPath);
@@ -1436,16 +1488,29 @@
           for (let entry of entries)
             if (entry.isIntersecting) {
               let el2 = entry.target;
-              if ((_a = this.lazyObserver) == null || _a.unobserve(el2), !this.enabled) continue;
+              if (!this.enabled) continue;
               let coverKey = el2.dataset.feedCover, chapterPermalink = el2.dataset.chapterPermalink, seriesPermalink = el2.dataset.seriesPermalink, seriesType = el2.dataset.seriesType;
               if (coverKey) {
-                let cached = this.memoryCache.get(coverKey);
-                cached && this.hydrationHost ? this.scheduleCoverDomUpdate(coverKey, cached, this.hydrationHost) : chapterPermalink && !this.queuedKeys.has(coverKey) && (this.queuedKeys.add(coverKey), this.queue.push({
-                  coverKey,
-                  chapterPermalink,
-                  seriesPermalink: seriesPermalink || null,
-                  seriesType: seriesType || null
-                }), this.isScrolling || this.pumpCoverHydration());
+                let resolved = this.memoryCache.get(coverKey);
+                if (resolved !== void 0)
+                  (_a = this.lazyObserver) == null || _a.unobserve(el2), resolved && this.hydrationHost && this.scheduleCoverDomUpdate(coverKey, resolved, this.hydrationHost);
+                else if (chapterPermalink) {
+                  if (!this.queuedKeys.has(coverKey))
+                    this.queuedKeys.add(coverKey), this.queue.unshift({
+                      coverKey,
+                      chapterPermalink,
+                      seriesPermalink: seriesPermalink || null,
+                      seriesType: seriesType || null
+                    });
+                  else {
+                    let idx = this.queue.findIndex((t) => t.coverKey === coverKey);
+                    if (idx > 0) {
+                      let [target] = this.queue.splice(idx, 1);
+                      this.queue.unshift(target);
+                    }
+                  }
+                  this.isScrolling || this.pumpCoverHydration();
+                }
               }
             }
         },
@@ -1454,12 +1519,12 @@
     }
     pumpCoverHydration() {
       if (!(this.isScrolling || !this.hydrationHost || this.queue.length === 0))
-        for (console.log(`[ds-covers] pump: workers=${this.activeWorkers}/${this.MAX_CONCURRENCY} queue=${this.queue.length} scrolling=${this.isScrolling}`); !this.isScrolling && this.activeWorkers < this.MAX_CONCURRENCY && this.queue.length > 0; ) {
-          let target = this.queue.pop();
+        for (; !this.isScrolling && this.activeWorkers < this.MAX_CONCURRENCY && this.queue.length > 0; ) {
+          let target = this.queue.shift();
           if (!target) break;
           this.activeWorkers++;
           let host = this.hydrationHost;
-          console.log(`[ds-covers] worker start: ${target.coverKey}`), (async () => {
+          (async () => {
             try {
               let task = this.inflight.get(target.coverKey);
               task || (task = getOrHydrateItemCover(
@@ -1469,7 +1534,7 @@
                 target.seriesType
               ), this.inflight.set(target.coverKey, task));
               let coverPath = await task;
-              this.memoryCache.set(target.coverKey, coverPath), console.log(`[ds-covers] worker done: ${target.coverKey} \u2192 ${coverPath ? "hit" : "miss"} isScrolling=${this.isScrolling}`), coverPath && host === this.hydrationHost && this.scheduleCoverDomUpdate(target.coverKey, coverPath, host);
+              this.memoryCache.set(target.coverKey, coverPath), coverPath && host === this.hydrationHost && this.scheduleCoverDomUpdate(target.coverKey, coverPath, host);
             } catch (err) {
               console.warn(`[ds-covers] worker error: ${target.coverKey}`, err);
             } finally {
@@ -1580,12 +1645,14 @@
         let dsView = document.getElementById("ds-view");
         if (!dsView || dsView.scrollTop <= 0) return;
         browseCovers.scrollToTop(), dsView.scrollTo({ top: 0, behavior: "smooth" });
-        let topTimer = null, done = () => {
-          dsView.removeEventListener("scroll", checkArrival), topTimer && (clearTimeout(topTimer), topTimer = null), host === browseCovers.currentHydrationHost && browseCovers.reobserveUnloadedCovers(host);
+        let settled = !1, topTimer = null, settle = () => {
+          settled || (settled = !0, dsView.removeEventListener("scroll", checkArrival), dsView.removeEventListener("scrollend", settle), topTimer !== null && (window.clearInterval(topTimer), topTimer = null), host === browseCovers.currentHydrationHost && browseCovers.resumeAfterScrollToTop(host));
         }, checkArrival = () => {
-          dsView.scrollTop <= 0 && done();
+          dsView.scrollTop <= 0 && settle();
         };
-        dsView.addEventListener("scroll", checkArrival, { passive: !0 }), topTimer = window.setTimeout(done, 1500);
+        dsView.addEventListener("scrollend", settle, { passive: !0 }), dsView.addEventListener("scroll", checkArrival, { passive: !0 }), topTimer = window.setInterval(() => {
+          dsView.scrollTop <= 0 && settle();
+        }, 200);
       }
     });
     host.appendChild(statusFooter), revalidatePromise && revalidatePromise.then((reval) => {
@@ -1675,7 +1742,7 @@
   function feedItem(ch, isRead = !1, isBookmarked = !1) {
     var _a;
     let item = document.createElement("div");
-    item.className = `ds-item${isRead ? " ds-item-read" : ""}`, item.style.cssText = "display:flex;align-items:center;gap:10px;padding:6px 8px;";
+    item.className = `ds-item ds-feed-item${isRead ? " ds-item-read" : ""}`, item.style.cssText = "display:flex;align-items:center;gap:10px;padding:6px 8px;";
     let coverInfo = browseCovers.getItemCoverInfo(ch), coverWrap = document.createElement("div");
     coverWrap.className = "ds-feed-cover-wrap", coverWrap.style.cssText = "flex-shrink:0;cursor:pointer;", coverWrap.dataset.feedCover = coverInfo.coverKey, coverWrap.dataset.chapterPermalink = coverInfo.chapterPermalink, coverWrap.dataset.seriesPermalink = coverInfo.seriesPermalink, coverWrap.dataset.seriesType = coverInfo.seriesType || "", coverInfo.isStandalone ? (coverWrap.title = `Read "${decodeEntities(ch.title)}"`, coverWrap.addEventListener("click", (ev) => {
       ev.stopPropagation(), navigate({
@@ -1899,7 +1966,7 @@
     };
     updateCoverToggleLabel(), coverToggleBtn.addEventListener("click", () => {
       var _a2;
-      browseCovers.setCoversEnabled(!browseCovers.coversEnabled), updateCoverToggleLabel(), console.log(`[ds-covers] covers ${browseCovers.coversEnabled ? "enabled" : "disabled"} \u2014 re-rendering feed`);
+      browseCovers.setCoversEnabled(!browseCovers.coversEnabled), updateCoverToggleLabel();
       let activeTab = tabsRow.querySelector(".ds-subtab.active"), activeTabId = (_a2 = activeTab == null ? void 0 : activeTab.dataset.tabId) != null ? _a2 : currentTab;
       renderTabContent(content, activeTabId, 1);
     }), tabsRow.appendChild(coverToggleBtn), renderTabContent(content, currentTab, 1);
@@ -2847,7 +2914,7 @@
         let clearAllBtn = createConfirmDeleteButton(
           "Purge all cached pages, covers, and metadata",
           async () => {
-            await clearAllCacheStorage(), setBanner("All cache storage successfully purged."), await loadView();
+            await clearAllCacheStorage(), browseCovers.clearMemoryCache(), setBanner("All cache storage successfully purged."), await loadView();
           },
           '<i class="bi bi-trash3"></i> Clear All Cache Storage'
         );
@@ -2863,7 +2930,7 @@
         let clearCoversBtn = createConfirmDeleteButton(
           "Purge only cached cover thumbnails on disk",
           async () => {
-            await clearAllCachedCovers(), setBanner("All cached covers cleared."), await loadView();
+            await clearAllCachedCovers(), browseCovers.clearMemoryCache(), setBanner("All cached covers cleared."), await loadView();
           },
           '<i class="bi bi-card-image"></i> Clear Cached Covers Only'
         );
@@ -3278,6 +3345,14 @@
   overflow: hidden;
   contain: strict;
   border-radius: 2px;
+}
+
+/* Feed rows are a long, image-heavy list. Skip rendering of off-screen items so
+   the compositor only ever rasterizes/decodes the visible band of covers (the
+   jank source was re-decoding every cover's bitmap on scroll after idle). */
+.ds-feed-item {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 70px;
 }
 .ds-feed-cover {
   width: 42px;
