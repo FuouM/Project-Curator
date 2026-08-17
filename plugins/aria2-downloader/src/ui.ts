@@ -9,7 +9,7 @@
  */
 
 import { loadPersisted, pickDirectory, savePersisted } from "../../lib";
-import { state } from "./state";
+import { state, TAB_ID } from "./state";
 import { el, log, PH } from "./ui-core";
 import { clampNum, formatEta } from "./ui-utils";
 import { applyColumnWidths, wireColumnResize } from "./columns";
@@ -42,7 +42,7 @@ export {
 export { initHistory, removeHistoryRecord, renderHistory };
 export { appendLogDelta, clearLogDock };
 
-export function renderTab(): HTMLElement {
+export function buildWorkspaceRoot(): HTMLElement {
   injectStyles();
 
   const root = document.createElement("div");
@@ -51,11 +51,6 @@ export function renderTab(): HTMLElement {
   // ── aria2 setup prompt (in-tab banner, shown only when the engine is
   //    unavailable). This is the plugin's only install UI - no modal.
   const banner = document.createElement("div");
-
-  // List containers queried before renderTab returns (host attaches the root
-  // after the call, so el() lookups would miss them).
-  const queueList = root.querySelector<HTMLElement>("#ad-queue-list");
-  const historyList = root.querySelector<HTMLElement>("#ad-history-list");
   banner.id = "ad-banner";
   banner.className = "ad-banner";
   banner.innerHTML = `
@@ -85,6 +80,7 @@ export function renderTab(): HTMLElement {
       </div>
     </div>
     <div class="ad-chips" id="ad-chips"></div>
+    <div id="ad-add-feedback" style="display:none;font-size:11px;padding:5px 8px;margin-top:6px;border:1px solid var(--sys-border-dark,#999);border-radius:2px;background:var(--sys-window-bg,#fff);"></div>
     <div class="ad-summary-row">
       <label for="ad-output-dir">Output</label>
       <input type="text" id="ad-output-dir" class="input-field" readonly style="flex:1;font-size:11px;" />
@@ -137,105 +133,138 @@ export function renderTab(): HTMLElement {
     </div>`;
   root.appendChild(middle);
 
-  // ── Bottom log console dock ───────────────────────────────────────────────
-  const logBox = document.createElement("div");
-  logBox.className = "group-box";
-  logBox.style.cssText = "flex-shrink:0;";
-  logBox.innerHTML = `
-    <div class="group-box-title"><i class="bi bi-terminal"></i> aria2 Console</div>
-    <div class="ad-log-dock" id="ad-log-dock"></div>`;
-  root.appendChild(logBox);
+  const queueList = middle.querySelector<HTMLElement>("#ad-queue-list");
+  const historyList = middle.querySelector<HTMLElement>("#ad-history-list");
 
-  // ── Listeners ─────────────────────────────────────────────────────────────
-  const urlInput = root.querySelector<HTMLTextAreaElement>("#ad-url-input");
-  const addBtn = root.querySelector("#ad-add-btn");
-  if (addBtn) addBtn.addEventListener("click", () => void addUrls(urlInput?.value ?? ""));
-  if (urlInput) {
-    urlInput.addEventListener("input", updateChips);
-    urlInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        void addUrls(urlInput.value);
-      }
-    });
-  }
-  const clearBtn = root.querySelector("#ad-clear-input-btn");
-  if (clearBtn) {
-    clearBtn.addEventListener("click", () => {
-      if (urlInput) urlInput.value = "";
+  // ── Bottom log console dock ───────────────────────────────────────────────
+  const logDock = document.createElement("div");
+  logDock.className = "group-box ad-log-dock";
+  logDock.innerHTML = `
+    <div class="group-box-title" style="display:flex;align-items:center;justify-content:space-between;">
+      <span><i class="bi bi-terminal"></i> Activity Log</span>
+      <button type="button" class="win-button" id="ad-log-clear-btn" style="font-size:10px;padding:0 5px;height:18px;line-height:18px;"><i class="bi bi-trash3"></i> Clear</button>
+    </div>
+    <div class="ad-log-box" id="ad-log"></div>`;
+  root.appendChild(logDock);
+
+  const showFeedback = (html: string, isError: boolean) => {
+    const fb = root.querySelector<HTMLElement>("#ad-add-feedback");
+    if (!fb) return;
+    fb.innerHTML = html;
+    fb.style.display = "block";
+    fb.style.color = isError ? "var(--sys-error-text, #c00)" : "var(--sys-window-text, #333)";
+    fb.style.borderColor = isError ? "var(--sys-error-text, #c00)" : "var(--sys-border-dark, #999)";
+    fb.style.background = isError ? "rgba(255, 0, 0, 0.05)" : "rgba(0, 128, 0, 0.05)";
+  };
+
+  const clearFeedback = () => {
+    const fb = root.querySelector<HTMLElement>("#ad-add-feedback");
+    if (fb) {
+      fb.style.display = "none";
+      fb.innerHTML = "";
+    }
+  };
+
+  // ── Event wiring ──────────────────────────────────────────────────────────
+  root.querySelector("#ad-log-clear-btn")?.addEventListener("click", () => clearLogDock());
+  root.querySelector("#ad-install-btn")?.addEventListener("click", () => void installAria2(banner));
+  root.querySelector("#ad-add-btn")?.addEventListener("click", async () => {
+    const ta = root.querySelector<HTMLTextAreaElement>("#ad-url-input");
+    if (!ta || !ta.value.trim()) return;
+    clearFeedback();
+    const res = await addUrls(ta.value);
+    if (res.added > 0) {
+      ta.value = "";
       updateChips();
-    });
-  }
+      let msg = `<i class="bi bi-check-circle"></i> Added <b>${res.added}</b> URL(s) to queue.`;
+      if (res.skippedHistory > 0) {
+        msg += ` (${res.skippedHistory} duplicate(s) already in history skipped)`;
+      }
+      if (res.skippedQueue > 0) {
+        msg += ` (${res.skippedQueue} already in queue skipped)`;
+      }
+      showFeedback(msg, false);
+      log(`Added ${res.added} URL(s) to queue.`, "info");
+      if (state.settings.autoStart) void startAllQueued();
+    } else {
+      if (res.skippedHistory > 0) {
+        showFeedback(
+          `<i class="bi bi-exclamation-triangle"></i> Rejected: <b>${res.skippedHistory}</b> URL(s) were already downloaded previously.<br/><span style="opacity:0.85;font-size:10px;">Enable <i>"Rename if exists (_1, _2, ...)"</i> below if you wish to download duplicate copies.</span>`,
+          true
+        );
+        log(`Rejected: ${res.skippedHistory} URL(s) were already downloaded previously. Enable "Rename if exists" to download duplicates.`, "warn");
+      } else if (res.skippedQueue > 0) {
+        showFeedback(
+          `<i class="bi bi-info-circle"></i> <b>${res.skippedQueue}</b> URL(s) are already present in the active download queue.`,
+          true
+        );
+        log(`Rejected: ${res.skippedQueue} URL(s) are already in the queue.`, "warn");
+      } else {
+        showFeedback(`<i class="bi bi-x-circle"></i> No valid URLs found to download.`, true);
+      }
+    }
+  });
+  root.querySelector("#ad-clear-input-btn")?.addEventListener("click", () => {
+    const ta = root.querySelector<HTMLTextAreaElement>("#ad-url-input");
+    if (ta) ta.value = "";
+    clearFeedback();
+    updateChips();
+  });
+  root.querySelector("#ad-url-input")?.addEventListener("input", () => {
+    clearFeedback();
+    updateChips();
+  });
 
   const outInput = root.querySelector<HTMLInputElement>("#ad-output-dir");
-  if (outInput) outInput.value = state.settings.outputDir;
-
-  const browseBtn = root.querySelector("#ad-browse-btn");
-  if (browseBtn) {
-    browseBtn.addEventListener("click", async () => {
-      const path = await pickDirectory();
-      if (path) {
-        state.settings.outputDir = path;
-        if (outInput) outInput.value = path;
-        savePersisted("aria2-downloader-output-dir", path);
-        log(`Output directory set: ${path}`, "success");
-      }
-    });
+  if (outInput) {
+    outInput.value = state.settings.outputDir;
   }
-  const openFolderBtn = root.querySelector("#ad-open-folder-btn");
-  if (openFolderBtn) {
-    openFolderBtn.addEventListener("click", async () => {
-      const api = (window as any).__TAURI__?.core;
-      if (!api?.invoke || !state.settings.outputDir) return;
-      try {
-        await api.invoke("open_file_externally", { path: state.settings.outputDir });
-      } catch {
-        log("Could not open output folder.", "error");
-      }
-    });
-  }
+  root.querySelector("#ad-browse-btn")?.addEventListener("click", async () => {
+    const picked = await pickDirectory();
+    if (picked) {
+      state.settings.outputDir = picked;
+      savePersisted("aria2-downloader-output-dir", picked);
+      if (outInput) outInput.value = picked;
+      log("Output directory set: " + picked, "info");
+    }
+  });
+  root.querySelector("#ad-open-folder-btn")?.addEventListener("click", async () => {
+    const dir = state.settings.outputDir;
+    if (!dir) return;
+    try {
+      await PH.callService("OpenFolder", { path: dir });
+    } catch {
+      window.open("file://" + dir.replace(/\\/g, "/"));
+    }
+  });
 
-  const connsInput = root.querySelector<HTMLInputElement>("#ad-conns");
-  if (connsInput) {
-    connsInput.value = String(state.settings.connections);
-    connsInput.addEventListener("change", () => {
-      state.settings.connections = Math.max(1, Math.min(16, parseInt(connsInput.value, 10) || state.settings.connections));
-      connsInput.value = String(state.settings.connections);
+  const conns = root.querySelector<HTMLInputElement>("#ad-conns");
+  if (conns) {
+    conns.value = String(state.settings.connections);
+    conns.addEventListener("change", () => {
+      state.settings.connections = clampNum(parseInt(conns.value, 10), 1, 16, 4);
+      conns.value = String(state.settings.connections);
       savePersisted("aria2-downloader-connections", String(state.settings.connections));
     });
   }
-  const speedInput = root.querySelector<HTMLInputElement>("#ad-speed");
-  if (speedInput) {
-    speedInput.value = String(state.settings.speedLimitKb);
-    speedInput.addEventListener("change", () => {
-      state.settings.speedLimitKb = Math.max(0, parseInt(speedInput.value, 10) || 0);
-      speedInput.value = String(state.settings.speedLimitKb);
+
+  const speed = root.querySelector<HTMLInputElement>("#ad-speed");
+  if (speed) {
+    speed.value = String(state.settings.speedLimitKb);
+    speed.addEventListener("change", () => {
+      state.settings.speedLimitKb = Math.max(0, parseInt(speed.value, 10) || 0);
+      speed.value = String(state.settings.speedLimitKb);
       savePersisted("aria2-downloader-speed-limit", String(state.settings.speedLimitKb));
     });
   }
-  const triesInput = root.querySelector<HTMLInputElement>("#ad-tries");
-  if (triesInput) {
-    triesInput.value = String(state.settings.maxTries);
-    triesInput.addEventListener("change", () => {
-      state.settings.maxTries = Math.max(0, parseInt(triesInput.value, 10) || 0);
-      triesInput.value = String(state.settings.maxTries);
+
+  const tries = root.querySelector<HTMLInputElement>("#ad-tries");
+  if (tries) {
+    tries.value = String(state.settings.maxTries);
+    tries.addEventListener("change", () => {
+      state.settings.maxTries = Math.max(0, parseInt(tries.value, 10) || 0);
+      tries.value = String(state.settings.maxTries);
       savePersisted("aria2-downloader-max-tries", String(state.settings.maxTries));
-    });
-  }
-
-  const installBtn = root.querySelector("#ad-install-btn");
-  if (installBtn) installBtn.addEventListener("click", () => void installAria2());
-
-  const historySearch = root.querySelector<HTMLInputElement>("#ad-history-search");
-  if (historySearch) {
-    historySearch.addEventListener("input", () => {
-      void refreshHistoryUI(historySearch.value);
-    });
-  }
-  const historyRefresh = root.querySelector("#ad-history-refresh");
-  if (historyRefresh) {
-    historyRefresh.addEventListener("click", () => {
-      void refreshHistoryUI(historySearch?.value ?? "");
     });
   }
 
@@ -247,6 +276,7 @@ export function renderTab(): HTMLElement {
       savePersisted("aria2-downloader-auto-rename", autoRename.checked ? "1" : "0");
     });
   }
+
   const autoStart = root.querySelector<HTMLInputElement>("#ad-auto-start");
   if (autoStart) {
     autoStart.checked = state.settings.autoStart;
@@ -271,20 +301,23 @@ export function renderTab(): HTMLElement {
   wireColumnResize();
 
   // ── Initial render ────────────────────────────────────────────────────────
-  // Pass the list elements directly: the host appends `root` to the document
-  // only after `renderTab` returns, so `document.getElementById` misses them.
   renderQueue(queueList);
   updateChips();
   renderHistory(state.history, historyList);
-  // Pass the banner element directly (same pre-attach reason).
   setToolBanner(state.toolAvailable, state.toolVersion, defaultBannerText(), banner);
 
-  // Guarantee history autofetches after the host attaches `root`: bootstrap's
-  // own fetch may have completed before the tab was mounted, and its render
-  // then found no `ad-history-list` element yet. Re-running is idempotent.
-  void initHistory();
+  // Probe tool status and fetch history immediately
+  void refreshToolStatus(banner);
+  setTimeout(() => {
+    void refreshToolStatus();
+    void initHistory();
+  }, 50);
 
   return root;
+}
+
+export function renderTab(): HTMLElement {
+  return buildWorkspaceRoot();
 }
 
 export async function bootstrap(): Promise<void> {

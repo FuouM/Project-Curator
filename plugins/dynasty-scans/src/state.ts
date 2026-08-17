@@ -25,13 +25,36 @@ export interface PluginState {
   lastMangaTab: SessionMangaTab | null;
   /** Cleanup hook installed by the active view (listeners, observers). */
   dispose: (() => void) | null;
+  isLoaded: boolean;
+  dbInitialized: boolean;
 }
 
 export const state: PluginState = {
   route: { view: "browse" },
   lastMangaTab: null,
   dispose: null,
+  isLoaded: true,
+  dbInitialized: false,
 };
+
+export async function loadPluginView(customRoute?: Route): Promise<void> {
+  state.isLoaded = true;
+  if (customRoute) {
+    state.route = customRoute;
+  }
+  if (!state.dbInitialized) {
+    try {
+      const { initDb } = await import("./db");
+      await initDb();
+      state.dbInitialized = true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("dynasty-scans: db init failed:", msg);
+      setBanner(`Database init failed: ${msg}`);
+    }
+  }
+  renderCurrent();
+}
 
 // ---------------------------------------------------------------------------
 // Router
@@ -83,6 +106,10 @@ export function navigate(r: Route): void {
       title,
       route: { ...r },
     };
+  }
+  if (!state.isLoaded) {
+    void loadPluginView(r);
+    return;
   }
   state.route = r;
   renderCurrent();

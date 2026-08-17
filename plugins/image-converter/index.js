@@ -204,7 +204,7 @@
   }
   function addToQueue(path) {
     if (path) {
-      if (state.inQueue[path]) {
+      if (ensureConverterMounted(), state.inQueue[path]) {
         log(`Already queued: ${path}`, "info");
         return;
       }
@@ -269,6 +269,9 @@
     } finally {
       setBusy(!1);
     }
+  }
+  function ensureConverterMounted() {
+    PH5 && PH5.loadTab && PH5.loadTab(TAB_ID);
   }
   function renderTab() {
     var _a, _b, _c;

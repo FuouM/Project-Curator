@@ -57,6 +57,7 @@ export function loadAssetIntoSlot(
   assetContext: { path: string; asset_id?: number } | null,
   fileObj?: File
 ): void {
+  ensureCompareMounted();
   const slotObj = targetSlot === "A" ? state.slotA : state.slotB;
   if (fileObj) {
     slotObj.id = null;
@@ -956,6 +957,12 @@ export function bindGlobalEventsOnce(): void {
       });
     }
   });
+}
+
+export function ensureCompareMounted(): void {
+  if (PH && PH.loadTab) {
+    PH.loadTab(TAB_ID);
+  }
 }
 
 export function renderCompareTab(): HTMLElement {

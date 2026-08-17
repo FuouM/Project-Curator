@@ -94,7 +94,7 @@ if (!PH) {
     box.innerHTML =
       '<div class="group-box-title"><i class="bi bi-palette"></i> Image Editor</div>' +
       '<div style="display:flex;align-items:center;gap:8px;padding:2px 0;">' +
-      '  <span style="font-size:11px;color:#555;flex:1;">Open this image in the miniPaint editor. The editor loads on demand and stays parked otherwise.</span>' +
+      '  <span style="font-size:11px;color:#555;flex:1;">Open this image in the miniPaint editor.</span>' +
       '  <button type="button" class="win-button" id="minipaint-send-asset">' +
       '    <i class="bi bi-brush"></i> Send to Editor' +
       "  </button>" +
@@ -104,6 +104,7 @@ if (!PH) {
       .querySelector<HTMLButtonElement>("#minipaint-send-asset")
       ?.addEventListener("click", () => {
         closeInfoModal();
+        if (PH.loadTab) PH.loadTab(TAB_ID);
         navigateToTab(TAB_ID);
         ensureEditor(asset.path);
       });
@@ -147,7 +148,7 @@ if (!PH) {
       browseOutputDir((dir) => { outputInput.value = dir; });
     });
 
-    // Load/Unload toggle sits FIRST, left of the output dir controls.
+    // Load/Unload toggle button
     toggleBtn = document.createElement("button");
     toggleBtn.type = "button";
     toggleBtn.className = "win-button";
@@ -173,23 +174,22 @@ if (!PH) {
     settingsBox.appendChild(title);
     settingsBox.appendChild(settingsRow);
 
-    // ── Editor host (empty until Load / Send to Editor) ───────────────────
+    // ── Editor host ──────────────────────────────────────────────────────
     editorHost = document.createElement("div");
     editorHost.style.cssText =
       "display:flex;flex-direction:column;width:100%;flex:1;min-height:0;";
 
     // When the editor runtime is missing, the installer replaces the settings
-    // row (Load would be a no-op otherwise). The installer lives in its own
-    // placeholder so a post-install retry never wipes the editor host.
+    // row. The installer lives in its own placeholder so a post-install retry
+    // never wipes the editor host.
     const launcherHost = document.createElement("div");
     launcherHost.style.cssText = "display:flex;flex-direction:column;width:100%;min-height:0;";
 
-    // After the install completes the console stays visible so the user can
-    // read the full step log; it is only hidden once they load the editor.
     let installerEl: HTMLElement | null = null;
 
     const onInstallComplete = () => {
       launcherHost.appendChild(settingsBox);
+      ensureEditor();
     };
 
     const loadContent = () => {
@@ -198,6 +198,12 @@ if (!PH) {
       checkInstalled().then((installed) => {
         if (installed) {
           launcherHost.appendChild(settingsBox);
+          const shouldAutoload = PH.isAutoloadEnabled ? PH.isAutoloadEnabled(TAB_ID) : true;
+          if (shouldAutoload) {
+            ensureEditor();
+          } else {
+            unloadEditor();
+          }
         } else {
           installerEl = renderInstaller(onInstallComplete);
           launcherHost.appendChild(installerEl);

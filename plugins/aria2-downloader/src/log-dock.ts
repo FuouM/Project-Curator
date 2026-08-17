@@ -10,7 +10,7 @@ import type { QueueItem } from "./state";
 
 /** Append new log lines for `item` to the bottom dock. Returns the new index. */
 export function appendLogDelta(item: QueueItem): void {
-  const dock = el("ad-log-dock");
+  const dock = el("ad-log");
   if (!dock || item.logIndex >= item.logs.length) return;
   const frag = document.createDocumentFragment();
   for (let i = item.logIndex; i < item.logs.length; i++) {
@@ -24,6 +24,6 @@ export function appendLogDelta(item: QueueItem): void {
 }
 
 export function clearLogDock(): void {
-  const dock = el("ad-log-dock");
+  const dock = el("ad-log");
   if (dock) dock.innerHTML = "";
 }

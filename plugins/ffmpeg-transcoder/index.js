@@ -269,7 +269,7 @@
         log("Not a supported video (mp4/webm): " + path, "error");
         return;
       }
-      if (state.inQueue[path]) {
+      if (ensureTranscoderMounted(), state.inQueue[path]) {
         verboseLog("Already queued: " + path, "info");
         return;
       }
@@ -393,6 +393,9 @@
       });
     };
     next(0);
+  }
+  function ensureTranscoderMounted() {
+    PH5 && PH5.loadTab && PH5.loadTab(TAB_ID);
   }
   function renderTab() {
     let container = document.createElement("div");

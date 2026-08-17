@@ -139,6 +139,13 @@ interface PluginHostApi {
   getAssetContextFromCard(card: HTMLElement): AssetContext;
   /** Close the full-screen image viewer (if open), e.g. before navigating to a tab. */
   closeImageViewer(): void;
+
+  // Lifecycle & Autoload
+  isAutoloadEnabled(pluginName?: string): boolean;
+  setAutoloadEnabled(pluginName: string, autoload: boolean): void;
+  isTabLoaded(tabId?: string): boolean;
+  loadTab(tabId?: string): void;
+  unloadTab(tabId?: string): void;
 }
 
 // ---------------------------------------------------------------------------

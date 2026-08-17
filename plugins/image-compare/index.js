@@ -135,6 +135,7 @@
     }, img.src = slot.url;
   }
   function loadAssetIntoSlot(targetSlot, assetContext, fileObj) {
+    ensureCompareMounted();
     let slotObj = targetSlot === "A" ? state.slotA : state.slotB;
     if (fileObj) {
       slotObj.id = null;
@@ -570,6 +571,9 @@
         vp.style.cursor = "grab";
       }));
     }));
+  }
+  function ensureCompareMounted() {
+    PH5 && PH5.loadTab && PH5.loadTab(TAB_ID);
   }
   function renderCompareTab() {
     let wrapper = document.createElement("div");

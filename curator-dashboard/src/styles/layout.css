@@ -80,7 +80,11 @@
 }
 
 .header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 8px;
+  gap: 12px;
 }
 .title-section h1 {
   font-size: 16px;

@@ -30,7 +30,7 @@ export function setToolBanner(available: boolean, version: string | null, messag
   text.textContent = message + (version ? ` (${version})` : "");
 }
 
-export async function refreshToolStatus(): Promise<void> {
+export async function refreshToolStatus(bannerEl?: HTMLElement): Promise<void> {
   try {
     const status = await checkTool(ARIA2_TOOL);
     state.toolAvailable = status.installed;
@@ -40,7 +40,7 @@ export async function refreshToolStatus(): Promise<void> {
     state.toolVersion = null;
     log(`Tool check failed: ${err instanceof Error ? err.message : String(err)}`, "error");
   }
-  setToolBanner(state.toolAvailable, state.toolVersion, defaultBannerText());
+  setToolBanner(state.toolAvailable, state.toolVersion, defaultBannerText(), bannerEl);
 }
 
 interface EngineInstallHooks {
@@ -72,7 +72,7 @@ function runEngineInstall({ onStatus, onDone }: EngineInstallHooks): void {
       p = { status: "error", percent: 0, logs: [String(err)], error: String(err) };
     }
     if (onStatus) onStatus(p.status, p.percent);
-    rendered = appendLogLines("ad-log-dock", p.logs, rendered);
+    rendered = appendLogLines("ad-log", p.logs, rendered);
 
     if (p.status === "completed" || p.status === "done") {
       log("Install complete.", "success");
@@ -91,9 +91,15 @@ function runEngineInstall({ onStatus, onDone }: EngineInstallHooks): void {
   const start = async (): Promise<void> => {
     try {
       const { started, error } = await installTool(ARIA2_TOOL);
-      if (!started && error) {
-        log(`Install could not start: ${error}`, "error");
-        finish(false, error);
+      if (!started) {
+        if (error) {
+          log(`Install could not start: ${error}`, "error");
+          finish(false, error);
+        } else {
+          log("aria2 engine is already installed.", "success");
+          await refreshToolStatus();
+          finish(true, null);
+        }
         return;
       }
     } catch (err) {

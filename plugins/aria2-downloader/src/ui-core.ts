@@ -17,5 +17,5 @@ export function el<T extends HTMLElement = HTMLElement>(id: string): T | null {
   return document.getElementById(id) as T | null;
 }
 
-/** Logger bound to the plugin's bottom terminal dock (`#ad-log-dock`). */
-export const log = createLogger("ad-log-dock");
+/** Logger bound to the plugin's terminal log box (`#ad-log`). */
+export const log = createLogger("ad-log");

@@ -1,5 +1,5 @@
 import { typedCall } from "../ipc";
-import { initPlugins } from "../plugin-host";
+import { initPlugins, isPluginAutoloadEnabled, setPluginAutoloadEnabled } from "../plugin-host";
 import { PluginInfo } from "../types";
 import { SafeHtml, html } from "../components";
 import { showErrorAlert } from "../alert";
@@ -11,9 +11,11 @@ export function renderPluginsHubHtml(): SafeHtml {
   return html`
     <div class="group-box">
       <div class="group-box-title">Installed Plugins</div>
-      <div style="display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 10px;">
+      <div style="display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;">
         <button type="button" class="win-button" id="plugins-enable-all-btn"><i class="bi bi-check2-all"></i> Enable All</button>
         <button type="button" class="win-button" id="plugins-disable-all-btn"><i class="bi bi-x-lg"></i> Disable All</button>
+        <button type="button" class="win-button" id="plugins-autoload-all-btn" style="margin-left: 8px;"><i class="bi bi-play-circle"></i> Autoload All</button>
+        <button type="button" class="win-button" id="plugins-autoload-none-btn"><i class="bi bi-stop-circle"></i> Autoload None</button>
       </div>
       <div id="plugins-hub-list">
         <div class="skeleton-loader"></div>
@@ -45,6 +47,7 @@ function pluginRowHtml(p: PluginInfo): string {
     : '<span style="color:#999;font-size:10px;">none</span>';
 
   const hooksText = p.hooks.length > 0 ? `${p.hooks.length} hooks` : "no hooks";
+  const autoloadChecked = isPluginAutoloadEnabled(p.name);
 
   return `
     <div class="group-box plugin-row ${p.enabled ? "" : "plugin-row-disabled"}" data-plugin-name="${p.name}" style="padding: 10px;">
@@ -64,9 +67,13 @@ function pluginRowHtml(p: PluginInfo): string {
           </div>
         </div>
         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
-          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;" title="Enable or disable this plugin completely">
             <input type="checkbox" class="plugin-enabled-toggle" ${p.enabled ? "checked" : ""} />
             <span class="${p.enabled ? "" : "plugin-disabled-label"}">${p.enabled ? "Enabled" : "Disabled"}</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;" title="Automatically load UI on startup (uncheck to start unloaded)">
+            <input type="checkbox" class="plugin-autoload-toggle" ${autoloadChecked ? "checked" : ""} ${p.enabled ? "" : "disabled"} />
+            <span style="color: ${p.enabled ? "var(--sys-window-text, #333)" : "var(--sys-text-subtle, #888)"};">Autoload UI</span>
           </label>
           <button type="button" class="win-button plugin-validate-btn" style="font-size: 10px; padding: 2px 8px;">
             <i class="bi bi-shield-check"></i> Validate
@@ -130,6 +137,15 @@ export async function setupPluginsHub() {
     });
   });
 
+  listEl.querySelectorAll<HTMLInputElement>(".plugin-autoload-toggle").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const row = cb.closest<HTMLElement>(".plugin-row");
+      const name = row?.dataset.pluginName || "";
+      if (!name) return;
+      setPluginAutoloadEnabled(name, cb.checked);
+    });
+  });
+
   listEl.querySelectorAll<HTMLButtonElement>(".plugin-validate-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const row = btn.closest<HTMLElement>(".plugin-row");
@@ -164,6 +180,18 @@ export async function setupPluginsHub() {
   });
   document.getElementById("plugins-disable-all-btn")?.addEventListener("click", async () => {
     await setAllPluginsEnabled(plugins, false, rerenderHub);
+  });
+  document.getElementById("plugins-autoload-all-btn")?.addEventListener("click", () => {
+    for (const p of plugins) {
+      setPluginAutoloadEnabled(p.name, true);
+    }
+    rerenderHub();
+  });
+  document.getElementById("plugins-autoload-none-btn")?.addEventListener("click", () => {
+    for (const p of plugins) {
+      setPluginAutoloadEnabled(p.name, false);
+    }
+    rerenderHub();
   });
 }
 

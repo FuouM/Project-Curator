@@ -84,6 +84,7 @@ export function addToQueue(path: string): void {
     log("Not a supported video (mp4/webm): " + path, "error");
     return;
   }
+  ensureTranscoderMounted();
   if (state.inQueue[path]) {
     verboseLog("Already queued: " + path, "info");
     return;
@@ -259,6 +260,12 @@ export async function runTranscode(): Promise<void> {
     });
   };
   void next(0);
+}
+
+export function ensureTranscoderMounted(): void {
+  if (PH && PH.loadTab) {
+    PH.loadTab(TAB_ID);
+  }
 }
 
 export function renderTab(): HTMLElement {

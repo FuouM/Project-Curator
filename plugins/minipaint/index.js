@@ -340,8 +340,8 @@
       var _a;
       if (!(asset != null && asset.path)) return null;
       let box = document.createElement("div");
-      return box.className = "group-box", box.style.cssText = "margin-top:8px;", box.innerHTML = '<div class="group-box-title"><i class="bi bi-palette"></i> Image Editor</div><div style="display:flex;align-items:center;gap:8px;padding:2px 0;">  <span style="font-size:11px;color:#555;flex:1;">Open this image in the miniPaint editor. The editor loads on demand and stays parked otherwise.</span>  <button type="button" class="win-button" id="minipaint-send-asset">    <i class="bi bi-brush"></i> Send to Editor  </button></div>', (_a = box.querySelector("#minipaint-send-asset")) == null || _a.addEventListener("click", () => {
-        closeInfoModal(), navigateToTab(TAB_ID), ensureEditor(asset.path);
+      return box.className = "group-box", box.style.cssText = "margin-top:8px;", box.innerHTML = '<div class="group-box-title"><i class="bi bi-palette"></i> Image Editor</div><div style="display:flex;align-items:center;gap:8px;padding:2px 0;">  <span style="font-size:11px;color:#555;flex:1;">Open this image in the miniPaint editor.</span>  <button type="button" class="win-button" id="minipaint-send-asset">    <i class="bi bi-brush"></i> Send to Editor  </button></div>', (_a = box.querySelector("#minipaint-send-asset")) == null || _a.addEventListener("click", () => {
+        closeInfoModal(), PH7.loadTab && PH7.loadTab(TAB_ID), navigateToTab(TAB_ID), ensureEditor(asset.path);
       }), box;
     }), PH7.registerTab(TAB_ID, "Image Editor", "bi bi-palette", () => {
       let rootEl = document.createElement("div");
@@ -367,11 +367,11 @@
       let launcherHost = document.createElement("div");
       launcherHost.style.cssText = "display:flex;flex-direction:column;width:100%;min-height:0;";
       let installerEl = null, onInstallComplete = () => {
-        launcherHost.appendChild(settingsBox);
+        launcherHost.appendChild(settingsBox), ensureEditor();
       };
       return (() => {
         launcherHost.innerHTML = "", installerEl = null, checkInstalled().then((installed) => {
-          installed ? launcherHost.appendChild(settingsBox) : (installerEl = renderInstaller(onInstallComplete), launcherHost.appendChild(installerEl));
+          installed ? (launcherHost.appendChild(settingsBox), (PH7.isAutoloadEnabled ? PH7.isAutoloadEnabled(TAB_ID) : !0) ? ensureEditor() : unloadEditor()) : (installerEl = renderInstaller(onInstallComplete), launcherHost.appendChild(installerEl));
         });
       })(), rootEl.appendChild(launcherHost), rootEl.appendChild(editorHost), rootEl;
     }, !0);

@@ -104,6 +104,31 @@ async function invokePlugin(pluginId: string, command: string, params: object | 
   return JSON.parse(resp.responseJson);
 }
 
+const PLUGIN_AUTOLOAD_KEY = "curator_plugin_autoload_settings";
+
+export function isPluginAutoloadEnabled(pluginName: string): boolean {
+  try {
+    const raw = localStorage.getItem(PLUGIN_AUTOLOAD_KEY);
+    if (!raw) return true;
+    const map = JSON.parse(raw);
+    if (typeof map[pluginName] === "boolean") {
+      return map[pluginName];
+    }
+  } catch (_) {}
+  return true;
+}
+
+export function setPluginAutoloadEnabled(pluginName: string, autoload: boolean): void {
+  try {
+    const raw = localStorage.getItem(PLUGIN_AUTOLOAD_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    map[pluginName] = autoload;
+    localStorage.setItem(PLUGIN_AUTOLOAD_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.error("Failed to save plugin autoload setting:", e);
+  }
+}
+
 export interface PluginHostApi {
   registerTab(id: string, label: string, iconClass: string, render: () => HTMLElement, chromeLess?: boolean): void;
   registerMetadataRenderer(id: string, fn: (asset: AssetContext) => HTMLElement | null): void;
@@ -118,6 +143,11 @@ export interface PluginHostApi {
   getSelectionAssetContexts(): Promise<AssetContext[]>;
   renderMetadataSections(asset: AssetContext): HTMLElement[];
   getContextMenuItems(): Array<{ id: string; label: string; fn: (asset: AssetContext) => void }>;
+  isAutoloadEnabled(pluginName?: string): boolean;
+  setAutoloadEnabled(pluginName: string, autoload: boolean): void;
+  isTabLoaded(tabId?: string): boolean;
+  loadTab(tabId?: string): void;
+  unloadTab(tabId?: string): void;
 }
 
 const basePluginHost: PluginHostApi = {
@@ -152,6 +182,21 @@ const basePluginHost: PluginHostApi = {
   getContextMenuItems() {
     return registeredContextMenuItems.slice();
   },
+  isAutoloadEnabled(pluginName?: string) {
+    return isPluginAutoloadEnabled(pluginName || "");
+  },
+  setAutoloadEnabled(pluginName, autoload) {
+    setPluginAutoloadEnabled(pluginName, autoload);
+  },
+  isTabLoaded(tabId?: string) {
+    return isTabLoaded(tabId);
+  },
+  loadTab(tabId?: string) {
+    if (tabId) setTabLoadedState(tabId, true);
+  },
+  unloadTab(tabId?: string) {
+    if (tabId) setTabLoadedState(tabId, false);
+  },
 };
 
 /**
@@ -165,6 +210,21 @@ function makePluginHostFacade(pluginName: string): PluginHostApi {
     ...basePluginHost,
     callService(method, params) {
       return invokePlugin(pluginName, method, params);
+    },
+    isAutoloadEnabled(name?: string) {
+      return isPluginAutoloadEnabled(name || pluginName);
+    },
+    setAutoloadEnabled(name: string, autoload: boolean) {
+      return setPluginAutoloadEnabled(name || pluginName, autoload);
+    },
+    isTabLoaded(name?: string) {
+      return isTabLoaded(name || pluginName);
+    },
+    loadTab(name?: string) {
+      setTabLoadedState(name || pluginName, true);
+    },
+    unloadTab(name?: string) {
+      setTabLoadedState(name || pluginName, false);
     },
   };
 }
@@ -262,6 +322,112 @@ export async function initPlugins() {
   }
 }
 
+const tabLoadedStates = new Map<string, boolean>();
+
+export function isTabLoaded(tabId?: string): boolean {
+  const id = tabId || "";
+  if (!id) return true;
+  if (!tabLoadedStates.has(id)) {
+    tabLoadedStates.set(id, isPluginAutoloadEnabled(id));
+  }
+  return tabLoadedStates.get(id) ?? true;
+}
+
+export function setTabLoadedState(tabId: string, loaded: boolean): void {
+  tabLoadedStates.set(tabId, loaded);
+  renderTabState(tabId);
+  updateHeaderPluginActions();
+}
+
+export function toggleTabLoadedState(tabId: string): void {
+  const current = isTabLoaded(tabId);
+  setTabLoadedState(tabId, !current);
+}
+
+export function renderTabState(tabId: string): void {
+  const tab = registeredTabs.find((t) => t.id === tabId);
+  if (!tab) return;
+  const section = document.getElementById(`view-extensions-${tab.id}`);
+  if (!section) return;
+
+  // Chrome-less plugins (like miniPaint or custom-header readers) render directly
+  // and manage their own internal toolbar/load controls.
+  if (tab.chromeLess) {
+    section.innerHTML = "";
+    const el = tab.render();
+    if (el) section.appendChild(el);
+    return;
+  }
+
+  const loaded = isTabLoaded(tabId);
+  section.innerHTML = "";
+  if (loaded) {
+    const el = tab.render();
+    if (el) section.appendChild(el);
+  } else {
+    const placeholder = document.createElement("div");
+    placeholder.className = "group-box";
+    placeholder.style.cssText =
+      "display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:300px;text-align:center;gap:12px;color:var(--sys-text-muted, #666);padding:24px;";
+    placeholder.innerHTML = `
+      <i class="${tab.iconClass}" style="font-size:36px;opacity:0.4;"></i>
+      <div style="font-size:13px;font-weight:600;color:var(--sys-window-text, #333);">${tab.label} is Unloaded</div>
+      <div style="font-size:11px;max-width:340px;line-height:1.5;color:var(--sys-text-muted, #666);">
+        The plugin view is unloaded to keep memory and background activity minimal. Click below or in the top header to load the view.
+      </div>
+      <button type="button" class="win-button primary" id="plugin-unloaded-load-btn-${tab.id}" style="padding:4px 16px;font-size:12px;display:inline-flex;align-items:center;gap:6px;">
+        <i class="bi bi-play-circle"></i> Load View
+      </button>
+    `;
+    placeholder.querySelector(`#plugin-unloaded-load-btn-${tab.id}`)?.addEventListener("click", () => {
+      setTabLoadedState(tab.id, true);
+    });
+    section.appendChild(placeholder);
+  }
+}
+
+export function updateHeaderPluginActions(currentView?: string): void {
+  const headerActions = document.getElementById("header-actions");
+  if (!headerActions) return;
+
+  const activeView = currentView || document.querySelector(".nav-item.active")?.getAttribute("data-view") || "";
+  if (!activeView.startsWith("extensions-")) {
+    headerActions.innerHTML = "";
+    headerActions.style.display = "none";
+    return;
+  }
+
+  const tabId = activeView.replace("extensions-", "");
+  const tab = registeredTabs.find((t) => t.id === tabId);
+  if (!tab || tab.chromeLess) {
+    headerActions.innerHTML = "";
+    headerActions.style.display = "none";
+    return;
+  }
+
+  headerActions.style.display = "flex";
+  headerActions.innerHTML = "";
+
+  const loaded = isTabLoaded(tabId);
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.id = "header-plugin-toggle-btn";
+  btn.style.cssText = "font-size:11px;padding:3px 10px;";
+  if (loaded) {
+    btn.className = "win-button";
+    btn.innerHTML = '<i class="bi bi-stop-circle"></i> Unload';
+    btn.title = `Unload ${tab.label} view`;
+  } else {
+    btn.className = "win-button primary";
+    btn.innerHTML = '<i class="bi bi-play-circle"></i> Load';
+    btn.title = `Load ${tab.label} view`;
+  }
+  btn.addEventListener("click", () => {
+    toggleTabLoadedState(tabId);
+  });
+  headerActions.appendChild(btn);
+}
+
 /** Create sidebar nav item + view section for each registered plugin tab. */
 function mountPluginTabs() {
   // Clear previously-rendered plugin tab content so re-init renders fresh
@@ -276,9 +442,9 @@ function mountPluginTabs() {
     registerPluginView(tab.id, tab.label, tab.iconClass, `Plugin: ${tab.label}`, () => {
       const section = document.getElementById(`view-extensions-${tab.id}`);
       if (section && section.childElementCount === 0) {
-        const el = tab.render();
-        if (el) section.appendChild(el);
+        renderTabState(tab.id);
       }
+      updateHeaderPluginActions(`extensions-${tab.id}`);
     }, tab.chromeLess);
   }
 }

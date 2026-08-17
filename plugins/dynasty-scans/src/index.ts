@@ -8,8 +8,16 @@
  *   cd plugins && node build.js --plugin dynasty-scans
  */
 
-import { TAB_ID, back, navigate, registerRenderer, renderCurrent, setBanner } from "./state";
-import { initDb } from "./db";
+import {
+  TAB_ID,
+  back,
+  navigate,
+  registerRenderer,
+  renderCurrent,
+  setBanner,
+  state,
+  loadPluginView,
+} from "./state";
 import { renderLibrary } from "./ui-library";
 import { renderBrowse } from "./browse";
 import { renderSeries } from "./ui-series";
@@ -50,9 +58,8 @@ function injectStyles(): void {
 }
 
 /**
- * Constructs the plugin tab DOM. Called once on first tab activation by the
- * Plugin Host; the container is detached until the host appends it, so DOM
- * queries inside the deferred bootstrap run via setTimeout(0).
+ * Constructs the plugin tab DOM. Called on tab activation by the
+ * Plugin Host; immediately initializes and loads the view.
  */
 function renderTab(): HTMLElement {
   const container = document.createElement("div");
@@ -85,19 +92,8 @@ function renderTab(): HTMLElement {
   });
 
   setTimeout(() => {
-    void boot();
+    void loadPluginView();
   }, 0);
 
   return container;
-}
-
-async function boot(): Promise<void> {
-  try {
-    await initDb();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("dynasty-scans: db init failed:", msg);
-    setBanner(`Database init failed: ${msg}`);
-  }
-  renderCurrent();
 }

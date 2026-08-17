@@ -223,21 +223,28 @@ export function injectStyles(): void {
     }
     .ad-log-dock {
       flex-shrink: 0;
-      height: 200px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .ad-log-box {
+      height: 110px;
+      max-height: 140px;
       overflow-y: auto;
       background-color: #1e1e1e;
       color: #cccccc;
-      border: 1px solid #7a7a7a;
+      border: 1px solid var(--sys-border-dark, #7a7a7a);
       padding: 6px 8px;
       font-family: 'Consolas', monospace;
       font-size: 11px;
       line-height: 1.4;
       white-space: pre-wrap;
       word-break: break-all;
+      box-sizing: border-box;
     }
     /* The app's global universal font rule beats inheritance on child divs,
        so pin every dock line to Consolas explicitly. */
-    .ad-log-dock div {
+    .ad-log-box div {
       font-family: 'Consolas', monospace;
       font-size: 11px;
       line-height: 1.4;

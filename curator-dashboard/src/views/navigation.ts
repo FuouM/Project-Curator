@@ -11,6 +11,7 @@ import { refreshBatchPreview } from "./filename-parser";
 import { refreshCharacters, setupCharactersView } from "./characters";
 import { refreshModelStatus, clearCompletedModelsConsoleLogs } from "./models";
 import { reobserveUnloadedThumbnails, processVisibleFullImages, setThumbLoadPaused, resumeThumbLoading } from "../cards";
+import { updateHeaderPluginActions } from "../plugin-host";
 
 const subtitles: Record<string, { title: string; sub: string }> = {
   dashboard: { title: "Dashboard", sub: "Overview of your local vector store and image library." },
@@ -178,6 +179,7 @@ export function setupNavigation() {
     if (header) {
       header.style.display = pluginViews.get(view)?.chromeLess ? "none" : "";
     }
+    updateHeaderPluginActions(view);
 
     if (view !== "logs") {
       clearLogsFrontendDom();

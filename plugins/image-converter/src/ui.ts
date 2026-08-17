@@ -113,6 +113,7 @@ export function updateQueueList(): void {
 /** Add a single file path to the queue (deduplicates automatically). */
 export function addToQueue(path: string): void {
   if (!path) return;
+  ensureConverterMounted();
   if (state.inQueue[path]) {
     log(`Already queued: ${path}`, "info");
     return;
@@ -257,11 +258,12 @@ export async function runConversion(): Promise<void> {
 // Tab render
 // ---------------------------------------------------------------------------
 
-/**
- * Constructs the plugin tab DOM. Called once on first tab activation by the
- * Plugin Host. DOM queries inside subroutines are deferred via setTimeout so
- * they run after the host appends the container to the document.
- */
+export function ensureConverterMounted(): void {
+  if (PH && PH.loadTab) {
+    PH.loadTab(TAB_ID);
+  }
+}
+
 export function renderTab(): HTMLElement {
   const container = document.createElement("div");
 

@@ -15,6 +15,9 @@ if (!PH) {
   console.error("aria2-downloader: PluginHost not available; aborting.");
 } else {
   PH.registerTab(TAB_ID, "Aria2 Downloader", "bi bi-cloud-arrow-down", renderTab);
-  void bootstrap();
-  console.log("aria2-downloader: registered tab and bootstrapped.");
+  const shouldAutoload = PH.isAutoloadEnabled ? PH.isAutoloadEnabled(TAB_ID) : true;
+  if (shouldAutoload) {
+    void bootstrap();
+  }
+  console.log("aria2-downloader: registered tab.");
 }

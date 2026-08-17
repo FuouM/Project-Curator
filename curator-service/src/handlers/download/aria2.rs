@@ -60,7 +60,14 @@ fn which_in_path(exe: &str) -> Option<PathBuf> {
 
 /// Run `aria2c --version` and return the first line (e.g. `aria2 version 1.37.0`).
 pub(crate) fn probe_aria2_version(path: &Path) -> Option<String> {
-    let out = std::process::Command::new(path).arg("--version").output().ok()?;
+    let mut cmd = std::process::Command::new(path);
+    cmd.arg("--version");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    let out = cmd.output().ok()?;
     if !out.status.success() {
         return None;
     }

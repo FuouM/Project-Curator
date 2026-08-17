@@ -47,9 +47,16 @@ function renderQueueThrottled(): void {
   renderQueue();
 }
 
-export async function addUrls(raw: string): Promise<void> {
+export interface AddUrlsResult {
+  added: number;
+  skippedQueue: number;
+  skippedHistory: number;
+  total: number;
+}
+
+export async function addUrls(raw: string | string[]): Promise<AddUrlsResult> {
   const urls = splitUrls(raw);
-  if (urls.length === 0) return;
+  if (urls.length === 0) return { added: 0, skippedQueue: 0, skippedHistory: 0, total: 0 };
 
   // Detect the engine before enqueuing anything: without aria2c the generic
   // DownloadStart fails server-side, so the in-tab banner prompts the user to
@@ -57,22 +64,24 @@ export async function addUrls(raw: string): Promise<void> {
   if (!state.toolAvailable) {
     log("aria2 engine not installed - downloads are disabled until it is available.", "error");
     setToolBanner(false, state.toolVersion, defaultBannerText());
-    return;
+    return { added: 0, skippedQueue: 0, skippedHistory: 0, total: urls.length };
   }
 
   // With auto-rename on, a duplicate URL is legitimately downloadable again to
   // a new `_N` path, so neither the in-queue check nor the history dedup may
   // skip it.
   let fresh = urls;
+  let skippedQueueCount = 0;
   if (!state.settings.autoRename) {
     const queued = new Set<string>();
     for (const item of state.queue.values()) queued.add(item.url);
     fresh = urls.filter((u) => !queued.has(u));
+    skippedQueueCount = urls.length - fresh.length;
   }
 
   if (fresh.length === 0) {
-    log("All pasted URLs are already in the queue.", "info");
-    return;
+    log(`All ${urls.length} pasted URL(s) are already in the queue.`, "warn");
+    return { added: 0, skippedQueue: skippedQueueCount, skippedHistory: 0, total: urls.length };
   }
 
   // Skip URLs already downloaded to this output before (dedup integrity).
@@ -88,7 +97,7 @@ export async function addUrls(raw: string): Promise<void> {
   }
   const dupSet = new Set(dupes);
   for (const d of dupes) {
-    log(`Already downloaded previously, skipping: ${d}`, "info");
+    log(`Already downloaded previously, skipping duplicate: ${d}`, "warn");
   }
 
   const toEnqueue = fresh.filter((u) => !dupSet.has(u));
@@ -96,9 +105,18 @@ export async function addUrls(raw: string): Promise<void> {
     await enqueue(u);
   }
 
-  const input = el<HTMLTextAreaElement>("ad-url-input");
-  if (input) input.value = "";
-  updateChips();
+  if (toEnqueue.length > 0) {
+    const input = el<HTMLTextAreaElement>("ad-url-input");
+    if (input) input.value = "";
+    updateChips();
+  }
+
+  return {
+    added: toEnqueue.length,
+    skippedQueue: skippedQueueCount,
+    skippedHistory: dupes.length,
+    total: urls.length,
+  };
 }
 
 async function enqueue(url: string, startNow = state.settings.autoStart): Promise<void> {

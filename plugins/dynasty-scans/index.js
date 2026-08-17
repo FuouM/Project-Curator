@@ -5,7 +5,7 @@
 "use strict";
 (() => {
   var __defProp = Object.defineProperty;
-  var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+  var __getOwnPropNames = Object.getOwnPropertyNames, __getOwnPropSymbols = Object.getOwnPropertySymbols;
   var __hasOwnProp = Object.prototype.hasOwnProperty, __propIsEnum = Object.prototype.propertyIsEnumerable;
   var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: !0, configurable: !0, writable: !0, value }) : obj[key] = value, __spreadValues = (a, b) => {
     for (var prop in b || (b = {}))
@@ -15,6 +15,20 @@
         __propIsEnum.call(b, prop) && __defNormalProp(a, prop, b[prop]);
     return a;
   };
+  var __esm = (fn, res) => function() {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  };
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: !0 });
+  };
+
+  // lib/log.ts
+  var init_log = __esm({
+    "lib/log.ts"() {
+      "use strict";
+    }
+  });
 
   // lib/format.ts
   function formatBytes(bytes, fallback = "", decimals = 2) {
@@ -24,12 +38,21 @@
     let units = ["B", "KB", "MB", "GB", "TB"], i = Math.floor(Math.log(bytes) / Math.log(1024));
     return `${(bytes / Math.pow(1024, i)).toFixed(decimals)} ${(_a = units[i]) != null ? _a : "B"}`;
   }
+  var init_format = __esm({
+    "lib/format.ts"() {
+      "use strict";
+    }
+  });
 
   // lib/ipc-utils.ts
-  var PH = window.PluginHost;
+  var PH, init_ipc_utils = __esm({
+    "lib/ipc-utils.ts"() {
+      "use strict";
+      PH = window.PluginHost;
+    }
+  });
 
   // lib/db.ts
-  var PH2 = window.PluginHost;
   function createPluginDb(dbName) {
     return {
       async execute(sql, params = []) {
@@ -46,12 +69,65 @@
       }
     };
   }
+  var PH2, init_db = __esm({
+    "lib/db.ts"() {
+      "use strict";
+      PH2 = window.PluginHost;
+    }
+  });
 
   // lib/fs.ts
-  var PH3 = window.PluginHost;
+  var PH3, init_fs = __esm({
+    "lib/fs.ts"() {
+      "use strict";
+      PH3 = window.PluginHost;
+    }
+  });
+
+  // lib/storage.ts
+  var init_storage = __esm({
+    "lib/storage.ts"() {
+      "use strict";
+    }
+  });
+
+  // lib/navigation.ts
+  var init_navigation = __esm({
+    "lib/navigation.ts"() {
+      "use strict";
+    }
+  });
+
+  // lib/drop-zone.ts
+  var init_drop_zone = __esm({
+    "lib/drop-zone.ts"() {
+      "use strict";
+    }
+  });
 
   // lib/poll.ts
-  var PH4 = window.PluginHost;
+  var PH4, init_poll = __esm({
+    "lib/poll.ts"() {
+      "use strict";
+      PH4 = window.PluginHost;
+    }
+  });
+
+  // lib/index.ts
+  var init_lib = __esm({
+    "lib/index.ts"() {
+      "use strict";
+      init_log();
+      init_format();
+      init_ipc_utils();
+      init_db();
+      init_fs();
+      init_storage();
+      init_navigation();
+      init_drop_zone();
+      init_poll();
+    }
+  });
 
   // dynasty-scans/src/utils/html.ts
   function decodeEntities(str) {
@@ -61,6 +137,11 @@
       s = s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&#039;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&ndash;/g, "\u2013").replace(/&mdash;/g, "\u2014").replace(/&hellip;/g, "\u2026").replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec))).replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
     return s;
   }
+  var init_html = __esm({
+    "dynasty-scans/src/utils/html.ts"() {
+      "use strict";
+    }
+  });
 
   // dynasty-scans/src/utils/formatting.ts
   function formatDate(ms) {
@@ -79,238 +160,23 @@
       d.getMinutes()
     ).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
   }
-
-  // dynasty-scans/src/state.ts
-  var TAB_ID = "dynasty-scans", SITE_ROOT = "https://dynasty-scans.com", DB_NAME = "dynasty_reader.db", PAGES_PREFIX = ".curator/plugin_data/dynasty-scans/pages", COVERS_PREFIX = ".curator/plugin_data/dynasty-scans/covers", state = {
-    route: { view: "browse" },
-    lastMangaTab: null,
-    dispose: null
-  }, renderers = {};
-  function registerRenderer(view, fn) {
-    renderers[view] = fn;
-  }
-  function renderCurrent() {
-    var _a;
-    (_a = state.dispose) == null || _a.call(state), state.dispose = null;
-    let view = document.getElementById("ds-view");
-    if (!view) return;
-    view.innerHTML = "", clearBanner(), clearActions();
-    let r = state.route, renderer = renderers[r.view], cleanup = renderer ? renderer(view, r) : void 0;
-    typeof cleanup == "function" && (state.dispose = cleanup), setTitle(routeTitle(r));
-    let libTab = document.getElementById("ds-tab-library"), browseTab = document.getElementById("ds-tab-browse");
-    libTab && (r.view === "library" ? libTab.classList.add("active") : libTab.classList.remove("active")), browseTab && (r.view === "browse" ? browseTab.classList.add("active") : browseTab.classList.remove("active")), updateSessionMangaTabUI();
-  }
-  function navigate(r) {
-    if (r.view === "reader" || r.view === "series") {
-      let title = r.seriesName || r.chapterTitle || (r.view === "series" ? "Series" : "Reader");
-      state.lastMangaTab = {
-        title,
-        route: __spreadValues({}, r)
-      };
+  var init_formatting = __esm({
+    "dynasty-scans/src/utils/formatting.ts"() {
+      "use strict";
     }
-    state.route = r, renderCurrent();
-  }
-  function closeSessionMangaTab() {
-    state.lastMangaTab = null, updateSessionMangaTabUI(), (state.route.view === "reader" || state.route.view === "series") && navigate({ view: "browse" });
-  }
-  function updateSessionMangaTabUI() {
-    let container = document.getElementById("ds-session-tab-wrap");
-    if (!container) return;
-    if (container.innerHTML = "", !state.lastMangaTab) {
-      container.style.display = "none";
-      return;
-    }
-    container.style.display = "inline-flex";
-    let tab = document.createElement("button");
-    tab.type = "button";
-    let isActive = state.route.view === "reader" || state.route.view === "series";
-    tab.className = `win-button ds-nav-tab${isActive ? " active" : ""}`, tab.style.cssText = "display:inline-flex;align-items:center;gap:6px;max-width:220px;padding:2px 8px;font-size:11px;";
-    let icon2 = document.createElement("i");
-    icon2.className = "bi bi-book-half", tab.appendChild(icon2);
-    let titleSpan = document.createElement("span");
-    titleSpan.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;", titleSpan.textContent = decodeEntities(state.lastMangaTab.title), tab.appendChild(titleSpan);
-    let closeBtn = document.createElement("i");
-    closeBtn.className = "bi bi-x", closeBtn.title = "Close tab", closeBtn.style.cssText = "cursor:pointer;font-size:13px;opacity:0.75;padding:0 2px;", closeBtn.addEventListener("mouseover", () => {
-      closeBtn.style.opacity = "1";
-    }), closeBtn.addEventListener("mouseout", () => {
-      closeBtn.style.opacity = "0.75";
-    }), closeBtn.addEventListener("click", (ev) => {
-      ev.stopPropagation(), closeSessionMangaTab();
-    }), tab.appendChild(closeBtn), tab.addEventListener("click", () => {
-      state.lastMangaTab && (state.route = __spreadValues({}, state.lastMangaTab.route), renderCurrent());
-    }), container.appendChild(tab);
-  }
-  function setTitle(text) {
-    let el2 = document.getElementById("ds-title");
-    el2 && (el2.textContent = text);
-  }
-  var bannerTimer = null;
-  function setBanner(message) {
-    let el2 = document.getElementById("ds-banner");
-    if (el2) {
-      if (bannerTimer !== null && (clearTimeout(bannerTimer), bannerTimer = null), !message) {
-        el2.style.display = "none", el2.textContent = "";
-        return;
-      }
-      el2.textContent = message, el2.style.display = "inline-flex", bannerTimer = setTimeout(() => {
-        el2.style.display = "none", el2.textContent = "", bannerTimer = null;
-      }, 4e3);
-    }
-  }
-  function clearBanner() {
-    setBanner(null);
-  }
-  function setActions(build) {
-    let host = document.getElementById("ds-actions");
-    host && (host.innerHTML = "", build(host));
-  }
-  function clearActions() {
-    let host = document.getElementById("ds-actions");
-    host && (host.innerHTML = "");
-  }
-  function routeTitle(r) {
-    var _a, _b;
-    switch (r.view) {
-      case "browse":
-        return "Browse";
-      case "series":
-        return (_a = r.seriesName) != null ? _a : "Series";
-      case "reader":
-        return (_b = r.chapterTitle) != null ? _b : "Reader";
-      case "cache":
-        return "Cache Management";
-      default:
-        return "Library";
-    }
-  }
-  function isOnline() {
-    return typeof navigator != "undefined" ? navigator.onLine : !0;
-  }
-  function absUrl(u) {
-    return /^https?:\/\//i.test(u) ? u : SITE_ROOT + u;
-  }
-  function tagClass(type, name) {
-    switch ((type != null ? type : "").toLowerCase()) {
-      case "author":
-      case "artist":
-        return "tag-pill tag-artist";
-      case "character":
-        return "tag-pill tag-character";
-      case "pairing":
-        return "tag-pill tag-character";
-      case "series":
-      case "anthology":
-      case "issue":
-      case "doujin":
-      case "doujinshi":
-      case "copyright":
-      case "parody":
-        return "tag-pill tag-copyright";
-      case "scanlator":
-      case "group":
-      case "meta":
-        return "tag-pill tag-meta";
-      case "status":
-        return "tag-pill tag-user";
-      case "general":
-      default:
-        return "tag-pill tag-rank-3";
-    }
-  }
-  function tagStyle(type, name) {
-    let t = (type != null ? type : "").toLowerCase(), n = (name != null ? name : "").toLowerCase();
-    if (t === "author" || t === "artist")
-      return "background-color: #fff0e6; border: 1px solid #ffd9c2; color: #7c2d12;";
-    if (t === "pairing")
-      return "background-color: #fce7f3; border: 1px solid #fbcfe8; color: #9d174d;";
-    if (t === "character")
-      return "background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460;";
-    if (t === "series" || t === "anthology" || t === "issue" || t === "doujin" || t === "doujinshi" || t === "copyright" || t === "parody")
-      return "background-color: #ebdcf9; border: 1px solid #dcbdf5; color: #511c74;";
-    if (t === "scanlator" || t === "group" || t === "meta")
-      return "background-color: #e2e3e5; border: 1px solid #d6d8db; color: #383d41;";
-    if (t === "status" || n === "oneshot" || n === "one-shot" || n === "anthology" || n === "completed" || n === "ongoing" || n === "licensed" || n === "hiatus" || n === "discontinued")
-      return "background-color: #e6f4ea; border: 1px solid #ceead6; color: #0e6b38;";
-    let hash = 0;
-    for (let i = 0; i < name.length; i++)
-      hash = (hash << 5) - hash + name.charCodeAt(i), hash |= 0;
-    let PALETTES = [
-      { bg: "#fef3c7", border: "#fde68a", text: "#92400e" },
-      // amber
-      { bg: "#ede9fe", border: "#ddd6fe", text: "#5b21b6" },
-      // violet
-      { bg: "#fee2e2", border: "#fecaca", text: "#991b1b" },
-      // rose
-      { bg: "#e0f2fe", border: "#bae6fd", text: "#075985" },
-      // sky
-      { bg: "#dcfce7", border: "#bbf7d0", text: "#166534" },
-      // green
-      { bg: "#fae8ff", border: "#f5d0fe", text: "#86198f" },
-      // fuchsia
-      { bg: "#ffedd5", border: "#fed7aa", text: "#9a3412" },
-      // orange
-      { bg: "#f1f5f9", border: "#e2e8f0", text: "#334155" }
-      // slate
-    ], p = PALETTES[Math.abs(hash) % PALETTES.length];
-    return `background-color: ${p.bg}; border: 1px solid ${p.border}; color: ${p.text}; font-weight: 500;`;
-  }
+  });
 
   // dynasty-scans/src/db/client.ts
-  var db = createPluginDb(DB_NAME), execute = db.execute, query = db.query;
+  var db, execute, query, init_client = __esm({
+    "dynasty-scans/src/db/client.ts"() {
+      "use strict";
+      init_lib();
+      init_state();
+      db = createPluginDb(DB_NAME), execute = db.execute, query = db.query;
+    }
+  });
 
   // dynasty-scans/src/db/schema.ts
-  var SCHEMA = [
-    `CREATE TABLE IF NOT EXISTS followed_series (
-    permalink TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    cover TEXT,
-    last_checked_at INTEGER NOT NULL,
-    latest_chapter_permalink TEXT,
-    latest_chapter_title TEXT,
-    created_at INTEGER NOT NULL
-  )`,
-    `CREATE TABLE IF NOT EXISTS reading_progress (
-    chapter_permalink TEXT PRIMARY KEY,
-    series_permalink TEXT NOT NULL,
-    series_name TEXT NOT NULL,
-    chapter_title TEXT NOT NULL,
-    page_index INTEGER NOT NULL DEFAULT 0,
-    page_total INTEGER NOT NULL DEFAULT 0,
-    completed INTEGER NOT NULL DEFAULT 0,
-    updated_at INTEGER NOT NULL
-  )`,
-    `CREATE TABLE IF NOT EXISTS reading_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    chapter_permalink TEXT NOT NULL,
-    series_permalink TEXT NOT NULL,
-    series_name TEXT NOT NULL,
-    chapter_title TEXT NOT NULL,
-    read_at INTEGER NOT NULL
-  )`,
-    `CREATE TABLE IF NOT EXISTS bookmarks (
-    chapter_permalink TEXT PRIMARY KEY,
-    series_permalink TEXT NOT NULL,
-    series_name TEXT NOT NULL,
-    chapter_title TEXT NOT NULL,
-    page_index INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL
-  )`,
-    `CREATE TABLE IF NOT EXISTS cached_metadata (
-    cache_key TEXT PRIMARY KEY,
-    data_type TEXT NOT NULL,
-    json_payload TEXT NOT NULL,
-    cached_at INTEGER NOT NULL,
-    etag TEXT
-  )`,
-    `CREATE TABLE IF NOT EXISTS cached_pages (
-    chapter_permalink TEXT NOT NULL,
-    page_index INTEGER NOT NULL,
-    file_path TEXT NOT NULL,
-    size_bytes INTEGER DEFAULT 0,
-    cached_at INTEGER NOT NULL,
-    PRIMARY KEY (chapter_permalink, page_index)
-  )`
-  ], initDbPromise = null;
   async function initDb() {
     return initDbPromise || (initDbPromise = (async () => {
       for (let sql of SCHEMA)
@@ -329,6 +195,64 @@
       }
     })()), initDbPromise;
   }
+  var SCHEMA, initDbPromise, init_schema = __esm({
+    "dynasty-scans/src/db/schema.ts"() {
+      "use strict";
+      init_client();
+      SCHEMA = [
+        `CREATE TABLE IF NOT EXISTS followed_series (
+    permalink TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    cover TEXT,
+    last_checked_at INTEGER NOT NULL,
+    latest_chapter_permalink TEXT,
+    latest_chapter_title TEXT,
+    created_at INTEGER NOT NULL
+  )`,
+        `CREATE TABLE IF NOT EXISTS reading_progress (
+    chapter_permalink TEXT PRIMARY KEY,
+    series_permalink TEXT NOT NULL,
+    series_name TEXT NOT NULL,
+    chapter_title TEXT NOT NULL,
+    page_index INTEGER NOT NULL DEFAULT 0,
+    page_total INTEGER NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL
+  )`,
+        `CREATE TABLE IF NOT EXISTS reading_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chapter_permalink TEXT NOT NULL,
+    series_permalink TEXT NOT NULL,
+    series_name TEXT NOT NULL,
+    chapter_title TEXT NOT NULL,
+    read_at INTEGER NOT NULL
+  )`,
+        `CREATE TABLE IF NOT EXISTS bookmarks (
+    chapter_permalink TEXT PRIMARY KEY,
+    series_permalink TEXT NOT NULL,
+    series_name TEXT NOT NULL,
+    chapter_title TEXT NOT NULL,
+    page_index INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  )`,
+        `CREATE TABLE IF NOT EXISTS cached_metadata (
+    cache_key TEXT PRIMARY KEY,
+    data_type TEXT NOT NULL,
+    json_payload TEXT NOT NULL,
+    cached_at INTEGER NOT NULL,
+    etag TEXT
+  )`,
+        `CREATE TABLE IF NOT EXISTS cached_pages (
+    chapter_permalink TEXT NOT NULL,
+    page_index INTEGER NOT NULL,
+    file_path TEXT NOT NULL,
+    size_bytes INTEGER DEFAULT 0,
+    cached_at INTEGER NOT NULL,
+    PRIMARY KEY (chapter_permalink, page_index)
+  )`
+      ], initDbPromise = null;
+    }
+  });
 
   // dynasty-scans/src/db/metadata.repo.ts
   async function getCached(key) {
@@ -370,8 +294,22 @@
   async function deleteCached(key) {
     await execute("DELETE FROM cached_metadata WHERE cache_key = ?", [key]);
   }
+  var init_metadata_repo = __esm({
+    "dynasty-scans/src/db/metadata.repo.ts"() {
+      "use strict";
+      init_client();
+    }
+  });
 
   // dynasty-scans/src/db/library.repo.ts
+  async function getFollowedSeries() {
+    return query(
+      `SELECT permalink, name, cover, last_checked_at, latest_chapter_permalink,
+            latest_chapter_title, created_at
+     FROM followed_series
+     ORDER BY name COLLATE NOCASE`
+    );
+  }
   async function getFollowedSeriesCount() {
     var _a, _b;
     return (_b = (_a = (await query("SELECT COUNT(*) as count FROM followed_series"))[0]) == null ? void 0 : _a.count) != null ? _b : 0;
@@ -422,6 +360,15 @@
   }
   async function updateFollowedSeriesCover(permalink, cover) {
     await execute("UPDATE followed_series SET cover = ? WHERE permalink = ?", [cover, permalink]);
+  }
+  async function getReadingProgress(chapterPermalink) {
+    let rows = await query(
+      `SELECT chapter_permalink, series_permalink, series_name, chapter_title,
+            page_index, page_total, completed, updated_at
+     FROM reading_progress WHERE chapter_permalink = ?`,
+      [chapterPermalink]
+    );
+    return rows.length > 0 ? rows[0] : null;
   }
   async function setReadingProgress(p) {
     await execute(
@@ -477,6 +424,14 @@
   async function clearHistory() {
     await execute("DELETE FROM reading_history");
   }
+  async function getHistory(limit = 100) {
+    return query(
+      `SELECT id, chapter_permalink, series_permalink, series_name, chapter_title, read_at
+     FROM reading_history
+     ORDER BY read_at DESC, id DESC LIMIT ?`,
+      [limit]
+    );
+  }
   async function getHistoryCount() {
     var _a, _b;
     return (_b = (_a = (await query("SELECT COUNT(*) as count FROM reading_history"))[0]) == null ? void 0 : _a.count) != null ? _b : 0;
@@ -497,6 +452,13 @@
       permalinks
     );
     return new Set(rows.map((r) => r.chapter_permalink));
+  }
+  async function getBookmarks() {
+    return query(
+      `SELECT chapter_permalink, series_permalink, series_name, chapter_title,
+            page_index, created_at
+     FROM bookmarks ORDER BY created_at DESC`
+    );
   }
   async function getBookmarkCount() {
     var _a, _b;
@@ -542,9 +504,14 @@
   async function removeBookmark(chapterPermalink) {
     await execute("DELETE FROM bookmarks WHERE chapter_permalink = ?", [chapterPermalink]);
   }
+  var init_library_repo = __esm({
+    "dynasty-scans/src/db/library.repo.ts"() {
+      "use strict";
+      init_client();
+    }
+  });
 
   // dynasty-scans/src/db/cache.repo.ts
-  var PH5 = window.PluginHost;
   async function getCachedPages(chapterPermalink) {
     return query(
       `SELECT chapter_permalink, page_index, file_path, cached_at
@@ -562,6 +529,14 @@
        cached_at = excluded.cached_at`,
       [chapterPermalink, pageIndex, filePath, sizeBytes, Date.now()]
     );
+  }
+  async function countCachedPages(chapterPermalink) {
+    var _a, _b;
+    let rows = await query(
+      "SELECT COUNT(*) AS n FROM cached_pages WHERE chapter_permalink = ?",
+      [chapterPermalink]
+    );
+    return Number((_b = (_a = rows[0]) == null ? void 0 : _a.n) != null ? _b : 0);
   }
   async function getCachedPageCounts(chapterPermalinks) {
     if (chapterPermalinks.length === 0) return [];
@@ -721,8 +696,281 @@
   async function clearAllCacheStorage() {
     await clearAllCachedPages(), await clearAllCachedCovers(), await execute("DELETE FROM cached_metadata");
   }
+  var PH5, init_cache_repo = __esm({
+    "dynasty-scans/src/db/cache.repo.ts"() {
+      "use strict";
+      init_client();
+      PH5 = window.PluginHost;
+    }
+  });
+
+  // dynasty-scans/src/db/index.ts
+  var db_exports = {};
+  __export(db_exports, {
+    addBookmark: () => addBookmark,
+    addHistory: () => addHistory,
+    clearAllCacheStorage: () => clearAllCacheStorage,
+    clearAllCachedCovers: () => clearAllCachedCovers,
+    clearAllCachedPages: () => clearAllCachedPages,
+    clearCachedGroupPages: () => clearCachedGroupPages,
+    clearHistory: () => clearHistory,
+    countCachedPages: () => countCachedPages,
+    deleteCached: () => deleteCached,
+    execute: () => execute,
+    followSeries: () => followSeries,
+    getBatchCached: () => getBatchCached,
+    getBookmark: () => getBookmark,
+    getBookmarkCount: () => getBookmarkCount,
+    getBookmarkPermalinks: () => getBookmarkPermalinks,
+    getBookmarks: () => getBookmarks,
+    getBookmarksPage: () => getBookmarksPage,
+    getCacheOverviewStats: () => getCacheOverviewStats,
+    getCached: () => getCached,
+    getCachedPageCounts: () => getCachedPageCounts,
+    getCachedPages: () => getCachedPages,
+    getCachedSeriesGroups: () => getCachedSeriesGroups,
+    getFollowedSeries: () => getFollowedSeries,
+    getFollowedSeriesCount: () => getFollowedSeriesCount,
+    getFollowedSeriesPage: () => getFollowedSeriesPage,
+    getFollowedSeriesRow: () => getFollowedSeriesRow,
+    getHistory: () => getHistory,
+    getHistoryCount: () => getHistoryCount,
+    getHistoryPage: () => getHistoryPage,
+    getHistoryPermalinks: () => getHistoryPermalinks,
+    getProgressForSeries: () => getProgressForSeries,
+    getReadingProgress: () => getReadingProgress,
+    initDb: () => initDb,
+    query: () => query,
+    removeBookmark: () => removeBookmark,
+    removeHistory: () => removeHistory,
+    setCached: () => setCached,
+    setCachedPage: () => setCachedPage,
+    setReadingProgress: () => setReadingProgress,
+    touchCached: () => touchCached,
+    unfollowSeries: () => unfollowSeries,
+    updateFollowedSeriesCover: () => updateFollowedSeriesCover
+  });
+  var init_db2 = __esm({
+    "dynasty-scans/src/db/index.ts"() {
+      "use strict";
+      init_client();
+      init_schema();
+      init_metadata_repo();
+      init_library_repo();
+      init_cache_repo();
+    }
+  });
+
+  // dynasty-scans/src/state.ts
+  async function loadPluginView(customRoute) {
+    if (state.isLoaded = !0, customRoute && (state.route = customRoute), !state.dbInitialized)
+      try {
+        let { initDb: initDb2 } = await Promise.resolve().then(() => (init_db2(), db_exports));
+        await initDb2(), state.dbInitialized = !0;
+      } catch (err) {
+        let msg = err instanceof Error ? err.message : String(err);
+        console.error("dynasty-scans: db init failed:", msg), setBanner(`Database init failed: ${msg}`);
+      }
+    renderCurrent();
+  }
+  function registerRenderer(view, fn) {
+    renderers[view] = fn;
+  }
+  function renderCurrent() {
+    var _a;
+    (_a = state.dispose) == null || _a.call(state), state.dispose = null;
+    let view = document.getElementById("ds-view");
+    if (!view) return;
+    view.innerHTML = "", clearBanner(), clearActions();
+    let r = state.route, renderer = renderers[r.view], cleanup = renderer ? renderer(view, r) : void 0;
+    typeof cleanup == "function" && (state.dispose = cleanup), setTitle(routeTitle(r));
+    let libTab = document.getElementById("ds-tab-library"), browseTab = document.getElementById("ds-tab-browse");
+    libTab && (r.view === "library" ? libTab.classList.add("active") : libTab.classList.remove("active")), browseTab && (r.view === "browse" ? browseTab.classList.add("active") : browseTab.classList.remove("active")), updateSessionMangaTabUI();
+  }
+  function navigate(r) {
+    if (r.view === "reader" || r.view === "series") {
+      let title = r.seriesName || r.chapterTitle || (r.view === "series" ? "Series" : "Reader");
+      state.lastMangaTab = {
+        title,
+        route: __spreadValues({}, r)
+      };
+    }
+    if (!state.isLoaded) {
+      loadPluginView(r);
+      return;
+    }
+    state.route = r, renderCurrent();
+  }
+  function closeSessionMangaTab() {
+    state.lastMangaTab = null, updateSessionMangaTabUI(), (state.route.view === "reader" || state.route.view === "series") && navigate({ view: "browse" });
+  }
+  function updateSessionMangaTabUI() {
+    let container = document.getElementById("ds-session-tab-wrap");
+    if (!container) return;
+    if (container.innerHTML = "", !state.lastMangaTab) {
+      container.style.display = "none";
+      return;
+    }
+    container.style.display = "inline-flex";
+    let tab = document.createElement("button");
+    tab.type = "button";
+    let isActive = state.route.view === "reader" || state.route.view === "series";
+    tab.className = `win-button ds-nav-tab${isActive ? " active" : ""}`, tab.style.cssText = "display:inline-flex;align-items:center;gap:6px;max-width:220px;padding:2px 8px;font-size:11px;";
+    let icon2 = document.createElement("i");
+    icon2.className = "bi bi-book-half", tab.appendChild(icon2);
+    let titleSpan = document.createElement("span");
+    titleSpan.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;", titleSpan.textContent = decodeEntities(state.lastMangaTab.title), tab.appendChild(titleSpan);
+    let closeBtn = document.createElement("i");
+    closeBtn.className = "bi bi-x", closeBtn.title = "Close tab", closeBtn.style.cssText = "cursor:pointer;font-size:13px;opacity:0.75;padding:0 2px;", closeBtn.addEventListener("mouseover", () => {
+      closeBtn.style.opacity = "1";
+    }), closeBtn.addEventListener("mouseout", () => {
+      closeBtn.style.opacity = "0.75";
+    }), closeBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation(), closeSessionMangaTab();
+    }), tab.appendChild(closeBtn), tab.addEventListener("click", () => {
+      state.lastMangaTab && (state.route = __spreadValues({}, state.lastMangaTab.route), renderCurrent());
+    }), container.appendChild(tab);
+  }
+  function setTitle(text) {
+    let el2 = document.getElementById("ds-title");
+    el2 && (el2.textContent = text);
+  }
+  function setBanner(message) {
+    let el2 = document.getElementById("ds-banner");
+    if (el2) {
+      if (bannerTimer !== null && (clearTimeout(bannerTimer), bannerTimer = null), !message) {
+        el2.style.display = "none", el2.textContent = "";
+        return;
+      }
+      el2.textContent = message, el2.style.display = "inline-flex", bannerTimer = setTimeout(() => {
+        el2.style.display = "none", el2.textContent = "", bannerTimer = null;
+      }, 4e3);
+    }
+  }
+  function clearBanner() {
+    setBanner(null);
+  }
+  function setActions(build) {
+    let host = document.getElementById("ds-actions");
+    host && (host.innerHTML = "", build(host));
+  }
+  function clearActions() {
+    let host = document.getElementById("ds-actions");
+    host && (host.innerHTML = "");
+  }
+  function routeTitle(r) {
+    var _a, _b;
+    switch (r.view) {
+      case "browse":
+        return "Browse";
+      case "series":
+        return (_a = r.seriesName) != null ? _a : "Series";
+      case "reader":
+        return (_b = r.chapterTitle) != null ? _b : "Reader";
+      case "cache":
+        return "Cache Management";
+      default:
+        return "Library";
+    }
+  }
+  function isOnline() {
+    return typeof navigator != "undefined" ? navigator.onLine : !0;
+  }
+  function absUrl(u) {
+    return /^https?:\/\//i.test(u) ? u : SITE_ROOT + u;
+  }
+  function tagClass(type, name) {
+    switch ((type != null ? type : "").toLowerCase()) {
+      case "author":
+      case "artist":
+        return "tag-pill tag-artist";
+      case "character":
+        return "tag-pill tag-character";
+      case "pairing":
+        return "tag-pill tag-character";
+      case "series":
+      case "anthology":
+      case "issue":
+      case "doujin":
+      case "doujinshi":
+      case "copyright":
+      case "parody":
+        return "tag-pill tag-copyright";
+      case "scanlator":
+      case "group":
+      case "meta":
+        return "tag-pill tag-meta";
+      case "status":
+        return "tag-pill tag-user";
+      case "general":
+      default:
+        return "tag-pill tag-rank-3";
+    }
+  }
+  function tagStyle(type, name) {
+    let t = (type != null ? type : "").toLowerCase(), n = (name != null ? name : "").toLowerCase();
+    if (t === "author" || t === "artist")
+      return "background-color: #fff0e6; border: 1px solid #ffd9c2; color: #7c2d12;";
+    if (t === "pairing")
+      return "background-color: #fce7f3; border: 1px solid #fbcfe8; color: #9d174d;";
+    if (t === "character")
+      return "background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460;";
+    if (t === "series" || t === "anthology" || t === "issue" || t === "doujin" || t === "doujinshi" || t === "copyright" || t === "parody")
+      return "background-color: #ebdcf9; border: 1px solid #dcbdf5; color: #511c74;";
+    if (t === "scanlator" || t === "group" || t === "meta")
+      return "background-color: #e2e3e5; border: 1px solid #d6d8db; color: #383d41;";
+    if (t === "status" || n === "oneshot" || n === "one-shot" || n === "anthology" || n === "completed" || n === "ongoing" || n === "licensed" || n === "hiatus" || n === "discontinued")
+      return "background-color: #e6f4ea; border: 1px solid #ceead6; color: #0e6b38;";
+    let hash = 0;
+    for (let i = 0; i < name.length; i++)
+      hash = (hash << 5) - hash + name.charCodeAt(i), hash |= 0;
+    let PALETTES = [
+      { bg: "#fef3c7", border: "#fde68a", text: "#92400e" },
+      // amber
+      { bg: "#ede9fe", border: "#ddd6fe", text: "#5b21b6" },
+      // violet
+      { bg: "#fee2e2", border: "#fecaca", text: "#991b1b" },
+      // rose
+      { bg: "#e0f2fe", border: "#bae6fd", text: "#075985" },
+      // sky
+      { bg: "#dcfce7", border: "#bbf7d0", text: "#166534" },
+      // green
+      { bg: "#fae8ff", border: "#f5d0fe", text: "#86198f" },
+      // fuchsia
+      { bg: "#ffedd5", border: "#fed7aa", text: "#9a3412" },
+      // orange
+      { bg: "#f1f5f9", border: "#e2e8f0", text: "#334155" }
+      // slate
+    ], p = PALETTES[Math.abs(hash) % PALETTES.length];
+    return `background-color: ${p.bg}; border: 1px solid ${p.border}; color: ${p.text}; font-weight: 500;`;
+  }
+  var TAB_ID, SITE_ROOT, DB_NAME, PAGES_PREFIX, COVERS_PREFIX, state, renderers, bannerTimer, init_state = __esm({
+    "dynasty-scans/src/state.ts"() {
+      "use strict";
+      init_lib();
+      init_html();
+      init_html();
+      init_formatting();
+      TAB_ID = "dynasty-scans", SITE_ROOT = "https://dynasty-scans.com", DB_NAME = "dynasty_reader.db", PAGES_PREFIX = ".curator/plugin_data/dynasty-scans/pages", COVERS_PREFIX = ".curator/plugin_data/dynasty-scans/covers", state = {
+        route: { view: "browse" },
+        lastMangaTab: null,
+        dispose: null,
+        isLoaded: !0,
+        dbInitialized: !1
+      };
+      renderers = {};
+      bannerTimer = null;
+    }
+  });
+
+  // dynasty-scans/src/index.ts
+  init_state();
+
+  // dynasty-scans/src/ui-library.ts
+  init_state();
 
   // dynasty-scans/src/api/client.ts
+  init_db2();
   var PH6 = window.PluginHost;
   async function httpGetText(url, opts = {}) {
     var _a, _b, _c, _d, _e, _f, _g, _h;
@@ -790,6 +1038,8 @@
   }
 
   // dynasty-scans/src/api/feed.ts
+  init_state();
+  init_db2();
   var FEED_TTL_MS = 3600 * 1e3;
   async function checkFeedOnline(urlPath, key, etag) {
     let url = SITE_ROOT + urlPath, headers = {};
@@ -853,6 +1103,7 @@
   }
 
   // dynasty-scans/src/api/directory.ts
+  init_state();
   function fetchDirectory(urlPath, key) {
     return cachedJson(key, SITE_ROOT + urlPath, FEED_TTL_MS);
   }
@@ -873,7 +1124,12 @@
     return JSON.parse(body);
   }
 
+  // dynasty-scans/src/api/series.ts
+  init_state();
+  init_db2();
+
   // dynasty-scans/src/api/chapter.ts
+  init_state();
   function fetchChapter(permalink) {
     return cachedJson(`chapter:${permalink}`, `${SITE_ROOT}/chapters/${permalink}.json`);
   }
@@ -1040,6 +1296,7 @@
   }
 
   // dynasty-scans/src/api/navigation.ts
+  init_state();
   async function openExternal(url) {
     var _a;
     let api = (_a = window.__TAURI__) == null ? void 0 : _a.core;
@@ -1062,6 +1319,12 @@
     let cleanSeries = (seriesPermalink || "_singles").replace(/[^a-zA-Z0-9_-]/g, "_"), cleanChapter = (chapterPermalink || "chapter").replace(/[^a-zA-Z0-9_-]/g, "_"), ext = ((_a = pageUrl.split(".").pop()) == null ? void 0 : _a.split("?")[0]) || "webp", pad = String(pageIndex + 1).padStart(4, "0");
     return `${PAGES_PREFIX}/${cleanSeries}/${cleanChapter}/page_${pad}.${ext}`;
   }
+
+  // dynasty-scans/src/ui-library.ts
+  init_db2();
+
+  // dynasty-scans/src/components/button.ts
+  init_state();
 
   // dynasty-scans/src/components/dom.ts
   function el(tag, attrs, ...children) {
@@ -1371,6 +1634,7 @@
   }
 
   // dynasty-scans/src/browse/browse-covers.ts
+  init_db2();
   var PH9 = window.PluginHost, SCROLL_IDLE_MS = 400, BrowseCovers = class {
     constructor() {
       this.memoryCache = /* @__PURE__ */ new Map();
@@ -1590,7 +1854,12 @@
     }
   }, browseCovers = new BrowseCovers();
 
+  // dynasty-scans/src/browse/browse-feed.ts
+  init_state();
+  init_db2();
+
   // dynasty-scans/src/components/tag-pill.ts
+  init_state();
   function renderTagPill(t, compact = !0) {
     let pill = el("span", {
       class: tagClass(t.type, t.name),
@@ -1894,6 +2163,7 @@
   }
 
   // dynasty-scans/src/browse/browse-directory.ts
+  init_state();
   async function renderDirectory(host, kind, page, reload) {
     let url = kind === "series" ? `/series.json?page=${page}` : `/tags.json?page=${page}`, key = `${kind === "series" ? "dir:series" : "dir:tags"}:${page}`, dir = await fetchDirectory(url, key), groups = directoryGroups(dir);
     if (host.innerHTML = "", groups.length === 0) {
@@ -1932,6 +2202,7 @@
   }
 
   // dynasty-scans/src/browse/browse-search.ts
+  init_state();
   async function loadSuggestions(q, host) {
     let results;
     try {
@@ -2054,6 +2325,8 @@
   }
 
   // dynasty-scans/src/ui-series.ts
+  init_state();
+  init_db2();
   function renderSeries(container, route) {
     container.innerHTML = "";
     let permalink = route.seriesPermalink;
@@ -2317,6 +2590,10 @@
       }), host.appendChild(openBtn);
     });
   }
+
+  // dynasty-scans/src/reader/reader-controller.ts
+  init_state();
+  init_db2();
 
   // dynasty-scans/src/reader/reader-queue.ts
   var ReaderQueue = class {
@@ -2708,21 +2985,21 @@
       slot.innerHTML = "";
       let idx = Number(slot.dataset.index), badge = document.createElement("div");
       badge.className = "ds-slot-page-badge", badge.textContent = `${idx + 1} / ${this.pages.length}`, slot.appendChild(badge);
-      let state2 = document.createElement("div");
-      state2.className = `ds-slot-state${kind === "error" ? " ds-slot-error" : ""}`, kind === "spinner" ? state2.innerHTML = '<i class="bi bi-cloud-arrow-down" style="font-size:20px;color:var(--sys-primary,#0078d4);"></i><div class="ds-slot-pulse-wrap"><div class="ds-slot-pulse-bar"></div></div>' : kind === "offline" ? state2.innerHTML = '<i class="bi bi-wifi-off" style="font-size:20px;"></i>' : state2.innerHTML = '<i class="bi bi-exclamation-triangle" style="font-size:20px;"></i>';
+      let state3 = document.createElement("div");
+      state3.className = `ds-slot-state${kind === "error" ? " ds-slot-error" : ""}`, kind === "spinner" ? state3.innerHTML = '<i class="bi bi-cloud-arrow-down" style="font-size:20px;color:var(--sys-primary,#0078d4);"></i><div class="ds-slot-pulse-wrap"><div class="ds-slot-pulse-bar"></div></div>' : kind === "offline" ? state3.innerHTML = '<i class="bi bi-wifi-off" style="font-size:20px;"></i>' : state3.innerHTML = '<i class="bi bi-exclamation-triangle" style="font-size:20px;"></i>';
       let text = document.createElement("span");
       if (kind === "spinner") {
         let pct = this.pages.length > 0 ? Math.round(this.cachedCount / this.pages.length * 100) : 0;
         text.textContent = `Downloading page ${idx + 1} of ${this.pages.length} (${this.cachedCount}/${this.pages.length} cached \xB7 ${pct}%)`;
       } else
         text.textContent = message;
-      if (state2.appendChild(text), kind === "error") {
+      if (state3.appendChild(text), kind === "error") {
         let retry = document.createElement("button");
         retry.type = "button", retry.className = "win-button", retry.style.cssText = "font-size:10px;padding:1px 8px;", retry.textContent = "Retry", retry.addEventListener("click", () => {
           this.queue.clearFailed(idx), this.renderSlotState(slot, "spinner", "Downloading\u2026"), this.queue.enqueue(idx);
-        }), state2.appendChild(retry);
+        }), state3.appendChild(retry);
       }
-      slot.appendChild(state2);
+      slot.appendChild(state3);
     }
     updateCacheCount() {
       this.cachedCount = this.cachedMap.size, this.updateProgressText();
@@ -2953,6 +3230,8 @@
   }
 
   // dynasty-scans/src/ui-cache.ts
+  init_state();
+  init_db2();
   function renderCache(container, _route) {
     container.innerHTML = "";
     let root = document.createElement("div");
@@ -4067,16 +4346,7 @@
     return browseBtn == null || browseBtn.addEventListener("click", () => {
       navigate({ view: "browse" });
     }), setTimeout(() => {
-      boot();
+      loadPluginView();
     }, 0), container;
-  }
-  async function boot() {
-    try {
-      await initDb();
-    } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      console.error("dynasty-scans: db init failed:", msg), setBanner(`Database init failed: ${msg}`);
-    }
-    renderCurrent();
   }
 })();
