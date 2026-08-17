@@ -20,17 +20,5 @@ Write-Host "SCCACHE_DIR:        $env:SCCACHE_DIR"
 Write-Host "SCCACHE_CONF:       $env:SCCACHE_CONF"
 Write-Host "RUSTC_WRAPPER:      $env:RUSTC_WRAPPER"
 
-
-
-
-
-
-
-
-
-
-
-
 Write-Host "rustc version:"
 rustc --version
-

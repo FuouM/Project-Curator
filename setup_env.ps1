@@ -15,6 +15,7 @@ if (Test-Path "$RootPath\.rust\rustup-init.exe") {
     Write-Host "Installing Rust locally..."
     Start-Process -FilePath "$RootPath\.rust\rustup-init.exe" -ArgumentList "-y", "--no-modify-path", "--default-toolchain", "stable" -NoNewWindow -Wait
     Write-Host "Rust installation completed."
-} else {
+}
+else {
     Write-Error "Failed to download rustup-init.exe"
 }

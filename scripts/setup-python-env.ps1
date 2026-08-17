@@ -11,7 +11,8 @@ if (-not (Test-Path $requirements)) {
 $venvPython = Join-Path $venvDir "Scripts\python.exe"
 if (Test-Path $venvPython) {
     Write-Host "Reusing existing venv at $venvDir"
-} else {
+}
+else {
     Write-Host "Checking for Python 3.10..."
     $hasPython310 = $false
     $pythonCmd = ""
@@ -45,7 +46,8 @@ if (Test-Path $venvPython) {
     Write-Host "Creating Python venv for model conversion/quantization..."
     if ($pythonCmd -eq "py") {
         & py -3.10 -m venv $venvDir
-    } else {
+    }
+    else {
         & python -m venv $venvDir
     }
     if ($LASTEXITCODE -ne 0) {

@@ -27,7 +27,8 @@ if (-not $needGen) {
     
     if (-not $genFiles -or $genFiles.Count -eq 0) {
         $needGen = $true
-    } elseif ($protoFiles -and $protoFiles.Count -gt 0) {
+    }
+    elseif ($protoFiles -and $protoFiles.Count -gt 0) {
         $latestProto = ($protoFiles | Measure-Object -Property LastWriteTimeUtc -Maximum).Maximum
         $latestGen = ($genFiles | Measure-Object -Property LastWriteTimeUtc -Maximum).Maximum
         if ($latestProto -and $latestGen -and ($latestProto - $latestGen).TotalSeconds -gt 2) {
@@ -45,10 +46,12 @@ if ($needGen) {
             Write-Host "Protobuf code generation failed!" -ForegroundColor Red
             exit 1
         }
-    } finally {
+    }
+    finally {
         Pop-Location
     }
-} else {
+}
+else {
     Write-Host "Protobuf stubs are up to date." -ForegroundColor DarkGray
 }
 
@@ -57,7 +60,8 @@ if (-not ($SkipService -or $FrontendOnly)) {
     Write-Host "Building curator-service..." -ForegroundColor Cyan
     if ($Release) {
         cargo build -p curator-service --release
-    } else {
+    }
+    else {
         cargo build -p curator-service
     }
     if ($LASTEXITCODE -ne 0) {
@@ -73,10 +77,12 @@ Set-Location "$PSScriptRoot\curator-dashboard"
 try {
     if ($Release) {
         npm run tauri dev -- --release
-    } else {
+    }
+    else {
         npm run tauri dev
     }
-} finally {
+}
+finally {
     # Stop curator-service when dev session exits
     $procs = Get-Process curator-service -ErrorAction SilentlyContinue
     if ($procs) {
