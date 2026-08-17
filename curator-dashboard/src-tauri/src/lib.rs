@@ -75,12 +75,20 @@ fn spawn_service() {
                             .unwrap()
                     });
 
-                    match Command::new(&candidate)
-                        .arg("--data-dir")
+                    let mut cmd = Command::new(&candidate);
+                    cmd.arg("--data-dir")
                         .arg(data_dir)
                         .stdout(Stdio::from(log_file))
-                        .stderr(Stdio::from(log_file_err))
-                        .spawn()
+                        .stderr(Stdio::from(log_file_err));
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        // Spawn without a console window; output is redirected to the log file.
+                        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                        cmd.creation_flags(CREATE_NO_WINDOW);
+                    }
+
+                    match cmd.spawn()
                     {
                         Ok(child) => {
                             #[cfg(windows)]

@@ -224,9 +224,21 @@ function init() {
         preferredTagger: d.preferredTagger,
       });
 
-      if (d.featuredImages.length > 0)
-        renderFeaturedDay(imageDetailsFromProto(d.featuredImages[0]));
-      renderImages(d.latestImages.map(imageDetailsFromProto), "latest-imports-grid", false, true);
+      if (Number(d.imageCount) === 0) {
+        const featuredContainer = document.getElementById("featured-day-content");
+        if (featuredContainer) {
+          featuredContainer.innerHTML = `
+            <div style="text-align: center; color: #777; padding: 20px;">
+              <p style="font-size: 13px;">No images imported yet.</p>
+              <p style="margin-top: 4px; font-size: 11px;">Use <strong>Import</strong> to add images to your library.</p>
+            </div>`;
+        }
+        renderImages([], "latest-imports-grid");
+      } else {
+        if (d.featuredImages.length > 0)
+          renderFeaturedDay(imageDetailsFromProto(d.featuredImages[0]));
+        renderImages(d.latestImages.map(imageDetailsFromProto), "latest-imports-grid", false, true);
+      }
     })
     .catch(() => {});
 
