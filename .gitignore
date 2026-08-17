@@ -13,6 +13,9 @@ reference
 onnxruntime.dll
 DirectML.dll
 
+# Portable build output
+portable/
+
 .cargo/
 scratch/
 
