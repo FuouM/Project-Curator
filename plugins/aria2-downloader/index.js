@@ -62,6 +62,28 @@
     };
   }
 
+  // lib/db.ts
+  var PH2 = window.PluginHost;
+  function createPluginDb(dbName) {
+    return {
+      async execute(sql, params = []) {
+        var _a, _b;
+        let resp = await PH2.callService("PluginDbExecute", { db: dbName, sql, params });
+        if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
+        return Number((_b = (_a = resp == null ? void 0 : resp.PluginDbExecuteResult) == null ? void 0 : _a.rows_affected) != null ? _b : 0);
+      },
+      async query(sql, params = []) {
+        var _a, _b;
+        let resp = await PH2.callService("PluginDbQuery", { db: dbName, sql, params });
+        if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
+        return (_b = (_a = resp == null ? void 0 : resp.PluginDbQueryResult) == null ? void 0 : _a.rows) != null ? _b : [];
+      }
+    };
+  }
+
+  // lib/fs.ts
+  var PH3 = window.PluginHost;
+
   // lib/storage.ts
   function loadPersisted(key, fallback) {
     try {
@@ -78,7 +100,7 @@
   }
 
   // lib/poll.ts
-  var PH2 = window.PluginHost;
+  var PH4 = window.PluginHost;
   function pollServiceProgress({
     fetch,
     isRunning,
@@ -135,248 +157,14 @@
     return `download_${Date.now()}_${fallbackIndex}.bin`;
   }
 
-  // aria2-downloader/src/ipc.ts
-  var PH3 = window.PluginHost;
-  async function checkTool(tool) {
-    var _a, _b, _c;
-    let resp = await PH3.callService("CheckTool", { tool }), r = resp == null ? void 0 : resp.CheckToolResult;
-    return {
-      installed: !!(r != null && r.installed),
-      path: (_a = r == null ? void 0 : r.path) != null ? _a : null,
-      version: (_b = r == null ? void 0 : r.version) != null ? _b : null,
-      portablePath: (_c = r == null ? void 0 : r.portable_path) != null ? _c : null
-    };
-  }
-  async function installTool(tool) {
-    var _a;
-    let resp = await PH3.callService("InstallTool", { tool }), r = resp == null ? void 0 : resp.InstallToolResult;
-    return { started: !!(r != null && r.started), error: (_a = r == null ? void 0 : r.error) != null ? _a : null };
-  }
-  async function getToolInstallProgress(tool) {
-    var _a, _b, _c, _d;
-    let resp = await PH3.callService("GetToolInstallProgress", { tool }), r = resp == null ? void 0 : resp.GetToolInstallProgressResult;
-    return {
-      status: (_a = r == null ? void 0 : r.status) != null ? _a : "idle",
-      percent: (_b = r == null ? void 0 : r.percent) != null ? _b : 0,
-      logs: (_c = r == null ? void 0 : r.logs) != null ? _c : [],
-      error: (_d = r == null ? void 0 : r.error) != null ? _d : null
-    };
-  }
-  async function downloadStart(params) {
-    let resp = await PH3.callService("DownloadStart", params);
-    if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
-    let r = resp == null ? void 0 : resp.DownloadStartResult;
-    if (!(r != null && r.job_id)) throw new Error("DownloadStart returned no job_id");
-    return r.job_id;
-  }
-  async function downloadProgress(jobId) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
-    let resp = await PH3.callService("DownloadProgress", { job_id: jobId });
-    if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
-    let r = resp == null ? void 0 : resp.DownloadProgressResult;
-    if (r)
-      return {
-        running: !!r.running,
-        status: (_a = r.status) != null ? _a : "unknown",
-        percent: (_b = r.percent) != null ? _b : 0,
-        downloadedBytes: (_c = r.downloaded_bytes) != null ? _c : 0,
-        totalBytes: (_d = r.total_bytes) != null ? _d : null,
-        speedBps: (_e = r.speed_bps) != null ? _e : 0,
-        etaSecs: (_f = r.eta_secs) != null ? _f : null,
-        connections: (_g = r.connections) != null ? _g : 0,
-        outputPath: (_h = r.output_path) != null ? _h : null,
-        error: (_i = r.error) != null ? _i : null,
-        logs: (_j = r.logs) != null ? _j : [],
-        command: (_k = r.command) != null ? _k : null,
-        engine: (_l = r.engine) != null ? _l : null
-      };
-  }
-  async function downloadCancel(jobId) {
-    let resp = await PH3.callService("DownloadCancel", { job_id: jobId });
-    if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
-  }
-  async function resolveOutputPath(jobId, outputPath, autoRename) {
-    let resp = await PH3.callService("ResolveOutputPath", {
-      job_id: jobId,
-      output_path: outputPath,
-      auto_rename: autoRename
-    });
-    if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
-    let r = resp == null ? void 0 : resp.ResolveOutputPathResult;
-    if (!(r != null && r.output_path)) throw new Error("ResolveOutputPath returned no output_path");
-    return r.output_path;
-  }
-  async function dbQuery(sql, params = [], db = "download_history.db") {
-    var _a;
-    let resp = await PH3.callService("PluginDbQuery", { db, sql, params });
-    if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
-    let r = resp == null ? void 0 : resp.PluginDbQueryResult;
-    return { rows: (_a = r == null ? void 0 : r.rows) != null ? _a : [] };
-  }
-  async function dbExecute(sql, params = [], db = "download_history.db") {
-    var _a;
-    let resp = await PH3.callService("PluginDbExecute", { db, sql, params });
-    if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
-    let r = resp == null ? void 0 : resp.PluginDbExecuteResult;
-    return (_a = r == null ? void 0 : r.rows_affected) != null ? _a : 0;
-  }
-  async function revealInFolder(path) {
-    var _a;
-    let api = (_a = window.__TAURI__) == null ? void 0 : _a.core;
-    if (!(api != null && api.invoke)) return !1;
-    try {
-      return await api.invoke("reveal_in_folder", { path }), !0;
-    } catch (e) {
-      return !1;
-    }
-  }
-
-  // aria2-downloader/src/sites.ts
-  function checkUrlCompatibility(url) {
-    let trimmed = url.trim();
-    if (!trimmed)
-      return {
-        url: "",
-        status: "unknown",
-        label: "Invalid URL",
-        badgeText: "Invalid",
-        badgeColor: "#9ca3af"
-      };
-    if (trimmed.startsWith("ftp://") || trimmed.startsWith("ftps://"))
-      return {
-        url: trimmed,
-        status: "verified_direct",
-        label: "FTP / FTPS",
-        badgeText: "Direct FTP Download",
-        badgeColor: "#10b981"
-      };
-    let hostname = "";
-    try {
-      hostname = new URL(trimmed).hostname.toLowerCase();
-    } catch (e) {
-      let match = trimmed.match(/^https?:\/\/([^/?#]+)/i);
-      hostname = match ? match[1].toLowerCase() : trimmed.toLowerCase();
-    }
-    return hostname = hostname.replace(/^www\./, ""), /\.(zip|rar|7z|tar|gz|xz|iso|img|mp4|mkv|avi|mov|mp3|flac|wav|png|jpg|jpeg|webp|pdf|epub|bin|exe|msi|dmg|deb|rpm)(\?.*)?$/i.test(trimmed) ? {
-      url: trimmed,
-      status: "generic_direct",
-      label: `Direct File (${hostname})`,
-      badgeText: "Direct HTTP Download",
-      badgeColor: "#3b82f6"
-    } : trimmed.startsWith("http://") || trimmed.startsWith("https://") ? {
-      url: trimmed,
-      status: "unknown",
-      label: hostname || "Generic Link",
-      badgeText: "Direct HTTP Download",
-      badgeColor: "#f59e0b"
-    } : {
-      url: trimmed,
-      status: "unknown",
-      label: "Unsupported / Invalid",
-      badgeText: "Unknown URL format",
-      badgeColor: "#ef4444"
-    };
-  }
-
-  // aria2-downloader/src/history.ts
-  var TRACKING_PARAMS = /* @__PURE__ */ new Set([
-    "utm_source",
-    "utm_medium",
-    "utm_campaign",
-    "utm_term",
-    "utm_content",
-    "fbclid",
-    "gclid",
-    "ref",
-    "referrer",
-    "spm"
-  ]);
-  function normalizeUrl(rawUrl) {
-    let out;
-    try {
-      let u = new URL(rawUrl.trim());
-      u.hash = "";
-      for (let p of [...u.searchParams.keys()])
-        TRACKING_PARAMS.has(p.toLowerCase()) && u.searchParams.delete(p);
-      out = u.toString();
-    } catch (e) {
-      out = rawUrl.trim();
-    }
-    return out.toLowerCase();
-  }
-  async function ensureHistorySchema() {
-    await dbExecute(`CREATE TABLE IF NOT EXISTS download_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    url TEXT NOT NULL,
-    normalized_url TEXT NOT NULL,
-    filename TEXT NOT NULL,
-    file_path TEXT NOT NULL,
-    file_size INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL,
-    error_message TEXT,
-    completed_at INTEGER NOT NULL,
-    package_name TEXT,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`), await dbExecute(
-      "CREATE INDEX IF NOT EXISTS idx_download_history_url ON download_history(normalized_url)"
-    ), await dbExecute(
-      "CREATE INDEX IF NOT EXISTS idx_download_history_completed ON download_history(completed_at DESC)"
-    ), await dbExecute(
-      "CREATE UNIQUE INDEX IF NOT EXISTS idx_download_history_url_path ON download_history(normalized_url, file_path)"
-    );
-  }
-  async function recordDownload(rec) {
-    await dbExecute(
-      `INSERT OR IGNORE INTO download_history
-      (url, normalized_url, filename, file_path, file_size, status, error_message, completed_at, package_name)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        rec.url,
-        rec.normalized_url,
-        rec.filename,
-        rec.file_path,
-        rec.file_size,
-        rec.status,
-        rec.error_message,
-        rec.completed_at || Math.floor(Date.now() / 1e3),
-        rec.package_name
-      ]
-    );
-  }
-  async function queryHistory(limit = 200, offset = 0) {
-    var _a;
-    return (_a = (await dbQuery(
-      "SELECT * FROM download_history ORDER BY completed_at DESC LIMIT ? OFFSET ?",
-      [limit, offset]
-    )).rows) != null ? _a : [];
-  }
-  async function searchHistory(term, limit = 200) {
-    var _a;
-    return (_a = (await dbQuery(
-      `SELECT * FROM download_history
-     WHERE filename LIKE ? OR status LIKE ? OR url LIKE ?
-     ORDER BY completed_at DESC LIMIT ?`,
-      [`%${term}%`, `%${term}%`, `%${term}%`, limit]
-    )).rows) != null ? _a : [];
-  }
-  async function findDuplicateUrls(urls) {
-    let normalized = urls.map(normalizeUrl);
-    if (normalized.length === 0) return [];
-    let placeholders = normalized.map(() => "?").join(","), res = await dbQuery(
-      `SELECT normalized_url FROM download_history WHERE normalized_url IN (${placeholders})`,
-      normalized
-    ), seen = new Set(res.rows.map((r) => String(r.normalized_url)));
-    return normalized.filter((n) => seen.has(n));
-  }
-  async function removeHistoryEntry(id) {
-    await dbExecute("DELETE FROM download_history WHERE id = ?", [id]);
-  }
-
-  // aria2-downloader/src/ui.ts
-  var PH4 = window.PluginHost, log = createLogger("ad-log-dock");
+  // aria2-downloader/src/ui-core.ts
+  var PH5 = window.PluginHost;
   function el(id) {
     return document.getElementById(id);
   }
+  var log = createLogger("ad-log-dock");
+
+  // aria2-downloader/src/ui-utils.ts
   function joinPath(dir, name) {
     let sep = dir.endsWith("\\") || dir.endsWith("/") ? "" : "\\";
     return `${dir}${sep}${name}`;
@@ -399,6 +187,19 @@
       return url.split(/[\\/]/)[0] || url;
     }
   }
+  function formatDateTime(epochSecs) {
+    let d = new Date(epochSecs * 1e3), pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  function formatDuration(startedAt, completedAt) {
+    let s = Math.max(0, Math.round((completedAt - startedAt) / 1e3)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+    return h > 0 ? `${h}h ${m}m ${sec}s` : m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  }
+  function clampNum(v, min, max, fallback) {
+    return Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : fallback;
+  }
+
+  // aria2-downloader/src/columns.ts
   var COL_WIDTH_KEY = "aria2-downloader-col-", columnResizeState = null;
   function applyColumnWidths() {
     document.querySelectorAll(".ad-table thead th").forEach((th) => {
@@ -437,10 +238,8 @@
   function wireColumnResize() {
     columnResizeWired || (columnResizeWired = !0, document.addEventListener("mousedown", columnResizeMouseDown), document.addEventListener("mousemove", columnResizeMouseMove), document.addEventListener("mouseup", columnResizeMouseUp));
   }
-  function formatDateTime(epochSecs) {
-    let d = new Date(epochSecs * 1e3), pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
+
+  // aria2-downloader/src/styles.ts
   function injectStyles() {
     if (document.getElementById("ad-styles")) return;
     let style = document.createElement("style");
@@ -711,157 +510,55 @@
     }
   `, document.head.appendChild(style);
   }
-  function renderTab() {
-    injectStyles();
-    let root = document.createElement("div");
-    root.className = "ad-workspace";
-    let banner = document.createElement("div"), queueList = root.querySelector("#ad-queue-list"), historyList = root.querySelector("#ad-history-list");
-    banner.id = "ad-banner", banner.className = "ad-banner", banner.innerHTML = `
-    <i class="bi bi-exclamation-triangle-fill" style="flex-shrink:0;font-size:13px;"></i>
-    <div class="ad-banner-inner">
-      <div id="ad-banner-text"></div>
-      <div class="ad-banner-status" id="ad-banner-status" style="display:none;">Preparing install...</div>
-      <div class="ad-banner-progress" id="ad-banner-progress" style="display:none;">
-        <div class="ad-banner-fill" id="ad-banner-fill"></div>
-      </div>
-    </div>
-    <button type="button" class="win-button primary" id="ad-install-btn" style="margin-left:8px;font-size:10px;flex-shrink:0;">
-      <i class="bi bi-download"></i> Download &amp; Install
-    </button>`, root.appendChild(banner);
-    let topBar = document.createElement("div");
-    topBar.className = "group-box ad-toolbar", topBar.innerHTML = `
-    <div class="group-box-title"><i class="bi bi-link-45deg"></i> Add Downloads</div>
-    <div class="ad-toolbar-row">
-      <textarea id="ad-url-input" class="input-field ad-url-input" placeholder="Paste download URLs (comma, space, or newline separated)..."></textarea>
-      <div style="display:flex;flex-direction:column;gap:6px;">
-        <button type="button" class="win-button primary" id="ad-add-btn" style="font-size:11px;"><i class="bi bi-plus-circle"></i> Add to Queue</button>
-        <button type="button" class="win-button" id="ad-clear-input-btn" style="font-size:11px;"><i class="bi bi-eraser"></i> Clear</button>
-      </div>
-    </div>
-    <div class="ad-chips" id="ad-chips"></div>
-    <div class="ad-summary-row">
-      <label for="ad-output-dir">Output</label>
-      <input type="text" id="ad-output-dir" class="input-field" readonly style="flex:1;font-size:11px;" />
-      <button type="button" class="win-button" id="ad-browse-btn" style="font-size:10px;"><i class="bi bi-folder2-open"></i> Browse</button>
-      <button type="button" class="win-button" id="ad-open-folder-btn" style="font-size:10px;"><i class="bi bi-folder"></i> Open</button>
-    </div>
-    <div class="ad-summary-row">
-      <label for="ad-conns">Connections</label>
-      <input type="number" id="ad-conns" min="1" max="16" value="${state.settings.connections}" />
-      <label for="ad-speed">Speed (KiB/s, 0=\u221E)</label>
-      <input type="number" id="ad-speed" min="0" value="${state.settings.speedLimitKb}" />
-      <label for="ad-tries">Max tries</label>
-      <input type="number" id="ad-tries" min="0" value="${state.settings.maxTries}" />
-    </div>
-    <div class="ad-summary-row">
-      <label class="ad-toggle"><input type="checkbox" id="ad-auto-rename" ${state.settings.autoRename ? "checked" : ""} /> Rename if exists (<span style="font-family:'Consolas',monospace;">_1</span>, <span style="font-family:'Consolas',monospace;">_2</span>, ...)</label>
-      <label class="ad-toggle"><input type="checkbox" id="ad-auto-start" ${state.settings.autoStart ? "checked" : ""} /> Auto start queue</label>
-    </div>`, root.appendChild(topBar);
-    let middle = document.createElement("div");
-    middle.className = "ad-middle", middle.innerHTML = `
-    <div class="ad-column ad-queue-box">
-      <div class="group-box" style="flex:1;display:flex;flex-direction:column;min-height:0;">
-        <div class="group-box-title"><i class="bi bi-list-ul"></i> Download Queue <span id="ad-queue-count" style="color:#888;font-size:10px;"></span>
-        </div>
-        <div class="ad-toolbar-row" style="margin-top:0;" id="ad-queue-filter">
-          <button type="button" class="win-button" id="ad-start-all-btn" style="font-size:10px;"><i class="bi bi-play-fill"></i> Start All</button>
-          <button type="button" class="win-button ad-filter-btn active" data-status="">All</button>
-          <button type="button" class="win-button ad-filter-btn" data-status="queued">Queued</button>
-          <button type="button" class="win-button ad-filter-btn" data-status="running">Running</button>
-          <button type="button" class="win-button ad-filter-btn" data-status="completed">Completed</button>
-          <button type="button" class="win-button ad-filter-btn" data-status="failed">Failed</button>
-          <button type="button" class="win-button ad-filter-btn" data-status="cancelled">Cancelled</button>
-        </div>
-        <div class="ad-scroll" id="ad-queue-list"></div>
-      </div>
-    </div>
-    <div class="ad-column ad-history-box">
-      <div class="group-box" style="flex:1;display:flex;flex-direction:column;min-height:0;">
-        <div class="group-box-title"><i class="bi bi-clock-history"></i> History</div>
-        <div class="ad-toolbar-row" style="margin-top:0;">
-          <input type="text" id="ad-history-search" class="input-field" placeholder="Search history..." style="flex:1;font-size:11px;" />
-          <button type="button" class="win-button" id="ad-history-refresh" style="font-size:10px;"><i class="bi bi-arrow-clockwise"></i></button>
-        </div>
-        <div class="ad-scroll" id="ad-history-list" style="margin-top:4px;"></div>
-      </div>
-    </div>`, root.appendChild(middle);
-    let logBox = document.createElement("div");
-    logBox.className = "group-box", logBox.style.cssText = "flex-shrink:0;", logBox.innerHTML = `
-    <div class="group-box-title"><i class="bi bi-terminal"></i> aria2 Console</div>
-    <div class="ad-log-dock" id="ad-log-dock"></div>`, root.appendChild(logBox);
-    let urlInput = root.querySelector("#ad-url-input"), addBtn = root.querySelector("#ad-add-btn");
-    addBtn && addBtn.addEventListener("click", () => {
-      var _a;
-      return void addUrls((_a = urlInput == null ? void 0 : urlInput.value) != null ? _a : "");
-    }), urlInput && (urlInput.addEventListener("input", updateChips), urlInput.addEventListener("keydown", (e) => {
-      e.key === "Enter" && !e.shiftKey && (e.preventDefault(), addUrls(urlInput.value));
-    }));
-    let clearBtn = root.querySelector("#ad-clear-input-btn");
-    clearBtn && clearBtn.addEventListener("click", () => {
-      urlInput && (urlInput.value = ""), updateChips();
-    });
-    let outInput = root.querySelector("#ad-output-dir");
-    outInput && (outInput.value = state.settings.outputDir);
-    let browseBtn = root.querySelector("#ad-browse-btn");
-    browseBtn && browseBtn.addEventListener("click", async () => {
-      let path = await pickDirectory();
-      path && (state.settings.outputDir = path, outInput && (outInput.value = path), savePersisted("aria2-downloader-output-dir", path), log(`Output directory set: ${path}`, "success"));
-    });
-    let openFolderBtn = root.querySelector("#ad-open-folder-btn");
-    openFolderBtn && openFolderBtn.addEventListener("click", async () => {
-      var _a;
-      let api = (_a = window.__TAURI__) == null ? void 0 : _a.core;
-      if (!(!(api != null && api.invoke) || !state.settings.outputDir))
-        try {
-          await api.invoke("open_file_externally", { path: state.settings.outputDir });
-        } catch (e) {
-          log("Could not open output folder.", "error");
-        }
-    });
-    let connsInput = root.querySelector("#ad-conns");
-    connsInput && (connsInput.value = String(state.settings.connections), connsInput.addEventListener("change", () => {
-      state.settings.connections = Math.max(1, Math.min(16, parseInt(connsInput.value, 10) || state.settings.connections)), connsInput.value = String(state.settings.connections), savePersisted("aria2-downloader-connections", String(state.settings.connections));
-    }));
-    let speedInput = root.querySelector("#ad-speed");
-    speedInput && (speedInput.value = String(state.settings.speedLimitKb), speedInput.addEventListener("change", () => {
-      state.settings.speedLimitKb = Math.max(0, parseInt(speedInput.value, 10) || 0), speedInput.value = String(state.settings.speedLimitKb), savePersisted("aria2-downloader-speed-limit", String(state.settings.speedLimitKb));
-    }));
-    let triesInput = root.querySelector("#ad-tries");
-    triesInput && (triesInput.value = String(state.settings.maxTries), triesInput.addEventListener("change", () => {
-      state.settings.maxTries = Math.max(0, parseInt(triesInput.value, 10) || 0), triesInput.value = String(state.settings.maxTries), savePersisted("aria2-downloader-max-tries", String(state.settings.maxTries));
-    }));
-    let installBtn = root.querySelector("#ad-install-btn");
-    installBtn && installBtn.addEventListener("click", () => void installAria2());
-    let historySearch = root.querySelector("#ad-history-search");
-    historySearch && historySearch.addEventListener("input", () => {
-      refreshHistoryUI(historySearch.value);
-    });
-    let historyRefresh = root.querySelector("#ad-history-refresh");
-    historyRefresh && historyRefresh.addEventListener("click", () => {
-      var _a;
-      refreshHistoryUI((_a = historySearch == null ? void 0 : historySearch.value) != null ? _a : "");
-    });
-    let autoRename = root.querySelector("#ad-auto-rename");
-    autoRename && (autoRename.checked = state.settings.autoRename, autoRename.addEventListener("change", () => {
-      state.settings.autoRename = autoRename.checked, savePersisted("aria2-downloader-auto-rename", autoRename.checked ? "1" : "0");
-    }));
-    let autoStart = root.querySelector("#ad-auto-start");
-    autoStart && (autoStart.checked = state.settings.autoStart, autoStart.addEventListener("change", () => {
-      state.settings.autoStart = autoStart.checked, savePersisted("aria2-downloader-auto-start", autoStart.checked ? "1" : "0");
-    }));
-    let startAllBtn = root.querySelector("#ad-start-all-btn");
-    startAllBtn && startAllBtn.addEventListener("click", () => void startAllQueued());
-    let queueFilterEls = root.querySelectorAll("#ad-queue-filter .ad-filter-btn");
-    return queueFilterEls.forEach(
-      (btn) => btn.addEventListener("click", () => {
-        var _a;
-        queueStatusFilter = (_a = btn.dataset.status) != null ? _a : "", queueFilterEls.forEach((b) => b.classList.toggle("active", b === btn)), renderQueue();
-      })
-    ), wireColumnResize(), renderQueue(queueList), updateChips(), renderHistory(state.history, historyList), setToolBanner(state.toolAvailable, state.toolVersion, defaultBannerText(), banner), initHistory(), root;
+
+  // aria2-downloader/src/sites.ts
+  function checkUrlCompatibility(url) {
+    let trimmed = url.trim();
+    if (!trimmed)
+      return {
+        url: "",
+        status: "unknown",
+        label: "Invalid URL",
+        badgeText: "Invalid",
+        badgeColor: "#9ca3af"
+      };
+    if (trimmed.startsWith("ftp://") || trimmed.startsWith("ftps://"))
+      return {
+        url: trimmed,
+        status: "verified_direct",
+        label: "FTP / FTPS",
+        badgeText: "Direct FTP Download",
+        badgeColor: "#10b981"
+      };
+    let hostname = "";
+    try {
+      hostname = new URL(trimmed).hostname.toLowerCase();
+    } catch (e) {
+      let match = trimmed.match(/^https?:\/\/([^/?#]+)/i);
+      hostname = match ? match[1].toLowerCase() : trimmed.toLowerCase();
+    }
+    return hostname = hostname.replace(/^www\./, ""), /\.(zip|rar|7z|tar|gz|xz|iso|img|mp4|mkv|avi|mov|mp3|flac|wav|png|jpg|jpeg|webp|pdf|epub|bin|exe|msi|dmg|deb|rpm)(\?.*)?$/i.test(trimmed) ? {
+      url: trimmed,
+      status: "generic_direct",
+      label: `Direct File (${hostname})`,
+      badgeText: "Direct HTTP Download",
+      badgeColor: "#3b82f6"
+    } : trimmed.startsWith("http://") || trimmed.startsWith("https://") ? {
+      url: trimmed,
+      status: "unknown",
+      label: hostname || "Generic Link",
+      badgeText: "Direct HTTP Download",
+      badgeColor: "#f59e0b"
+    } : {
+      url: trimmed,
+      status: "unknown",
+      label: "Unsupported / Invalid",
+      badgeText: "Unknown URL format",
+      badgeColor: "#ef4444"
+    };
   }
-  function defaultBannerText() {
-    return state.toolInstalling ? "Installing aria2 engine..." : "aria2 engine not found. Download & install it to enable multi-connection downloads.";
-  }
+
+  // aria2-downloader/src/chips.ts
   function updateChips() {
     let input = el("ad-url-input"), chips = el("ad-chips");
     if (!input || !chips) return;
@@ -880,6 +577,99 @@ ${r.label} \u2014 ${r.badgeText}`, chip.textContent = r.badgeText, chips.appendC
   }
   function splitUrls(raw) {
     return raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+  }
+
+  // aria2-downloader/src/ipc.ts
+  var PH6 = window.PluginHost;
+  async function checkTool(tool) {
+    var _a, _b, _c;
+    let resp = await PH6.callService("CheckTool", { tool }), r = resp == null ? void 0 : resp.CheckToolResult;
+    return {
+      installed: !!(r != null && r.installed),
+      path: (_a = r == null ? void 0 : r.path) != null ? _a : null,
+      version: (_b = r == null ? void 0 : r.version) != null ? _b : null,
+      portablePath: (_c = r == null ? void 0 : r.portable_path) != null ? _c : null
+    };
+  }
+  async function installTool(tool) {
+    var _a;
+    let resp = await PH6.callService("InstallTool", { tool }), r = resp == null ? void 0 : resp.InstallToolResult;
+    return { started: !!(r != null && r.started), error: (_a = r == null ? void 0 : r.error) != null ? _a : null };
+  }
+  async function getToolInstallProgress(tool) {
+    var _a, _b, _c, _d;
+    let resp = await PH6.callService("GetToolInstallProgress", { tool }), r = resp == null ? void 0 : resp.GetToolInstallProgressResult;
+    return {
+      status: (_a = r == null ? void 0 : r.status) != null ? _a : "idle",
+      percent: (_b = r == null ? void 0 : r.percent) != null ? _b : 0,
+      logs: (_c = r == null ? void 0 : r.logs) != null ? _c : [],
+      error: (_d = r == null ? void 0 : r.error) != null ? _d : null
+    };
+  }
+  async function downloadStart(params) {
+    let resp = await PH6.callService("DownloadStart", params);
+    if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
+    let r = resp == null ? void 0 : resp.DownloadStartResult;
+    if (!(r != null && r.job_id)) throw new Error("DownloadStart returned no job_id");
+    return r.job_id;
+  }
+  async function downloadProgress(jobId) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+    let resp = await PH6.callService("DownloadProgress", { job_id: jobId });
+    if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
+    let r = resp == null ? void 0 : resp.DownloadProgressResult;
+    if (r)
+      return {
+        running: !!r.running,
+        status: (_a = r.status) != null ? _a : "unknown",
+        percent: (_b = r.percent) != null ? _b : 0,
+        downloadedBytes: (_c = r.downloaded_bytes) != null ? _c : 0,
+        totalBytes: (_d = r.total_bytes) != null ? _d : null,
+        speedBps: (_e = r.speed_bps) != null ? _e : 0,
+        etaSecs: (_f = r.eta_secs) != null ? _f : null,
+        connections: (_g = r.connections) != null ? _g : 0,
+        outputPath: (_h = r.output_path) != null ? _h : null,
+        error: (_i = r.error) != null ? _i : null,
+        logs: (_j = r.logs) != null ? _j : [],
+        command: (_k = r.command) != null ? _k : null,
+        engine: (_l = r.engine) != null ? _l : null
+      };
+  }
+  async function downloadCancel(jobId) {
+    let resp = await PH6.callService("DownloadCancel", { job_id: jobId });
+    if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
+  }
+  async function resolveOutputPath(jobId, outputPath, autoRename) {
+    let resp = await PH6.callService("ResolveOutputPath", {
+      job_id: jobId,
+      output_path: outputPath,
+      auto_rename: autoRename
+    });
+    if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
+    let r = resp == null ? void 0 : resp.ResolveOutputPathResult;
+    if (!(r != null && r.output_path)) throw new Error("ResolveOutputPath returned no output_path");
+    return r.output_path;
+  }
+  async function dbQuery(sql, params = [], db = "download_history.db") {
+    return { rows: await createPluginDb(db).query(sql, params) };
+  }
+  async function dbExecute(sql, params = [], db = "download_history.db") {
+    return createPluginDb(db).execute(sql, params);
+  }
+  async function revealInFolder(path) {
+    var _a;
+    let api = (_a = window.__TAURI__) == null ? void 0 : _a.core;
+    if (!(api != null && api.invoke)) return !1;
+    try {
+      return await api.invoke("reveal_in_folder", { path }), !0;
+    } catch (e) {
+      return !1;
+    }
+  }
+
+  // aria2-downloader/src/tool-status.ts
+  function defaultBannerText() {
+    return state.toolInstalling ? "Installing aria2 engine..." : "aria2 engine not found. Download & install it to enable multi-connection downloads.";
   }
   function setToolBanner(available, version, message, bannerEl) {
     let banner = bannerEl != null ? bannerEl : el("ad-banner"), text = banner == null ? void 0 : banner.querySelector("#ad-banner-text");
@@ -950,26 +740,118 @@ ${r.label} \u2014 ${r.badgeText}`, chip.textContent = r.badgeText, chips.appendC
       }
     });
   }
-  async function initHistory() {
-    await ensureHistorySchema(), await refreshHistoryUI("");
-  }
-  async function refreshHistoryUI(term) {
+
+  // aria2-downloader/src/history.ts
+  var TRACKING_PARAMS = /* @__PURE__ */ new Set([
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+    "fbclid",
+    "gclid",
+    "ref",
+    "referrer",
+    "spm"
+  ]);
+  function normalizeUrl(rawUrl) {
+    let out;
     try {
-      state.history = term.trim() ? await searchHistory(term.trim()) : await queryHistory(200);
-    } catch (err) {
-      log(`History load failed: ${err instanceof Error ? err.message : String(err)}`, "error");
-      return;
+      let u = new URL(rawUrl.trim());
+      u.hash = "";
+      for (let p of [...u.searchParams.keys()])
+        TRACKING_PARAMS.has(p.toLowerCase()) && u.searchParams.delete(p);
+      out = u.toString();
+    } catch (e) {
+      out = rawUrl.trim();
     }
-    renderHistory(state.history);
+    return out.toLowerCase();
   }
-  async function removeHistoryRecord(id) {
-    try {
-      await removeHistoryEntry(id), state.history = state.history.filter((r) => r.id !== id), renderHistory(state.history), log("Removed history entry.", "info");
-    } catch (err) {
-      log(`Remove failed: ${err instanceof Error ? err.message : String(err)}`, "error");
+  async function ensureHistorySchema() {
+    await dbExecute(`CREATE TABLE IF NOT EXISTS download_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    normalized_url TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    file_size INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    completed_at INTEGER NOT NULL,
+    package_name TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`), await dbExecute(
+      "CREATE INDEX IF NOT EXISTS idx_download_history_url ON download_history(normalized_url)"
+    ), await dbExecute(
+      "CREATE INDEX IF NOT EXISTS idx_download_history_completed ON download_history(completed_at DESC)"
+    ), await dbExecute(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_download_history_url_path ON download_history(normalized_url, file_path)"
+    );
+  }
+  async function recordDownload(rec) {
+    await dbExecute(
+      `INSERT OR IGNORE INTO download_history
+      (url, normalized_url, filename, file_path, file_size, status, error_message, completed_at, package_name)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        rec.url,
+        rec.normalized_url,
+        rec.filename,
+        rec.file_path,
+        rec.file_size,
+        rec.status,
+        rec.error_message,
+        rec.completed_at || Math.floor(Date.now() / 1e3),
+        rec.package_name
+      ]
+    );
+  }
+  async function queryHistory(limit = 200, offset = 0) {
+    var _a;
+    return (_a = (await dbQuery(
+      "SELECT * FROM download_history ORDER BY completed_at DESC LIMIT ? OFFSET ?",
+      [limit, offset]
+    )).rows) != null ? _a : [];
+  }
+  async function searchHistory(term, limit = 200) {
+    var _a;
+    return (_a = (await dbQuery(
+      `SELECT * FROM download_history
+     WHERE filename LIKE ? OR status LIKE ? OR url LIKE ?
+     ORDER BY completed_at DESC LIMIT ?`,
+      [`%${term}%`, `%${term}%`, `%${term}%`, limit]
+    )).rows) != null ? _a : [];
+  }
+  async function findDuplicateUrls(urls) {
+    let normalized = urls.map(normalizeUrl);
+    if (normalized.length === 0) return [];
+    let placeholders = normalized.map(() => "?").join(","), res = await dbQuery(
+      `SELECT normalized_url FROM download_history WHERE normalized_url IN (${placeholders})`,
+      normalized
+    ), seen = new Set(res.rows.map((r) => String(r.normalized_url)));
+    return normalized.filter((n) => seen.has(n));
+  }
+  async function removeHistoryEntry(id) {
+    await dbExecute("DELETE FROM download_history WHERE id = ?", [id]);
+  }
+
+  // aria2-downloader/src/log-dock.ts
+  function appendLogDelta(item) {
+    let dock = el("ad-log-dock");
+    if (!dock || item.logIndex >= item.logs.length) return;
+    let frag = document.createDocumentFragment();
+    for (let i = item.logIndex; i < item.logs.length; i++) {
+      let line = document.createElement("div");
+      line.textContent = item.logs[i], frag.appendChild(line);
     }
+    dock.appendChild(frag), dock.scrollTop = dock.scrollHeight, item.logIndex = item.logs.length;
   }
+
+  // aria2-downloader/src/queue.ts
   var lastQueueRender = 0, queueStatusFilter = "";
+  function setQueueStatusFilter(status) {
+    queueStatusFilter = status;
+  }
   function renderQueueThrottled() {
     let now = performance.now();
     now - lastQueueRender < 350 || (lastQueueRender = now, renderQueue());
@@ -1150,10 +1032,6 @@ ${r.label} \u2014 ${r.badgeText}`, chip.textContent = r.badgeText, chips.appendC
       log(`History record failed: ${err instanceof Error ? err.message : String(err)}`, "error");
     }
   }
-  function formatDuration(startedAt, completedAt) {
-    let s = Math.max(0, Math.round((completedAt - startedAt) / 1e3)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
-    return h > 0 ? `${h}h ${m}m ${sec}s` : m > 0 ? `${m}m ${sec}s` : `${sec}s`;
-  }
   async function retryDownload(jobId) {
     let it = state.queue.get(jobId);
     it && (state.queue.delete(jobId), renderQueue(), log(`Retrying: ${it.filename}`, "info"), await enqueue(it.url, !0));
@@ -1259,6 +1137,27 @@ ${r.label} \u2014 ${r.badgeText}`, chip.textContent = r.badgeText, chips.appendC
       return void ((_a = navigator.clipboard) == null ? void 0 : _a.writeText(item.url));
     }), tdActions.appendChild(actions), tr.appendChild(tdStatus), tr.appendChild(tdHoster), tr.appendChild(tdFile), tr.appendChild(tdProgress), tr.appendChild(tdSize), tr.appendChild(tdSpeed), tr.appendChild(tdEta), tr.appendChild(tdActions), tr;
   }
+
+  // aria2-downloader/src/history-view.ts
+  async function initHistory() {
+    await ensureHistorySchema(), await refreshHistoryUI("");
+  }
+  async function refreshHistoryUI(term) {
+    try {
+      state.history = term.trim() ? await searchHistory(term.trim()) : await queryHistory(200);
+    } catch (err) {
+      log(`History load failed: ${err instanceof Error ? err.message : String(err)}`, "error");
+      return;
+    }
+    renderHistory(state.history);
+  }
+  async function removeHistoryRecord(id) {
+    try {
+      await removeHistoryEntry(id), state.history = state.history.filter((r) => r.id !== id), renderHistory(state.history), log("Removed history entry.", "info");
+    } catch (err) {
+      log(`Remove failed: ${err instanceof Error ? err.message : String(err)}`, "error");
+    }
+  }
   function renderHistory(records, listEl) {
     let list = listEl != null ? listEl : el("ad-history-list");
     if (!list) return;
@@ -1316,15 +1215,155 @@ ${r.label} \u2014 ${r.badgeText}`, chip.textContent = r.badgeText, chips.appendC
       return void ((_a = navigator.clipboard) == null ? void 0 : _a.writeText(rec.url));
     }), mk("bi bi-arrow-repeat", "Re-download", () => void redownloadUrl(rec.url)), mk("bi bi-x-lg", "Remove from history", () => void removeHistoryRecord(rec.id)), tdActions.appendChild(actions), tr.appendChild(tdStatus), tr.appendChild(tdHoster), tr.appendChild(tdFile), tr.appendChild(tdSize), tr.appendChild(tdDate), tr.appendChild(tdActions), tr;
   }
-  function appendLogDelta(item) {
-    let dock = el("ad-log-dock");
-    if (!dock || item.logIndex >= item.logs.length) return;
-    let frag = document.createDocumentFragment();
-    for (let i = item.logIndex; i < item.logs.length; i++) {
-      let line = document.createElement("div");
-      line.textContent = item.logs[i], frag.appendChild(line);
-    }
-    dock.appendChild(frag), dock.scrollTop = dock.scrollHeight, item.logIndex = item.logs.length;
+
+  // aria2-downloader/src/ui.ts
+  function renderTab() {
+    injectStyles();
+    let root = document.createElement("div");
+    root.className = "ad-workspace";
+    let banner = document.createElement("div"), queueList = root.querySelector("#ad-queue-list"), historyList = root.querySelector("#ad-history-list");
+    banner.id = "ad-banner", banner.className = "ad-banner", banner.innerHTML = `
+    <i class="bi bi-exclamation-triangle-fill" style="flex-shrink:0;font-size:13px;"></i>
+    <div class="ad-banner-inner">
+      <div id="ad-banner-text"></div>
+      <div class="ad-banner-status" id="ad-banner-status" style="display:none;">Preparing install...</div>
+      <div class="ad-banner-progress" id="ad-banner-progress" style="display:none;">
+        <div class="ad-banner-fill" id="ad-banner-fill"></div>
+      </div>
+    </div>
+    <button type="button" class="win-button primary" id="ad-install-btn" style="margin-left:8px;font-size:10px;flex-shrink:0;">
+      <i class="bi bi-download"></i> Download &amp; Install
+    </button>`, root.appendChild(banner);
+    let topBar = document.createElement("div");
+    topBar.className = "group-box ad-toolbar", topBar.innerHTML = `
+    <div class="group-box-title"><i class="bi bi-link-45deg"></i> Add Downloads</div>
+    <div class="ad-toolbar-row">
+      <textarea id="ad-url-input" class="input-field ad-url-input" placeholder="Paste download URLs (comma, space, or newline separated)..."></textarea>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <button type="button" class="win-button primary" id="ad-add-btn" style="font-size:11px;"><i class="bi bi-plus-circle"></i> Add to Queue</button>
+        <button type="button" class="win-button" id="ad-clear-input-btn" style="font-size:11px;"><i class="bi bi-eraser"></i> Clear</button>
+      </div>
+    </div>
+    <div class="ad-chips" id="ad-chips"></div>
+    <div class="ad-summary-row">
+      <label for="ad-output-dir">Output</label>
+      <input type="text" id="ad-output-dir" class="input-field" readonly style="flex:1;font-size:11px;" />
+      <button type="button" class="win-button" id="ad-browse-btn" style="font-size:10px;"><i class="bi bi-folder2-open"></i> Browse</button>
+      <button type="button" class="win-button" id="ad-open-folder-btn" style="font-size:10px;"><i class="bi bi-folder"></i> Open</button>
+    </div>
+    <div class="ad-summary-row">
+      <label for="ad-conns">Connections</label>
+      <input type="number" id="ad-conns" min="1" max="16" value="${state.settings.connections}" />
+      <label for="ad-speed">Speed (KiB/s, 0=\u221E)</label>
+      <input type="number" id="ad-speed" min="0" value="${state.settings.speedLimitKb}" />
+      <label for="ad-tries">Max tries</label>
+      <input type="number" id="ad-tries" min="0" value="${state.settings.maxTries}" />
+    </div>
+    <div class="ad-summary-row">
+      <label class="ad-toggle"><input type="checkbox" id="ad-auto-rename" ${state.settings.autoRename ? "checked" : ""} /> Rename if exists (<span style="font-family:'Consolas',monospace;">_1</span>, <span style="font-family:'Consolas',monospace;">_2</span>, ...)</label>
+      <label class="ad-toggle"><input type="checkbox" id="ad-auto-start" ${state.settings.autoStart ? "checked" : ""} /> Auto start queue</label>
+    </div>`, root.appendChild(topBar);
+    let middle = document.createElement("div");
+    middle.className = "ad-middle", middle.innerHTML = `
+    <div class="ad-column ad-queue-box">
+      <div class="group-box" style="flex:1;display:flex;flex-direction:column;min-height:0;">
+        <div class="group-box-title"><i class="bi bi-list-ul"></i> Download Queue <span id="ad-queue-count" style="color:#888;font-size:10px;"></span>
+        </div>
+        <div class="ad-toolbar-row" style="margin-top:0;" id="ad-queue-filter">
+          <button type="button" class="win-button" id="ad-start-all-btn" style="font-size:10px;"><i class="bi bi-play-fill"></i> Start All</button>
+          <button type="button" class="win-button ad-filter-btn active" data-status="">All</button>
+          <button type="button" class="win-button ad-filter-btn" data-status="queued">Queued</button>
+          <button type="button" class="win-button ad-filter-btn" data-status="running">Running</button>
+          <button type="button" class="win-button ad-filter-btn" data-status="completed">Completed</button>
+          <button type="button" class="win-button ad-filter-btn" data-status="failed">Failed</button>
+          <button type="button" class="win-button ad-filter-btn" data-status="cancelled">Cancelled</button>
+        </div>
+        <div class="ad-scroll" id="ad-queue-list"></div>
+      </div>
+    </div>
+    <div class="ad-column ad-history-box">
+      <div class="group-box" style="flex:1;display:flex;flex-direction:column;min-height:0;">
+        <div class="group-box-title"><i class="bi bi-clock-history"></i> History</div>
+        <div class="ad-toolbar-row" style="margin-top:0;">
+          <input type="text" id="ad-history-search" class="input-field" placeholder="Search history..." style="flex:1;font-size:11px;" />
+          <button type="button" class="win-button" id="ad-history-refresh" style="font-size:10px;"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+        <div class="ad-scroll" id="ad-history-list" style="margin-top:4px;"></div>
+      </div>
+    </div>`, root.appendChild(middle);
+    let logBox = document.createElement("div");
+    logBox.className = "group-box", logBox.style.cssText = "flex-shrink:0;", logBox.innerHTML = `
+    <div class="group-box-title"><i class="bi bi-terminal"></i> aria2 Console</div>
+    <div class="ad-log-dock" id="ad-log-dock"></div>`, root.appendChild(logBox);
+    let urlInput = root.querySelector("#ad-url-input"), addBtn = root.querySelector("#ad-add-btn");
+    addBtn && addBtn.addEventListener("click", () => {
+      var _a;
+      return void addUrls((_a = urlInput == null ? void 0 : urlInput.value) != null ? _a : "");
+    }), urlInput && (urlInput.addEventListener("input", updateChips), urlInput.addEventListener("keydown", (e) => {
+      e.key === "Enter" && !e.shiftKey && (e.preventDefault(), addUrls(urlInput.value));
+    }));
+    let clearBtn = root.querySelector("#ad-clear-input-btn");
+    clearBtn && clearBtn.addEventListener("click", () => {
+      urlInput && (urlInput.value = ""), updateChips();
+    });
+    let outInput = root.querySelector("#ad-output-dir");
+    outInput && (outInput.value = state.settings.outputDir);
+    let browseBtn = root.querySelector("#ad-browse-btn");
+    browseBtn && browseBtn.addEventListener("click", async () => {
+      let path = await pickDirectory();
+      path && (state.settings.outputDir = path, outInput && (outInput.value = path), savePersisted("aria2-downloader-output-dir", path), log(`Output directory set: ${path}`, "success"));
+    });
+    let openFolderBtn = root.querySelector("#ad-open-folder-btn");
+    openFolderBtn && openFolderBtn.addEventListener("click", async () => {
+      var _a;
+      let api = (_a = window.__TAURI__) == null ? void 0 : _a.core;
+      if (!(!(api != null && api.invoke) || !state.settings.outputDir))
+        try {
+          await api.invoke("open_file_externally", { path: state.settings.outputDir });
+        } catch (e) {
+          log("Could not open output folder.", "error");
+        }
+    });
+    let connsInput = root.querySelector("#ad-conns");
+    connsInput && (connsInput.value = String(state.settings.connections), connsInput.addEventListener("change", () => {
+      state.settings.connections = Math.max(1, Math.min(16, parseInt(connsInput.value, 10) || state.settings.connections)), connsInput.value = String(state.settings.connections), savePersisted("aria2-downloader-connections", String(state.settings.connections));
+    }));
+    let speedInput = root.querySelector("#ad-speed");
+    speedInput && (speedInput.value = String(state.settings.speedLimitKb), speedInput.addEventListener("change", () => {
+      state.settings.speedLimitKb = Math.max(0, parseInt(speedInput.value, 10) || 0), speedInput.value = String(state.settings.speedLimitKb), savePersisted("aria2-downloader-speed-limit", String(state.settings.speedLimitKb));
+    }));
+    let triesInput = root.querySelector("#ad-tries");
+    triesInput && (triesInput.value = String(state.settings.maxTries), triesInput.addEventListener("change", () => {
+      state.settings.maxTries = Math.max(0, parseInt(triesInput.value, 10) || 0), triesInput.value = String(state.settings.maxTries), savePersisted("aria2-downloader-max-tries", String(state.settings.maxTries));
+    }));
+    let installBtn = root.querySelector("#ad-install-btn");
+    installBtn && installBtn.addEventListener("click", () => void installAria2());
+    let historySearch = root.querySelector("#ad-history-search");
+    historySearch && historySearch.addEventListener("input", () => {
+      refreshHistoryUI(historySearch.value);
+    });
+    let historyRefresh = root.querySelector("#ad-history-refresh");
+    historyRefresh && historyRefresh.addEventListener("click", () => {
+      var _a;
+      refreshHistoryUI((_a = historySearch == null ? void 0 : historySearch.value) != null ? _a : "");
+    });
+    let autoRename = root.querySelector("#ad-auto-rename");
+    autoRename && (autoRename.checked = state.settings.autoRename, autoRename.addEventListener("change", () => {
+      state.settings.autoRename = autoRename.checked, savePersisted("aria2-downloader-auto-rename", autoRename.checked ? "1" : "0");
+    }));
+    let autoStart = root.querySelector("#ad-auto-start");
+    autoStart && (autoStart.checked = state.settings.autoStart, autoStart.addEventListener("change", () => {
+      state.settings.autoStart = autoStart.checked, savePersisted("aria2-downloader-auto-start", autoStart.checked ? "1" : "0");
+    }));
+    let startAllBtn = root.querySelector("#ad-start-all-btn");
+    startAllBtn && startAllBtn.addEventListener("click", () => void startAllQueued());
+    let queueFilterEls = root.querySelectorAll("#ad-queue-filter .ad-filter-btn");
+    return queueFilterEls.forEach(
+      (btn) => btn.addEventListener("click", () => {
+        var _a;
+        setQueueStatusFilter((_a = btn.dataset.status) != null ? _a : ""), queueFilterEls.forEach((b) => b.classList.toggle("active", b === btn)), renderQueue();
+      })
+    ), wireColumnResize(), renderQueue(queueList), updateChips(), renderHistory(state.history, historyList), setToolBanner(state.toolAvailable, state.toolVersion, defaultBannerText(), banner), initHistory(), root;
   }
   async function bootstrap() {
     state.settings.outputDir = loadPersisted("aria2-downloader-output-dir", state.settings.outputDir) || state.settings.outputDir, state.settings.connections = clampNum(
@@ -1340,11 +1379,8 @@ ${r.label} \u2014 ${r.badgeText}`, chip.textContent = r.badgeText, chips.appendC
       parseInt(loadPersisted("aria2-downloader-max-tries", String(state.settings.maxTries)), 10) || 0
     ), state.settings.autoRename = loadPersisted("aria2-downloader-auto-rename", "0") === "1", state.settings.autoStart = loadPersisted("aria2-downloader-auto-start", "1") === "1", await refreshToolStatus(), await initHistory(), log("aria2-downloader ready.", "success");
   }
-  function clampNum(v, min, max, fallback) {
-    return Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : fallback;
-  }
 
   // aria2-downloader/src/index.ts
-  var PH5 = window.PluginHost;
-  PH5 ? (PH5.registerTab(TAB_ID, "Aria2 Downloader", "bi bi-cloud-arrow-down", renderTab), bootstrap(), console.log("aria2-downloader: registered tab and bootstrapped.")) : console.error("aria2-downloader: PluginHost not available; aborting.");
+  var PH7 = window.PluginHost;
+  PH7 ? (PH7.registerTab(TAB_ID, "Aria2 Downloader", "bi bi-cloud-arrow-down", renderTab), bootstrap(), console.log("aria2-downloader: registered tab and bootstrapped.")) : console.error("aria2-downloader: PluginHost not available; aborting.");
 })();

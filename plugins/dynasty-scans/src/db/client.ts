@@ -1,24 +1,20 @@
+import { createPluginDb } from "../../../lib";
 import { DB_NAME } from "../state";
 import type { Row } from "../types/db";
 
-const PH = window.PluginHost;
-
 export type { Row };
 
+/**
+ * Plugin-scoped SQLite client bound to `dynasty_reader.db`.
+ *
+ * Implemented entirely on top of the shared `createPluginDb` factory in
+ * `plugins/lib/db.ts` so error unwrapping and row deserialization stay
+ * identical across every plugin in the workspace.
+ */
+const db = createPluginDb(DB_NAME);
+
 /** Runs a write query; returns rows affected. */
-export async function execute(sql: string, params: unknown[] = []): Promise<number> {
-  const resp = await PH.callService("PluginDbExecute", {
-    db: DB_NAME,
-    sql,
-    params,
-  });
-  if (resp?.Error) throw new Error(String(resp.Error.message));
-  return Number(resp?.PluginDbExecuteResult?.rows_affected ?? 0);
-}
+export const execute = db.execute;
 
 /** Runs a read query; returns rows as plain objects. */
-export async function query<T extends Row = Row>(sql: string, params: unknown[] = []): Promise<T[]> {
-  const resp = await PH.callService("PluginDbQuery", { db: DB_NAME, sql, params });
-  if (resp?.Error) throw new Error(String(resp.Error.message));
-  return (resp?.PluginDbQueryResult?.rows ?? []) as T[];
-}
+export const query = db.query;

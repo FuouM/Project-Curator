@@ -15,6 +15,9 @@ plugins/
 ├── lib/               # Shared library modules (barrel exported)
 │   ├── log.ts         # Standard console logger generator
 │   ├── format.ts      # Byte and duration formatting helpers
+│   ├── db.ts          # Shared sandboxed SQLite client factory (createPluginDb)
+│   ├── fs.ts          # Shared sandboxed file + download helpers
+│   ├── storage.ts     # localStorage persistence helpers
 │   ├── ipc-utils.ts   # Common IPC commands (e.g. checkFileExists)
 │   ├── navigation.ts  # Sidebar panel tab navigation triggers
 │   ├── drop-zone.ts   # Multi-zone Tauri drag-and-drop listener adapter
@@ -33,6 +36,12 @@ plugins/
 │   ├── src/
 │   └── index.js       # Bundled build output
 ├── minipaint/         # Full raster photo editor (offline iframe runtime)
+│   ├── src/
+│   └── index.js       # Bundled build output
+├── aria2-downloader/  # Multi-threaded download orchestration (aria2 engine)
+│   ├── src/
+│   └── index.js       # Bundled build output
+├── dynasty-scans/     # Online/offline manga reader with SQLite-backed library
 │   ├── src/
 │   └── index.js       # Bundled build output
 ├── plugin-types.d.ts  # Ambient global definitions for PluginHost API

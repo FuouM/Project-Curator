@@ -9,6 +9,7 @@ pub mod import;
 pub mod misc;
 pub mod models;
 pub mod ocr;
+pub mod plugin_commands;
 pub mod plugins;
 pub mod plugin_runtime;
 pub mod safety;

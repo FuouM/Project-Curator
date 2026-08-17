@@ -55,6 +55,12 @@
     };
   }
 
+  // lib/db.ts
+  var PH2 = window.PluginHost;
+
+  // lib/fs.ts
+  var PH3 = window.PluginHost;
+
   // lib/drop-zone.ts
   var boundTabs = /* @__PURE__ */ new Set();
   function setupDropZone(tabId, dropZoneIds, onFiles) {
@@ -98,7 +104,7 @@
   }
 
   // lib/poll.ts
-  var PH2 = window.PluginHost;
+  var PH4 = window.PluginHost;
   function pollServiceProgress({
     fetch,
     isRunning,
@@ -135,7 +141,7 @@
     pollServiceProgress({
       intervalMs,
       fetch: async () => {
-        let resp = await PH2.callService("GetTranscodeProgress", { job_id: jobId }), raw = resp == null ? void 0 : resp.TranscodeProgressResult;
+        let resp = await PH4.callService("GetTranscodeProgress", { job_id: jobId }), raw = resp == null ? void 0 : resp.TranscodeProgressResult;
         if (raw)
           return {
             percent: Math.round(raw.percent || 0),
@@ -173,12 +179,14 @@
     }
   }, { pluginDir: pluginDirValue, workspaceRoot: workspaceRootValue } = getPluginDirs(), workspaceRoot = workspaceRootValue, pluginDir = pluginDirValue;
 
-  // gif-maker/src/ui.ts
-  var PH3 = window.PluginHost;
+  // gif-maker/src/ui-core.ts
+  var PH5 = window.PluginHost;
   function el(id) {
     return document.getElementById(id);
   }
   var logConsole = createLogger("gm-console");
+
+  // gif-maker/src/timeline.ts
   window.GifMaker_moveFrame = (idx, dir) => {
     let target = idx + dir;
     if (target < 0 || target >= state.droppedFrames.length) return;
@@ -188,6 +196,32 @@
   window.GifMaker_removeFrame = (idx) => {
     state.droppedFrames.splice(idx, 1), renderDroppedFrames();
   };
+  function renderDroppedFrames() {
+    let container = el("gm-maker-frame-list");
+    if (container) {
+      if (state.droppedFrames.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:12px; color:#808080;">No frames loaded. Drop files to begin.</div>';
+        return;
+      }
+      container.innerHTML = "", state.droppedFrames.forEach((path, idx) => {
+        let card = document.createElement("div");
+        card.className = "gm-frame-item", card.innerHTML = `
+      <img class="gm-frame-img" src="${PH5.convertFileSrc(path)}" />
+      <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${path}">Frame ${idx + 1}: ${path.split(/[\\/]/).pop()}</span>
+      <div style="display:flex; gap:2px;">
+        <button type="button" class="win-button" style="padding:0px 4px; font-size:9px;" onclick="window.GifMaker_moveFrame(${idx}, -1)"><i class="bi bi-arrow-up"></i></button>
+        <button type="button" class="win-button" style="padding:0px 4px; font-size:9px;" onclick="window.GifMaker_moveFrame(${idx}, 1)"><i class="bi bi-arrow-down"></i></button>
+        <button type="button" class="win-button danger" style="padding:0px 4px; font-size:9px;" onclick="window.GifMaker_removeFrame(${idx})"><i class="bi bi-trash"></i></button>
+      </div>
+    `, container.appendChild(card);
+      });
+    }
+  }
+  async function getTempOutputPath(targetExt) {
+    return `.curator\\temp_gif\\temp_gif_${Math.floor(Math.random() * 1e7).toString(36)}.${targetExt}`;
+  }
+
+  // gif-maker/src/effects.ts
   function injectStyles() {
     if (document.getElementById("gm-styles")) return;
     let style = document.createElement("style");
@@ -374,7 +408,7 @@
       state.customFontName = "Roboto Condensed Bold", renderWysiwygCanvas();
       return;
     }
-    let baseName = ((_a = fontPath.split(/[\\/]/).pop()) == null ? void 0 : _a.split(".")[0]) || "CustomFont", convertedUrl = PH3.convertFileSrc(fontPath);
+    let baseName = ((_a = fontPath.split(/[\\/]/).pop()) == null ? void 0 : _a.split(".")[0]) || "CustomFont", convertedUrl = PH5.convertFileSrc(fontPath);
     new FontFace(baseName, `url(${convertedUrl})`).load().then((loaded) => {
       document.fonts.add(loaded), state.customFontName = baseName, logConsole(`Loaded custom font: ${baseName}`, "success"), renderWysiwygCanvas();
     }).catch(() => {
@@ -477,88 +511,8 @@
       state.cropState.dragging = !1, state.cropState.resizing = !1;
     }), updateVisuals();
   }
-  function previewMediaFile(filePath) {
-    if (!filePath) return;
-    logConsole(`Detecting media file: ${filePath}`, "info");
-    let isVideo = /\.(mp4|webm|mov|avi|mkv)$/i.test(filePath);
-    state.cropState.needsReset = !0, state.currentMedia = {
-      path: filePath,
-      type: isVideo ? "video" : "image",
-      width: 0,
-      height: 0
-    };
-    let contentPanel = el("gm-panel-content");
-    contentPanel == null || contentPanel.removeAttribute("data-mounted-tool");
-    let img = el("gm-preview-img"), vid = el("gm-preview-video"), empty = el("gm-empty-state"), container = el("gm-drop-zone");
-    container && (container.style.background = "#202020", container.style.padding = "0px", container.style.alignItems = "center", container.style.justifyContent = "center"), empty.style.display = "none";
-    let wrapper = el("gm-composition-wrapper");
-    wrapper && (wrapper.style.display = "flex");
-    let absolutePath = filePath;
-    filePath && !/^[a-zA-Z]:[\\/]/.test(filePath) && !filePath.startsWith("\\\\") && (absolutePath = workspaceRoot + "\\" + filePath);
-    let safeUrl = PH3.convertFileSrc(absolutePath);
-    console.log("gif-maker path debug:", {
-      workspaceRoot,
-      filePath,
-      absolutePath,
-      safeUrl
-    }), isVideo ? (img.style.display = "none", vid.style.display = "block", vid.src = safeUrl, vid.onloadedmetadata = () => {
-      state.currentMedia.width = vid.videoWidth, state.currentMedia.height = vid.videoHeight, logConsole(`Loaded video metadata: ${vid.videoWidth}x${vid.videoHeight}`, "success"), PH3.callService("GetMediaMetadata", { path: filePath }).then((resp) => {
-        if (resp && resp.MediaMetadataResult) {
-          if (state.currentMedia.durationMs = resp.MediaMetadataResult.duration_ms, state.currentMedia.fps = resp.MediaMetadataResult.fps, state.currentMedia.totalFrames = resp.MediaMetadataResult.total_frames, logConsole(
-            `Probed media: ${(state.currentMedia.durationMs / 1e3).toFixed(2)}s, ${state.currentMedia.fps.toFixed(
-              2
-            )} fps, ${state.currentMedia.totalFrames} frames`,
-            "success"
-          ), state.currentTool === "trim") {
-            let cp = el("gm-panel-content");
-            cp == null || cp.removeAttribute("data-mounted-tool"), setupToolboxPane();
-          }
-        } else resp && resp.Error && logConsole(`Failed to probe video details: ${resp.Error.message}`, "error");
-      }).catch((e) => {
-        let msg = e instanceof Error ? e.message : String(e);
-        logConsole(`Failed to probe video details: ${msg}`, "error");
-      }), setupToolboxPane(), setTimeout(updateOverlayPosition, 80);
-    }) : (/\.(gif|webp)$/i.test(filePath) && PH3.callService("GetMediaMetadata", { path: filePath }).then((resp) => {
-      if (resp && resp.MediaMetadataResult) {
-        if (state.currentMedia.durationMs = resp.MediaMetadataResult.duration_ms, state.currentMedia.fps = resp.MediaMetadataResult.fps, state.currentMedia.totalFrames = resp.MediaMetadataResult.total_frames, logConsole(
-          `Probed animated image: ${(state.currentMedia.durationMs / 1e3).toFixed(
-            2
-          )}s, ${state.currentMedia.fps.toFixed(2)} fps, ${state.currentMedia.totalFrames} frames`,
-          "success"
-        ), state.currentTool === "trim") {
-          let cp = el("gm-panel-content");
-          cp == null || cp.removeAttribute("data-mounted-tool"), setupToolboxPane();
-        }
-      } else resp && resp.Error && logConsole(`Failed to probe animated image: ${resp.Error.message}`, "error");
-    }).catch(() => {
-    }), vid.style.display = "none", img.style.display = "block", img.src = safeUrl, img.onload = () => {
-      state.currentMedia.width = img.naturalWidth, state.currentMedia.height = img.naturalHeight, logConsole(`Loaded image metadata: ${img.naturalWidth}x${img.naturalHeight}`, "success"), setupToolboxPane(), setTimeout(updateOverlayPosition, 80);
-    }), setTimeout(renderWysiwygCanvas, 100);
-  }
-  function renderDroppedFrames() {
-    let container = el("gm-maker-frame-list");
-    if (container) {
-      if (state.droppedFrames.length === 0) {
-        container.innerHTML = '<div style="text-align:center; padding:12px; color:#808080;">No frames loaded. Drop files to begin.</div>';
-        return;
-      }
-      container.innerHTML = "", state.droppedFrames.forEach((path, idx) => {
-        let card = document.createElement("div");
-        card.className = "gm-frame-item", card.innerHTML = `
-      <img class="gm-frame-img" src="${PH3.convertFileSrc(path)}" />
-      <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${path}">Frame ${idx + 1}: ${path.split(/[\\/]/).pop()}</span>
-      <div style="display:flex; gap:2px;">
-        <button type="button" class="win-button" style="padding:0px 4px; font-size:9px;" onclick="window.GifMaker_moveFrame(${idx}, -1)"><i class="bi bi-arrow-up"></i></button>
-        <button type="button" class="win-button" style="padding:0px 4px; font-size:9px;" onclick="window.GifMaker_moveFrame(${idx}, 1)"><i class="bi bi-arrow-down"></i></button>
-        <button type="button" class="win-button danger" style="padding:0px 4px; font-size:9px;" onclick="window.GifMaker_removeFrame(${idx})"><i class="bi bi-trash"></i></button>
-      </div>
-    `, container.appendChild(card);
-      });
-    }
-  }
-  async function getTempOutputPath(targetExt) {
-    return `.curator\\temp_gif\\temp_gif_${Math.floor(Math.random() * 1e7).toString(36)}.${targetExt}`;
-  }
+
+  // gif-maker/src/export.ts
   async function compileImagesToAnimation() {
     var _a, _b, _c;
     let patternInput = el("gm-inp-seq-pattern"), pattern = patternInput ? patternInput.value.trim() : state.sequencePattern;
@@ -569,7 +523,7 @@
     state.sequencePattern = pattern;
     let fps = parseFloat(((_a = el("gm-inp-fps")) == null ? void 0 : _a.value) || "24"), loop = parseInt(((_b = el("gm-inp-loop")) == null ? void 0 : _b.value) || "0"), format = ((_c = el("gm-inp-maker-format")) == null ? void 0 : _c.value) || "gif", jobId = "make_" + Date.now(), tempPath = await getTempOutputPath(format);
     logConsole("Compiling sequence: " + pattern, "info");
-    let resp = await PH3.callService("CreateGifFromImages", {
+    let resp = await PH5.callService("CreateGifFromImages", {
       job_id: jobId,
       image_pattern: pattern,
       frame_rate: fps,
@@ -589,7 +543,7 @@
     }
     let fps = ((_a = el("gm-chk-native-fps")) == null ? void 0 : _a.checked) || !1 ? null : parseInt(((_b = el("gm-inp-fps")) == null ? void 0 : _b.value) || "15"), loop = parseInt(((_c = el("gm-inp-loop")) == null ? void 0 : _c.value) || "0"), format = ((_d = el("gm-inp-maker-format")) == null ? void 0 : _d.value) || "gif", jobId = "maker_vid_" + Date.now(), tempPath = await getTempOutputPath(format);
     logConsole(`Compiling video to ${format.toUpperCase()}...`, "info");
-    let resp = await PH3.callService("ProcessGifEffects", {
+    let resp = await PH5.callService("ProcessGifEffects", {
       job_id: jobId,
       input_path: state.currentMedia.path,
       output_path: tempPath,
@@ -623,7 +577,7 @@
     if (!state.currentMedia) return;
     let start = parseFloat(((_a = el("gm-inp-trim-start")) == null ? void 0 : _a.value) || "0"), end = parseFloat(((_b = el("gm-inp-trim-end")) == null ? void 0 : _b.value) || "10"), fps = parseInt(((_c = el("gm-inp-trim-fps")) == null ? void 0 : _c.value) || "10"), format = ((_d = el("gm-inp-trim-format")) == null ? void 0 : _d.value) || "gif", jobId = "trim_" + Date.now(), tempPath = await getTempOutputPath(format);
     logConsole(`Trimming video to ${format.toUpperCase()}...`, "info");
-    let resp = await PH3.callService("ProcessGifEffects", {
+    let resp = await PH5.callService("ProcessGifEffects", {
       job_id: jobId,
       input_path: state.currentMedia.path,
       output_path: tempPath,
@@ -659,7 +613,7 @@
     if (!container || state.currentMedia.width === 0) return;
     let containerWidth = container.clientWidth || 1, containerHeight = container.clientHeight || 1, scaleX = state.currentMedia.width / containerWidth, scaleY = state.currentMedia.height / containerHeight, xVal = parseFloat(((_a = el("gm-inp-crop-x")) == null ? void 0 : _a.value) || "0"), yVal = parseFloat(((_b = el("gm-inp-crop-y")) == null ? void 0 : _b.value) || "0"), wVal = parseFloat(((_c = el("gm-inp-crop-w")) == null ? void 0 : _c.value) || "100"), hVal = parseFloat(((_d = el("gm-inp-crop-h")) == null ? void 0 : _d.value) || "100"), x = Math.round(xVal * scaleX), y = Math.round(yVal * scaleY), w = Math.round(wVal * scaleX), h = Math.round(hVal * scaleY), jobId = "crop_" + Date.now(), ext = state.currentMedia.path.split(".").pop(), tempPath = await getTempOutputPath(ext);
     logConsole("Applying crop filter...", "info");
-    let resp = await PH3.callService("ProcessGifEffects", {
+    let resp = await PH5.callService("ProcessGifEffects", {
       job_id: jobId,
       input_path: state.currentMedia.path,
       output_path: tempPath,
@@ -694,7 +648,7 @@
     }
     let sizeInp = el("gm-inp-caption-size-num"), sizeVal = sizeInp ? parseInt(sizeInp.value) : 28, displayW = ((_c = el("gm-composition-wrapper")) == null ? void 0 : _c.clientWidth) || 400, originalW = state.currentMedia.width || 400, scale = displayW > 0 ? originalW / displayW : 1, originalFontSize = Math.round(sizeVal * scale), built = buildCaptionCanvas(txt, originalW, captionStyle, originalFontSize), base64Png = built.canvas.toDataURL("image/png"), originalCaptionHeight = built.captionH, jobId = "caption_" + Date.now(), ext = state.currentMedia.path.split(".").pop(), tempPath = await getTempOutputPath(ext);
     logConsole("Rendering text caption from Canvas PNG...", "info");
-    let resp = await PH3.callService("ProcessGifEffects", {
+    let resp = await PH5.callService("ProcessGifEffects", {
       job_id: jobId,
       input_path: state.currentMedia.path,
       output_path: tempPath,
@@ -724,7 +678,7 @@
     if (!state.currentMedia) return;
     let speed = parseFloat(((_a = el("gm-inp-speed")) == null ? void 0 : _a.value) || "1.0"), rotate = ((_b = el("gm-inp-rotate")) == null ? void 0 : _b.value) || null, reverse = ((_c = el("gm-inp-reverse")) == null ? void 0 : _c.checked) || !1, bounce = ((_d = el("gm-inp-bounce")) == null ? void 0 : _d.checked) || !1, grayscale = ((_e = el("gm-inp-grayscale")) == null ? void 0 : _e.checked) || !1, invert = ((_f = el("gm-inp-invert")) == null ? void 0 : _f.checked) || !1, jobId = "effects_" + Date.now(), ext = state.currentMedia.path.split(".").pop(), tempPath = await getTempOutputPath(ext);
     logConsole("Applying layout and speed transformations...", "info");
-    let resp = await PH3.callService("ProcessGifEffects", {
+    let resp = await PH5.callService("ProcessGifEffects", {
       job_id: jobId,
       input_path: state.currentMedia.path,
       output_path: tempPath,
@@ -754,7 +708,7 @@
     if (!state.currentMedia) return;
     let colors = parseInt(((_a = el("gm-inp-colors")) == null ? void 0 : _a.value) || "256"), dither = ((_b = el("gm-inp-dither")) == null ? void 0 : _b.value) || "floyd_steinberg", dropFrames = parseInt(((_c = el("gm-inp-drop-frames")) == null ? void 0 : _c.value) || "1"), jobId = "optimize_" + Date.now(), ext = state.currentMedia.path.split(".").pop(), tempPath = await getTempOutputPath(ext);
     logConsole("Applying dither/colors reduction...", "info");
-    let resp = await PH3.callService("ProcessGifEffects", {
+    let resp = await PH5.callService("ProcessGifEffects", {
       job_id: jobId,
       input_path: state.currentMedia.path,
       output_path: tempPath,
@@ -785,7 +739,7 @@
     outDir || (outDir = state.currentMedia.path.replace(/[\/\\][^\/\\]+$/, "") || ".");
     let jobId = "split_" + Date.now();
     logConsole("Extracting frames to folder: " + outDir, "info");
-    let resp = await PH3.callService("SplitGif", {
+    let resp = await PH5.callService("SplitGif", {
       job_id: jobId,
       input_path: state.currentMedia.path,
       output_dir: outDir
@@ -797,7 +751,7 @@
     if (!state.currentMedia) return;
     let w = parseInt(((_a = el("gm-inp-resize-w")) == null ? void 0 : _a.value) || ""), h = parseInt(((_b = el("gm-inp-resize-h")) == null ? void 0 : _b.value) || ""), format = ((_c = el("gm-inp-export-format")) == null ? void 0 : _c.value) || "gif", jobId = "export_" + Date.now(), tempPath = await getTempOutputPath(format), scaleStr = w && h ? w + ":" + h : null;
     logConsole("Compiling export dimensions scaling...", "info");
-    let resp = await PH3.callService("ProcessGifEffects", {
+    let resp = await PH5.callService("ProcessGifEffects", {
       job_id: jobId,
       input_path: state.currentMedia.path,
       output_path: tempPath,
@@ -845,9 +799,9 @@
     }).catch((err) => (logConsole("Save dialog error: " + err, "error"), null));
     if (!finalDest) return;
     logConsole("Saving final compiled media to disk...", "info");
-    let resp = await PH3.callService("PathExists", { path: activeState.path });
+    let resp = await PH5.callService("PathExists", { path: activeState.path });
     if (resp && resp.PathExistsResult && resp.PathExistsResult.exists) {
-      let copyResp = await PH3.callService("EphemeralConvertImages", {
+      let copyResp = await PH5.callService("EphemeralConvertImages", {
         conversions: [[activeState.path, finalDest]],
         quality: 100
       });
@@ -880,65 +834,8 @@
       }
     });
   }
-  async function pushHistoryState(filePath, description) {
-    state.historyIndex < state.history.length - 1 && (state.history = state.history.slice(0, state.historyIndex + 1));
-    let size = null;
-    if (window.__TAURI__ && window.__TAURI__.core)
-      try {
-        size = await window.__TAURI__.core.invoke("get_file_size", { path: filePath });
-      } catch (e) {
-      }
-    state.history.push({ path: filePath, description, fileSize: size }), state.historyIndex = state.history.length - 1, restoreHistoryState();
-  }
-  function restoreHistoryState() {
-    let root = el("view-extensions-" + TAB_ID);
-    if (!root) return;
-    let list = root.querySelector("#gm-hist-list"), btnUndo = root.querySelector("#gm-btn-undo"), btnRedo = root.querySelector("#gm-btn-redo"), btnSave = root.querySelector("#gm-btn-save-final");
-    if (!list || !btnUndo || !btnRedo || !btnSave) return;
-    if (state.history.length === 0) {
-      list.innerHTML = '<div style="color:#808080; padding:6px; font-style:italic;">No files loaded.</div>', btnUndo.disabled = !0, btnRedo.disabled = !0, btnSave.disabled = !0;
-      let container = el("gm-drop-zone");
-      container && (container.style.background = "var(--sys-window-bg, #f0f0f0)", container.style.padding = "12px", container.style.alignItems = "stretch", container.style.justifyContent = "stretch");
-      let empty = el("gm-empty-state");
-      empty && (empty.style.display = "flex");
-      let img = el("gm-preview-img"), wrapper = el("gm-composition-wrapper");
-      wrapper && (wrapper.style.display = "none"), img && (img.style.display = "none");
-      let vid = el("gm-preview-video");
-      vid && (vid.style.display = "none", vid.src = ""), state.currentMedia = null;
-      return;
-    }
-    list.innerHTML = "", state.history.forEach((histState, idx) => {
-      let item = document.createElement("div");
-      item.className = "gm-history-item" + (idx === state.historyIndex ? " active" : "");
-      let name = histState.path.split(/[\\/]/).pop(), sizeStr = histState.fileSize ? " (" + formatBytes(histState.fileSize) + ")" : "";
-      item.innerHTML = `
-      <span>${histState.description}</span>
-      <span style="color:#666; font-size:10px;">${name}${sizeStr}</span>
-    `, item.addEventListener("click", () => {
-        state.historyIndex = idx, restoreHistoryState();
-      }), list.appendChild(item);
-    }), btnUndo.disabled = state.historyIndex <= 0, btnRedo.disabled = state.historyIndex >= state.history.length - 1, btnSave.disabled = state.historyIndex < 0;
-    let activeState = state.history[state.historyIndex];
-    previewMediaFile(activeState.path);
-  }
-  async function handleLoadSelection() {
-    logConsole("Fetching selected gallery assets...", "info");
-    let selection = await PH3.getSelectionAssetContexts();
-    if (!selection || selection.length === 0) {
-      logConsole("Error: Select files in the main gallery first.", "error");
-      return;
-    }
-    state.currentTool === "maker" ? (state.droppedFrames = selection.map((asset) => asset.path), logConsole(`Loaded ${state.droppedFrames.length} frames to the GIF Maker frame pool.`, "success"), renderDroppedFrames()) : pushHistoryState(selection[0].path, "Imported selected file");
-  }
-  async function handleBrowseFile() {
-    try {
-      let path = await pickFile();
-      path && (state.currentTool === "maker" ? /\.(png|jpe?g|webp|gif)$/i.test(path) ? (state.droppedFrames.push(path), logConsole("Added frame: " + path.split(/[\\/]/).pop(), "success"), renderDroppedFrames()) : logConsole("Error: Select an image file to add to GIF Maker frames.", "error") : pushHistoryState(path, "Opened file: " + path.split(/[\\/]/).pop()));
-    } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      logConsole("Browse file error: " + msg, "error");
-    }
-  }
+
+  // gif-maker/src/toolbox.ts
   function setupToolboxPane() {
     var _a, _b, _c, _d, _e, _f, _g;
     let title = el("gm-control-title"), content = el("gm-panel-content"), rect = el("gm-crop-rect"), container = el("gm-overlay-interactive");
@@ -1495,6 +1392,127 @@
         break;
     }
   }
+
+  // gif-maker/src/history.ts
+  function previewMediaFile(filePath) {
+    if (!filePath) return;
+    logConsole(`Detecting media file: ${filePath}`, "info");
+    let isVideo = /\.(mp4|webm|mov|avi|mkv)$/i.test(filePath);
+    state.cropState.needsReset = !0, state.currentMedia = {
+      path: filePath,
+      type: isVideo ? "video" : "image",
+      width: 0,
+      height: 0
+    };
+    let contentPanel = el("gm-panel-content");
+    contentPanel == null || contentPanel.removeAttribute("data-mounted-tool");
+    let img = el("gm-preview-img"), vid = el("gm-preview-video"), empty = el("gm-empty-state"), container = el("gm-drop-zone");
+    container && (container.style.background = "#202020", container.style.padding = "0px", container.style.alignItems = "center", container.style.justifyContent = "center"), empty.style.display = "none";
+    let wrapper = el("gm-composition-wrapper");
+    wrapper && (wrapper.style.display = "flex");
+    let absolutePath = filePath;
+    filePath && !/^[a-zA-Z]:[\\/]/.test(filePath) && !filePath.startsWith("\\\\") && (absolutePath = workspaceRoot + "\\" + filePath);
+    let safeUrl = PH5.convertFileSrc(absolutePath);
+    console.log("gif-maker path debug:", {
+      workspaceRoot,
+      filePath,
+      absolutePath,
+      safeUrl
+    }), isVideo ? (img.style.display = "none", vid.style.display = "block", vid.src = safeUrl, vid.onloadedmetadata = () => {
+      state.currentMedia.width = vid.videoWidth, state.currentMedia.height = vid.videoHeight, logConsole(`Loaded video metadata: ${vid.videoWidth}x${vid.videoHeight}`, "success"), PH5.callService("GetMediaMetadata", { path: filePath }).then((resp) => {
+        if (resp && resp.MediaMetadataResult) {
+          if (state.currentMedia.durationMs = resp.MediaMetadataResult.duration_ms, state.currentMedia.fps = resp.MediaMetadataResult.fps, state.currentMedia.totalFrames = resp.MediaMetadataResult.total_frames, logConsole(
+            `Probed media: ${(state.currentMedia.durationMs / 1e3).toFixed(2)}s, ${state.currentMedia.fps.toFixed(
+              2
+            )} fps, ${state.currentMedia.totalFrames} frames`,
+            "success"
+          ), state.currentTool === "trim") {
+            let cp = el("gm-panel-content");
+            cp == null || cp.removeAttribute("data-mounted-tool"), setupToolboxPane();
+          }
+        } else resp && resp.Error && logConsole(`Failed to probe video details: ${resp.Error.message}`, "error");
+      }).catch((e) => {
+        let msg = e instanceof Error ? e.message : String(e);
+        logConsole(`Failed to probe video details: ${msg}`, "error");
+      }), setupToolboxPane(), setTimeout(updateOverlayPosition, 80);
+    }) : (/\.(gif|webp)$/i.test(filePath) && PH5.callService("GetMediaMetadata", { path: filePath }).then((resp) => {
+      if (resp && resp.MediaMetadataResult) {
+        if (state.currentMedia.durationMs = resp.MediaMetadataResult.duration_ms, state.currentMedia.fps = resp.MediaMetadataResult.fps, state.currentMedia.totalFrames = resp.MediaMetadataResult.total_frames, logConsole(
+          `Probed animated image: ${(state.currentMedia.durationMs / 1e3).toFixed(
+            2
+          )}s, ${state.currentMedia.fps.toFixed(2)} fps, ${state.currentMedia.totalFrames} frames`,
+          "success"
+        ), state.currentTool === "trim") {
+          let cp = el("gm-panel-content");
+          cp == null || cp.removeAttribute("data-mounted-tool"), setupToolboxPane();
+        }
+      } else resp && resp.Error && logConsole(`Failed to probe animated image: ${resp.Error.message}`, "error");
+    }).catch(() => {
+    }), vid.style.display = "none", img.style.display = "block", img.src = safeUrl, img.onload = () => {
+      state.currentMedia.width = img.naturalWidth, state.currentMedia.height = img.naturalHeight, logConsole(`Loaded image metadata: ${img.naturalWidth}x${img.naturalHeight}`, "success"), setupToolboxPane(), setTimeout(updateOverlayPosition, 80);
+    }), setTimeout(renderWysiwygCanvas, 100);
+  }
+  async function pushHistoryState(filePath, description) {
+    state.historyIndex < state.history.length - 1 && (state.history = state.history.slice(0, state.historyIndex + 1));
+    let size = null;
+    if (window.__TAURI__ && window.__TAURI__.core)
+      try {
+        size = await window.__TAURI__.core.invoke("get_file_size", { path: filePath });
+      } catch (e) {
+      }
+    state.history.push({ path: filePath, description, fileSize: size }), state.historyIndex = state.history.length - 1, restoreHistoryState();
+  }
+  function restoreHistoryState() {
+    let root = el("view-extensions-" + TAB_ID);
+    if (!root) return;
+    let list = root.querySelector("#gm-hist-list"), btnUndo = root.querySelector("#gm-btn-undo"), btnRedo = root.querySelector("#gm-btn-redo"), btnSave = root.querySelector("#gm-btn-save-final");
+    if (!list || !btnUndo || !btnRedo || !btnSave) return;
+    if (state.history.length === 0) {
+      list.innerHTML = '<div style="color:#808080; padding:6px; font-style:italic;">No files loaded.</div>', btnUndo.disabled = !0, btnRedo.disabled = !0, btnSave.disabled = !0;
+      let container = el("gm-drop-zone");
+      container && (container.style.background = "var(--sys-window-bg, #f0f0f0)", container.style.padding = "12px", container.style.alignItems = "stretch", container.style.justifyContent = "stretch");
+      let empty = el("gm-empty-state");
+      empty && (empty.style.display = "flex");
+      let img = el("gm-preview-img"), wrapper = el("gm-composition-wrapper");
+      wrapper && (wrapper.style.display = "none"), img && (img.style.display = "none");
+      let vid = el("gm-preview-video");
+      vid && (vid.style.display = "none", vid.src = ""), state.currentMedia = null;
+      return;
+    }
+    list.innerHTML = "", state.history.forEach((histState, idx) => {
+      let item = document.createElement("div");
+      item.className = "gm-history-item" + (idx === state.historyIndex ? " active" : "");
+      let name = histState.path.split(/[\\/]/).pop(), sizeStr = histState.fileSize ? " (" + formatBytes(histState.fileSize) + ")" : "";
+      item.innerHTML = `
+      <span>${histState.description}</span>
+      <span style="color:#666; font-size:10px;">${name}${sizeStr}</span>
+    `, item.addEventListener("click", () => {
+        state.historyIndex = idx, restoreHistoryState();
+      }), list.appendChild(item);
+    }), btnUndo.disabled = state.historyIndex <= 0, btnRedo.disabled = state.historyIndex >= state.history.length - 1, btnSave.disabled = state.historyIndex < 0;
+    let activeState = state.history[state.historyIndex];
+    previewMediaFile(activeState.path);
+  }
+
+  // gif-maker/src/ui.ts
+  async function handleLoadSelection() {
+    logConsole("Fetching selected gallery assets...", "info");
+    let selection = await PH5.getSelectionAssetContexts();
+    if (!selection || selection.length === 0) {
+      logConsole("Error: Select files in the main gallery first.", "error");
+      return;
+    }
+    state.currentTool === "maker" ? (state.droppedFrames = selection.map((asset) => asset.path), logConsole(`Loaded ${state.droppedFrames.length} frames to the GIF Maker frame pool.`, "success"), renderDroppedFrames()) : pushHistoryState(selection[0].path, "Imported selected file");
+  }
+  async function handleBrowseFile() {
+    try {
+      let path = await pickFile();
+      path && (state.currentTool === "maker" ? /\.(png|jpe?g|webp|gif)$/i.test(path) ? (state.droppedFrames.push(path), logConsole("Added frame: " + path.split(/[\\/]/).pop(), "success"), renderDroppedFrames()) : logConsole("Error: Select an image file to add to GIF Maker frames.", "error") : pushHistoryState(path, "Opened file: " + path.split(/[\\/]/).pop()));
+    } catch (err) {
+      let msg = err instanceof Error ? err.message : String(err);
+      logConsole("Browse file error: " + msg, "error");
+    }
+  }
   function setupEvents(root) {
     var _a, _b, _c, _d, _e;
     let tools = root.querySelectorAll(".gm-toolbar .win-button");
@@ -1515,7 +1533,7 @@
   function renderGifMakerTab() {
     injectStyles(), new FontFace(
       "Roboto Condensed Bold",
-      `url(${PH3.convertFileSrc(pluginDir + "\\Roboto_Condensed_Bold.otf")})`
+      `url(${PH5.convertFileSrc(pluginDir + "\\Roboto_Condensed_Bold.otf")})`
     ).load().then((loaded) => {
       document.fonts.add(loaded), renderWysiwygCanvas();
     }).catch((err) => {
@@ -1623,8 +1641,8 @@
   }
 
   // gif-maker/src/index.ts
-  var PH4 = window.PluginHost;
-  PH4 ? (PH4.registerTab(TAB_ID, "GIF Maker", "bi bi-film", renderGifMakerTab), PH4.registerToolbarButton("gif-maker-create", "Create GIF", "bi bi-film", (selection) => {
+  var PH6 = window.PluginHost;
+  PH6 ? (PH6.registerTab(TAB_ID, "GIF Maker", "bi bi-film", renderGifMakerTab), PH6.registerToolbarButton("gif-maker-create", "Create GIF", "bi bi-film", (selection) => {
     if (!selection || selection.length === 0) return;
     let tab = document.getElementById("tab-view-extensions-" + TAB_ID);
     tab && tab.click(), state.currentTool === "maker" ? (state.droppedFrames = selection.map((asset) => asset.path), logConsole(`Loaded ${state.droppedFrames.length} frames from selection.`, "success"), renderDroppedFrames()) : pushHistoryState(selection[0].path, "Imported selected file");

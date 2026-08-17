@@ -53,6 +53,12 @@
     };
   }
 
+  // lib/db.ts
+  var PH2 = window.PluginHost;
+
+  // lib/fs.ts
+  var PH3 = window.PluginHost;
+
   // lib/storage.ts
   function loadPersisted(key, fallback) {
     try {
@@ -90,7 +96,7 @@
   }
 
   // lib/poll.ts
-  var PH2 = window.PluginHost;
+  var PH4 = window.PluginHost;
   function pollServiceProgress({
     fetch,
     isRunning,
@@ -129,20 +135,20 @@
   }
 
   // minipaint/src/ipc.ts
-  var PH3 = window.PluginHost;
+  var PH5 = window.PluginHost;
   async function checkInstalled() {
     var _a;
-    let resp = await PH3.callService("CheckPluginRuntimeInstalled", { plugin: "minipaint" });
+    let resp = await PH5.callService("CheckPluginRuntimeInstalled", { plugin: "minipaint" });
     return !!((_a = resp == null ? void 0 : resp.CheckPluginRuntimeInstalledResult) != null && _a.installed);
   }
   async function startInstallation() {
     var _a;
-    let resp = await PH3.callService("InstallPluginRuntime", { plugin: "minipaint" });
+    let resp = await PH5.callService("InstallPluginRuntime", { plugin: "minipaint" });
     return !!((_a = resp == null ? void 0 : resp.InstallPluginRuntimeResult) != null && _a.started);
   }
   async function getProgress() {
     var _a;
-    let resp = await PH3.callService("GetPluginRuntimeInstallProgress", { plugin: "minipaint" });
+    let resp = await PH5.callService("GetPluginRuntimeInstallProgress", { plugin: "minipaint" });
     return (_a = resp == null ? void 0 : resp.GetPluginRuntimeInstallProgressResult) != null ? _a : { status: "idle", percent: 0, logs: [] };
   }
   async function saveEditedImage(p) {
@@ -221,7 +227,7 @@
   }
 
   // minipaint/src/editor.ts
-  var PH4 = window.PluginHost, currentFrame = null, editorWorkspaceRoot = "";
+  var PH6 = window.PluginHost, currentFrame = null, editorWorkspaceRoot = "";
   async function onMessage(ev) {
     var _a, _b, _c, _d;
     if (ev.source !== (currentFrame == null ? void 0 : currentFrame.contentWindow)) return;
@@ -266,7 +272,7 @@
   }
   window.addEventListener("message", onMessage);
   function assetDirUrl(absPath) {
-    let origin = PH4.convertFileSrc(""), encoded = absPath.split("\\").map((segment) => encodeURIComponent(segment)).join("/");
+    let origin = PH6.convertFileSrc(""), encoded = absPath.split("\\").map((segment) => encodeURIComponent(segment)).join("/");
     return `${origin}${encoded}`;
   }
   function mountEditor(pluginDir, workspaceRoot, host, initialPath) {
@@ -279,7 +285,7 @@
         () => {
           var _a;
           (_a = iframe.contentWindow) == null || _a.postMessage(
-            { type: "minipaint:load-image", url: PH4.convertFileSrc(initialPath) },
+            { type: "minipaint:load-image", url: PH6.convertFileSrc(initialPath) },
             "*"
           );
         },
@@ -293,7 +299,7 @@
   function loadAssetIntoEditor(path) {
     var _a;
     !currentFrame || !path || (_a = currentFrame.contentWindow) == null || _a.postMessage(
-      { type: "minipaint:load-image", url: PH4.convertFileSrc(path) },
+      { type: "minipaint:load-image", url: PH6.convertFileSrc(path) },
       "*"
     );
   }
@@ -303,8 +309,8 @@
   }
 
   // minipaint/src/index.ts
-  var PH5 = window.PluginHost;
-  if (!PH5)
+  var PH7 = window.PluginHost;
+  if (!PH7)
     console.error("minipaint: PluginHost not available; aborting.");
   else {
     if (!document.getElementById("minipaint-styles")) {
@@ -330,14 +336,14 @@
     }, unloadEditor = () => {
       teardown == null || teardown(), teardown = null, editorMounted = !1, updateToggle();
     };
-    PH5.registerMetadataRenderer("minipaint-send", (asset) => {
+    PH7.registerMetadataRenderer("minipaint-send", (asset) => {
       var _a;
       if (!(asset != null && asset.path)) return null;
       let box = document.createElement("div");
       return box.className = "group-box", box.style.cssText = "margin-top:8px;", box.innerHTML = '<div class="group-box-title"><i class="bi bi-palette"></i> Image Editor</div><div style="display:flex;align-items:center;gap:8px;padding:2px 0;">  <span style="font-size:11px;color:#555;flex:1;">Open this image in the miniPaint editor. The editor loads on demand and stays parked otherwise.</span>  <button type="button" class="win-button" id="minipaint-send-asset">    <i class="bi bi-brush"></i> Send to Editor  </button></div>', (_a = box.querySelector("#minipaint-send-asset")) == null || _a.addEventListener("click", () => {
         closeInfoModal(), navigateToTab(TAB_ID), ensureEditor(asset.path);
       }), box;
-    }), PH5.registerTab(TAB_ID, "Image Editor", "bi bi-palette", () => {
+    }), PH7.registerTab(TAB_ID, "Image Editor", "bi bi-palette", () => {
       let rootEl = document.createElement("div");
       rootEl.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;";
       let settingsBox = document.createElement("div");

@@ -11,6 +11,8 @@
  * registry and the plugin simply names `engine: "aria2"`.
  */
 
+import { createPluginDb } from "../../lib";
+
 const PH = window.PluginHost;
 
 // ── A. Tool / binary management ─────────────────────────────────────────────
@@ -183,26 +185,24 @@ export interface DbQueryResult {
   rows: Record<string, unknown>[];
 }
 
+/** Runs a read query via the shared sandboxed SQLite client (§3.4 C). */
 export async function dbQuery(
   sql: string,
   params: unknown[] = [],
   db = "download_history.db"
 ): Promise<DbQueryResult> {
-  const resp = await PH.callService("PluginDbQuery", { db, sql, params });
-  if (resp?.Error) throw new Error(String(resp.Error.message));
-  const r = resp?.PluginDbQueryResult as { rows?: Record<string, unknown>[] } | undefined;
-  return { rows: r?.rows ?? [] };
+  const client = createPluginDb(db);
+  return { rows: await client.query(sql, params) };
 }
 
+/** Runs a write query via the shared sandboxed SQLite client (§3.4 C). */
 export async function dbExecute(
   sql: string,
   params: unknown[] = [],
   db = "download_history.db"
 ): Promise<number> {
-  const resp = await PH.callService("PluginDbExecute", { db, sql, params });
-  if (resp?.Error) throw new Error(String(resp.Error.message));
-  const r = resp?.PluginDbExecuteResult as { rows_affected?: number } | undefined;
-  return r?.rows_affected ?? 0;
+  const client = createPluginDb(db);
+  return client.execute(sql, params);
 }
 
 // ── Tauri desktop helpers ───────────────────────────────────────────────────

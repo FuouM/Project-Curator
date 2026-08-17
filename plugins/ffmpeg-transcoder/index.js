@@ -62,6 +62,12 @@
     }
   }
 
+  // lib/db.ts
+  var PH2 = window.PluginHost;
+
+  // lib/fs.ts
+  var PH3 = window.PluginHost;
+
   // lib/storage.ts
   function loadPersisted(key, fallback) {
     try {
@@ -141,7 +147,7 @@
   }
 
   // lib/poll.ts
-  var PH2 = window.PluginHost;
+  var PH4 = window.PluginHost;
   function pollServiceProgress({
     fetch,
     isRunning,
@@ -178,7 +184,7 @@
     pollServiceProgress({
       intervalMs,
       fetch: async () => {
-        let resp = await PH2.callService("GetTranscodeProgress", { job_id: jobId }), raw = resp == null ? void 0 : resp.TranscodeProgressResult;
+        let resp = await PH4.callService("GetTranscodeProgress", { job_id: jobId }), raw = resp == null ? void 0 : resp.TranscodeProgressResult;
         if (raw)
           return {
             percent: Math.round(raw.percent || 0),
@@ -224,7 +230,7 @@
   }
 
   // ffmpeg-transcoder/src/ui.ts
-  var PH3 = window.PluginHost;
+  var PH5 = window.PluginHost;
   function el(id) {
     return document.getElementById(id);
   }
@@ -328,7 +334,7 @@
       }
       let src = transcodes[index][0], tgt = transcodes[index][1], jobId = makeJobId();
       try {
-        let resp = await PH3.callService("TranscodeVideo", {
+        let resp = await PH5.callService("TranscodeVideo", {
           job_id: jobId,
           input_path: src,
           output_path: tgt,
@@ -499,8 +505,8 @@
   }
 
   // ffmpeg-transcoder/src/index.ts
-  var PH4 = window.PluginHost;
-  PH4 ? (PH4.registerTab(TAB_ID, "FFmpeg Transcoder", "bi bi-collection-play", renderTab), PH4.registerMetadataRenderer("ffmpeg-transcoder-send", (asset) => {
+  var PH6 = window.PluginHost;
+  PH6 ? (PH6.registerTab(TAB_ID, "FFmpeg Transcoder", "bi bi-collection-play", renderTab), PH6.registerMetadataRenderer("ffmpeg-transcoder-send", (asset) => {
     if (!asset || !asset.path || !VIDEO_RE.test(asset.path)) return null;
     let box = document.createElement("div");
     box.className = "group-box", box.style.cssText = "margin-top:8px;", box.innerHTML = '<div class="group-box-title"><i class="bi bi-collection-play"></i> FFmpeg Transcoder</div><div style="display:flex;align-items:center;gap:8px;padding:2px 0;">  <span style="font-size:11px;color:#555;flex:1;">Queue this video for transcoding.</span>  <button type="button" class="win-button" id="transcoder-send-asset">    <i class="bi bi-send"></i> Send to Transcoder  </button></div>';
@@ -508,10 +514,10 @@
     return sendBtn == null || sendBtn.addEventListener("click", () => {
       addToQueue(asset.path), log("Sent to transcoder: " + asset.path, "info"), closeInfoModal(), navigateToTab2();
     }), box;
-  }), PH4.registerToolbarButton("ffmpeg-transcoder-selection", "Transcode Selected", "bi bi-collection-play", (selection) => {
+  }), PH6.registerToolbarButton("ffmpeg-transcoder-selection", "Transcode Selected", "bi bi-collection-play", (selection) => {
     let paths = (selection || []).map((a) => a.path).filter(Boolean);
     paths.length !== 0 && (paths.forEach(addToQueue), closeInfoModal(), navigateToTab2());
-  }), PH4.registerContextMenuItem("ffmpeg-transcoder-ctx", "Send to Transcoder", (asset) => {
+  }), PH6.registerContextMenuItem("ffmpeg-transcoder-ctx", "Send to Transcoder", (asset) => {
     !asset || !asset.path || (addToQueue(asset.path), closeInfoModal(), navigateToTab2());
   }), console.log("ffmpeg-transcoder: registered tab, renderer, toolbar button, and context menu item.")) : console.error("ffmpeg-transcoder: PluginHost not available; aborting.");
 })();

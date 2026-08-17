@@ -53,6 +53,12 @@
     }
   }
 
+  // lib/db.ts
+  var PH2 = window.PluginHost;
+
+  // lib/fs.ts
+  var PH3 = window.PluginHost;
+
   // lib/storage.ts
   function loadPersisted(key, fallback) {
     try {
@@ -132,7 +138,7 @@
   }
 
   // lib/poll.ts
-  var PH2 = window.PluginHost;
+  var PH4 = window.PluginHost;
 
   // image-converter/src/state.ts
   var TAB_ID = "image-converter", CONVERT_FORMATS = [
@@ -162,7 +168,7 @@
   }
 
   // image-converter/src/ui.ts
-  var PH3 = window.PluginHost;
+  var PH5 = window.PluginHost;
   function el(id) {
     return document.getElementById(id);
   }
@@ -247,7 +253,7 @@
     }
     log(`Converting ${conversions.length} file(s) to ${state.targetExt} ...`, "info");
     try {
-      let resp = await PH3.callService("EphemeralConvertImages", {
+      let resp = await PH5.callService("EphemeralConvertImages", {
         conversions,
         quality: state.quality
       });
@@ -292,15 +298,15 @@
   }
 
   // image-converter/src/index.ts
-  var PH4 = window.PluginHost;
-  PH4 ? (PH4.registerTab(TAB_ID, "Image Converter", "bi bi-arrow-repeat", renderTab), PH4.registerMetadataRenderer("image-converter-send", (asset) => {
+  var PH6 = window.PluginHost;
+  PH6 ? (PH6.registerTab(TAB_ID, "Image Converter", "bi bi-arrow-repeat", renderTab), PH6.registerMetadataRenderer("image-converter-send", (asset) => {
     var _a;
     if (!(asset != null && asset.path)) return null;
     let box = document.createElement("div");
     return box.className = "group-box", box.style.cssText = "margin-top:8px;", box.innerHTML = '<div class="group-box-title"><i class="bi bi-arrow-repeat"></i> Image Converter</div><div style="display:flex;align-items:center;gap:8px;padding:2px 0;">  <span style="font-size:11px;color:#555;flex:1;">Queue this image for batch conversion.</span>  <button type="button" class="win-button" id="converter-send-asset">    <i class="bi bi-send"></i> Send to Converter  </button></div>', (_a = box.querySelector("#converter-send-asset")) == null || _a.addEventListener("click", () => {
       addToQueue(asset.path), log(`Sent to converter: ${asset.path}`, "info"), closeInfoModal(), navigateToTab2();
     }), box;
-  }), PH4.registerToolbarButton(
+  }), PH6.registerToolbarButton(
     "image-converter-selection",
     "Convert Selected",
     "bi bi-arrow-repeat",
@@ -308,7 +314,7 @@
       let paths = (selection != null ? selection : []).map((a) => a.path).filter(Boolean);
       paths.length !== 0 && (paths.forEach(addToQueue), closeInfoModal(), navigateToTab2());
     }
-  ), PH4.registerContextMenuItem(
+  ), PH6.registerContextMenuItem(
     "image-converter-ctx",
     "Send to Converter",
     (asset) => {

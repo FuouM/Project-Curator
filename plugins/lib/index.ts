@@ -16,6 +16,20 @@ export { formatBytes } from "./format";
 
 export { checkFileExists, getUniqueOutputPath, pickDirectory, pickFile, getPluginDirs } from "./ipc-utils";
 
+export { createPluginDb } from "./db";
+export type { PluginDb, Row } from "./db";
+
+export {
+  fileExists,
+  fileResolve,
+  fileMove,
+  fileDelete,
+  dirStat,
+  httpDownload,
+  httpDownloadFull,
+} from "./fs";
+export type { DirStatResult, FileStat } from "./fs";
+
 export { loadPersisted, savePersisted } from "./storage";
 
 export { navigateToTab, closeInfoModal } from "./navigation";

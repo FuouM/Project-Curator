@@ -28,8 +28,30 @@
   // lib/ipc-utils.ts
   var PH = window.PluginHost;
 
-  // lib/poll.ts
+  // lib/db.ts
   var PH2 = window.PluginHost;
+  function createPluginDb(dbName) {
+    return {
+      async execute(sql, params = []) {
+        var _a, _b;
+        let resp = await PH2.callService("PluginDbExecute", { db: dbName, sql, params });
+        if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
+        return Number((_b = (_a = resp == null ? void 0 : resp.PluginDbExecuteResult) == null ? void 0 : _a.rows_affected) != null ? _b : 0);
+      },
+      async query(sql, params = []) {
+        var _a, _b;
+        let resp = await PH2.callService("PluginDbQuery", { db: dbName, sql, params });
+        if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
+        return (_b = (_a = resp == null ? void 0 : resp.PluginDbQueryResult) == null ? void 0 : _a.rows) != null ? _b : [];
+      }
+    };
+  }
+
+  // lib/fs.ts
+  var PH3 = window.PluginHost;
+
+  // lib/poll.ts
+  var PH4 = window.PluginHost;
 
   // dynasty-scans/src/utils/html.ts
   function decodeEntities(str) {
@@ -234,23 +256,7 @@
   }
 
   // dynasty-scans/src/db/client.ts
-  var PH3 = window.PluginHost;
-  async function execute(sql, params = []) {
-    var _a, _b;
-    let resp = await PH3.callService("PluginDbExecute", {
-      db: DB_NAME,
-      sql,
-      params
-    });
-    if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
-    return Number((_b = (_a = resp == null ? void 0 : resp.PluginDbExecuteResult) == null ? void 0 : _a.rows_affected) != null ? _b : 0);
-  }
-  async function query(sql, params = []) {
-    var _a, _b;
-    let resp = await PH3.callService("PluginDbQuery", { db: DB_NAME, sql, params });
-    if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
-    return (_b = (_a = resp == null ? void 0 : resp.PluginDbQueryResult) == null ? void 0 : _a.rows) != null ? _b : [];
-  }
+  var db = createPluginDb(DB_NAME), execute = db.execute, query = db.query;
 
   // dynasty-scans/src/db/schema.ts
   var SCHEMA = [
@@ -535,7 +541,7 @@
   }
 
   // dynasty-scans/src/db/cache.repo.ts
-  var PH4 = window.PluginHost;
+  var PH5 = window.PluginHost;
   async function getCachedPages(chapterPermalink) {
     return query(
       `SELECT chapter_permalink, page_index, file_path, cached_at
@@ -575,7 +581,7 @@
       (async () => {
         var _a2, _b2;
         try {
-          let resp = await PH4.callService("DirStat", { path: "" });
+          let resp = await PH5.callService("DirStat", { path: "" });
           return Number((_b2 = (_a2 = resp == null ? void 0 : resp.DirStatResult) == null ? void 0 : _a2.total_bytes) != null ? _b2 : 0);
         } catch (e) {
           return 0;
@@ -656,7 +662,7 @@
         try {
           let clean = g.seriesPermalink.replace(/[^a-zA-Z0-9_-]/g, "_"), candidatePaths = g.isStandalone ? [`pages/_singles/${clean}`, `pages/${clean}`] : [`pages/${clean}`], foundBytes = 0;
           for (let p of candidatePaths) {
-            let resp = await PH4.callService("DirStat", { path: p }), bytes = Number((_b = (_a = resp == null ? void 0 : resp.DirStatResult) == null ? void 0 : _a.total_bytes) != null ? _b : 0);
+            let resp = await PH5.callService("DirStat", { path: p }), bytes = Number((_b = (_a = resp == null ? void 0 : resp.DirStatResult) == null ? void 0 : _a.total_bytes) != null ? _b : 0);
             if (bytes > 0) {
               foundBytes = bytes;
               break;
@@ -668,7 +674,7 @@
               g.chapterPermalinks
             );
             for (let row of pathRows) {
-              let resp = await PH4.callService("FileExists", { path: row.file_path });
+              let resp = await PH5.callService("FileExists", { path: row.file_path });
               foundBytes += Number((_d = (_c = resp == null ? void 0 : resp.FileExistsResult) == null ? void 0 : _c.size_bytes) != null ? _d : 0);
             }
           }
@@ -682,7 +688,7 @@
     await Promise.all(
       paths.map(async (p) => {
         try {
-          await PH4.callService("FileDelete", { path: p });
+          await PH5.callService("FileDelete", { path: p });
         } catch (e) {
         }
       })
@@ -714,7 +720,7 @@
   }
 
   // dynasty-scans/src/api/client.ts
-  var PH5 = window.PluginHost;
+  var PH6 = window.PluginHost;
   async function httpGetText(url, opts = {}) {
     var _a, _b, _c, _d, _e, _f, _g, _h;
     let params = {
@@ -722,7 +728,7 @@
       timeout_ms: (_a = opts.timeoutMs) != null ? _a : 15e3
     };
     opts.method === "POST" && (params.method = "POST", params.body = (_b = opts.body) != null ? _b : "", params.content_type = (_c = opts.contentType) != null ? _c : "application/x-www-form-urlencoded"), opts.headers && (params.headers = opts.headers);
-    let resp = await PH5.callService("HttpGet", params);
+    let resp = await PH6.callService("HttpGet", params);
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
     return {
       status: Number((_e = (_d = resp == null ? void 0 : resp.HttpGetResult) == null ? void 0 : _d.status) != null ? _e : 0),
@@ -730,9 +736,9 @@
       etag: (_h = resp == null ? void 0 : resp.HttpGetResult) != null && _h.etag ? String(resp.HttpGetResult.etag) : void 0
     };
   }
-  async function httpDownload(url, outputPath, timeoutMs = 3e4) {
+  async function httpDownload2(url, outputPath, timeoutMs = 3e4) {
     var _a, _b;
-    let resp = await PH5.callService("HttpDownload", {
+    let resp = await PH6.callService("HttpDownload", {
       url,
       output_path: outputPath,
       timeout_ms: timeoutMs
@@ -740,9 +746,9 @@
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
     return String((_b = (_a = resp == null ? void 0 : resp.HttpDownloadResult) == null ? void 0 : _a.absolute_path) != null ? _b : "");
   }
-  async function httpDownloadFull(url, outputPath, timeoutMs = 3e4) {
+  async function httpDownloadFull2(url, outputPath, timeoutMs = 3e4) {
     var _a, _b, _c, _d;
-    let resp = await PH5.callService("HttpDownload", {
+    let resp = await PH6.callService("HttpDownload", {
       url,
       output_path: outputPath,
       timeout_ms: timeoutMs
@@ -753,19 +759,19 @@
       sizeBytes: Number((_d = (_c = resp == null ? void 0 : resp.HttpDownloadResult) == null ? void 0 : _c.size_bytes) != null ? _d : 0)
     };
   }
-  async function fileResolve(path) {
+  async function fileResolve2(path) {
     var _a;
-    let resp = await PH5.callService("FileExists", { path });
+    let resp = await PH6.callService("FileExists", { path });
     return resp != null && resp.Error || !((_a = resp == null ? void 0 : resp.FileExistsResult) != null && _a.exists) ? null : String(resp.FileExistsResult.absolute_path);
   }
-  async function fileMove(src, dst) {
+  async function fileMove2(src, dst) {
     var _a, _b;
-    let resp = await PH5.callService("FileMove", { src, dst });
+    let resp = await PH6.callService("FileMove", { src, dst });
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
     return String((_b = (_a = resp == null ? void 0 : resp.FileMoveResult) == null ? void 0 : _a.absolute_path) != null ? _b : "");
   }
-  async function fileDelete(path) {
-    let resp = await PH5.callService("FileDelete", { path });
+  async function fileDelete2(path) {
+    let resp = await PH6.callService("FileDelete", { path });
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
   }
   async function cachedJson(key, url, ttlMs) {
@@ -867,7 +873,7 @@
   }
 
   // dynasty-scans/src/api/series.ts
-  var PH6 = window.PluginHost;
+  var PH7 = window.PluginHost;
   async function fetchSeries(permalink, force = !1, preferredType) {
     let key = `series:${permalink}`;
     if (!force) {
@@ -901,9 +907,9 @@
     if (!coverUrl) return null;
     let key = `cover:${permalink}`, cached = await getCached(key);
     if (cached && cached.json_payload) return cached.json_payload;
-    let extMatch = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(coverUrl), ext = extMatch ? extMatch[1] : "jpg", tmpOutPath = `${COVERS_PREFIX}/raw_${permalink}.${ext}`, webpOutPath = `${COVERS_PREFIX}/${permalink}.webp`, finalPath = await httpDownload(absUrl(coverUrl), tmpOutPath, 3e4);
+    let extMatch = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(coverUrl), ext = extMatch ? extMatch[1] : "jpg", tmpOutPath = `${COVERS_PREFIX}/raw_${permalink}.${ext}`, webpOutPath = `${COVERS_PREFIX}/${permalink}.webp`, finalPath = await httpDownload2(absUrl(coverUrl), tmpOutPath, 3e4);
     try {
-      let convResp = await PH6.callService("EphemeralConvertImages", {
+      let convResp = await PH7.callService("EphemeralConvertImages", {
         quality: 75,
         max_dimension: 256,
         max_bytes: 1e5,
@@ -912,7 +918,7 @@
       if (results && results.length > 0 && results[0].output_path && !results[0].error) {
         finalPath = results[0].output_path;
         try {
-          await fileDelete(tmpOutPath);
+          await fileDelete2(tmpOutPath);
         } catch (e) {
         }
       }
@@ -927,7 +933,7 @@
     let key = `cover:${coverKey}`, cached = await getCached(key);
     if (!cached || !cached.json_payload) return null;
     try {
-      let resp = await PH6.callService("FileExists", { path: cached.json_payload });
+      let resp = await PH7.callService("FileExists", { path: cached.json_payload });
       if ((_a = resp == null ? void 0 : resp.FileExistsResult) != null && _a.exists)
         return cached.json_payload;
     } catch (e) {
@@ -942,9 +948,9 @@
     if (!firstPageUrl) return null;
     let key = `cover:chapter:${permalink}`, cached = await getCached(key);
     if (cached && cached.json_payload) return cached.json_payload;
-    let extMatch = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(firstPageUrl), ext = extMatch ? extMatch[1] : "jpg", tmpOutPath = `${COVERS_PREFIX}/raw_ch_${permalink}.${ext}`, webpOutPath = `${COVERS_PREFIX}/ch_${permalink}.webp`, finalPath = await httpDownload(absUrl(firstPageUrl), tmpOutPath, 3e4);
+    let extMatch = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(firstPageUrl), ext = extMatch ? extMatch[1] : "jpg", tmpOutPath = `${COVERS_PREFIX}/raw_ch_${permalink}.${ext}`, webpOutPath = `${COVERS_PREFIX}/ch_${permalink}.webp`, finalPath = await httpDownload2(absUrl(firstPageUrl), tmpOutPath, 3e4);
     try {
-      let convResp = await PH6.callService("EphemeralConvertImages", {
+      let convResp = await PH7.callService("EphemeralConvertImages", {
         quality: 75,
         max_dimension: 256,
         max_bytes: 1e5,
@@ -953,7 +959,7 @@
       if (results && results.length > 0 && results[0].output_path && !results[0].error) {
         finalPath = results[0].output_path;
         try {
-          await fileDelete(tmpOutPath);
+          await fileDelete2(tmpOutPath);
         } catch (e) {
         }
       }
@@ -1070,11 +1076,11 @@
   }
 
   // dynasty-scans/src/components/cover.ts
-  var PH7 = window.PluginHost;
+  var PH8 = window.PluginHost;
   function renderCoverImage(path, alt, imgClass = "ds-cover", placeholderClass = "ds-cover-placeholder") {
     if (path) {
       let img = el("img", { class: imgClass, title: alt });
-      return img.alt = alt, img.src = PH7.convertFileSrc(path), img.addEventListener("error", () => {
+      return img.alt = alt, img.src = PH8.convertFileSrc(path), img.addEventListener("error", () => {
         var _a;
         img.style.display = "none", (_a = img.parentElement) == null || _a.replaceChild(renderCoverPlaceholder(placeholderClass), img);
       }), img;
@@ -1088,7 +1094,7 @@
   function renderFeedCover(path, coverKey, cssText = "") {
     if (path) {
       let img = el("img", { class: "ds-feed-cover", style: cssText });
-      return img.alt = coverKey, img.width = 42, img.height = 58, img.decoding = "async", img.src = PH7.convertFileSrc(path), img.addEventListener("error", () => {
+      return img.alt = coverKey, img.width = 42, img.height = 58, img.decoding = "async", img.src = PH8.convertFileSrc(path), img.addEventListener("error", () => {
         var _a;
         img.style.display = "none", (_a = img.parentElement) == null || _a.appendChild(
           el("div", { class: "ds-feed-cover-placeholder", style: cssText }, icon("bi bi-book"))
@@ -1328,7 +1334,7 @@
   }
 
   // dynasty-scans/src/browse/browse-covers.ts
-  var PH8 = window.PluginHost, SCROLL_IDLE_MS = 400, BrowseCovers = class {
+  var PH9 = window.PluginHost, SCROLL_IDLE_MS = 400, BrowseCovers = class {
     constructor() {
       this.memoryCache = /* @__PURE__ */ new Map();
       this.inflight = /* @__PURE__ */ new Map();
@@ -1445,7 +1451,7 @@
       if (node.querySelector("img.ds-feed-cover")) return;
       node.innerHTML = "";
       let img = document.createElement("img");
-      img.className = "ds-feed-cover", img.alt = coverKey, img.width = 42, img.height = 58, img.decoding = "async", img.src = PH8.convertFileSrc(coverPath), img.addEventListener("error", () => {
+      img.className = "ds-feed-cover", img.alt = coverKey, img.width = 42, img.height = 58, img.decoding = "async", img.src = PH9.convertFileSrc(coverPath), img.addEventListener("error", () => {
         img.style.display = "none";
         let ph = document.createElement("div");
         ph.className = "ds-feed-cover-placeholder", ph.innerHTML = '<i class="bi bi-book"></i>', node.appendChild(ph), this.memoryCache.delete(coverKey), deleteCached(`cover:${coverKey}`);
@@ -2599,10 +2605,10 @@
       return absUrl(u);
     }
     fileResolve(path) {
-      return fileResolve(path);
+      return fileResolve2(path);
     }
     httpDownloadFull(url, outPath) {
-      return httpDownloadFull(url, outPath);
+      return httpDownloadFull2(url, outPath);
     }
     setCachedPage(index, absPath, sizeBytes) {
       return setCachedPage(this.permalink, index, absPath, sizeBytes);
@@ -2613,7 +2619,7 @@
     }
     // Slot rendering ---------------------------------------------------------
     renderSlotImg(slot, absPath, pageNum) {
-      let PH10 = window.PluginHost;
+      let PH11 = window.PluginHost;
       slot.classList.remove("ds-slot-loading"), slot.innerHTML = "";
       let badge = document.createElement("div");
       badge.className = "ds-slot-page-badge", badge.textContent = `${pageNum} / ${this.pages.length}`, slot.appendChild(badge);
@@ -2621,7 +2627,7 @@
       img.className = "ds-page-img", img.alt = `Page ${pageNum}`, img.addEventListener("error", () => {
         let idx = Number(slot.dataset.index);
         this.cachedMap.delete(idx), !this.queue.isRetrying(idx) && (this.queue.markRetrying(idx), this.renderSlotState(slot, "spinner", "Re-downloading\u2026"), this.queue.enqueue(idx, !0));
-      }), img.src = PH10.convertFileSrc(absPath), slot.appendChild(img);
+      }), img.src = PH11.convertFileSrc(absPath), slot.appendChild(img);
     }
     renderSlotState(slot, kind, message) {
       slot.innerHTML = "";
@@ -2735,7 +2741,7 @@
             if (found = await this.fileResolve(candidate), found) break;
           if (found)
             try {
-              let newAbsPath = await fileMove(found, targetPath);
+              let newAbsPath = await fileMove2(found, targetPath);
               await this.setCachedPage(i, newAbsPath, 0), this.cachedMap.set(i, newAbsPath), !this.disposed && this.slots[i] && this.renderSlotImg(this.slots[i], newAbsPath, i + 1), this.updateCacheCount();
             } catch (e) {
               console.warn(`dynasty-scans: could not move page ${i + 1} to canonical path:`, e);
@@ -3967,8 +3973,8 @@
 }`;
 
   // dynasty-scans/src/index.ts
-  var PLUGIN_STYLES = [styles_default, library_default, browse_default, cache_default, reader_default], PH9 = window.PluginHost;
-  PH9 ? (registerRenderer("library", renderLibrary), registerRenderer("browse", renderBrowse), registerRenderer("series", renderSeries), registerRenderer("reader", renderReader), registerRenderer("cache", renderCache), injectStyles(), PH9.registerTab(TAB_ID, "Dynasty Scans", "bi bi-book", renderTab), console.log("dynasty-scans: registered tab and renderers.")) : console.error("dynasty-scans: PluginHost not available; aborting.");
+  var PLUGIN_STYLES = [styles_default, library_default, browse_default, cache_default, reader_default], PH10 = window.PluginHost;
+  PH10 ? (registerRenderer("library", renderLibrary), registerRenderer("browse", renderBrowse), registerRenderer("series", renderSeries), registerRenderer("reader", renderReader), registerRenderer("cache", renderCache), injectStyles(), PH10.registerTab(TAB_ID, "Dynasty Scans", "bi bi-book", renderTab), console.log("dynasty-scans: registered tab and renderers.")) : console.error("dynasty-scans: PluginHost not available; aborting.");
   function injectStyles() {
     if (document.getElementById("ds-style")) return;
     let style = document.createElement("style");

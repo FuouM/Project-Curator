@@ -41,6 +41,12 @@
   // lib/ipc-utils.ts
   var PH = window.PluginHost;
 
+  // lib/db.ts
+  var PH2 = window.PluginHost;
+
+  // lib/fs.ts
+  var PH3 = window.PluginHost;
+
   // lib/navigation.ts
   function navigateToTab(tabId) {
     let item = document.querySelector(
@@ -105,16 +111,16 @@
   }
 
   // lib/poll.ts
-  var PH2 = window.PluginHost;
+  var PH4 = window.PluginHost;
 
   // image-compare/src/ui.ts
-  var PH3 = window.PluginHost;
+  var PH5 = window.PluginHost;
   function el(id) {
     return document.getElementById(id);
   }
   var navigateToTab2 = () => navigateToTab(TAB_ID);
   function getAssetSrc(path) {
-    return path ? path.startsWith("blob:") || path.startsWith("data:") || path.startsWith("http://") || path.startsWith("https://") ? path : PH3.convertFileSrc(path) : "";
+    return path ? path.startsWith("blob:") || path.startsWith("data:") || path.startsWith("http://") || path.startsWith("https://") ? path : PH5.convertFileSrc(path) : "";
   }
   function loadImageMetadata(slot, callback) {
     if (!slot.url) {
@@ -217,7 +223,7 @@
     );
   }
   function loadFromSelection() {
-    PH3.getSelectionAssetContexts().then((selection) => {
+    PH5.getSelectionAssetContexts().then((selection) => {
       if (!selection || selection.length === 0) {
         alert("No images selected in library grid. Select 1 or 2 images first.");
         return;
@@ -692,8 +698,8 @@
   }
 
   // image-compare/src/index.ts
-  var PH4 = window.PluginHost;
-  PH4 ? (PH4.registerTab(TAB_ID, "Image Compare", "bi bi-layout-split", renderCompareTab), PH4.registerMetadataRenderer("image-compare-modal-section", (asset) => {
+  var PH6 = window.PluginHost;
+  PH6 ? (PH6.registerTab(TAB_ID, "Image Compare", "bi bi-layout-split", renderCompareTab), PH6.registerMetadataRenderer("image-compare-modal-section", (asset) => {
     if (!asset || !asset.path) return null;
     let box = document.createElement("div");
     box.className = "group-box", box.style.cssText = "margin-top:8px;", box.innerHTML = '<div class="group-box-title"><i class="bi bi-layout-split"></i> Image Compare</div><div style="display:flex;align-items:center;gap:8px;padding:4px 0;">  <span style="font-size:11px;color:#555;flex:1;">Send image to Image Compare tool.</span>  <button type="button" class="win-button" id="cmp-send-slot-a">    <i class="bi bi-arrow-left-square"></i> Set as Image A  </button>  <button type="button" class="win-button" id="cmp-send-slot-b">    <i class="bi bi-arrow-right-square"></i> Set as Image B  </button></div>';
@@ -705,15 +711,15 @@
     return btnB == null || btnB.addEventListener("click", () => {
       loadAssetIntoSlot("B", asset), closeInfoModal(), navigateToTab2();
     }), box;
-  }), PH4.registerToolbarButton("compare-selected", "Compare Selected", "bi bi-layout-split", (selection) => {
+  }), PH6.registerToolbarButton("compare-selected", "Compare Selected", "bi bi-layout-split", (selection) => {
     if (!selection || selection.length === 0) {
       alert("No images selected.");
       return;
     }
     selection.length >= 2 ? (loadAssetIntoSlot("A", selection[0]), loadAssetIntoSlot("B", selection[1])) : loadAssetIntoSlot("A", selection[0]), closeInfoModal(), navigateToTab2();
-  }), PH4.registerContextMenuItem("send-to-compare-a", "Compare: Set as Image A", (asset) => {
+  }), PH6.registerContextMenuItem("send-to-compare-a", "Compare: Set as Image A", (asset) => {
     asset && (loadAssetIntoSlot("A", asset), closeInfoModal(), navigateToTab2());
-  }), PH4.registerContextMenuItem("send-to-compare-b", "Compare: Set as Image B", (asset) => {
+  }), PH6.registerContextMenuItem("send-to-compare-b", "Compare: Set as Image B", (asset) => {
     asset && (loadAssetIntoSlot("B", asset), closeInfoModal(), navigateToTab2());
   }), console.log("Image Compare plugin initialized successfully.")) : console.error("image-compare: PluginHost not available; aborting.");
 })();
