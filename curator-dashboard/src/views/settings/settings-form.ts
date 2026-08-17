@@ -17,7 +17,7 @@ import {
   getZenModeFullImages,
   setZenModeFullImages,
 } from "../../state";
-import { applySettingsToUI, refreshTaggerStatus } from "../dashboard";
+import { applySettingsToUI, refreshTaggerStatus, updateEmbeddingDeviceCard } from "../dashboard";
 import { updateBenchmarkModelHeader } from "../benchmark";
 import { updateReindexProgress, startReindexPolling } from "../settings-reindex";
 import { setupMaintenanceButtons } from "../settings-maintenance";
@@ -53,6 +53,7 @@ export function bindSettingsForm() {
     "settings-detection-metrics-device",
   ) as HTMLSelectElement;
   const ocrDeviceSelect = document.getElementById("settings-ocr-device") as HTMLSelectElement;
+  const safetyDeviceSelect = document.getElementById("settings-safety-device") as HTMLSelectElement;
   const saveBtn = document.getElementById("save-settings-btn");
   const reindexBtn = document.getElementById("reindex-vectors-btn");
   const statusMsg = document.getElementById("settings-status-msg");
@@ -63,12 +64,29 @@ export function bindSettingsForm() {
   const savePreferredBtn = document.getElementById("save-preferred-tagger-btn");
   const saveCamieDevBtn = document.getElementById("save-tagger-device-btn");
   const saveWdDevBtn = document.getElementById("save-tagger-wd-device-btn");
+  const saveEmbeddingModelBtn = document.getElementById("save-embedding-model-btn");
+  const saveClipDevBtn = document.getElementById("save-clip-device-btn");
+  const saveDetectionDevBtn = document.getElementById("save-detection-device-btn");
+  const saveOcrDevBtn = document.getElementById("save-ocr-device-btn");
+  const saveSafetyDevBtn = document.getElementById("save-safety-device-btn");
+  const saveIdleTimeoutBtn = document.getElementById("save-idle-timeout-btn");
   const triggerSave = () => {
     saveBtn?.click();
   };
   savePreferredBtn?.addEventListener("click", triggerSave);
   saveCamieDevBtn?.addEventListener("click", triggerSave);
   saveWdDevBtn?.addEventListener("click", triggerSave);
+  saveEmbeddingModelBtn?.addEventListener("click", triggerSave);
+  saveClipDevBtn?.addEventListener("click", triggerSave);
+  saveDetectionDevBtn?.addEventListener("click", triggerSave);
+  saveOcrDevBtn?.addEventListener("click", triggerSave);
+  saveSafetyDevBtn?.addEventListener("click", triggerSave);
+  saveIdleTimeoutBtn?.addEventListener("click", triggerSave);
+
+  // Update the embedding device card label when the model selection changes
+  embeddingSelect?.addEventListener("change", () => {
+    updateEmbeddingDeviceCard(embeddingSelect.value);
+  });
 
   // Image click action setting (localStorage)
   const imageClickSelect = document.getElementById(
@@ -188,6 +206,7 @@ export function bindSettingsForm() {
         detectionDevice: detDeviceSelect ? deviceToEnum(detDeviceSelect.value) : undefined,
         detectionMetricsDevice: detMetricsSelect ? deviceToEnum(detMetricsSelect.value) : undefined,
         ocrDevice: ocrDeviceSelect ? deviceToEnum(ocrDeviceSelect.value) : undefined,
+        safetyDevice: safetyDeviceSelect ? deviceToEnum(safetyDeviceSelect.value) : undefined,
         preferredTagger: preferredTaggerSelect
           ? taggerToEnum(preferredTaggerSelect.value)
           : undefined,

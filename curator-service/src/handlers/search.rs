@@ -110,6 +110,7 @@ use sqlx::SqlitePool;
 pub async fn search_logic(
     params: SearchParams,
     preferred_source: &str,
+    vector_source: &str,
     db: &SqlitePool,
     model_manager: &ModelManager,
     vector_index: &VectorIndex,
@@ -482,7 +483,7 @@ pub async fn search_logic(
         Some(_) => Vec::new(),
     };
 
-    let batch_details = batch_get_images_logic(&target_ids, preferred_source, db)
+    let batch_details = batch_get_images_logic(&target_ids, preferred_source, vector_source, db)
         .await
         .unwrap_or_else(|e| {
             tracing::warn!("Failed to batch get image details in search: {:?}", e);

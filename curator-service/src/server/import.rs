@@ -119,7 +119,8 @@ impl ImportService for ImportServiceImpl {
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<ImportedFoldersResult>, Status> {
-        let folders = curator_core::FolderRepo::get_imported_folders(&self.ctx.db)
+        let vector_source = self.ctx.settings.lock().await.embedding_model.source_name().to_string();
+        let folders = curator_core::FolderRepo::get_imported_folders(&self.ctx.db, &vector_source)
             .await
             .map_err(internal_status)?;
         Ok(TonicResponse::new(ImportedFoldersResult {

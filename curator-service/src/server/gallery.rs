@@ -27,10 +27,15 @@ impl GalleryService for GalleryServiceImpl {
     ) -> Result<TonicResponse<ImageResult>, Status> {
         let req = request.into_inner();
         let preferred_source = super::preferred_source(&self.ctx).await;
-        let image =
-            curator_core::ImageRepo::get_image(req.image_id, &preferred_source, &self.ctx.db)
-                .await
-                .map_err(internal_status)?;
+        let vector_source = self.ctx.settings.lock().await.embedding_model.source_name().to_string();
+        let image = curator_core::ImageRepo::get_image(
+            req.image_id,
+            &preferred_source,
+            &vector_source,
+            &self.ctx.db,
+        )
+        .await
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(ImageResult {
             image: Some(image.into()),
         }))
@@ -42,11 +47,13 @@ impl GalleryService for GalleryServiceImpl {
     ) -> Result<TonicResponse<ListResult>, Status> {
         let req = request.into_inner();
         let preferred_source = super::preferred_source(&self.ctx).await;
+        let vector_source = self.ctx.settings.lock().await.embedding_model.source_name().to_string();
         let (images, total_count) = curator_core::ImageRepo::list_images(
             req.limit as usize,
             req.offset as usize,
             req.only_favorites,
             &preferred_source,
+            &vector_source,
             &self.ctx.db,
         )
         .await

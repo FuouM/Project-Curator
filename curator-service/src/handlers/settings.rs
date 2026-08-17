@@ -13,6 +13,7 @@ pub struct UpdateSettingsParams<'a> {
     pub model_manager: &'a ModelManager,
     pub vector_index: &'a VectorIndex,
     pub taggers: &'a std::sync::Arc<TaggerManager>,
+    pub safety: &'a SafetyService,
     pub data_dir: &'a std::path::Path,
     pub settings: &'a tokio::sync::Mutex<AppSettings>,
     pub clip_device: Option<curator_core::ipc::DevicePreference>,
@@ -23,10 +24,13 @@ pub struct UpdateSettingsParams<'a> {
     pub detection_device: Option<curator_core::ipc::DevicePreference>,
     pub detection_metrics_device: Option<curator_core::ipc::DevicePreference>,
     pub ocr_device: Option<curator_core::ipc::DevicePreference>,
+    pub safety_device: Option<curator_core::ipc::DevicePreference>,
     pub model_precisions:
         Option<std::collections::HashMap<String, curator_core::ipc::ModelPrecision>>,
     pub preferred_tagger: Option<TaggerModel>,
 }
+
+use crate::handlers::safety::SafetyService;
 
 pub fn get_app_ram_usage() -> i64 {
     use sysinfo::System;
@@ -110,6 +114,7 @@ pub async fn update_settings_logic(params: UpdateSettingsParams<'_>) -> Result<A
         model_manager,
         vector_index,
         taggers,
+        safety,
         data_dir,
         settings,
         clip_device,
@@ -120,6 +125,7 @@ pub async fn update_settings_logic(params: UpdateSettingsParams<'_>) -> Result<A
         detection_device,
         detection_metrics_device,
         ocr_device,
+        safety_device,
         model_precisions,
         preferred_tagger,
     } = params;
@@ -152,6 +158,9 @@ pub async fn update_settings_logic(params: UpdateSettingsParams<'_>) -> Result<A
     if let Some(ref od) = ocr_device {
         s.ocr_device = od.clone();
     }
+    if let Some(ref sd) = safety_device {
+        s.safety_device = sd.clone();
+    }
     if let Some(ref mp) = model_precisions {
         s.model_precisions = mp.clone();
     }
@@ -168,6 +177,7 @@ pub async fn update_settings_logic(params: UpdateSettingsParams<'_>) -> Result<A
     let det_dev = s.detection_device.clone();
     let det_met_dev = s.detection_metrics_device.clone();
     let ocr_dev = s.ocr_device.clone();
+    let safety_dev = s.safety_device.clone();
     let model_precs = s.model_precisions.clone();
     let preferred = s.preferred_tagger;
     let enabled_plugins = s.enabled_plugins.clone();
@@ -196,6 +206,10 @@ pub async fn update_settings_logic(params: UpdateSettingsParams<'_>) -> Result<A
         taggers.wd.set_device(tagger_wd_dev.clone());
     }
 
+    if safety_device.is_some() {
+        safety.set_device(safety_dev.clone());
+    }
+
     if model_changed {
         model_manager.set_active_model(active_model);
         if let Err(e) = model_manager.init() {
@@ -210,13 +224,14 @@ pub async fn update_settings_logic(params: UpdateSettingsParams<'_>) -> Result<A
     }
 
     info!(
-        "Settings updated: clip_device={:?}, tagger_device={:?}, tagger_wd_device={:?}, detection_device={:?}, detection_metrics_device={:?}, ocr_device={:?}, model_precisions={:?}, idle_timeout={}s, embedding_model={:?}, preferred_tagger={:?}",
+        "Settings updated: clip_device={:?}, tagger_device={:?}, tagger_wd_device={:?}, detection_device={:?}, detection_metrics_device={:?}, ocr_device={:?}, safety_device={:?}, model_precisions={:?}, idle_timeout={}s, embedding_model={:?}, preferred_tagger={:?}",
         clip,
         tagger_dev,
         tagger_wd_dev,
         det_dev,
         det_met_dev,
         ocr_dev,
+        safety_dev,
         model_precs,
         idle,
         active_model,
@@ -232,6 +247,7 @@ pub async fn update_settings_logic(params: UpdateSettingsParams<'_>) -> Result<A
         detection_device: det_dev,
         detection_metrics_device: det_met_dev,
         ocr_device: ocr_dev,
+        safety_device: safety_dev,
         model_precisions: model_precs,
         preferred_tagger: preferred,
         enabled_plugins,

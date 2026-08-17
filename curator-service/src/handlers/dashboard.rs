@@ -27,6 +27,7 @@ pub struct DashboardInitResult {
     pub detection_device: DevicePreference,
     pub detection_metrics_device: DevicePreference,
     pub ocr_device: DevicePreference,
+    pub safety_device: DevicePreference,
     pub model_precisions: HashMap<String, ModelPrecision>,
     pub preferred_tagger: TaggerModel,
     pub taggers: Vec<TaggerStatusInfo>,
@@ -40,6 +41,7 @@ pub async fn get_dashboard_init_logic(
     settings: &Arc<Mutex<AppSettings>>,
     taggers: &Arc<TaggerManager>,
     preferred_source: &str,
+    vector_source: &str,
 ) -> Result<DashboardInitResult> {
     let (status_result, settings_result) = tokio::join!(
         async {
@@ -65,8 +67,8 @@ pub async fn get_dashboard_init_logic(
         .unwrap_or(0);
 
     let (featured_result, latest_resp) = tokio::join!(
-        image::get_featured_image(db, data_dir, preferred_source),
-        image::list_images_logic(8, 0, None, preferred_source, db),
+        image::get_featured_image(db, data_dir, preferred_source, vector_source),
+        image::list_images_logic(8, 0, None, preferred_source, vector_source, db),
     );
 
     let featured_images = featured_result.into_iter().collect();
@@ -88,6 +90,7 @@ pub async fn get_dashboard_init_logic(
         detection_device: settings_result.detection_device,
         detection_metrics_device: settings_result.detection_metrics_device,
         ocr_device: settings_result.ocr_device,
+        safety_device: settings_result.safety_device,
         model_precisions: settings_result.model_precisions,
         preferred_tagger: settings_result.preferred_tagger,
         taggers: tagger_statuses,

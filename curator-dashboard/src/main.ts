@@ -221,6 +221,7 @@ function init() {
         detectionDevice: d.detectionDevice,
         detectionMetricsDevice: d.detectionMetricsDevice,
         ocrDevice: d.ocrDevice,
+        safetyDevice: d.safetyDevice,
         preferredTagger: d.preferredTagger,
       });
 

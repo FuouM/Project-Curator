@@ -144,6 +144,7 @@ impl ImageRepo {
     pub async fn get_image(
         image_id: i64,
         preferred_source: &str,
+        vector_source: &str,
         db: &SqlitePool,
     ) -> Result<ImageDetails> {
         let img: Image = sqlx::query_as("SELECT * FROM images WHERE id = ? AND deleted_at IS NULL")
@@ -152,6 +153,7 @@ impl ImageRepo {
             .await?;
 
         let source_id = SourceRepo::resolve_source_id(db, preferred_source).await?;
+        let vector_source_id = SourceRepo::resolve_source_id(db, vector_source).await?;
         let user_source_id = SourceRepo::resolve_source_id(db, "user").await.unwrap_or(0);
         let concept_source_id = SourceRepo::resolve_source_id(db, "ai:custom-concepts")
             .await
@@ -197,8 +199,9 @@ impl ImageRepo {
         Self::sort_tags_by_priority(&mut active_tags);
 
         let vector_state: String =
-            sqlx::query_as("SELECT vector_state FROM image_vectors WHERE image_id = ? LIMIT 1")
+            sqlx::query_as("SELECT vector_state FROM image_vectors WHERE image_id = ? AND source_id = ? LIMIT 1")
                 .bind(image_id)
+                .bind(vector_source_id)
                 .fetch_optional(db)
                 .await?
                 .map(|(s,): (String,)| s)
@@ -287,6 +290,7 @@ impl ImageRepo {
     pub async fn batch_get_images(
         ids: &[i64],
         preferred_source: &str,
+        vector_source: &str,
         db: &SqlitePool,
     ) -> Result<Vec<ImageDetails>> {
         if ids.is_empty() {
@@ -294,6 +298,7 @@ impl ImageRepo {
         }
 
         let source_id = SourceRepo::resolve_source_id(db, preferred_source).await?;
+        let vector_source_id = SourceRepo::resolve_source_id(db, vector_source).await?;
         let user_source_id = SourceRepo::resolve_source_id(db, "user").await.unwrap_or(0);
         let concept_source_id = SourceRepo::resolve_source_id(db, "ai:custom-concepts")
             .await
@@ -383,7 +388,7 @@ impl ImageRepo {
                 created_at,
                 tags: Vec::new(),
                 blacklisted_tags: Vec::new(),
-                vector_state: String::new(),
+                vector_state: "unknown".to_string(),
                 favorite,
                 parsed_metadata: None,
                 is_missing,
@@ -419,14 +424,14 @@ impl ImageRepo {
 
             let vq_future = async {
                 let vq = format!(
-                    "SELECT image_id, vector_state FROM image_vectors WHERE image_id IN ({})",
+                    "SELECT image_id, vector_state FROM image_vectors WHERE image_id IN ({}) AND source_id = ?",
                     ph
                 );
                 let mut q = sqlx::query_as::<_, (i64, String)>(&vq);
                 for id in &img_ids {
                     q = q.bind(id);
                 }
-                q.fetch_all(db).await.unwrap_or_default()
+                q.bind(vector_source_id).fetch_all(db).await.unwrap_or_default()
             };
 
             let pm_future = async {
@@ -573,6 +578,7 @@ impl ImageRepo {
         offset: usize,
         only_favorites: Option<bool>,
         preferred_source: &str,
+        vector_source: &str,
         db: &SqlitePool,
     ) -> Result<(Vec<ImageDetails>, i64)> {
         let only_favs = only_favorites.unwrap_or(false);
@@ -609,7 +615,7 @@ impl ImageRepo {
         }
 
         let id_list: Vec<i64> = page_ids.iter().map(|r| r.id).collect();
-        let images = Self::batch_get_images(&id_list, preferred_source, db).await?;
+        let images = Self::batch_get_images(&id_list, preferred_source, vector_source, db).await?;
 
         Ok((images, total_count))
     }
@@ -639,6 +645,7 @@ impl ImageRepo {
     pub async fn get_random_image(
         db: &SqlitePool,
         preferred_source: &str,
+        vector_source: &str,
     ) -> Result<(ImageDetails, i64)> {
         let count_row: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM images WHERE deleted_at IS NULL AND is_missing = 0",
@@ -657,7 +664,7 @@ impl ImageRepo {
         .fetch_one(db)
         .await?;
 
-        let details = Self::get_image(image_id, preferred_source, db).await?;
+        let details = Self::get_image(image_id, preferred_source, vector_source, db).await?;
         Ok((details, total_count))
     }
 
@@ -665,6 +672,7 @@ impl ImageRepo {
     pub async fn get_featured_image(
         db: &SqlitePool,
         preferred_source: &str,
+        vector_source: &str,
     ) -> Option<ImageDetails> {
         let row: Option<(i64,)> = sqlx::query_as(
             "SELECT id FROM images
@@ -677,7 +685,7 @@ impl ImageRepo {
         .ok()?;
 
         if let Some((id,)) = row {
-            Self::get_image(id, preferred_source, db).await.ok()
+            Self::get_image(id, preferred_source, vector_source, db).await.ok()
         } else {
             None
         }
@@ -762,6 +770,9 @@ mod tests {
         sqlx::query("INSERT INTO sources (id, name, type) VALUES (2, 'user', 'user')")
             .execute(&pool)
             .await?;
+        sqlx::query("INSERT INTO sources (id, name, type) VALUES (3, 'ai:clip-vit-b-32', 'ai')")
+            .execute(&pool)
+            .await?;
 
         // 3. Insert tags
         sqlx::query("INSERT INTO tags (id, name, category) VALUES (10, 'blonde_hair', 'general')")
@@ -782,7 +793,7 @@ mod tests {
             .await?;
 
         // 6. Query single image with preferred_source = 'ai:camie-tagger-v2'
-        let details = ImageRepo::get_image(1, "ai:camie-tagger-v2", &pool).await?;
+        let details = ImageRepo::get_image(1, "ai:camie-tagger-v2", "ai:clip-vit-b-32", &pool).await?;
         assert_eq!(details.id, 1);
         assert_eq!(
             details.tags.len(),
@@ -794,7 +805,7 @@ mod tests {
         assert!(tag_names.contains(&"suooo"));
 
         // 7. Query batch images with preferred_source = 'ai:camie-tagger-v2'
-        let batch = ImageRepo::batch_get_images(&[1], "ai:camie-tagger-v2", &pool).await?;
+        let batch = ImageRepo::batch_get_images(&[1], "ai:camie-tagger-v2", "ai:clip-vit-b-32", &pool).await?;
         assert_eq!(batch.len(), 1);
         assert_eq!(batch[0].tags.len(), 2, "Expected 2 tags in batch query");
         let batch_tag_names: Vec<&str> = batch[0].tags.iter().map(|t| t.tag.as_str()).collect();

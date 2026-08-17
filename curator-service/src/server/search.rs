@@ -27,6 +27,7 @@ impl SearchService for SearchServiceImpl {
     ) -> Result<TonicResponse<SearchResult>, Status> {
         let req = request.into_inner();
         let preferred_source = super::preferred_source(&self.ctx).await;
+        let vector_source = self.ctx.settings.lock().await.embedding_model.source_name().to_string();
         let ffmpeg = handlers::resolve_ffmpeg_path(&self.ctx.data_dir, &self.ctx.settings)
             .await
             .ok();
@@ -46,6 +47,7 @@ impl SearchService for SearchServiceImpl {
                 limit: req.limit as usize,
             },
             &preferred_source,
+            &vector_source,
             &self.ctx.db,
             &self.ctx.model_manager,
             &self.ctx.vector_index,

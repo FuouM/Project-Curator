@@ -267,17 +267,19 @@ fn warn_scoped(scope: &str, msg: String) {
 pub async fn get_image_logic(
     image_id: i64,
     preferred_source: &str,
+    vector_source: &str,
     db: &SqlitePool,
 ) -> Result<ImageDetails> {
-    curator_core::ImageRepo::get_image(image_id, preferred_source, db).await
+    curator_core::ImageRepo::get_image(image_id, preferred_source, vector_source, db).await
 }
 
 pub async fn batch_get_images_logic(
     ids: &[i64],
     preferred_source: &str,
+    vector_source: &str,
     db: &SqlitePool,
 ) -> Result<Vec<ImageDetails>> {
-    curator_core::ImageRepo::batch_get_images(ids, preferred_source, db).await
+    curator_core::ImageRepo::batch_get_images(ids, preferred_source, vector_source, db).await
 }
 
 pub async fn list_images_logic(
@@ -285,9 +287,18 @@ pub async fn list_images_logic(
     offset: usize,
     only_favorites: Option<bool>,
     preferred_source: &str,
+    vector_source: &str,
     db: &SqlitePool,
 ) -> Result<(Vec<ImageDetails>, i64)> {
-    curator_core::ImageRepo::list_images(limit, offset, only_favorites, preferred_source, db).await
+    curator_core::ImageRepo::list_images(
+        limit,
+        offset,
+        only_favorites,
+        preferred_source,
+        vector_source,
+        db,
+    )
+    .await
 }
 
 pub async fn get_thumbnail_logic(
@@ -373,6 +384,7 @@ pub async fn get_featured_image(
     db: &SqlitePool,
     data_dir: &Path,
     preferred_source: &str,
+    vector_source: &str,
 ) -> Option<ImageDetails> {
     let today_str = {
         let secs = curator_core::util::now_secs();
@@ -386,7 +398,7 @@ pub async fn get_featured_image(
         let parts: Vec<&str> = content.trim().splitn(2, '|').collect();
         if parts.len() == 2 && parts[0] == today_str {
             if let Ok(id) = parts[1].parse::<i64>() {
-                if let Ok(img) = get_image_logic(id, preferred_source, db).await {
+                if let Ok(img) = get_image_logic(id, preferred_source, vector_source, db).await {
                     if std::path::Path::new(&img.current_filepath).exists() {
                         return Some(img);
                     }
@@ -401,7 +413,7 @@ pub async fn get_featured_image(
     .fetch_optional(db)
     .await
     {
-        if let Ok(img) = get_image_logic(rand_id, preferred_source, db).await {
+        if let Ok(img) = get_image_logic(rand_id, preferred_source, vector_source, db).await {
             if std::path::Path::new(&img.current_filepath).exists() {
                 let _ = fs::write(&featured_file, format!("{}|{}", today_str, rand_id));
                 return Some(img);
@@ -416,6 +428,7 @@ pub async fn get_featured_image(
 pub async fn get_random_image_logic(
     db: &SqlitePool,
     preferred_source: &str,
+    vector_source: &str,
 ) -> Result<(ImageDetails, i64)> {
     // Pick a random image
     let rand_row: (i64, String) = sqlx::query_as(
@@ -436,7 +449,7 @@ pub async fn get_random_image_logic(
     .fetch_one(db)
     .await?;
 
-    let img = get_image_logic(rand_id, preferred_source, db).await?;
+    let img = get_image_logic(rand_id, preferred_source, vector_source, db).await?;
     Ok((img, pos.0))
 }
 
@@ -477,7 +490,7 @@ mod tests {
             .execute(&pool)
             .await?;
 
-        let details = batch_get_images_logic(&[101], "user", &pool).await?;
+        let details = batch_get_images_logic(&[101], "user", "user", &pool).await?;
         assert_eq!(details.len(), 1);
         assert_eq!(details[0].id, 101);
         assert_eq!(details[0].tags.len(), 1);

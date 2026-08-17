@@ -85,6 +85,9 @@ pub(crate) struct AppSettings {
     detection_metrics_device: curator_core::ipc::DevicePreference,
     #[serde(default)]
     ocr_device: curator_core::ipc::DevicePreference,
+    /// Device preference for the safety (NSFW) classifier.
+    #[serde(default)]
+    safety_device: curator_core::ipc::DevicePreference,
     #[serde(default)]
     model_precisions: std::collections::HashMap<String, curator_core::ipc::ModelPrecision>,
     /// Preferred tagger whose tags are surfaced in the UI.
@@ -121,6 +124,7 @@ impl Default for AppSettings {
             detection_device: curator_core::ipc::DevicePreference::Auto,
             detection_metrics_device: curator_core::ipc::DevicePreference::Cpu,
             ocr_device: curator_core::ipc::DevicePreference::Auto,
+            safety_device: curator_core::ipc::DevicePreference::Auto,
             model_precisions: std::collections::HashMap::new(),
             preferred_tagger: TaggerModel::Camie,
             enabled_plugins: std::collections::HashMap::new(),
@@ -338,6 +342,7 @@ async fn main() -> Result<(), Error> {
     let data_dir_arc = Arc::new(data_dir);
     let safety = Arc::new(handlers::safety::SafetyService::new(
         (*data_dir_arc).clone(),
+        settings.safety_device.clone(),
     ));
 
     let worker = BackgroundWorker::new(

@@ -5,6 +5,7 @@ use std::path::Path;
 use tracing::info;
 
 use crate::models::{DuplicateFolderGroup, DuplicateFolderInfo, FolderDetails};
+use crate::repos::SourceRepo;
 
 pub struct FolderRepo;
 
@@ -38,7 +39,7 @@ impl FolderRepo {
     }
 
     /// List all imported folders with file and vector status counts.
-    pub async fn get_imported_folders(db: &SqlitePool) -> Result<Vec<FolderDetails>> {
+    pub async fn get_imported_folders(db: &SqlitePool, vector_source: &str) -> Result<Vec<FolderDetails>> {
         #[derive(Debug, sqlx::FromRow)]
         struct FolderRow {
             id: i64,
@@ -52,6 +53,8 @@ impl FolderRepo {
             safety_classified: i64,
             safety_pending: i64,
         }
+
+        let vector_source_id = SourceRepo::find_source_id(db, vector_source).await?;
 
         let rows: Vec<FolderRow> = sqlx::query_as(
             r#"
@@ -68,11 +71,12 @@ impl FolderRepo {
                 COALESCE(SUM(CASE WHEN i.safe_score IS NULL AND i.id IS NOT NULL AND i.is_missing = 0 THEN 1 ELSE 0 END), 0) as safety_pending
             FROM folders f
             LEFT JOIN images i ON i.folder_id = f.id AND i.deleted_at IS NULL
-            LEFT JOIN image_vectors iv ON iv.image_id = i.id
+            LEFT JOIN image_vectors iv ON iv.image_id = i.id AND iv.source_id = ?
             GROUP BY f.id
             ORDER BY f.imported_at DESC
             "#,
         )
+        .bind(vector_source_id)
         .fetch_all(db)
         .await?;
 
@@ -396,7 +400,7 @@ mod tests {
         assert!(folder_id > 0);
 
         // 2. Fetch imported folders
-        let folders = FolderRepo::get_imported_folders(&pool).await?;
+        let folders = FolderRepo::get_imported_folders(&pool, "ai:clip-vit-b-32").await?;
         assert_eq!(folders.len(), 1);
         assert_eq!(folders[0].id, folder_id);
         assert_eq!(folders[0].name, "folder");

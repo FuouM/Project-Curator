@@ -403,47 +403,6 @@ impl BackgroundWorker {
                 }
             }
         });
-
-        // Stage 3 Task: Background safety backfill reconciler (runs on unclassified images when idle)
-        {
-            let db_safety = self.db.clone();
-            let safety_backfill = self.safety.clone();
-            tokio::spawn(async move {
-                info!("Background safety backfill worker started.");
-                loop {
-                    sleep(Duration::from_secs(6)).await;
-
-                    let unclassified: Vec<(i64, String, Option<String>)> = match sqlx::query_as(
-                        "SELECT id, current_filepath, video_frame_path FROM images 
-                         WHERE safe_score IS NULL AND deleted_at IS NULL AND is_missing = 0 
-                         LIMIT 8",
-                    )
-                    .fetch_all(&db_safety)
-                    .await
-                    {
-                        Ok(rows) => rows,
-                        Err(_) => continue,
-                    };
-
-                    if unclassified.is_empty() {
-                        sleep(Duration::from_secs(15)).await;
-                        continue;
-                    }
-
-                    let batch: Vec<(i64, String)> = unclassified
-                        .into_iter()
-                        .map(|(id, fp, vfp)| {
-                            let p = curator_core::video::decode_path(&fp, vfp.as_deref())
-                                .to_string_lossy()
-                                .into_owned();
-                            (id, p)
-                        })
-                        .collect();
-
-                    safety_backfill.classify_and_write(&db_safety, batch).await;
-                }
-            });
-        }
     }
 }
 

@@ -393,6 +393,22 @@ export interface SettingsUISnapshot {
   detectionDevice: DevicePreference;
   detectionMetricsDevice: DevicePreference;
   ocrDevice: DevicePreference;
+  safetyDevice: DevicePreference;
+}
+
+export function updateEmbeddingDeviceCard(model: string) {
+  const title = document.getElementById("embedding-device-title");
+  const desc = document.getElementById("embedding-device-desc");
+  if (!title || !desc) return;
+  if (model === "mobileclip-s2") {
+    title.textContent = "MobileCLIP-S2";
+    desc.textContent =
+      "Fast + accurate embedding model. Powers image embedding generation and text-to-image semantic search.";
+  } else {
+    title.textContent = "CLIP ViT-B/32";
+    desc.textContent =
+      "Powers image embedding generation and text-to-image semantic search.";
+  }
 }
 
 export function applySettingsToUI(s: SettingsUISnapshot) {
@@ -409,6 +425,7 @@ export function applySettingsToUI(s: SettingsUISnapshot) {
     "settings-detection-metrics-device",
   ) as HTMLSelectElement;
   const ocrDeviceSelect = document.getElementById("settings-ocr-device") as HTMLSelectElement;
+  const safetyDeviceSelect = document.getElementById("settings-safety-device") as HTMLSelectElement;
   if (clipSelect) clipSelect.value = deviceToString(s.clipDevice);
   if (taggerSelect) taggerSelect.value = deviceToString(s.taggerDevice);
   if (taggerWdSelect) taggerWdSelect.value = deviceToString(s.taggerWdDevice);
@@ -416,11 +433,13 @@ export function applySettingsToUI(s: SettingsUISnapshot) {
   if (idleSelect) idleSelect.value = s.idleTimeoutSecs.toString();
   if (embeddingSelect) {
     embeddingSelect.value = embeddingToString(s.embeddingModel);
+    updateEmbeddingDeviceCard(embeddingToString(s.embeddingModel));
     updateBenchmarkModelHeader(embeddingToString(s.embeddingModel));
   }
   if (detDeviceSelect) detDeviceSelect.value = deviceToString(s.detectionDevice);
   if (detMetricsSelect) detMetricsSelect.value = deviceToString(s.detectionMetricsDevice);
   if (ocrDeviceSelect) ocrDeviceSelect.value = deviceToString(s.ocrDevice);
+  if (safetyDeviceSelect) safetyDeviceSelect.value = deviceToString(s.safetyDevice);
 }
 
 // ---------------------------------------------------------------------------

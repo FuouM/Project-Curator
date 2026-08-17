@@ -49,12 +49,14 @@ impl SystemService for SystemServiceImpl {
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<DashboardInitResult>, Status> {
         let preferred = preferred_source(&self.ctx).await;
+        let vector_source = self.ctx.settings.lock().await.embedding_model.source_name().to_string();
         let d = handlers::dashboard::get_dashboard_init_logic(
             &self.ctx.db,
             &self.ctx.data_dir,
             &self.ctx.settings,
             &self.ctx.taggers,
             &preferred,
+            &vector_source,
         )
         .await
         .map_err(internal_status)?;
@@ -74,6 +76,7 @@ impl SystemService for SystemServiceImpl {
             detection_device: convert::device_to_proto(&d.detection_device),
             detection_metrics_device: convert::device_to_proto(&d.detection_metrics_device),
             ocr_device: convert::device_to_proto(&d.ocr_device),
+            safety_device: convert::device_to_proto(&d.safety_device),
             model_precisions: d
                 .model_precisions
                 .iter()
@@ -91,7 +94,8 @@ impl SystemService for SystemServiceImpl {
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<RandomImageResult>, Status> {
         let preferred = preferred_source(&self.ctx).await;
-        let (image, index) = handlers::image::get_random_image_logic(&self.ctx.db, &preferred)
+        let vector_source = self.ctx.settings.lock().await.embedding_model.source_name().to_string();
+        let (image, index) = handlers::image::get_random_image_logic(&self.ctx.db, &preferred, &vector_source)
             .await
             .map_err(internal_status)?;
         Ok(TonicResponse::new(RandomImageResult {
@@ -114,6 +118,7 @@ impl SystemService for SystemServiceImpl {
             detection_device: convert::device_to_proto(&s.detection_device),
             detection_metrics_device: convert::device_to_proto(&s.detection_metrics_device),
             ocr_device: convert::device_to_proto(&s.ocr_device),
+            safety_device: convert::device_to_proto(&s.safety_device),
             model_precisions: s
                 .model_precisions
                 .iter()
@@ -151,6 +156,7 @@ impl SystemService for SystemServiceImpl {
                 model_manager: &self.ctx.model_manager,
                 vector_index: &self.ctx.vector_index,
                 taggers: &self.ctx.taggers,
+                safety: &self.ctx.safety,
                 data_dir: &self.ctx.data_dir,
                 settings: &self.ctx.settings,
                 clip_device: req.clip_device.map(convert::device_from_proto),
@@ -163,6 +169,7 @@ impl SystemService for SystemServiceImpl {
                     .detection_metrics_device
                     .map(convert::device_from_proto),
                 ocr_device: req.ocr_device.map(convert::device_from_proto),
+                safety_device: req.safety_device.map(convert::device_from_proto),
                 model_precisions,
                 preferred_tagger: convert::tagger_from_proto(req.preferred_tagger),
             })
@@ -177,6 +184,7 @@ impl SystemService for SystemServiceImpl {
             detection_device: convert::device_to_proto(&s.detection_device),
             detection_metrics_device: convert::device_to_proto(&s.detection_metrics_device),
             ocr_device: convert::device_to_proto(&s.ocr_device),
+            safety_device: convert::device_to_proto(&s.safety_device),
             model_precisions: s
                 .model_precisions
                 .iter()

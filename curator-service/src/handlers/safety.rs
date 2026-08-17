@@ -21,6 +21,7 @@ pub const SAFETY_BATCH_FLUSH: usize = 8;
 #[derive(Clone)]
 pub struct SafetyService {
     classifier: Arc<std::sync::Mutex<Option<Arc<SafetyClassifier>>>>,
+    device: Arc<std::sync::Mutex<DevicePreference>>,
     data_dir: Arc<PathBuf>,
     progress: Arc<Mutex<SafetyRescanState>>,
     model_missing_logged: Arc<AtomicBool>,
@@ -36,13 +37,24 @@ pub struct SafetyRescanState {
 }
 
 impl SafetyService {
-    pub fn new(data_dir: PathBuf) -> Self {
+    pub fn new(data_dir: PathBuf, device: DevicePreference) -> Self {
         Self {
             classifier: Arc::new(std::sync::Mutex::new(None)),
+            device: Arc::new(std::sync::Mutex::new(device)),
             data_dir: Arc::new(data_dir),
             progress: Arc::new(Mutex::new(SafetyRescanState::default())),
             model_missing_logged: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Set the inference device. Unloads an existing classifier so the next
+    /// call rebuilds it with the new preference.
+    pub fn set_device(&self, device: DevicePreference) {
+        let slot = self.classifier.lock().unwrap();
+        if let Some(c) = slot.as_ref() {
+            c.set_device(device.clone());
+        }
+        *self.device.lock().unwrap() = device;
     }
 
     /// Lazily construct (and cache) the classifier. Sessions auto-load on the
@@ -53,7 +65,8 @@ impl SafetyService {
             return Ok(Arc::clone(c));
         }
         let path = SafetyClassifier::resolve_model_path(&self.data_dir);
-        let c = Arc::new(SafetyClassifier::new(path, DevicePreference::Auto));
+        let device = self.device.lock().unwrap().clone();
+        let c = Arc::new(SafetyClassifier::new(path, device));
         *slot = Some(Arc::clone(&c));
         Ok(c)
     }

@@ -28,6 +28,7 @@ message SettingsResult {
   map<string, curator.common.ModelPrecision> model_precisions = 9;
   curator.common.TaggerModel preferred_tagger = 10;
   repeated curator.common.TaggerStatusInfo taggers = 11;
+  curator.common.DevicePreference safety_device = 12;
 }
 
 message UpdateSettingsRequest {
@@ -41,6 +42,7 @@ message UpdateSettingsRequest {
   optional curator.common.DevicePreference ocr_device = 8;
   map<string, curator.common.ModelPrecision> model_precisions = 9;
   optional curator.common.TaggerModel preferred_tagger = 10;
+  optional curator.common.DevicePreference safety_device = 11;
 }
 
 message ReindexVectorsResult {
@@ -85,4 +87,5 @@ message DashboardInitResult {
   repeated curator.common.TaggerStatusInfo taggers = 18;
   repeated curator.common.ImageDetails featured_images = 19;
   repeated curator.common.ImageDetails latest_images = 20;
+  curator.common.DevicePreference safety_device = 21;
 }

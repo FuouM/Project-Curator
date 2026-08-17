@@ -299,10 +299,11 @@ export async function initStorageStats() {
         if (itemList.length === 0) return;
         if (itemList.length === 1) {
           const item = itemList[0];
+          const fontScale = Math.max(7, Math.min(10, Math.min(w / 24, h / 8)));
           const label =
-            w > 60 && h > 30
-              ? `<text x="${x + 8}" y="${y + 18}" fill="${item.textColor}" font-size="10" font-weight="600" font-family="'Segoe UI', -apple-system, sans-serif">${item.name}</text>
-             <text x="${x + 8}" y="${y + 30}" fill="${item.textColor}" opacity="0.85" font-size="9" font-family="'Segoe UI', -apple-system, sans-serif">${formatBytes(item.size)}</text>`
+            w > 40 && h > 16
+              ? `<text x="${x + 8}" y="${y + 16}" fill="${item.textColor}" font-size="${fontScale}" font-weight="600" font-family="'Segoe UI', -apple-system, sans-serif">${item.name}</text>
+             <text x="${x + 8}" y="${y + 16 + fontScale + 3}" fill="${item.textColor}" opacity="0.85" font-size="${Math.max(7, fontScale - 1)}" font-family="'Segoe UI', -apple-system, sans-serif">${formatBytes(item.size)}</text>`
               : "";
           rectsHtml += `
             <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${item.color}" stroke="${item.borderColor}" stroke-width="1.5">
@@ -347,10 +348,34 @@ export async function initStorageStats() {
 
       divide(0, 0, width, height, items, true);
 
+      let legendRows = "";
+      items.forEach((item) => {
+        legendRows += `
+          <tr style="font-size:11px; border-bottom:1px solid var(--sys-border-light);">
+            <td style="width:14px;height:14px;padding:6px;"><div style="width:12px;height:12px;background:${item.color};border:1.5px solid ${item.borderColor};"></div></td>
+            <td style="font-weight:600;padding:6px 8px;color:var(--sys-window-text);">${item.name}</td>
+            <td style="padding:6px 8px;text-align:right;color:var(--sys-window-text);">${formatBytes(item.size)}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:600;color:var(--sys-window-text);">${item.percent.toFixed(1)}%</td>
+          </tr>
+        `;
+      });
+
       container.innerHTML = `
-        <svg width="100%" height="200" viewBox="0 0 480 200" preserveAspectRatio="xMinYMid meet" style="border:1px solid var(--sys-border-dark);border-radius:2px;background:var(--sys-window-bg);margin-right:auto;">
-          ${rectsHtml}
-        </svg>
+        <div style="width:100%;display:flex;flex-direction:column;gap:12px;margin-right:auto;">
+          <svg width="100%" height="200" viewBox="0 0 480 200" preserveAspectRatio="xMinYMid meet" style="border:1px solid var(--sys-border-dark);border-radius:2px;background:var(--sys-window-bg);">
+            ${rectsHtml}
+          </svg>
+          <table class="curator-table" style="width:100%;max-width:420px;border-collapse:collapse;">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--sys-border-dark); color: #555; text-align:left; font-size:11px;">
+                <th colspan="2" style="padding:4px 8px;">Type</th>
+                <th style="padding:4px 8px;text-align:right;">Size</th>
+                <th style="padding:4px 8px;text-align:right;">Percentage</th>
+              </tr>
+            </thead>
+            <tbody>${legendRows}</tbody>
+          </table>
+        </div>
       `;
     };
 

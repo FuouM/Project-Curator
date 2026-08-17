@@ -501,6 +501,13 @@ export function renderSettingsHtml(): SafeHtml {
             </select>
             <button
               class="win-button"
+              id="save-embedding-model-btn"
+              style="padding: 2px 8px; font-size: 11px;"
+            >
+              <i class="bi bi-save"></i> Save
+            </button>
+            <button
+              class="win-button"
               id="reindex-vectors-btn"
               style="padding: 2px 8px; font-size: 11px;"
             >
@@ -546,10 +553,12 @@ export function renderSettingsHtml(): SafeHtml {
           </div>
         </div>
 
-        <!-- CLIP Device -->
+        <!-- Embedding Model Device -->
         <div class="device-card">
-          <div class="device-card-title"><i class="bi bi-search"></i> CLIP ViT-B/32</div>
-          <p class="device-card-desc">
+          <div class="device-card-title">
+            <i class="bi bi-search"></i> <span id="embedding-device-title">CLIP ViT-B/32</span>
+          </div>
+          <p class="device-card-desc" id="embedding-device-desc">
             Powers image embedding generation and text-to-image semantic search.
           </p>
           <div class="device-card-row">
@@ -559,6 +568,13 @@ export function renderSettingsHtml(): SafeHtml {
               <option value="cpu">CPU Only</option>
               <option value="gpu">GPU Only</option>
             </select>
+            <button
+              class="win-button"
+              id="save-clip-device-btn"
+              style="padding: 2px 8px; font-size: 11px;"
+            >
+              <i class="bi bi-save"></i> Save
+            </button>
           </div>
         </div>
 
@@ -654,6 +670,13 @@ export function renderSettingsHtml(): SafeHtml {
               <option value="cpu" selected>CPU Only</option>
               <option value="gpu">GPU Only</option>
             </select>
+            <button
+              class="win-button"
+              id="save-detection-device-btn"
+              style="padding: 2px 8px; font-size: 11px;"
+            >
+              <i class="bi bi-save"></i> Save
+            </button>
           </div>
         </div>
 
@@ -670,6 +693,36 @@ export function renderSettingsHtml(): SafeHtml {
               <option value="cpu">CPU Only</option>
               <option value="gpu">GPU Only</option>
             </select>
+            <button
+              class="win-button"
+              id="save-ocr-device-btn"
+              style="padding: 2px 8px; font-size: 11px;"
+            >
+              <i class="bi bi-save"></i> Save
+            </button>
+          </div>
+        </div>
+
+        <!-- Safety Model Device -->
+        <div class="device-card">
+          <div class="device-card-title"><i class="bi bi-shield-check"></i> NSFW Safety Model</div>
+          <p class="device-card-desc">
+            Classifies images into safe/hentai/porn/sexy/drawing scores (nsfw-detection-2-mini).
+          </p>
+          <div class="device-card-row">
+            <label>Device:</label>
+            <select class="input-field" id="settings-safety-device" style="width: 150px;">
+              <option value="auto">Auto (GPU if available)</option>
+              <option value="cpu">CPU Only</option>
+              <option value="gpu">GPU Only</option>
+            </select>
+            <button
+              class="win-button"
+              id="save-safety-device-btn"
+              style="padding: 2px 8px; font-size: 11px;"
+            >
+              <i class="bi bi-save"></i> Save
+            </button>
           </div>
         </div>
 
@@ -689,6 +742,13 @@ export function renderSettingsHtml(): SafeHtml {
               <option value="1800">30 minutes</option>
               <option value="0">Never unload</option>
             </select>
+            <button
+              class="win-button"
+              id="save-idle-timeout-btn"
+              style="padding: 2px 8px; font-size: 11px;"
+            >
+              <i class="bi bi-save"></i> Save
+            </button>
           </div>
         </div>
       </div>
