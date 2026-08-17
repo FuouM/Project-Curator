@@ -44,101 +44,17 @@ import { setGalleryPage, getImagesPerPage, setLuckyHighlightId } from "./state";
 import { refreshGallery } from "./views/gallery";
 import { initPlugins } from "./plugin-host";
 
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { PhysicalSize, PhysicalPosition } from "@tauri-apps/api/dpi";
-
-async function restoreWindowState() {
-  try {
-    const appWindow = getCurrentWindow();
-    const savedState = localStorage.getItem("curator-window-state");
-    if (savedState) {
-      const { x, y, width, height, maximized } = JSON.parse(savedState);
-      if (maximized) {
-        await appWindow.maximize();
-      } else {
-        if (width && height) {
-          const guardedWidth = Math.max(width, 800);
-          const guardedHeight = Math.max(height, 600);
-          await appWindow.setSize(new PhysicalSize(guardedWidth, guardedHeight));
-        }
-        if (x !== undefined && y !== undefined && x > -10000 && y > -10000) {
-          await appWindow.setPosition(new PhysicalPosition(x, y));
-        } else {
-          await appWindow.center();
-        }
-      }
-    } else {
-      await appWindow.center();
-    }
-  } catch (err) {
-    console.error("Window state restore error:", err);
-  }
-
-  setupWindowStateListener();
-}
-
-function setupWindowStateListener() {
-  try {
-    const appWindow = getCurrentWindow();
-    let saveTimeout: any = null;
-    const saveState = async () => {
-      try {
-        const isMaximized = await appWindow.isMaximized();
-        if (isMaximized) {
-          const savedState = localStorage.getItem("curator-window-state");
-          let prevState = { x: 100, y: 100, width: 800, height: 600 };
-          if (savedState) {
-            try {
-              const parsed = JSON.parse(savedState);
-              if (parsed.width) prevState = parsed;
-            } catch (_) {}
-          }
-          localStorage.setItem(
-            "curator-window-state",
-            JSON.stringify({
-              ...prevState,
-              maximized: true,
-            }),
-          );
-        } else {
-          const outerSize = await appWindow.outerSize();
-          const outerPosition = await appWindow.outerPosition();
-          if (
-            outerSize.width > 200 &&
-            outerSize.height > 150 &&
-            outerPosition.x > -10000 &&
-            outerPosition.y > -10000
-          ) {
-            localStorage.setItem(
-              "curator-window-state",
-              JSON.stringify({
-                width: outerSize.width,
-                height: outerSize.height,
-                x: outerPosition.x,
-                y: outerPosition.y,
-                maximized: false,
-              }),
-            );
-          }
-        }
-      } catch (err) {
-        console.error("Window state save error:", err);
-      }
-    };
-
-    appWindow.onResized(() => {
-      clearTimeout(saveTimeout);
-      saveTimeout = setTimeout(saveState, 300);
-    });
-    appWindow.onMoved(() => {
-      clearTimeout(saveTimeout);
-      saveTimeout = setTimeout(saveState, 300);
-    });
-  } catch (_) {}
-}
+import { restoreStateCurrent, saveWindowState, StateFlags } from "@tauri-apps/plugin-window-state";
 
 function init() {
-  restoreWindowState();
+  restoreStateCurrent(StateFlags.ALL).catch((err) => {
+    console.error("Window state restore error:", err);
+  });
+  window.addEventListener("unload", () => {
+    saveWindowState(StateFlags.ALL).catch((err) => {
+      console.error("Window state save error:", err);
+    });
+  });
 
   // Render all view templates dynamically into their shell elements
   const viewDashboard = document.getElementById("view-dashboard");

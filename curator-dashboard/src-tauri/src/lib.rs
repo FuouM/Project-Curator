@@ -688,6 +688,7 @@ async fn get_thumbnail(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .setup(|_app| {
             let data_dir = data_dir();
             let _ = fs::create_dir_all(data_dir);

@@ -49,6 +49,7 @@ tonic-build = "0.12"
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-build = { version = "2" }
 tauri-plugin-opener = "2"
+tauri-plugin-window-state = "2"
 rfd = "0.15"
 sysinfo = "0.33"
 zip = { version = "2", default-features = false, features = ["deflate"] }

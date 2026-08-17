@@ -12,6 +12,8 @@
     "core:window:allow-outer-position",
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",
-    "core:window:allow-is-maximized"
+    "core:window:allow-is-maximized",
+    "window-state:allow-restore-state",
+    "window-state:allow-save-window-state"
   ]
 }
