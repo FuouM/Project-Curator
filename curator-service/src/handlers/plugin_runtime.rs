@@ -131,8 +131,7 @@ fn read_spec(plugin_dir: &Path) -> anyhow::Result<InstallSpec> {
     let spec_path = plugin_dir.join("install.json");
     let content = std::fs::read_to_string(&spec_path)
         .with_context(|| format!("missing install.json for plugin {}", plugin_dir.display()))?;
-    let spec: InstallSpec =
-        serde_json::from_str(&content).context("invalid install.json spec")?;
+    let spec: InstallSpec = serde_json::from_str(&content).context("invalid install.json spec")?;
     if spec.output_dir.is_empty() || spec.archive_url.is_empty() {
         anyhow::bail!("install.json requires non-empty output_dir and archive_url");
     }
@@ -150,7 +149,12 @@ async fn download_archive(
         s.percent = 0;
     })
     .await;
-    progress_log(progress, plugin, format!("Downloading {}", spec.archive_url)).await;
+    progress_log(
+        progress,
+        plugin,
+        format!("Downloading {}", spec.archive_url),
+    )
+    .await;
     let config = ureq::config::Config::builder()
         .max_redirects(10)
         .timeout_global(Some(std::time::Duration::from_secs(120)))
@@ -158,7 +162,10 @@ async fn download_archive(
     let agent = config.new_agent();
     let mut response = agent
         .get(&spec.archive_url)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Curator/1.0")
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Curator/1.0",
+        )
         .call()
         .map_err(|e| anyhow::anyhow!("download failed: {e}"))?;
 
@@ -179,7 +186,9 @@ async fn download_archive(
     loop {
         use std::io::Read;
         let n = reader.read(&mut buf)?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         std::io::Write::write_all(&mut file, &buf[..n])?;
         done += n as u64;
         if total > 0 {
@@ -213,20 +222,38 @@ async fn extract_archive(
     let file = std::fs::File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| anyhow::anyhow!("open zip: {e}"))?;
     let prefix = format!("{}/", spec.zip_root);
-    progress_log(progress, plugin, format!("Archive entries: {}", archive.len())).await;
+    progress_log(
+        progress,
+        plugin,
+        format!("Archive entries: {}", archive.len()),
+    )
+    .await;
 
     let mut written = 0usize;
     let mut extracted_lines: Vec<String> = Vec::new();
     for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| anyhow::anyhow!("zip entry {i}: {e}"))?;
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|e| anyhow::anyhow!("zip entry {i}: {e}"))?;
         let full = entry.name().to_string();
-        let Some(rel) = full.strip_prefix(&prefix) else { continue; };
-        if rel.is_empty() { continue; }
-        if rel.ends_with('/') { continue; } // dirs created implicitly by file writes
+        let Some(rel) = full.strip_prefix(&prefix) else {
+            continue;
+        };
+        if rel.is_empty() {
+            continue;
+        }
+        if rel.ends_with('/') {
+            continue;
+        } // dirs created implicitly by file writes
 
         let keep = spec.extract_files.iter().any(|f| f == rel)
-            || spec.extract_dirs.iter().any(|d| rel.starts_with(&format!("{d}/")));
-        if !keep { continue; }
+            || spec
+                .extract_dirs
+                .iter()
+                .any(|d| rel.starts_with(&format!("{d}/")));
+        if !keep {
+            continue;
+        }
 
         let out_path = runtime_dir.join(rel);
         if let Some(parent) = out_path.parent() {
@@ -252,7 +279,12 @@ async fn extract_archive(
     // pinned version is re-audited instead of silently producing wrong output.
     if let Some(verify) = &spec.verify {
         let target = runtime_dir.join(&verify.path);
-        progress_log(progress, plugin, format!("Verifying SHA-256 of {}", verify.path)).await;
+        progress_log(
+            progress,
+            plugin,
+            format!("Verifying SHA-256 of {}", verify.path),
+        )
+        .await;
         let bytes = std::fs::read(&target)
             .map_err(|e| anyhow::anyhow!("missing {} after extraction: {e}", verify.path))?;
         let actual = {
@@ -294,7 +326,12 @@ async fn inject_bridge(
         if html.contains(&inject.tag) {
             // idempotent
         } else {
-            progress_log(progress, plugin, format!("Patching index.html ({} → before </body>)", inject.tag)).await;
+            progress_log(
+                progress,
+                plugin,
+                format!("Patching index.html ({} → before </body>)", inject.tag),
+            )
+            .await;
             let patched = html.replace("</body>", &format!("{}\n</body>", inject.tag));
             std::fs::write(&index_path, patched)?;
         }

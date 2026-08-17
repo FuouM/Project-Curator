@@ -22,7 +22,10 @@ fn test_turbojpeg_decode_dimensions_and_channels() {
     let image = turbojpeg::decompress(&data, turbojpeg::PixelFormat::RGB).unwrap();
     assert!(image.width > 0);
     assert!(image.height > 0);
-    assert_eq!(image.pixels.len(), (image.width * image.height * 3) as usize);
+    assert_eq!(
+        image.pixels.len(),
+        (image.width * image.height * 3) as usize
+    );
 
     // Verify comparison with image crate decoding
     let img = image::open(&path).unwrap().to_rgb8();
@@ -124,12 +127,28 @@ async fn test_vector_indexing_and_clip_inference() {
         .init()
         .expect("Failed to initialize CLIP models");
 
-    assert!(model_dir.join("clip-vit-b32").join("vision_model.onnx").exists());
-    assert!(model_dir.join("clip-vit-b32").join("text_model.onnx").exists());
-    assert!(model_dir.join("clip-vit-b32").join("tokenizer.json").exists());
+    assert!(
+        model_dir
+            .join("clip-vit-b32")
+            .join("vision_model.onnx")
+            .exists()
+    );
+    assert!(
+        model_dir
+            .join("clip-vit-b32")
+            .join("text_model.onnx")
+            .exists()
+    );
+    assert!(
+        model_dir
+            .join("clip-vit-b32")
+            .join("tokenizer.json")
+            .exists()
+    );
 
     let test_image_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
+        .parent()
+        .unwrap()
         .join("assets")
         .join("test_images")
         .join("augh.png");
@@ -142,7 +161,10 @@ async fn test_vector_indexing_and_clip_inference() {
 
     // Verify L2 unit norm
     let img_norm: f32 = image_embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
-    assert!((img_norm - 1.0).abs() < 1e-4, "Image embedding must be unit normalized");
+    assert!(
+        (img_norm - 1.0).abs() < 1e-4,
+        "Image embedding must be unit normalized"
+    );
 
     let text_embedding = model_manager
         .generate_text_embedding("a picture of a cat")
@@ -150,7 +172,10 @@ async fn test_vector_indexing_and_clip_inference() {
     assert_eq!(text_embedding.len(), 512);
 
     let txt_norm: f32 = text_embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
-    assert!((txt_norm - 1.0).abs() < 1e-4, "Text embedding must be unit normalized");
+    assert!(
+        (txt_norm - 1.0).abs() < 1e-4,
+        "Text embedding must be unit normalized"
+    );
 
     let index = VectorIndex::new(&index_path, 512).expect("Failed to initialize vector index");
     index
@@ -172,7 +197,8 @@ async fn test_text_similarity_and_padding_behavior() {
     use curator_core::ipc::EmbeddingModel;
     let data_dir_env = std::env::var("CURATOR_DATA_DIR").ok();
     let default_data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
+        .parent()
+        .unwrap()
         .join(".curator");
     let model_dir = match &data_dir_env {
         Some(p) => std::path::PathBuf::from(p).join("models"),
@@ -189,9 +215,15 @@ async fn test_text_similarity_and_padding_behavior() {
         model_manager.set_active_model(model);
         model_manager.init().expect("Failed to init model");
 
-        let cat = model_manager.generate_text_embedding("a picture of a cat").unwrap();
-        let kitten = model_manager.generate_text_embedding("a cute kitten").unwrap();
-        let car = model_manager.generate_text_embedding("a sports car on a highway").unwrap();
+        let cat = model_manager
+            .generate_text_embedding("a picture of a cat")
+            .unwrap();
+        let kitten = model_manager
+            .generate_text_embedding("a cute kitten")
+            .unwrap();
+        let car = model_manager
+            .generate_text_embedding("a sports car on a highway")
+            .unwrap();
 
         // 1. Verify L2 unit norm
         for (name, emb) in [("cat", &cat), ("kitten", &kitten), ("car", &car)] {
@@ -232,7 +264,8 @@ async fn test_single_vs_batch_embedding_equivalence() {
 
     let data_dir_env = std::env::var("CURATOR_DATA_DIR").ok();
     let default_data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
+        .parent()
+        .unwrap()
         .join(".curator");
     let model_dir = match &data_dir_env {
         Some(p) => std::path::PathBuf::from(p).join("models"),
@@ -246,7 +279,8 @@ async fn test_single_vs_batch_embedding_equivalence() {
     }
 
     let test_image_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
+        .parent()
+        .unwrap()
         .join("assets")
         .join("test_images")
         .join("augh.png");
@@ -266,9 +300,18 @@ async fn test_single_vs_batch_embedding_equivalence() {
         let batch = mm
             .generate_image_embeddings(&[&test_image_path])
             .expect("batch-path embeddings failed");
-        let batch = batch.into_iter().next().unwrap().expect("batch item failed");
+        let batch = batch
+            .into_iter()
+            .next()
+            .unwrap()
+            .expect("batch item failed");
 
-        assert_eq!(single.len(), batch.len(), "embedding dim mismatch for {:?}", model);
+        assert_eq!(
+            single.len(),
+            batch.len(),
+            "embedding dim mismatch for {:?}",
+            model
+        );
         let max_delta = single
             .iter()
             .zip(&batch)
@@ -282,4 +325,3 @@ async fn test_single_vs_batch_embedding_equivalence() {
         );
     }
 }
-

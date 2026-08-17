@@ -18,7 +18,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use curator_core::constants::resolve_data_dir;
 use curator_core::video::{
@@ -40,7 +40,10 @@ fn median(mut xs: Vec<Duration>) -> Duration {
 /// Verify the exact ffmpeg/ffprobe argument set used in production.
 fn verify_engine_primitives(source: &Path, ffmpeg: &Path) -> Result<()> {
     let version = probe_ffmpeg_version(ffmpeg).context("probe_ffmpeg_version")?;
-    println!("  ffmpeg version : {}", version.trim().lines().next().unwrap_or_default());
+    println!(
+        "  ffmpeg version : {}",
+        version.trim().lines().next().unwrap_or_default()
+    );
 
     let info = read_video_metadata(source, ffmpeg).context("read_video_metadata (ffprobe)")?;
     println!(
@@ -55,7 +58,11 @@ fn verify_engine_primitives(source: &Path, ffmpeg: &Path) -> Result<()> {
     );
 
     let frame = extract_video_frame(source, 0, ffmpeg).context("extract_video_frame")?;
-    println!("  first frame    : {}x{} extracted OK", frame.width(), frame.height());
+    println!(
+        "  first frame    : {}x{} extracted OK",
+        frame.width(),
+        frame.height()
+    );
 
     let hash = hash_first_frame(source, ffmpeg).context("hash_first_frame")?;
     println!("  first-frame sha256: {}", &hash[..16]);
@@ -63,7 +70,14 @@ fn verify_engine_primitives(source: &Path, ffmpeg: &Path) -> Result<()> {
 }
 
 /// Encode a 2-second preview clip and return (bytes, elapsed).
-fn bench_combo(source: &Path, ffmpeg: &Path, width: u32, fps: u8, q: u8, runs: usize) -> Result<(usize, Duration)> {
+fn bench_combo(
+    source: &Path,
+    ffmpeg: &Path,
+    width: u32,
+    fps: u8,
+    q: u8,
+    runs: usize,
+) -> Result<(usize, Duration)> {
     let mut sizes = Vec::with_capacity(runs);
     let mut times = Vec::with_capacity(runs);
     for _ in 0..runs {
@@ -82,10 +96,7 @@ fn main() -> Result<()> {
     let source_arg = args
         .next()
         .context("Usage: cargo run --release -p curator-core --bin bench_video_webp_preview <video.mp4|webm> [runs]")?;
-    let runs: usize = args
-        .next()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(1);
+    let runs: usize = args.next().and_then(|s| s.parse().ok()).unwrap_or(1);
 
     let source = PathBuf::from(&source_arg);
     if !source.is_file() {
@@ -110,7 +121,10 @@ fn main() -> Result<()> {
     println!();
 
     println!("--- Size vs. Quality matrix (2s clips) ---");
-    println!("{:>5} {:>4} {:>4} {:>9} {:>8} {:>7} budget", "width", "fps", "q:v", "bytes", "KB", "ms");
+    println!(
+        "{:>5} {:>4} {:>4} {:>9} {:>8} {:>7} budget",
+        "width", "fps", "q:v", "bytes", "KB", "ms"
+    );
     let mut smallest = usize::MAX;
     let mut largest = 0usize;
     let mut worst_ms = 0u128;
@@ -127,8 +141,12 @@ fn main() -> Result<()> {
                 smallest = smallest.min(bytes);
                 largest = largest.max(bytes);
                 worst_ms = worst_ms.max(elapsed.as_millis());
-                if !cache_ok { over_cache += 1; }
-                if !time_ok { over_time += 1; }
+                if !cache_ok {
+                    over_cache += 1;
+                }
+                if !time_ok {
+                    over_time += 1;
+                }
                 println!(
                     "{:>5} {:>4} {:>4} {:>9} {:>7.1} {:>6}ms {}",
                     width,
@@ -144,10 +162,24 @@ fn main() -> Result<()> {
     }
 
     println!();
-    println!("Range          : {} bytes .. {} bytes (target <= {} bytes)", smallest, largest, CACHE_TARGET_BYTES);
-    println!("Worst encode   : {} ms (target <= {} ms)", worst_ms, ENCODE_BUDGET_MS);
-    println!("Cache over     : {} / {} combos", over_cache, WIDTH_VALUES.len() * FPS_VALUES.len() * QUALITY_VALUES.len());
-    println!("Time over      : {} / {} combos", over_time, WIDTH_VALUES.len() * FPS_VALUES.len() * QUALITY_VALUES.len());
+    println!(
+        "Range          : {} bytes .. {} bytes (target <= {} bytes)",
+        smallest, largest, CACHE_TARGET_BYTES
+    );
+    println!(
+        "Worst encode   : {} ms (target <= {} ms)",
+        worst_ms, ENCODE_BUDGET_MS
+    );
+    println!(
+        "Cache over     : {} / {} combos",
+        over_cache,
+        WIDTH_VALUES.len() * FPS_VALUES.len() * QUALITY_VALUES.len()
+    );
+    println!(
+        "Time over      : {} / {} combos",
+        over_time,
+        WIDTH_VALUES.len() * FPS_VALUES.len() * QUALITY_VALUES.len()
+    );
     println!(
         "Grid cache math : at the production fixed width (200px, 12fps, q65) a 10s video ≈ {:.0} KB",
         largest as f64 / 1024.0

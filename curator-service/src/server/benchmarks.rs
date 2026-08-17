@@ -1,10 +1,10 @@
+use crate::ClientContext;
 use crate::handlers;
 use crate::server::internal_status;
-use crate::ClientContext;
 use curator_core::grpc::benchmarks::{
-    benchmarks_service_server::BenchmarksService, BenchmarkPreprocessRequest, BenchmarkResult,
-    DetectionBenchmarkResult, PreprocessBenchmarkResult, RunBenchmarkRequest,
-    RunTaggerBenchmarkRequest,
+    BenchmarkPreprocessRequest, BenchmarkResult, DetectionBenchmarkResult,
+    PreprocessBenchmarkResult, RunBenchmarkRequest, RunTaggerBenchmarkRequest,
+    benchmarks_service_server::BenchmarksService,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
@@ -32,7 +32,9 @@ fn benchmark_response(outcome: handlers::benchmarks::BenchmarkOutcome) -> Benchm
     }
 }
 
-fn detection_response(outcome: handlers::benchmarks::DetectionBenchmarkOutcome) -> DetectionBenchmarkResult {
+fn detection_response(
+    outcome: handlers::benchmarks::DetectionBenchmarkOutcome,
+) -> DetectionBenchmarkResult {
     DetectionBenchmarkResult {
         yolo_cpu_time_ms: outcome.yolo_cpu_time_ms,
         yolo_gpu_time_ms: outcome.yolo_gpu_time_ms,
@@ -66,13 +68,10 @@ async fn detection(
     kind: handlers::benchmarks::DetectionBenchmarkKind,
     ctx: &Arc<ClientContext>,
 ) -> Result<TonicResponse<DetectionBenchmarkResult>, Status> {
-    let outcome = handlers::benchmarks::run_detection_benchmark_logic(
-        kind,
-        &ctx.data_dir,
-        &ctx.settings,
-    )
-    .await
-    .map_err(internal_status)?;
+    let outcome =
+        handlers::benchmarks::run_detection_benchmark_logic(kind, &ctx.data_dir, &ctx.settings)
+            .await
+            .map_err(internal_status)?;
     Ok(TonicResponse::new(detection_response(outcome)))
 }
 
@@ -129,55 +128,87 @@ impl BenchmarksService for BenchmarksServiceImpl {
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<DetectionBenchmarkResult>, Status> {
-        detection(handlers::benchmarks::DetectionBenchmarkKind::Yolo, &self.ctx).await
+        detection(
+            handlers::benchmarks::DetectionBenchmarkKind::Yolo,
+            &self.ctx,
+        )
+        .await
     }
 
     async fn run_ccip_feat_benchmark(
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<DetectionBenchmarkResult>, Status> {
-        detection(handlers::benchmarks::DetectionBenchmarkKind::CcipFeat, &self.ctx).await
+        detection(
+            handlers::benchmarks::DetectionBenchmarkKind::CcipFeat,
+            &self.ctx,
+        )
+        .await
     }
 
     async fn run_ccip_metrics_benchmark(
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<DetectionBenchmarkResult>, Status> {
-        detection(handlers::benchmarks::DetectionBenchmarkKind::CcipMetrics, &self.ctx).await
+        detection(
+            handlers::benchmarks::DetectionBenchmarkKind::CcipMetrics,
+            &self.ctx,
+        )
+        .await
     }
 
     async fn run_ocr_det_benchmark(
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<DetectionBenchmarkResult>, Status> {
-        detection(handlers::benchmarks::DetectionBenchmarkKind::OcrDet, &self.ctx).await
+        detection(
+            handlers::benchmarks::DetectionBenchmarkKind::OcrDet,
+            &self.ctx,
+        )
+        .await
     }
 
     async fn run_ocr_rec_benchmark(
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<DetectionBenchmarkResult>, Status> {
-        detection(handlers::benchmarks::DetectionBenchmarkKind::OcrRec, &self.ctx).await
+        detection(
+            handlers::benchmarks::DetectionBenchmarkKind::OcrRec,
+            &self.ctx,
+        )
+        .await
     }
 
     async fn run_ocr_cls_benchmark(
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<DetectionBenchmarkResult>, Status> {
-        detection(handlers::benchmarks::DetectionBenchmarkKind::OcrCls, &self.ctx).await
+        detection(
+            handlers::benchmarks::DetectionBenchmarkKind::OcrCls,
+            &self.ctx,
+        )
+        .await
     }
 
     async fn run_manga_bubble_benchmark(
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<DetectionBenchmarkResult>, Status> {
-        detection(handlers::benchmarks::DetectionBenchmarkKind::MangaBubble, &self.ctx).await
+        detection(
+            handlers::benchmarks::DetectionBenchmarkKind::MangaBubble,
+            &self.ctx,
+        )
+        .await
     }
 
     async fn run_safety_benchmark(
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<DetectionBenchmarkResult>, Status> {
-        detection(handlers::benchmarks::DetectionBenchmarkKind::Safety, &self.ctx).await
+        detection(
+            handlers::benchmarks::DetectionBenchmarkKind::Safety,
+            &self.ctx,
+        )
+        .await
     }
 }

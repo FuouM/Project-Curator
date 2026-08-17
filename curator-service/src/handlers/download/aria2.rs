@@ -3,7 +3,7 @@ use std::process::Stdio;
 
 use tokio::process::Command;
 
-use super::engine::{push_log, DownloadEngine, DownloadJob, DownloadJobState};
+use super::engine::{DownloadEngine, DownloadJob, DownloadJobState, push_log};
 use crate::AppSettings;
 
 /// Concrete aria2 engine (§3.1). Flags and stdout shapes below were
@@ -80,9 +80,14 @@ pub(crate) fn probe_aria2_version(path: &Path) -> Option<String> {
 /// control file so a later `-c` resume works.
 fn watcher_command() -> Command {
     let mut cmd = Command::new("powershell.exe");
-    cmd.args(["-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 2147483647"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    cmd.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Start-Sleep -Seconds 2147483647",
+    ])
+    .stdout(Stdio::null())
+    .stderr(Stdio::null());
     cmd
 }
 
@@ -153,7 +158,11 @@ impl DownloadEngine for Aria2Engine {
             .filter(|p| !p.as_os_str().is_empty())
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|| ".".to_string());
-        cmd.arg("--dir").arg(out_dir).arg("--out").arg(out_name).arg(&job.url);
+        cmd.arg("--dir")
+            .arg(out_dir)
+            .arg("--out")
+            .arg(out_name)
+            .arg(&job.url);
         cmd
     }
 
@@ -299,11 +308,7 @@ fn parse_eta(s: &str) -> Option<u64> {
             _ => {}
         }
     }
-    if total == 0 {
-        None
-    } else {
-        Some(total)
-    }
+    if total == 0 { None } else { Some(total) }
 }
 
 #[cfg(test)]
@@ -324,7 +329,10 @@ mod tests {
         ];
         let got = engine.completion(&lines).expect("completion detected");
         assert_eq!(got.0, true);
-        assert_eq!(got.1.to_string_lossy(), "K:/TEMP/opencode/aria2test/test.jpg");
+        assert_eq!(
+            got.1.to_string_lossy(),
+            "K:/TEMP/opencode/aria2test/test.jpg"
+        );
     }
 
     #[test]

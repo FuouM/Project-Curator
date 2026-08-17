@@ -37,7 +37,6 @@ impl BackgroundWorker {
         }
     }
 
-
     pub fn start(self) {
         // Reset any leftover 'preprocessing' states to 'pending' on startup,
         // and reconcile debounced-index saves: any 'ready' row for the active
@@ -80,7 +79,10 @@ impl BackgroundWorker {
                     if let Err(e) = q.execute(&db_startup).await {
                         warn!("Failed to reconcile stale index state on startup: {:?}", e);
                     } else {
-                        warn!("Reset {} ready rows missing from index to pending", stale.len());
+                        warn!(
+                            "Reset {} ready rows missing from index to pending",
+                            stale.len()
+                        );
                     }
                 }
             }
@@ -278,11 +280,12 @@ impl BackgroundWorker {
                             match emb_res {
                                 Ok(embedding) => {
                                     // Add to USearch index in memory (persisted periodically)
-                                    if let Err(e) = vi_inf.add_without_save(image.id as u64, &embedding)
+                                    if let Err(e) =
+                                        vi_inf.add_without_save(image.id as u64, &embedding)
                                     {
                                         error!(
                                             "Failed to index vector in USearch for image {}: {:?}",
-                                             image.id, e
+                                            image.id, e
                                         );
                                         let _ = sqlx::query("UPDATE image_vectors SET vector_state = 'failed' WHERE image_id = ? AND source_id = ?")
                                             .bind(image.id)
@@ -314,7 +317,10 @@ impl BackgroundWorker {
                                     .await;
 
                                     if let Err(e) = update_res {
-                                        error!("Failed to update image_vectors in DB for image {}: {:?}", image.id, e);
+                                        error!(
+                                            "Failed to update image_vectors in DB for image {}: {:?}",
+                                            image.id, e
+                                        );
                                     } else {
                                         indexed_images.push(image);
                                     }
@@ -336,10 +342,15 @@ impl BackgroundWorker {
                         // Debounce USearch persistence: a full index save is expensive,
                         // so only flush to disk every N batches instead of every batch.
                         batches_since_save += 1;
-                        if added_any && (batches_since_save >= INDEX_SAVE_BATCH_INTERVAL || rx.is_empty()) {
+                        if added_any
+                            && (batches_since_save >= INDEX_SAVE_BATCH_INTERVAL || rx.is_empty())
+                        {
                             batches_since_save = 0;
                             if let Err(e) = vi_inf.save() {
-                                error!("Failed to save USearch index after batch processing: {:?}", e);
+                                error!(
+                                    "Failed to save USearch index after batch processing: {:?}",
+                                    e
+                                );
                             }
                         }
 
@@ -428,7 +439,6 @@ impl BackgroundWorker {
     }
 }
 
-
 use std::path::Path;
 
 async fn reconcile_missing_images(db: &SqlitePool) -> Result<(), anyhow::Error> {
@@ -458,7 +468,11 @@ async fn reconcile_missing_images(db: &SqlitePool) -> Result<(), anyhow::Error> 
         }
 
         if !newly_missing.is_empty() {
-            let ph = newly_missing.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let ph = newly_missing
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(",");
             let sql = format!("UPDATE images SET is_missing = 1 WHERE id IN ({})", ph);
             let mut q = sqlx::query(&sql);
             for id in &newly_missing {

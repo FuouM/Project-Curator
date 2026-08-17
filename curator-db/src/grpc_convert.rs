@@ -1,10 +1,10 @@
 //! gRPC conversions for models defined in `curator-db`.
 
-use curator_proto::grpc::common as commonpb;
 use crate::models::{
     AnimationSummary, CharacterIdentitySummary, DuplicateFolderGroup, DuplicateFolderInfo,
     FolderDetails, ImageDetails, StorageStats, StorageTypeStat, TagStat, TagSummary, VideoSummary,
 };
+use curator_proto::grpc::common as commonpb;
 
 impl From<TagSummary> for commonpb::TagSummary {
     fn from(v: TagSummary) -> Self {
@@ -132,7 +132,6 @@ impl From<FolderDetails> for commonpb::FolderDetails {
         }
     }
 }
-
 
 impl From<DuplicateFolderInfo> for commonpb::DuplicateFolderInfo {
     fn from(v: DuplicateFolderInfo) -> Self {

@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use curator_core::image as core_image;
 use curator_core::ipc::{BubbleBoxResult, EphemeralOcrDetection, OcrResult};
 use sqlx::SqlitePool;
@@ -21,15 +21,16 @@ pub async fn run_ocr_logic(
     db: &SqlitePool,
     ocr: &Arc<curator_core::OcrDetector>,
 ) -> Result<(i64, Vec<OcrResult>, Vec<BubbleBoxResult>)> {
-    let row: Option<(String, Option<String>)> =
-        match sqlx::query_as("SELECT current_filepath, video_frame_path FROM images WHERE id = ? AND deleted_at IS NULL")
-            .bind(image_id)
-            .fetch_optional(db)
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => bail!("DB Error: {:?}", e),
-        };
+    let row: Option<(String, Option<String>)> = match sqlx::query_as(
+        "SELECT current_filepath, video_frame_path FROM images WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(image_id)
+    .fetch_optional(db)
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => bail!("DB Error: {:?}", e),
+    };
 
     let (current_filepath, video_frame_path) = match row {
         Some(r) => r,
@@ -54,7 +55,10 @@ pub async fn run_ocr_logic(
         Err(e) => bail!("Task join panicked: {:?}", e),
     };
 
-    let mut tx = db.begin().await.map_err(|e| anyhow::anyhow!("Failed to begin OCR transaction: {:?}", e))?;
+    let mut tx = db
+        .begin()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to begin OCR transaction: {:?}", e))?;
 
     sqlx::query("DELETE FROM image_ocr_detections WHERE image_id = ?")
         .bind(image_id)

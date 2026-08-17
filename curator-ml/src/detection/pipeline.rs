@@ -1,10 +1,10 @@
-use curator_media::crop_cache::CropCache;
-use curator_db::models::Image;
 use crate::detection::ccip::CCIPModel;
 use crate::detection::types::*;
 use crate::detection::yolo::YoloDetector;
-use curator_media::decode as image_decode;
 use anyhow::{Context, Result};
+use curator_db::models::Image;
+use curator_media::crop_cache::CropCache;
+use curator_media::decode as image_decode;
 use image::RgbImage;
 use sqlx::sqlite::SqlitePool;
 use std::path::Path;
@@ -14,7 +14,17 @@ use tracing::{info, warn};
 const CROP_THUMB_SIZE: u32 = 128;
 const WEBP_QUALITY: f32 = 80.0;
 
-type DetectionDbRow = (i64, i64, i32, i32, i32, i32, f32, Option<Vec<u8>>, Option<i64>);
+type DetectionDbRow = (
+    i64,
+    i64,
+    i32,
+    i32,
+    i32,
+    i32,
+    f32,
+    Option<Vec<u8>>,
+    Option<i64>,
+);
 
 pub struct DetectionPipeline {
     pub yolo: YoloDetector,
@@ -24,8 +34,18 @@ pub struct DetectionPipeline {
 }
 
 impl DetectionPipeline {
-    pub fn new(yolo: YoloDetector, ccip: CCIPModel, db: SqlitePool, crop_cache: Arc<CropCache>) -> Self {
-        Self { yolo, ccip, db, crop_cache }
+    pub fn new(
+        yolo: YoloDetector,
+        ccip: CCIPModel,
+        db: SqlitePool,
+        crop_cache: Arc<CropCache>,
+    ) -> Self {
+        Self {
+            yolo,
+            ccip,
+            db,
+            crop_cache,
+        }
     }
 
     /// Detect persons in an image, extract CCIP embeddings, match against known identities,
@@ -33,11 +53,12 @@ impl DetectionPipeline {
     pub async fn detect_image(&self, image_id: i64) -> Result<DetectionResult> {
         let t_total = std::time::Instant::now();
 
-        let image: Image = sqlx::query_as("SELECT * FROM images WHERE id = ? AND deleted_at IS NULL")
-            .bind(image_id)
-            .fetch_optional(&self.db)
-            .await?
-            .context(format!("Image {} not found", image_id))?;
+        let image: Image =
+            sqlx::query_as("SELECT * FROM images WHERE id = ? AND deleted_at IS NULL")
+                .bind(image_id)
+                .fetch_optional(&self.db)
+                .await?
+                .context(format!("Image {} not found", image_id))?;
 
         let filepath = curator_media::video::decode_path(
             &image.current_filepath,
@@ -48,10 +69,11 @@ impl DetectionPipeline {
         }
 
         // Clear existing detections for this image to prevent duplicate accumulation
-        let old_dets: Vec<(i64,)> = sqlx::query_as("SELECT id FROM character_detections WHERE image_id = ?")
-            .bind(image_id)
-            .fetch_all(&self.db)
-            .await?;
+        let old_dets: Vec<(i64,)> =
+            sqlx::query_as("SELECT id FROM character_detections WHERE image_id = ?")
+                .bind(image_id)
+                .fetch_all(&self.db)
+                .await?;
         for (old_id,) in old_dets {
             let _ = self.crop_cache.delete(old_id).await;
         }
@@ -63,7 +85,8 @@ impl DetectionPipeline {
 
         let t_decode = std::time::Instant::now();
         // Decode + YOLO + CCIP are CPU-bound — keep them off the reactor thread.
-        let (rgb_buf, width, height) = tokio::task::block_in_place(|| image_decode::decode_rgb(&filepath))?;
+        let (rgb_buf, width, height) =
+            tokio::task::block_in_place(|| image_decode::decode_rgb(&filepath))?;
         let img = RgbImage::from_raw(width, height, rgb_buf)
             .context("Failed to create RgbImage from decoded buffer")?;
         let decode_ms = t_decode.elapsed().as_millis();
@@ -82,14 +105,18 @@ impl DetectionPipeline {
         if !detections.is_empty() {
             let t_match_setup = std::time::Instant::now();
             // Pre-load all character identity embeddings in a single query to avoid N queries in loop
-            let mut identity_embeddings: std::collections::HashMap<i64, Vec<Vec<f32>>> = std::collections::HashMap::new();
+            let mut identity_embeddings: std::collections::HashMap<i64, Vec<Vec<f32>>> =
+                std::collections::HashMap::new();
             let rows: Vec<(i64, Vec<u8>)> = sqlx::query_as(
                 "SELECT identity_id, ccip_embedding FROM character_detections WHERE identity_id IS NOT NULL AND ccip_embedding IS NOT NULL"
             )
             .fetch_all(&self.db)
             .await?;
             for (ident_id, emb_bytes) in rows {
-                identity_embeddings.entry(ident_id).or_default().push(bytes_to_f32_vec(&emb_bytes));
+                identity_embeddings
+                    .entry(ident_id)
+                    .or_default()
+                    .push(bytes_to_f32_vec(&emb_bytes));
             }
             match_ms += t_match_setup.elapsed().as_millis();
 
@@ -120,7 +147,8 @@ impl DetectionPipeline {
                         if start == end {
                             continue;
                         }
-                        let mean: f32 = diffs[start..end].iter().sum::<f32>() / (end - start) as f32;
+                        let mean: f32 =
+                            diffs[start..end].iter().sum::<f32>() / (end - start) as f32;
                         if mean <= crate::detection::ccip::DEFAULT_MATCH_THRESHOLD {
                             matched_identity = Some(ident_id);
                             break;
@@ -178,7 +206,10 @@ impl DetectionPipeline {
 
                 // Add this new embedding to the cache so subsequent detections can match it immediately
                 if let Some(matched_id) = matched_identity {
-                    identity_embeddings.entry(matched_id).or_default().push(embedding.clone());
+                    identity_embeddings
+                        .entry(matched_id)
+                        .or_default()
+                        .push(embedding.clone());
                 }
                 cache_ms += t_cache.elapsed().as_millis();
             }
@@ -193,7 +224,11 @@ impl DetectionPipeline {
                     if let Ok(crop) = extract_crop_padded(&img_cloned, &stored_det, 0.05) {
                         if let Ok(resized_raw) = resize_rgb_fast(&crop, CROP_THUMB_SIZE) {
                             let webp_bytes = {
-                                let encoder = webp::Encoder::from_rgb(&resized_raw, CROP_THUMB_SIZE, CROP_THUMB_SIZE);
+                                let encoder = webp::Encoder::from_rgb(
+                                    &resized_raw,
+                                    CROP_THUMB_SIZE,
+                                    CROP_THUMB_SIZE,
+                                );
                                 let webp_memory = encoder.encode(WEBP_QUALITY);
                                 webp_memory.to_vec()
                             };
@@ -212,7 +247,14 @@ impl DetectionPipeline {
         let total_ms = t_total.elapsed().as_millis();
         info!(
             "detect_image timing summary for image {}: decode={}ms yolo={}ms ccip={}ms match={}ms cache={}ms total={}ms | {} detections",
-            image_id, decode_ms, yolo_ms, ccip_ms, match_ms, cache_ms, total_ms, stored.len()
+            image_id,
+            decode_ms,
+            yolo_ms,
+            ccip_ms,
+            match_ms,
+            cache_ms,
+            total_ms,
+            stored.len()
         );
 
         Ok(DetectionResult {
@@ -262,7 +304,7 @@ impl DetectionPipeline {
             std::collections::HashMap::new();
         let rows: Vec<(i64, Vec<u8>)> = sqlx::query_as(
             "SELECT identity_id, ccip_embedding FROM character_detections \
-             WHERE identity_id IS NOT NULL AND ccip_embedding IS NOT NULL"
+             WHERE identity_id IS NOT NULL AND ccip_embedding IS NOT NULL",
         )
         .fetch_all(&self.db)
         .await?;
@@ -276,8 +318,7 @@ impl DetectionPipeline {
         let mut stored = Vec::new();
         for det in &detections {
             let crop = extract_crop(&img, det)?;
-            let embedding =
-                tokio::task::block_in_place(|| self.ccip.extract_embedding(&crop))?;
+            let embedding = tokio::task::block_in_place(|| self.ccip.extract_embedding(&crop))?;
 
             let mut matched_identity: Option<i64> = None;
             let mut refs_flat: Vec<Vec<f32>> = Vec::new();
@@ -297,8 +338,7 @@ impl DetectionPipeline {
                     if start == end {
                         continue;
                     }
-                    let mean: f32 =
-                        diffs[start..end].iter().sum::<f32>() / (end - start) as f32;
+                    let mean: f32 = diffs[start..end].iter().sum::<f32>() / (end - start) as f32;
                     if mean <= crate::detection::ccip::DEFAULT_MATCH_THRESHOLD {
                         matched_identity = Some(ident_id);
                         break;
@@ -334,17 +374,19 @@ impl DetectionPipeline {
 
         Ok(rows
             .into_iter()
-            .map(|(id, img_id, x0, y0, x1, y1, conf, emb, ident)| StoredDetection {
-                id,
-                image_id: img_id,
-                x0,
-                y0,
-                x1,
-                y1,
-                confidence: conf,
-                has_embedding: emb.is_some(),
-                identity_id: ident,
-            })
+            .map(
+                |(id, img_id, x0, y0, x1, y1, conf, emb, ident)| StoredDetection {
+                    id,
+                    image_id: img_id,
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    confidence: conf,
+                    has_embedding: emb.is_some(),
+                    identity_id: ident,
+                },
+            )
             .collect())
     }
 
@@ -366,32 +408,35 @@ impl DetectionPipeline {
         }
         let rows = q.fetch_all(&self.db).await?;
 
-        let mut dets_by_image: std::collections::BTreeMap<i64, Vec<StoredDetection>> = Default::default();
+        let mut dets_by_image: std::collections::BTreeMap<i64, Vec<StoredDetection>> =
+            Default::default();
         for (id, img_id, x0, y0, x1, y1, conf, emb, ident) in rows {
-            dets_by_image.entry(img_id).or_default().push(StoredDetection {
-                id,
-                image_id: img_id,
-                x0,
-                y0,
-                x1,
-                y1,
-                confidence: conf,
-                has_embedding: emb.is_some(),
-                identity_id: ident,
-            });
+            dets_by_image
+                .entry(img_id)
+                .or_default()
+                .push(StoredDetection {
+                    id,
+                    image_id: img_id,
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    confidence: conf,
+                    has_embedding: emb.is_some(),
+                    identity_id: ident,
+                });
         }
 
         Ok(dets_by_image
             .into_iter()
-            .map(|(image_id, detections)| DetectionResult { image_id, detections })
+            .map(|(image_id, detections)| DetectionResult {
+                image_id,
+                detections,
+            })
             .collect())
     }
 
-    pub async fn assign_identity(
-        &self,
-        detection_id: i64,
-        identity_id: Option<i64>,
-    ) -> Result<()> {
+    pub async fn assign_identity(&self, detection_id: i64, identity_id: Option<i64>) -> Result<()> {
         sqlx::query("UPDATE character_detections SET identity_id = ? WHERE id = ?")
             .bind(identity_id)
             .bind(detection_id)
@@ -427,36 +472,44 @@ impl DetectionPipeline {
 
     pub async fn rename_identity(&self, identity_id: i64, name: String) -> Result<()> {
         let target_name = name.trim();
-        
-        let existing: Option<(i64,)> = sqlx::query_as("SELECT id FROM character_identities WHERE name = ?")
-            .bind(target_name)
-            .fetch_optional(&self.db)
-            .await?;
+
+        let existing: Option<(i64,)> =
+            sqlx::query_as("SELECT id FROM character_identities WHERE name = ?")
+                .bind(target_name)
+                .fetch_optional(&self.db)
+                .await?;
 
         if let Some((existing_id,)) = existing {
             if existing_id != identity_id {
                 // Merge identities: update detections to point to existing identity, then delete old identity
-                sqlx::query("UPDATE character_detections SET identity_id = ? WHERE identity_id = ?")
-                    .bind(existing_id)
-                    .bind(identity_id)
-                    .execute(&self.db)
-                    .await?;
+                sqlx::query(
+                    "UPDATE character_detections SET identity_id = ? WHERE identity_id = ?",
+                )
+                .bind(existing_id)
+                .bind(identity_id)
+                .execute(&self.db)
+                .await?;
 
                 sqlx::query("DELETE FROM character_identities WHERE id = ?")
                     .bind(identity_id)
                     .execute(&self.db)
                     .await?;
 
-                info!("Merged identity {} into existing identity {} (name: {})", identity_id, existing_id, target_name);
+                info!(
+                    "Merged identity {} into existing identity {} (name: {})",
+                    identity_id, existing_id, target_name
+                );
                 return Ok(());
             }
         }
 
-        sqlx::query("UPDATE character_identities SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-            .bind(target_name)
-            .bind(identity_id)
-            .execute(&self.db)
-            .await?;
+        sqlx::query(
+            "UPDATE character_identities SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        )
+        .bind(target_name)
+        .bind(identity_id)
+        .execute(&self.db)
+        .await?;
         Ok(())
     }
 
@@ -482,7 +535,7 @@ impl DetectionPipeline {
              FROM character_identities ci \
              LEFT JOIN character_detections cd ON cd.identity_id = ci.id \
              GROUP BY ci.id \
-             ORDER BY ci.id"
+             ORDER BY ci.id",
         )
         .fetch_all(&self.db)
         .await?;
@@ -517,25 +570,31 @@ impl DetectionPipeline {
     }
 
     /// Update a detection's bounding box coordinates, clear its cache, and extract a new embedding.
-    pub async fn update_detection_bbox(&self, detection_id: i64, x0: i32, y0: i32, x1: i32, y1: i32) -> Result<()> {
+    pub async fn update_detection_bbox(
+        &self,
+        detection_id: i64,
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        y1: i32,
+    ) -> Result<()> {
         // 1. Invalidate crop cache
         self.crop_cache.delete(detection_id).await?;
 
         // 2. Fetch image_id
-        let row: (i64,) = sqlx::query_as(
-            "SELECT image_id FROM character_detections WHERE id = ?"
-        )
-        .bind(detection_id)
-        .fetch_one(&self.db)
-        .await?;
+        let row: (i64,) = sqlx::query_as("SELECT image_id FROM character_detections WHERE id = ?")
+            .bind(detection_id)
+            .fetch_one(&self.db)
+            .await?;
 
         let image_id = row.0;
 
         // 3. Fetch image path
-        let image: Image = sqlx::query_as("SELECT * FROM images WHERE id = ? AND deleted_at IS NULL")
-            .bind(image_id)
-            .fetch_one(&self.db)
-            .await?;
+        let image: Image =
+            sqlx::query_as("SELECT * FROM images WHERE id = ? AND deleted_at IS NULL")
+                .bind(image_id)
+                .fetch_one(&self.db)
+                .await?;
 
         let filepath = curator_media::video::decode_path(
             &image.current_filepath,
@@ -546,7 +605,8 @@ impl DetectionPipeline {
         }
 
         // 4. Decode image
-        let (rgb_buf, width, height) = tokio::task::block_in_place(|| image_decode::decode_rgb(&filepath))?;
+        let (rgb_buf, width, height) =
+            tokio::task::block_in_place(|| image_decode::decode_rgb(&filepath))?;
         let img = RgbImage::from_raw(width, height, rgb_buf)
             .context("Failed to create RgbImage from decoded buffer")?;
 
@@ -593,13 +653,21 @@ impl DetectionPipeline {
 
     /// Manually add a bounding box detection, extract its embedding,
     /// set its identity to NULL (unassigned), store it, and warm up its crop cache.
-    pub async fn add_detection(&self, image_id: i64, x0: i32, y0: i32, x1: i32, y1: i32) -> Result<StoredDetection> {
+    pub async fn add_detection(
+        &self,
+        image_id: i64,
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        y1: i32,
+    ) -> Result<StoredDetection> {
         // 1. Fetch image details
-        let image: Image = sqlx::query_as("SELECT * FROM images WHERE id = ? AND deleted_at IS NULL")
-            .bind(image_id)
-            .fetch_optional(&self.db)
-            .await?
-            .context(format!("Image {} not found", image_id))?;
+        let image: Image =
+            sqlx::query_as("SELECT * FROM images WHERE id = ? AND deleted_at IS NULL")
+                .bind(image_id)
+                .fetch_optional(&self.db)
+                .await?
+                .context(format!("Image {} not found", image_id))?;
 
         let filepath = curator_media::video::decode_path(
             &image.current_filepath,
@@ -610,7 +678,8 @@ impl DetectionPipeline {
         }
 
         // 2. Decode image
-        let (rgb_buf, width, height) = tokio::task::block_in_place(|| image_decode::decode_rgb(&filepath))?;
+        let (rgb_buf, width, height) =
+            tokio::task::block_in_place(|| image_decode::decode_rgb(&filepath))?;
         let img = RgbImage::from_raw(width, height, rgb_buf)
             .context("Failed to create RgbImage from decoded buffer")?;
 
@@ -668,11 +737,14 @@ impl DetectionPipeline {
             if let Ok(crop) = extract_crop_padded(&img, &stored_cloned, 0.05) {
                 if let Ok(resized_raw) = resize_rgb_fast(&crop, CROP_THUMB_SIZE) {
                     let webp_bytes = {
-                        let encoder = webp::Encoder::from_rgb(&resized_raw, CROP_THUMB_SIZE, CROP_THUMB_SIZE);
+                        let encoder =
+                            webp::Encoder::from_rgb(&resized_raw, CROP_THUMB_SIZE, CROP_THUMB_SIZE);
                         let webp_memory = encoder.encode(WEBP_QUALITY);
                         webp_memory.to_vec()
                     };
-                    let _ = crops_cache.put(stored_cloned.id, CROP_THUMB_SIZE, &webp_bytes).await;
+                    let _ = crops_cache
+                        .put(stored_cloned.id, CROP_THUMB_SIZE, &webp_bytes)
+                        .await;
                 }
             }
         });
@@ -685,7 +757,7 @@ impl DetectionPipeline {
     /// or create a new one if no match is found.
     pub async fn identify_detection(&self, detection_id: i64) -> Result<Option<i64>> {
         let row: Option<(Option<Vec<u8>>, Option<i64>)> = sqlx::query_as(
-            "SELECT ccip_embedding, identity_id FROM character_detections WHERE id = ?"
+            "SELECT ccip_embedding, identity_id FROM character_detections WHERE id = ?",
         )
         .bind(detection_id)
         .fetch_optional(&self.db)
@@ -693,21 +765,28 @@ impl DetectionPipeline {
 
         let (emb_bytes, current_identity) = match row {
             Some((Some(bytes), ident)) => (bytes, ident),
-            _ => anyhow::bail!("Detection {} has no embedding or does not exist", detection_id),
+            _ => anyhow::bail!(
+                "Detection {} has no embedding or does not exist",
+                detection_id
+            ),
         };
 
         let query_emb = bytes_to_f32_vec(&emb_bytes);
 
         // Load current identities and their references
         let identities = self.load_identities().await?;
-        let mut identity_embeddings: std::collections::HashMap<i64, Vec<Vec<f32>>> = std::collections::HashMap::new();
+        let mut identity_embeddings: std::collections::HashMap<i64, Vec<Vec<f32>>> =
+            std::collections::HashMap::new();
         let rows: Vec<(i64, Vec<u8>)> = sqlx::query_as(
             "SELECT identity_id, ccip_embedding FROM character_detections WHERE identity_id IS NOT NULL AND ccip_embedding IS NOT NULL"
         )
         .fetch_all(&self.db)
         .await?;
         for (ident_id, emb_bytes) in rows {
-            identity_embeddings.entry(ident_id).or_default().push(bytes_to_f32_vec(&emb_bytes));
+            identity_embeddings
+                .entry(ident_id)
+                .or_default()
+                .push(bytes_to_f32_vec(&emb_bytes));
         }
 
         // Find match (single batched metrics inference across all identities)
@@ -761,13 +840,11 @@ impl DetectionPipeline {
         Ok(target_identity)
     }
 
-
-
     /// Re-identify all detections against current character identities.
     pub async fn reidentify_all(&self) -> Result<ReidentifyResult> {
         let identities = self.load_identities().await?;
         let detections: Vec<(i64, Vec<u8>)> = sqlx::query_as(
-            "SELECT id, ccip_embedding FROM character_detections WHERE ccip_embedding IS NOT NULL"
+            "SELECT id, ccip_embedding FROM character_detections WHERE ccip_embedding IS NOT NULL",
         )
         .fetch_all(&self.db)
         .await?;
@@ -777,14 +854,18 @@ impl DetectionPipeline {
 
         if !detections.is_empty() {
             // Pre-load all character identity embeddings in a single query
-            let mut identity_embeddings: std::collections::HashMap<i64, Vec<Vec<f32>>> = std::collections::HashMap::new();
+            let mut identity_embeddings: std::collections::HashMap<i64, Vec<Vec<f32>>> =
+                std::collections::HashMap::new();
             let rows: Vec<(i64, Vec<u8>)> = sqlx::query_as(
                 "SELECT identity_id, ccip_embedding FROM character_detections WHERE identity_id IS NOT NULL AND ccip_embedding IS NOT NULL"
             )
             .fetch_all(&self.db)
             .await?;
             for (ident_id, emb_bytes) in rows {
-                identity_embeddings.entry(ident_id).or_default().push(bytes_to_f32_vec(&emb_bytes));
+                identity_embeddings
+                    .entry(ident_id)
+                    .or_default()
+                    .push(bytes_to_f32_vec(&emb_bytes));
             }
 
             // Batch all reassignment UPDATEs into a single transaction.
@@ -815,7 +896,8 @@ impl DetectionPipeline {
                         }
                         let mean: f32 =
                             diffs[start..end].iter().sum::<f32>() / (end - start) as f32;
-                        if mean <= crate::detection::ccip::DEFAULT_MATCH_THRESHOLD && mean < best_diff
+                        if mean <= crate::detection::ccip::DEFAULT_MATCH_THRESHOLD
+                            && mean < best_diff
                         {
                             best_diff = mean;
                             best_identity = Some(ident_id);
@@ -846,7 +928,7 @@ impl DetectionPipeline {
     /// Search for all images containing a specific character identity.
     pub async fn search_by_character(&self, identity_id: i64) -> Result<Vec<i64>> {
         let rows: Vec<(i64,)> = sqlx::query_as(
-            "SELECT DISTINCT image_id FROM character_detections WHERE identity_id = ?"
+            "SELECT DISTINCT image_id FROM character_detections WHERE identity_id = ?",
         )
         .bind(identity_id)
         .fetch_all(&self.db)
@@ -856,7 +938,10 @@ impl DetectionPipeline {
     }
 
     /// Search for all images containing multiple character identities in one query.
-    pub async fn search_by_character_batch(&self, identity_ids: &[i64]) -> Result<Vec<CharacterSearchEntry>> {
+    pub async fn search_by_character_batch(
+        &self,
+        identity_ids: &[i64],
+    ) -> Result<Vec<CharacterSearchEntry>> {
         if identity_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -875,12 +960,18 @@ impl DetectionPipeline {
 
         let mut images_by_identity: std::collections::BTreeMap<i64, Vec<i64>> = Default::default();
         for (image_id, identity_id) in rows {
-            images_by_identity.entry(identity_id).or_default().push(image_id);
+            images_by_identity
+                .entry(identity_id)
+                .or_default()
+                .push(image_id);
         }
 
         Ok(images_by_identity
             .into_iter()
-            .map(|(identity_id, image_ids)| CharacterSearchEntry { identity_id, image_ids })
+            .map(|(identity_id, image_ids)| CharacterSearchEntry {
+                identity_id,
+                image_ids,
+            })
             .collect())
     }
 
@@ -895,17 +986,19 @@ impl DetectionPipeline {
 
         Ok(rows
             .into_iter()
-            .map(|(id, image_id, x0, y0, x1, y1, confidence, emb, identity_id)| StoredDetection {
-                id,
-                image_id,
-                x0,
-                y0,
-                x1,
-                y1,
-                confidence,
-                has_embedding: emb.is_some(),
-                identity_id,
-            })
+            .map(
+                |(id, image_id, x0, y0, x1, y1, confidence, emb, identity_id)| StoredDetection {
+                    id,
+                    image_id,
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    confidence,
+                    has_embedding: emb.is_some(),
+                    identity_id,
+                },
+            )
             .collect())
     }
 
@@ -954,8 +1047,8 @@ impl DetectionPipeline {
         let bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
             let path = std::path::Path::new(&current_filepath);
             let (rgb_buf, width, height) = image_decode::decode_rgb(path)?;
-            let img = RgbImage::from_raw(width, height, rgb_buf)
-                .context("Failed to create RgbImage")?;
+            let img =
+                RgbImage::from_raw(width, height, rgb_buf).context("Failed to create RgbImage")?;
 
             let crop = extract_crop_padded(&img, &det, 0.05)?;
             let crop_w = crop.width();
@@ -973,7 +1066,10 @@ impl DetectionPipeline {
         .await
         .context("Failed to execute spawn_blocking for crop thumbnail")??;
 
-        let _ = self.crop_cache.put(detection_id, CROP_THUMB_SIZE, &bytes).await;
+        let _ = self
+            .crop_cache
+            .put(detection_id, CROP_THUMB_SIZE, &bytes)
+            .await;
 
         Ok(Some(bytes))
     }
@@ -984,23 +1080,18 @@ impl DetectionPipeline {
 
     /// Create a new identity with auto-incremented name "Character N".
     async fn create_next_identity(&self) -> Result<i64> {
-        let max_id: Option<(Option<i64>,)> = sqlx::query_as(
-            "SELECT MAX(id) FROM character_identities"
-        )
-        .fetch_optional(&self.db)
-        .await?;
+        let max_id: Option<(Option<i64>,)> =
+            sqlx::query_as("SELECT MAX(id) FROM character_identities")
+                .fetch_optional(&self.db)
+                .await?;
         let next_id = max_id.and_then(|m| m.0).unwrap_or(0) + 1;
         let name = format!("Character {}", next_id);
-        let result = sqlx::query(
-            "INSERT INTO character_identities (name) VALUES (?)"
-        )
-        .bind(&name)
-        .execute(&self.db)
-        .await?;
+        let result = sqlx::query("INSERT INTO character_identities (name) VALUES (?)")
+            .bind(&name)
+            .execute(&self.db)
+            .await?;
         Ok(result.last_insert_rowid())
     }
-
-
 }
 
 pub fn extract_crop(img: &RgbImage, det: &Detection) -> Result<RgbImage> {
@@ -1031,14 +1122,17 @@ pub fn extract_crop(img: &RgbImage, det: &Detection) -> Result<RgbImage> {
         let src_row = ((y0 + y) * img.width() + x0) as usize * 3;
         let dst_row = (y * crop_w) as usize * 3;
         let copy_len = (crop_w * 3) as usize;
-        crop_raw[dst_row..dst_row + copy_len]
-            .copy_from_slice(&raw[src_row..src_row + copy_len]);
+        crop_raw[dst_row..dst_row + copy_len].copy_from_slice(&raw[src_row..src_row + copy_len]);
     }
 
     Ok(crop)
 }
 
-fn extract_crop_padded(img: &RgbImage, det: &StoredDetection, padding_ratio: f32) -> Result<RgbImage> {
+fn extract_crop_padded(
+    img: &RgbImage,
+    det: &StoredDetection,
+    padding_ratio: f32,
+) -> Result<RgbImage> {
     let w = img.width() as i32;
     let h = img.height() as i32;
     let bw = (det.x1 - det.x0) as f32;
@@ -1061,7 +1155,8 @@ fn extract_crop_padded(img: &RgbImage, det: &StoredDetection, padding_ratio: f32
 
     // 2. Initialize a white square image
     let square_size = crop_w.max(crop_h);
-    let mut square_img = RgbImage::from_pixel(square_size, square_size, image::Rgb([255, 255, 255]));
+    let mut square_img =
+        RgbImage::from_pixel(square_size, square_size, image::Rgb([255, 255, 255]));
 
     // 3. Center the rectangular crop inside the white square
     let offset_x = (square_size - crop_w) / 2;
@@ -1075,8 +1170,7 @@ fn extract_crop_padded(img: &RgbImage, det: &StoredDetection, padding_ratio: f32
         let dst_y = offset_y + y;
         let dst_row = ((dst_y * square_size + offset_x) as usize) * 3;
         let copy_len = (crop_w * 3) as usize;
-        square_raw[dst_row..dst_row + copy_len]
-            .copy_from_slice(&raw[src_row..src_row + copy_len]);
+        square_raw[dst_row..dst_row + copy_len].copy_from_slice(&raw[src_row..src_row + copy_len]);
     }
 
     Ok(square_img)

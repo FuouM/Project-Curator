@@ -37,7 +37,12 @@ fn build_gif(frame_count: usize, loop_ext: Option<u16>) -> Vec<u8> {
 }
 
 fn check(name: &str, ok: bool, detail: &str) {
-    println!("[{}] {}: {}", if ok { "PASS" } else { "FAIL" }, name, detail);
+    println!(
+        "[{}] {}: {}",
+        if ok { "PASS" } else { "FAIL" },
+        name,
+        detail
+    );
     assert!(ok, "FAILED: {name} ({detail})");
 }
 
@@ -60,9 +65,21 @@ fn main() {
 
     let single = write_fixture(&dir, "single.gif", &build_gif(1, None));
     let info = read_gif_animation(&single).unwrap();
-    check("single frame count", info.frame_count == 1, &format!("got {}", info.frame_count));
-    check("single duration", info.duration_ms == 100, &format!("got {}", info.duration_ms));
-    check("single loop absent", info.loop_count.is_none(), "expected None");
+    check(
+        "single frame count",
+        info.frame_count == 1,
+        &format!("got {}", info.frame_count),
+    );
+    check(
+        "single duration",
+        info.duration_ms == 100,
+        &format!("got {}", info.duration_ms),
+    );
+    check(
+        "single loop absent",
+        info.loop_count.is_none(),
+        "expected None",
+    );
 
     let (w, h) = read_dimensions(&single).unwrap();
     check("dimensions", w == 16 && h == 8, &format!("got {w}x{h}"));
@@ -70,21 +87,37 @@ fn main() {
 
     let multi = write_fixture(&dir, "multi.gif", &build_gif(4, Some(0)));
     let info2 = read_gif_animation(&multi).unwrap();
-    check("multi frame count", info2.frame_count == 4, &format!("got {}", info2.frame_count));
+    check(
+        "multi frame count",
+        info2.frame_count == 4,
+        &format!("got {}", info2.frame_count),
+    );
     let expected_duration: i64 = (0..4).map(|i| (10 + i * 5) as i64 * 10).sum();
     check(
         "multi duration sum",
         info2.duration_ms == expected_duration,
         &format!("got {} expected {}", info2.duration_ms, expected_duration),
     );
-    check("multi infinite loop", info2.loop_count == Some(0), "expected Some(0)");
+    check(
+        "multi infinite loop",
+        info2.loop_count == Some(0),
+        "expected Some(0)",
+    );
 
     let loop3 = write_fixture(&dir, "loop3.gif", &build_gif(2, Some(3)));
     let info3 = read_gif_animation(&loop3).unwrap();
-    check("loop count 3", info3.loop_count == Some(3), "expected Some(3)");
+    check(
+        "loop count 3",
+        info3.loop_count == Some(3),
+        "expected Some(3)",
+    );
 
     let not_gif = write_fixture(&dir, "not_gif.bin", b"this is not a gif");
-    check("non-gif rejected", read_gif_animation(&not_gif).is_err(), "expected error");
+    check(
+        "non-gif rejected",
+        read_gif_animation(&not_gif).is_err(),
+        "expected error",
+    );
 
     let _ = fs::remove_dir_all(&dir);
     println!("All GIF metadata checks passed.");

@@ -8,8 +8,8 @@
 use std::sync::Arc;
 use tonic::Status;
 
-use crate::handlers;
 use crate::ClientContext;
+use crate::handlers;
 
 pub async fn get_transcode_progress(
     ctx: &Arc<ClientContext>,
@@ -48,7 +48,10 @@ pub async fn get_media_metadata(
     let resolved = handlers::resolve_relative_path(&ctx.data_dir, path);
     match handlers::resolve_ffmpeg_path(&ctx.data_dir, &ctx.settings).await {
         Ok(ffmpeg) => {
-            match curator_core::transcode::read_media_metadata(std::path::Path::new(&resolved), &ffmpeg) {
+            match curator_core::transcode::read_media_metadata(
+                std::path::Path::new(&resolved),
+                &ffmpeg,
+            ) {
                 Ok(meta) => Ok(serde_json::json!({
                     "MediaMetadataResult": {
                         "duration_ms": meta.duration_ms,
@@ -85,16 +88,19 @@ pub async fn ephemeral_convert_images(
             conversions.push((resolved_src, resolved_dst));
         }
     }
-    let converted = curator_core::convert::convert_images(conversions, quality, max_dimension, max_bytes)
-        .await
-        .map_err(crate::server::internal_status)?;
+    let converted =
+        curator_core::convert::convert_images(conversions, quality, max_dimension, max_bytes)
+            .await
+            .map_err(crate::server::internal_status)?;
     let converted_json: Vec<serde_json::Value> = converted
         .into_iter()
-        .map(|c| serde_json::json!({
-            "source_path": c.source_path,
-            "output_path": c.output_path,
-            "error": c.error,
-        }))
+        .map(|c| {
+            serde_json::json!({
+                "source_path": c.source_path,
+                "output_path": c.output_path,
+                "error": c.error,
+            })
+        })
         .collect();
     Ok(serde_json::json!({
         "ConvertImagesResult": {
@@ -235,7 +241,9 @@ pub async fn process_gif_effects(
     let saturation = params["saturation"].as_f64().map(|v| v as f32);
     let grayscale = params["grayscale"].as_bool().unwrap_or(false);
     let invert = params["invert"].as_bool().unwrap_or(false);
-    let caption_image_base64 = params["caption_image_base64"].as_str().map(|s| s.to_string());
+    let caption_image_base64 = params["caption_image_base64"]
+        .as_str()
+        .map(|s| s.to_string());
     let caption_image_height = params["caption_image_height"].as_u64().map(|v| v as u32);
     let caption_style = params["caption_style"].as_str().map(|s| s.to_string());
     let max_colors = params["max_colors"].as_u64().map(|v| v as u32);

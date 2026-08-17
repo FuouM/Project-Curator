@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use sha2::Digest;
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -46,15 +46,11 @@ pub fn read_dimensions(path: &Path) -> Result<(u32, u32)> {
                 let info = crate::video::read_video_metadata(path, &ffmpeg)?;
                 Ok((info.width, info.height))
             }
-            Err(e) => anyhow::bail!(
-                "Cannot read video dimensions for {:?}: {}",
-                path,
-                e
-            ),
+            Err(e) => anyhow::bail!("Cannot read video dimensions for {:?}: {}", path, e),
         };
     }
-    let reader = image::ImageReader::open(path)
-        .with_context(|| format!("Cannot open image {:?}", path))?;
+    let reader =
+        image::ImageReader::open(path).with_context(|| format!("Cannot open image {:?}", path))?;
     let (w, h) = reader
         .into_dimensions()
         .with_context(|| format!("Cannot read dimensions for {:?}", path))?;
@@ -78,9 +74,7 @@ fn read_gif_magic(path: &Path) -> Result<bool> {
     let mut file = File::open(path)?;
     let mut buf = [0u8; 6];
     let n = file.read(&mut buf)?;
-    Ok(n == 6
-        && &buf[0..3] == b"GIF"
-        && (&buf[3..6] == b"87a" || &buf[3..6] == b"89a"))
+    Ok(n == 6 && &buf[0..3] == b"GIF" && (&buf[3..6] == b"87a" || &buf[3..6] == b"89a"))
 }
 
 /// Scan a GIF's block structure to extract frame count, raw duration, and

@@ -10,7 +10,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if protos.is_empty() {
         return Err("no .proto files found in proto/".into());
     }
-    tonic_build::configure()
-        .compile_protos(&protos, &["proto"])?;
+    tonic_build::configure().compile_protos(&protos, &["proto"])?;
     Ok(())
 }

@@ -22,13 +22,14 @@ pub async fn get_ffmpeg_status(
     settings: &Arc<tokio::sync::Mutex<AppSettings>>,
 ) -> Result<FfmpegStatus> {
     let explicit = { settings.lock().await.ffmpeg_path.clone() };
-    let resolved = curator_core::video::resolve_ffmpeg_path(
-        data_dir,
-        explicit.as_deref().map(Path::new),
-    )
-    .ok();
+    let resolved =
+        curator_core::video::resolve_ffmpeg_path(data_dir, explicit.as_deref().map(Path::new)).ok();
     let portable = {
-        let p = data_dir.join("bin").join(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" });
+        let p = data_dir.join("bin").join(if cfg!(windows) {
+            "ffmpeg.exe"
+        } else {
+            "ffmpeg"
+        });
         if p.is_file() {
             Some(p.to_string_lossy().into_owned())
         } else {

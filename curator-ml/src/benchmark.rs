@@ -6,11 +6,9 @@ use std::time::Instant;
 
 use curator_media::decode as image_decode;
 
-use curator_media::thumbnail;
 use crate::model_manager::ModelManager;
+use curator_media::thumbnail;
 use serde::{Deserialize, Serialize};
-
-
 
 const IMAGENET_MEAN: [f32; 3] = [0.485, 0.456, 0.406];
 const IMAGENET_STD: [f32; 3] = [0.229, 0.224, 0.225];
@@ -278,9 +276,13 @@ pub fn run_onnx_benchmark(
     let run_session = |session: &mut Session| -> Result<(), ort::Error> {
         if is_f16 {
             let dummy_f16 = dummy_input.mapv(half::f16::from_f32);
-            session.run(inputs![input_name.as_str() => TensorRef::from_array_view(&dummy_f16)?]).map(|_| ())
+            session
+                .run(inputs![input_name.as_str() => TensorRef::from_array_view(&dummy_f16)?])
+                .map(|_| ())
         } else {
-            session.run(inputs![input_name.as_str() => TensorRef::from_array_view(&dummy_input)?]).map(|_| ())
+            session
+                .run(inputs![input_name.as_str() => TensorRef::from_array_view(&dummy_input)?])
+                .map(|_| ())
         }
     };
 
@@ -587,9 +589,13 @@ pub fn run_onnx_benchmark_4d(
     let run_session = |session: &mut Session| -> Result<(), ort::Error> {
         if is_f16 {
             let dummy_f16 = dummy_input.mapv(half::f16::from_f32);
-            session.run(inputs![input_name.as_str() => TensorRef::from_array_view(&dummy_f16)?]).map(|_| ())
+            session
+                .run(inputs![input_name.as_str() => TensorRef::from_array_view(&dummy_f16)?])
+                .map(|_| ())
         } else {
-            session.run(inputs![input_name.as_str() => TensorRef::from_array_view(&dummy_input)?]).map(|_| ())
+            session
+                .run(inputs![input_name.as_str() => TensorRef::from_array_view(&dummy_input)?])
+                .map(|_| ())
         }
     };
 
@@ -729,10 +735,7 @@ pub struct SingleImageBenchmarkResult {
     pub ocr_rec_preprocess_time_ms: f64,
 }
 
-pub async fn get_benchmark_images(
-    db: &sqlx::SqlitePool,
-    limit: usize,
-) -> Result<Vec<String>> {
+pub async fn get_benchmark_images(db: &sqlx::SqlitePool, limit: usize) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = sqlx::query_as(
         "SELECT current_filepath FROM images
          WHERE deleted_at IS NULL AND is_missing = 0
@@ -743,7 +746,7 @@ pub async fn get_benchmark_images(
              LOWER(current_filepath) LIKE '%.mov' OR
              LOWER(current_filepath) LIKE '%.avi'
            )
-         ORDER BY id ASC"
+         ORDER BY id ASC",
     )
     .fetch_all(db)
     .await?;
@@ -771,7 +774,10 @@ pub async fn run_single_image_benchmark(
         anyhow::bail!("Image file does not exist: {}", filepath);
     }
     if curator_media::video::is_video(path) {
-        anyhow::bail!("Skipping video asset (benchmark only supports images): {}", filepath);
+        anyhow::bail!(
+            "Skipping video asset (benchmark only supports images): {}",
+            filepath
+        );
     }
     benchmark_image(model_manager, path, tagger_spec).await
 }
@@ -790,13 +796,15 @@ async fn benchmark_image(
 
     // 1. Decode Time (from raw bytes in memory)
     let start_decode = Instant::now();
-    let loaded = image::load_from_memory(&raw_bytes).with_context(|| format!("Cannot decode image {:?}", path))?;
+    let loaded = image::load_from_memory(&raw_bytes)
+        .with_context(|| format!("Cannot decode image {:?}", path))?;
     let rgb = loaded.to_rgb8();
     let (width, height) = rgb.dimensions();
     let rgb_buf = rgb.into_raw();
     let decode_time_ms = start_decode.elapsed().as_secs_f64() * 1000.0;
 
-    let img = image::RgbImage::from_raw(width, height, rgb_buf).ok_or_else(|| anyhow::anyhow!("Failed to parse raw RgbImage"))?;
+    let img = image::RgbImage::from_raw(width, height, rgb_buf)
+        .ok_or_else(|| anyhow::anyhow!("Failed to parse raw RgbImage"))?;
 
     // 2. Thumbnail (from in-memory RGB buffer)
     let start_thumb = Instant::now();
@@ -809,7 +817,13 @@ async fn benchmark_image(
         curator_proto::contracts::EmbeddingModel::ClipVitB32 => 224,
         curator_proto::contracts::EmbeddingModel::MobileClipS2 => 256,
     };
-    let _ = image_decode::resize_single_rgb_image(img.as_raw(), width, height, clip_target_size, &mut resizer);
+    let _ = image_decode::resize_single_rgb_image(
+        img.as_raw(),
+        width,
+        height,
+        clip_target_size,
+        &mut resizer,
+    );
     let clip_preprocess_time_ms = start_clip_pre.elapsed().as_secs_f64() * 1000.0;
 
     // 4. Tagger Preprocess (from in-memory RGB buffer)
@@ -863,10 +877,10 @@ async fn benchmark_image(
 /// Batch size is 1 (per-image latency), matching every other benchmark card —
 /// the production path batches (16) for throughput; the benchmark keeps parity
 /// for apples-to-apples comparison. Returns (cpu_ms, gpu_ms, gpu_err).
-pub fn benchmark_safety_classifier(model_path: &Path) -> Result<(f64, Option<f64>, Option<String>)> {
+pub fn benchmark_safety_classifier(
+    model_path: &Path,
+) -> Result<(f64, Option<f64>, Option<String>)> {
     use crate::safety::MINI_INPUT_SIZE;
     let (cpu, gpu, gpu_err, _has_gpu) = run_onnx_benchmark(model_path, MINI_INPUT_SIZE as usize)?;
     Ok((cpu, gpu, gpu_err))
 }
-
-

@@ -8,8 +8,8 @@
 use std::sync::Arc;
 use tonic::Status;
 
-use crate::handlers;
 use crate::ClientContext;
+use crate::handlers;
 
 static HTTP_AGENT: std::sync::LazyLock<ureq::Agent> = std::sync::LazyLock::new(|| {
     ureq::config::Config::builder()
@@ -28,7 +28,10 @@ pub async fn http_get(
     let url = params["url"]
         .as_str()
         .ok_or_else(|| Status::invalid_argument("missing url"))?;
-    let method = params["method"].as_str().unwrap_or("GET").to_ascii_uppercase();
+    let method = params["method"]
+        .as_str()
+        .unwrap_or("GET")
+        .to_ascii_uppercase();
     let result = if method == "POST" {
         let content_type = params["content_type"]
             .as_str()
@@ -47,9 +50,7 @@ pub async fn http_get(
         let body = params["body"].as_str().unwrap_or("");
         req.send(body)
     } else {
-        let mut req = HTTP_AGENT
-            .get(url)
-            .header("User-Agent", USER_AGENT);
+        let mut req = HTTP_AGENT.get(url).header("User-Agent", USER_AGENT);
         if let Some(headers_obj) = params["headers"].as_object() {
             for (k, v) in headers_obj {
                 if let Some(v_str) = v.as_str() {
@@ -106,18 +107,12 @@ pub async fn http_download(
     let raw_output = params["output_path"]
         .as_str()
         .ok_or_else(|| Status::invalid_argument("missing output_path"))?;
-    let target = std::path::PathBuf::from(handlers::resolve_relative_path(
-        &ctx.data_dir,
-        raw_output,
-    ));
+    let target =
+        std::path::PathBuf::from(handlers::resolve_relative_path(&ctx.data_dir, raw_output));
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent).map_err(crate::server::internal_status)?;
     }
-    let mut response = match HTTP_AGENT
-        .get(url)
-        .header("User-Agent", USER_AGENT)
-        .call()
-    {
+    let mut response = match HTTP_AGENT.get(url).header("User-Agent", USER_AGENT).call() {
         Ok(r) => r,
         Err(e) => {
             return Ok(serde_json::json!({

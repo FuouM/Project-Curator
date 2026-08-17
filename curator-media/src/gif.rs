@@ -8,20 +8,23 @@ use crate::transcode::{TranscodeJobState, TranscodeProgressMap};
 /// Helper to set default job state in progress map
 async fn start_job(job_id: &str, output_path: &str, progress_map: &TranscodeProgressMap) {
     let mut guard = progress_map.lock().await;
-    guard.insert(job_id.to_string(), TranscodeJobState {
-        running: true,
-        percent: 0.0,
-        fps: 0.0,
-        x_speed: 0.0,
-        out_time_ms: 0,
-        output_path: Some(output_path.to_string()),
-        error: None,
-        command: None,
-        input_size_bytes: None,
-        output_size_bytes: None,
-        output_video_size_bytes: None,
-        output_audio_size_bytes: None,
-    });
+    guard.insert(
+        job_id.to_string(),
+        TranscodeJobState {
+            running: true,
+            percent: 0.0,
+            fps: 0.0,
+            x_speed: 0.0,
+            out_time_ms: 0,
+            output_path: Some(output_path.to_string()),
+            error: None,
+            command: None,
+            input_size_bytes: None,
+            output_size_bytes: None,
+            output_video_size_bytes: None,
+            output_audio_size_bytes: None,
+        },
+    );
 }
 
 /// Run FFmpeg with standard progress tracking and update state in progress map
@@ -69,7 +72,11 @@ async fn run_ffmpeg_job(
         progress_map_task,
         job_id_task,
         |current, _out_time_ms, done| {
-            if done { 100.0 } else { (current + 2.0).min(99.0) }
+            if done {
+                100.0
+            } else {
+                (current + 2.0).min(99.0)
+            }
         },
     );
 
@@ -93,7 +100,11 @@ async fn run_ffmpeg_job(
                 Ok(())
             }
             Ok(s) => {
-                let err_msg = format!("FFmpeg exited with error status: {:?}. Stderr tail: {}", s.code(), stderr_tail);
+                let err_msg = format!(
+                    "FFmpeg exited with error status: {:?}. Stderr tail: {}",
+                    s.code(),
+                    stderr_tail
+                );
                 state.error = Some(err_msg.clone());
                 anyhow::bail!(err_msg)
             }
@@ -126,7 +137,12 @@ pub async fn create_gif_from_images(
     ffmpeg_path: &Path,
     progress_map: &TranscodeProgressMap,
 ) -> anyhow::Result<()> {
-    let CreateGifOptions { frame_rate, width, height, loop_count } = opts;
+    let CreateGifOptions {
+        frame_rate,
+        width,
+        height,
+        loop_count,
+    } = opts;
     if image_pattern.is_empty() {
         anyhow::bail!("No image sequence pattern provided");
     }
@@ -172,9 +188,26 @@ pub async fn create_gif_from_images(
             cmd.arg("-vf").arg(filter_chain);
         }
         match target_format.to_lowercase().as_str() {
-            "mp4" => { cmd.arg("-c:v").arg("libx264").arg("-pix_fmt").arg("yuv420p"); }
-            "webp" => { cmd.arg("-c:v").arg("libwebp_anim").arg("-lossless").arg("1").arg("-loop").arg("0"); }
-            _ => { cmd.arg("-c:v").arg("libvpx-vp9").arg("-pix_fmt").arg("yuv420p"); }
+            "mp4" => {
+                cmd.arg("-c:v")
+                    .arg("libx264")
+                    .arg("-pix_fmt")
+                    .arg("yuv420p");
+            }
+            "webp" => {
+                cmd.arg("-c:v")
+                    .arg("libwebp_anim")
+                    .arg("-lossless")
+                    .arg("1")
+                    .arg("-loop")
+                    .arg("0");
+            }
+            _ => {
+                cmd.arg("-c:v")
+                    .arg("libvpx-vp9")
+                    .arg("-pix_fmt")
+                    .arg("yuv420p");
+            }
         }
     }
 
@@ -328,7 +361,10 @@ pub async fn process_gif_effects(
     if let Some(factor) = drop_frames_factor {
         if factor > 1 {
             let next = "[v_dropped]".to_string();
-            filters.push(format!("{}select=not(mod(n\\,{})){}", last_stream, factor, next));
+            filters.push(format!(
+                "{}select=not(mod(n\\,{})){}",
+                last_stream, factor, next
+            ));
             last_stream = next;
         }
     }
@@ -344,11 +380,19 @@ pub async fn process_gif_effects(
         let b = brightness.unwrap_or(0.0);
         let c = contrast.unwrap_or(1.0);
         let s = saturation.unwrap_or(1.0);
-        color_filters.push(format!("eq=brightness={}:contrast={}:saturation={}", b, c, s));
+        color_filters.push(format!(
+            "eq=brightness={}:contrast={}:saturation={}",
+            b, c, s
+        ));
     }
     if !color_filters.is_empty() {
         let next = "[v_colors]".to_string();
-        filters.push(format!("{}{}{}", last_stream, color_filters.join(","), next));
+        filters.push(format!(
+            "{}{}{}",
+            last_stream,
+            color_filters.join(","),
+            next
+        ));
         last_stream = next;
     }
 
@@ -376,7 +420,10 @@ pub async fn process_gif_effects(
 
     if bounce {
         let next = "[v_bounced]".to_string();
-        filters.push(format!("{}split[f][r];[r]reverse[rev];[f][rev]concat=n=2:v=1:a=0{}", last_stream, next));
+        filters.push(format!(
+            "{}split[f][r];[r]reverse[rev];[f][rev]concat=n=2:v=1:a=0{}",
+            last_stream, next
+        ));
         last_stream = next;
     }
 
@@ -397,10 +444,7 @@ pub async fn process_gif_effects(
                 last_stream, caption_height, caption_height, next
             ));
         } else if style_str == "overlay_top" {
-            filters.push(format!(
-                "{}[1:v]overlay=0:20{}",
-                last_stream, next
-            ));
+            filters.push(format!("{}[1:v]overlay=0:20{}", last_stream, next));
         } else if style_str == "overlay_center" {
             filters.push(format!(
                 "{}[1:v]overlay=0:(main_h-overlay_h)/2{}",
@@ -446,9 +490,26 @@ pub async fn process_gif_effects(
 
     if !is_gif {
         match target_format.to_lowercase().as_str() {
-            "mp4" => { cmd.arg("-c:v").arg("libx264").arg("-pix_fmt").arg("yuv420p"); }
-            "webp" => { cmd.arg("-c:v").arg("libwebp_anim").arg("-lossless").arg("1").arg("-loop").arg("0"); }
-            _ => { cmd.arg("-c:v").arg("libvpx-vp9").arg("-pix_fmt").arg("yuv420p"); }
+            "mp4" => {
+                cmd.arg("-c:v")
+                    .arg("libx264")
+                    .arg("-pix_fmt")
+                    .arg("yuv420p");
+            }
+            "webp" => {
+                cmd.arg("-c:v")
+                    .arg("libwebp_anim")
+                    .arg("-lossless")
+                    .arg("1")
+                    .arg("-loop")
+                    .arg("0");
+            }
+            _ => {
+                cmd.arg("-c:v")
+                    .arg("libvpx-vp9")
+                    .arg("-pix_fmt")
+                    .arg("yuv420p");
+            }
         }
     }
 
@@ -506,7 +567,7 @@ pub async fn split_gif(
     if !Path::new(&input_path).is_file() {
         anyhow::bail!("Input file not found: {}", input_path);
     }
-    
+
     let dest_dir = Path::new(&output_dir);
     fs::create_dir_all(dest_dir)?;
 

@@ -1,7 +1,7 @@
-use curator_proto::contracts::DevicePreference;
 use crate::onnx::ManagedSession;
 use crate::preprocess::{CLIP_MEAN, CLIP_STD};
 use anyhow::{Context, Result};
+use curator_proto::contracts::DevicePreference;
 use ndarray::{Array2, Array4};
 use ort::{inputs, value::TensorRef};
 use std::path::Path;
@@ -18,7 +18,11 @@ pub struct CCIPModel {
 }
 
 impl CCIPModel {
-    pub fn new(model_dir: impl AsRef<Path>, feat_device: DevicePreference, metrics_device: DevicePreference) -> Self {
+    pub fn new(
+        model_dir: impl AsRef<Path>,
+        feat_device: DevicePreference,
+        metrics_device: DevicePreference,
+    ) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
         let ccip_dir = dir.join("ccip");
         Self {
@@ -42,7 +46,9 @@ impl CCIPModel {
     }
 
     pub fn idle_secs(&self) -> u64 {
-        self.feat_session.idle_secs().max(self.metrics_session.idle_secs())
+        self.feat_session
+            .idle_secs()
+            .max(self.metrics_session.idle_secs())
     }
 
     pub fn unload(&self) {
@@ -101,7 +107,11 @@ impl CCIPModel {
         let load_ms = total_ms - preprocess_ms - inference_ms;
         info!(
             "CCIP extract timing: load_and_overhead={:.1}ms preprocess={:.1}ms inference={:.1}ms total={:.1}ms | dim={}",
-            load_ms.max(0.0), preprocess_ms, inference_ms, total_ms, embedding.len()
+            load_ms.max(0.0),
+            preprocess_ms,
+            inference_ms,
+            total_ms,
+            embedding.len()
         );
 
         Ok(embedding)
@@ -142,9 +152,8 @@ impl CCIPModel {
             input_vec.extend_from_slice(r);
         }
 
-        let input_array =
-            Array2::from_shape_vec((n, CCIP_EMBEDDING_DIM), input_vec)
-                .context("Failed to build CCIP metrics input")?;
+        let input_array = Array2::from_shape_vec((n, CCIP_EMBEDDING_DIM), input_vec)
+            .context("Failed to build CCIP metrics input")?;
 
         let diffs = self.metrics_session.with_session(|session| {
             let outputs = session
@@ -167,11 +176,7 @@ impl CCIPModel {
 
     /// Compute mean difference between a query embedding and reference embeddings
     /// using the metrics model. Thin wrapper over `compute_mean_differences`.
-    pub fn compute_mean_difference(
-        &self,
-        query: &[f32],
-        references: &[Vec<f32>],
-    ) -> Result<f32> {
+    pub fn compute_mean_difference(&self, query: &[f32], references: &[Vec<f32>]) -> Result<f32> {
         let diffs = self.compute_mean_differences(query, references)?;
         if diffs.is_empty() {
             // Deterministic no-match sentinel, matching compare_embeddings'
@@ -196,9 +201,8 @@ impl CCIPModel {
     pub fn benchmark_metrics_once(&self, n_embeddings: usize) -> Result<f64> {
         let input_vec = vec![0.5f32; n_embeddings * CCIP_EMBEDDING_DIM];
 
-        let input_array =
-            Array2::from_shape_vec((n_embeddings, CCIP_EMBEDDING_DIM), input_vec)
-                .context("Failed to build CCIP metrics benchmark input")?;
+        let input_array = Array2::from_shape_vec((n_embeddings, CCIP_EMBEDDING_DIM), input_vec)
+            .context("Failed to build CCIP metrics benchmark input")?;
 
         let t0 = Instant::now();
         self.metrics_session.with_session(|session| {
@@ -217,12 +221,14 @@ impl curator_proto::pipeline::SystemNode for CCIPModel {
         curator_proto::pipeline::NodeInfo {
             id: "ccip-matcher",
             label: "CCIP Character Matcher",
-            inputs: vec![
-                curator_proto::pipeline::Port { name: "image", type_name: "Image" },
-            ],
-            outputs: vec![
-                curator_proto::pipeline::Port { name: "embedding", type_name: "EmbeddingVector" },
-            ],
+            inputs: vec![curator_proto::pipeline::Port {
+                name: "image",
+                type_name: "Image",
+            }],
+            outputs: vec![curator_proto::pipeline::Port {
+                name: "embedding",
+                type_name: "EmbeddingVector",
+            }],
         }
     }
 

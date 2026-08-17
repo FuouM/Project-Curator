@@ -1,5 +1,5 @@
-use super::types::{BatchExecutionResult, BatchParseState, BatchPreviewItem, TokenBlock};
 use super::FilenameParser;
+use super::types::{BatchExecutionResult, BatchParseState, BatchPreviewItem, TokenBlock};
 use anyhow::Result;
 use futures_util::stream::TryStreamExt;
 use sqlx::SqlitePool;
@@ -28,13 +28,9 @@ pub async fn preview_batch(
             .unwrap_or(&current_filepath)
             .to_string();
 
-        let match_res = FilenameParser::test_filename(
-            &filename,
-            pattern_or_type,
-            rule_type,
-            token_config,
-        )
-        .map(|m| super::token_builder::apply_match_type_override(m, output_match_type));
+        let match_res =
+            FilenameParser::test_filename(&filename, pattern_or_type, rule_type, token_config)
+                .map(|m| super::token_builder::apply_match_type_override(m, output_match_type));
 
         items.push(BatchPreviewItem {
             image_id: id,
@@ -56,11 +52,10 @@ pub async fn run_batch(
     output_match_type: Option<&str>,
 ) -> Result<BatchExecutionResult> {
     // Ensure source exists for filename_parser
-    let source: Option<(i64,)> = sqlx::query_as(
-        "SELECT id FROM sources WHERE name = 'filename_parser'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let source: Option<(i64,)> =
+        sqlx::query_as("SELECT id FROM sources WHERE name = 'filename_parser'")
+            .fetch_optional(pool)
+            .await?;
 
     let source_id = match source {
         Some((id,)) => id,
@@ -159,13 +154,9 @@ async fn flush_batch(
             .unwrap_or(&current_filepath)
             .to_string();
 
-        let match_res = FilenameParser::test_filename(
-            &filename,
-            pattern_or_type,
-            rule_type,
-            token_config,
-        )
-        .map(|m| super::token_builder::apply_match_type_override(m, output_match_type));
+        let match_res =
+            FilenameParser::test_filename(&filename, pattern_or_type, rule_type, token_config)
+                .map(|m| super::token_builder::apply_match_type_override(m, output_match_type));
 
         if let Some(res) = match_res {
             // Skip partial matches in batch run (only save complete matches)
@@ -226,12 +217,11 @@ async fn flush_batch(
                         .execute(&mut *tx)
                         .await?;
 
-                    let tag_row: (i64,) = sqlx::query_as(
-                        "SELECT id FROM tags WHERE name = ? LIMIT 1",
-                    )
-                    .bind(&tag_name)
-                    .fetch_one(&mut *tx)
-                    .await?;
+                    let tag_row: (i64,) =
+                        sqlx::query_as("SELECT id FROM tags WHERE name = ? LIMIT 1")
+                            .bind(&tag_name)
+                            .fetch_one(&mut *tx)
+                            .await?;
 
                     state.tag_cache.insert(tag_name.clone(), tag_row.0);
                     tag_row.0

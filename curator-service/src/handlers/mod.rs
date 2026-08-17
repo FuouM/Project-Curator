@@ -10,13 +10,13 @@ pub mod misc;
 pub mod models;
 pub mod ocr;
 pub mod plugin_commands;
-pub mod plugins;
 pub mod plugin_runtime;
+pub mod plugins;
 pub mod safety;
 pub mod search;
 pub mod settings;
-pub mod tags;
 pub mod tagging;
+pub mod tags;
 pub mod tools;
 
 use std::path::Path;

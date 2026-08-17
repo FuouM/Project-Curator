@@ -100,10 +100,7 @@ mod tests {
     fn test_4chan_timestamp_extractor() {
         let res = presets::test_preset("1652448237000", "4chan_timestamp").unwrap();
         assert_eq!(res.match_type, "4chan_timestamp");
-        assert_eq!(
-            res.timestamp_4chan.as_deref(),
-            Some("1652448237000")
-        );
+        assert_eq!(res.timestamp_4chan.as_deref(), Some("1652448237000"));
         assert!(res.extracted_tags.iter().any(|t| t.starts_with("date:")));
     }
 
@@ -128,7 +125,8 @@ mod tests {
 
     #[test]
     fn test_tagged_string_extractor() {
-        let res = presets::test_preset("[Kantoku] Shizuku (1girl solo blue_eyes)", "tagged_string").unwrap();
+        let res = presets::test_preset("[Kantoku] Shizuku (1girl solo blue_eyes)", "tagged_string")
+            .unwrap();
         assert_eq!(res.match_type, "tagged_string");
         assert_eq!(res.artist.as_deref(), Some("Kantoku"));
         assert!(res.extracted_tags.contains(&"artist:Kantoku".to_string()));
@@ -139,13 +137,17 @@ mod tests {
 
     #[test]
     fn test_twitter_snowflake_extractor() {
-        let res = presets::test_preset("status_artist_handle-165244823700012345", "twitter_key").unwrap();
+        let res =
+            presets::test_preset("status_artist_handle-165244823700012345", "twitter_key").unwrap();
         assert_eq!(res.match_type, "twitter_key");
         assert_eq!(
             res.twitter_id.as_deref(),
             Some("status_artist_handle-165244823700012345")
         );
-        assert!(res.extracted_tags.contains(&"twitter:status_artist_handle-165244823700012345".to_string()));
+        assert!(
+            res.extracted_tags
+                .contains(&"twitter:status_artist_handle-165244823700012345".to_string())
+        );
     }
 
     #[test]
@@ -211,7 +213,8 @@ mod tests {
                 6 => filenames.push(format!("random_filename_no_match_{}.jpg", i)),
                 7 => filenames.push(format!("illust_{}.png", 10000000 + i)),
                 8 => filenames.push(format!("__danbooru_test_tags__{:032x}.png", i)),
-                9 => filenames.push("[Cool Artist] Amazing Artwork (landscape wallpaper).png".to_string()),
+                9 => filenames
+                    .push("[Cool Artist] Amazing Artwork (landscape wallpaper).png".to_string()),
                 _ => unreachable!(),
             }
         }
@@ -240,7 +243,8 @@ mod tests {
 
         // Benchmark 3: pre-compiled custom_regex (pixiv-like pattern that matches some filenames)
         // Strip extensions like test_filename does in production
-        let regex_pattern = r"^(?:(?P<artist>[A-Za-z0-9_\-\s]+)_)?(?P<pixiv_id>\d{7,10})(?:_p(?P<page>\d+))?$";
+        let regex_pattern =
+            r"^(?:(?P<artist>[A-Za-z0-9_\-\s]+)_)?(?P<pixiv_id>\d{7,10})(?:_p(?P<page>\d+))?$";
         let stripped: Vec<&str> = filenames
             .iter()
             .map(|f| {
@@ -281,9 +285,7 @@ mod tests {
 
         println!("=== Filename Parser Benchmark (50,000 filenames) ===");
         println!();
-        println!(
-            "pixiv_id preset (single pattern, Aho-Corasick filtered):"
-        );
+        println!("pixiv_id preset (single pattern, Aho-Corasick filtered):");
         println!("  Time:       {:.2?}", elapsed_pixiv);
         println!("  Throughput: {:.0} files/sec", throughput_pixiv);
         println!("  Matches:    {} / {}", match_count, filenames.len());

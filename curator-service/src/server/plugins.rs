@@ -1,10 +1,10 @@
+use crate::ClientContext;
 use crate::handlers;
 use crate::server::internal_status;
-use crate::ClientContext;
 use curator_core::grpc::plugins::{
-    plugins_service_server::PluginsService, InvokePluginRequest, InvokePluginResponse,
-    PluginFileResult, PluginsListResult, ReadPluginFileRequest, SetPluginEnabledRequest,
-    ValidatePluginRequest, ValidationResult,
+    InvokePluginRequest, InvokePluginResponse, PluginFileResult, PluginsListResult,
+    ReadPluginFileRequest, SetPluginEnabledRequest, ValidatePluginRequest, ValidationResult,
+    plugins_service_server::PluginsService,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
@@ -57,7 +57,9 @@ async fn dispatch_plugin_command(
         "DirStat" => pc::storage::dir_stat(ctx, plugin_id, params).await,
         "FileMove" => pc::storage::file_move(ctx, plugin_id, params).await,
         "FileDelete" => pc::storage::file_delete(ctx, plugin_id, params).await,
-        unknown => Err(Status::invalid_argument(format!("Unknown plugin command: {unknown}"))),
+        unknown => Err(Status::invalid_argument(format!(
+            "Unknown plugin command: {unknown}"
+        ))),
     }
 }
 
@@ -139,7 +141,8 @@ impl PluginsService for PluginsServiceImpl {
                 .map_err(|e| Status::invalid_argument(format!("invalid parameters_json: {e}")))?
         };
 
-        let response = dispatch_plugin_command(&self.ctx, &req.plugin_id, &req.command, &params).await?;
+        let response =
+            dispatch_plugin_command(&self.ctx, &req.plugin_id, &req.command, &params).await?;
         let response_json = serde_json::to_string(&response)
             .map_err(|e| internal_status(format!("failed to serialize response: {e}")))?;
         Ok(TonicResponse::new(InvokePluginResponse { response_json }))

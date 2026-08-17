@@ -1,12 +1,12 @@
-use crate::server::internal_status;
 use crate::ClientContext;
+use crate::server::internal_status;
 use curator_core::filename_parser::TokenBlock;
 use curator_core::grpc::common::TokenBlock as ProtoTokenBlock;
 use curator_core::grpc::parser::{
-    filename_parser_service_server::FilenameParserService, CompileTokenBlocksRequest,
-    CompileTokenBlocksResult, PreviewBatchFilenameParsingRequest,
+    CompileTokenBlocksRequest, CompileTokenBlocksResult, PreviewBatchFilenameParsingRequest,
     PreviewBatchFilenameParsingResult, RunBatchFilenameParsingRequest,
     RunBatchFilenameParsingResult, TestFilenamePatternRequest, TestFilenamePatternResult,
+    filename_parser_service_server::FilenameParserService,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
@@ -48,9 +48,8 @@ impl FilenameParserService for FilenameParserServiceImpl {
         request: TonicRequest<CompileTokenBlocksRequest>,
     ) -> Result<TonicResponse<CompileTokenBlocksResult>, Status> {
         let req = request.into_inner();
-        let regex = curator_core::FilenameParser::compile_token_blocks(&to_token_blocks(
-            req.token_config,
-        ));
+        let regex =
+            curator_core::FilenameParser::compile_token_blocks(&to_token_blocks(req.token_config));
         Ok(TonicResponse::new(CompileTokenBlocksResult { regex }))
     }
 

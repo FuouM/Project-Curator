@@ -1,6 +1,6 @@
-use curator_proto::contracts::DevicePreference;
 use crate::onnx::ManagedSession;
 use anyhow::{Context, Result};
+use curator_proto::contracts::DevicePreference;
 use ndarray::Array4;
 use ort::{inputs, value::TensorRef};
 use std::path::Path;
@@ -19,7 +19,11 @@ pub struct YoloDetector {
 }
 
 impl YoloDetector {
-    pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference, prefer_quantized: bool) -> Self {
+    pub fn new(
+        model_dir: impl AsRef<Path>,
+        device: DevicePreference,
+        prefer_quantized: bool,
+    ) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
         let mut model_path = dir.join("yolo-person").join("model.onnx");
         if prefer_quantized {
@@ -88,7 +92,11 @@ impl YoloDetector {
 
         // Run inference
         let t2 = Instant::now();
-        debug!("Running YOLO inference ({}x{})", image.width(), image.height());
+        debug!(
+            "Running YOLO inference ({}x{})",
+            image.width(),
+            image.height()
+        );
         let data_vec = self.session.with_session(|session| {
             let outputs = session
                 .run(inputs![TensorRef::from_array_view(&tensor)?])
@@ -114,10 +122,16 @@ impl YoloDetector {
         let postprocess_ms = t3.elapsed().as_secs_f64() * 1000.0;
 
         let total_ms = t_total.elapsed().as_secs_f64() * 1000.0;
-        let load_ms = t0.elapsed().as_secs_f64() * 1000.0 - preprocess_ms - inference_ms - postprocess_ms;
+        let load_ms =
+            t0.elapsed().as_secs_f64() * 1000.0 - preprocess_ms - inference_ms - postprocess_ms;
         info!(
             "YOLO timing: load_and_overhead={:.1}ms preprocess={:.1}ms inference={:.1}ms postprocess={:.1}ms total={:.1}ms | {} detections",
-            load_ms.max(0.0), preprocess_ms, inference_ms, postprocess_ms, total_ms, detections.len()
+            load_ms.max(0.0),
+            preprocess_ms,
+            inference_ms,
+            postprocess_ms,
+            total_ms,
+            detections.len()
         );
 
         Ok(detections)
@@ -189,7 +203,14 @@ pub(crate) fn preprocess_yolo(
         &PAD_COLOR,
     );
 
-    Ok((tensor, PadInfo { pad_x, pad_y, scale }))
+    Ok((
+        tensor,
+        PadInfo {
+            pad_x,
+            pad_y,
+            scale,
+        },
+    ))
 }
 
 fn postprocess_yolo(
@@ -268,12 +289,14 @@ impl curator_proto::pipeline::SystemNode for YoloDetector {
         curator_proto::pipeline::NodeInfo {
             id: "yolo-detector",
             label: "YOLO Person Detector",
-            inputs: vec![
-                curator_proto::pipeline::Port { name: "image", type_name: "Image" },
-            ],
-            outputs: vec![
-                curator_proto::pipeline::Port { name: "detections", type_name: "List[Detection]" },
-            ],
+            inputs: vec![curator_proto::pipeline::Port {
+                name: "image",
+                type_name: "Image",
+            }],
+            outputs: vec![curator_proto::pipeline::Port {
+                name: "detections",
+                type_name: "List[Detection]",
+            }],
         }
     }
 

@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -80,7 +80,10 @@ pub fn resolve_ffmpeg_path(data_dir: &Path, explicit: Option<&Path>) -> Result<P
         if p.is_file() {
             return Ok(p.to_path_buf());
         }
-        warn!("Explicit ffmpeg path {:?} does not exist; falling through to auto-detect", p);
+        warn!(
+            "Explicit ffmpeg path {:?} does not exist; falling through to auto-detect",
+            p
+        );
     }
     let bundled = data_dir.join("bin").join(ffmpeg_exe());
     if bundled.is_file() {
@@ -212,10 +215,7 @@ fn probe_with_ffprobe(path: &Path, ffprobe: &Path) -> Result<VideoInfo> {
         .as_deref()
         .filter(|s| parse_ratio(s) > 0.0)
         .unwrap_or("0");
-    let bitrate_src = vs
-        .bit_rate
-        .as_deref()
-        .or(probe.format.bit_rate.as_deref());
+    let bitrate_src = vs.bit_rate.as_deref().or(probe.format.bit_rate.as_deref());
 
     let mut duration_ms = parse_secs_to_ms(duration_src);
     let fps = parse_ratio(fps_src);
@@ -575,9 +575,6 @@ mod tests {
             decode_path(video.to_str().unwrap(), Some("C:/does-not-exist/v.png")),
             video
         );
-        assert_eq!(
-            decode_path(video.to_str().unwrap(), None),
-            video
-        );
+        assert_eq!(decode_path(video.to_str().unwrap(), None), video);
     }
 }

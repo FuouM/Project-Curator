@@ -1,10 +1,10 @@
+use crate::ClientContext;
 use crate::handlers;
 use crate::server::internal_status;
-use crate::ClientContext;
 use curator_core::grpc::common as commonpb;
 use curator_core::grpc::search::{
-    search_service_server::SearchService, GetCharacterSuggestionsRequest, SearchRequest,
-    SearchResult,
+    GetCharacterSuggestionsRequest, SearchRequest, SearchResult,
+    search_service_server::SearchService,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
@@ -64,12 +64,14 @@ impl SearchService for SearchServiceImpl {
         request: TonicRequest<GetCharacterSuggestionsRequest>,
     ) -> Result<TonicResponse<commonpb::TagStatisticsResult>, Status> {
         let req = request.into_inner();
-        let tags = curator_core::TagRepo::get_character_suggestions(&self.ctx.db, req.query.as_deref())
-            .await
-            .map_err(|e| internal_status(format!("Failed to fetch character suggestions: {:?}", e)))?;
+        let tags =
+            curator_core::TagRepo::get_character_suggestions(&self.ctx.db, req.query.as_deref())
+                .await
+                .map_err(|e| {
+                    internal_status(format!("Failed to fetch character suggestions: {:?}", e))
+                })?;
         Ok(TonicResponse::new(commonpb::TagStatisticsResult {
             tags: tags.into_iter().map(Into::into).collect(),
         }))
     }
 }
-

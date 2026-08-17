@@ -172,7 +172,13 @@ mod tests {
 
     #[test]
     fn build_tensor_yolo_matches_legacy_letterbox() {
-        for &(target, nw, nh) in &[(640u32, 640u32, 640u32), (640, 512, 640), (640, 640, 320), (320, 224, 320), (320, 320, 224)] {
+        for &(target, nw, nh) in &[
+            (640u32, 640u32, 640u32),
+            (640, 512, 640),
+            (640, 640, 320),
+            (320, 224, 320),
+            (320, 320, 224),
+        ] {
             for checker in [false, true] {
                 let data = synthetic_rgb(nw, nh, checker);
                 let legacy = legacy_yolo_letterbox(&data, target, nw, nh);
@@ -197,17 +203,10 @@ mod tests {
                 let data = synthetic_rgb(target, target, checker);
                 let legacy = legacy_ccip_normalize(&data, target);
                 let tensor = build_tensor(
-                    &data,
-                    target,
-                    target,
-                    target,
-                    &CLIP_MEAN,
-                    &CLIP_STD,
-                    &[0u8; 3],
+                    &data, target, target, target, &CLIP_MEAN, &CLIP_STD, &[0u8; 3],
                 );
                 assert_eq!(legacy.as_slice().unwrap(), tensor.as_slice().unwrap());
             }
         }
     }
 }
-

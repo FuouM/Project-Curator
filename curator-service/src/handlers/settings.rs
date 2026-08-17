@@ -5,8 +5,8 @@ use curator_core::vector::{ModelManager, VectorIndex};
 use sqlx::SqlitePool;
 use tracing::{info, warn};
 
-use super::common::{reindex_all_pending, resolve_source_id};
 use super::AppSettings;
+use super::common::{reindex_all_pending, resolve_source_id};
 
 pub struct UpdateSettingsParams<'a> {
     pub db: &'a SqlitePool,
@@ -23,7 +23,8 @@ pub struct UpdateSettingsParams<'a> {
     pub detection_device: Option<curator_core::ipc::DevicePreference>,
     pub detection_metrics_device: Option<curator_core::ipc::DevicePreference>,
     pub ocr_device: Option<curator_core::ipc::DevicePreference>,
-    pub model_precisions: Option<std::collections::HashMap<String, curator_core::ipc::ModelPrecision>>,
+    pub model_precisions:
+        Option<std::collections::HashMap<String, curator_core::ipc::ModelPrecision>>,
     pub preferred_tagger: Option<TaggerModel>,
 }
 
@@ -103,9 +104,7 @@ pub async fn query_status(
     Ok((row.0, row.1, row.2, row.3, ram))
 }
 
-pub async fn update_settings_logic(
-    params: UpdateSettingsParams<'_>,
-) -> Result<AppSettings> {
+pub async fn update_settings_logic(params: UpdateSettingsParams<'_>) -> Result<AppSettings> {
     let UpdateSettingsParams {
         db,
         model_manager,
@@ -179,9 +178,9 @@ pub async fn update_settings_logic(
     let data_dir_buf = data_dir.to_path_buf();
     drop(s);
 
-    let save_res = tokio::task::spawn_blocking(move || {
-        crate::save_settings(&data_dir_buf, &settings_to_save)
-    }).await;
+    let save_res =
+        tokio::task::spawn_blocking(move || crate::save_settings(&data_dir_buf, &settings_to_save))
+            .await;
     if let Ok(Err(e)) = save_res {
         warn!("Failed to save settings: {:?}", e);
     }
@@ -204,14 +203,24 @@ pub async fn update_settings_logic(
         }
 
         let source_name = active_model.source_name();
-        let source_id = resolve_source_id(db, source_name).await
+        let source_id = resolve_source_id(db, source_name)
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to fetch source ID for model change: {:?}", e))?;
         reindex_all_pending(db, vector_index, source_id).await?;
     }
 
     info!(
         "Settings updated: clip_device={:?}, tagger_device={:?}, tagger_wd_device={:?}, detection_device={:?}, detection_metrics_device={:?}, ocr_device={:?}, model_precisions={:?}, idle_timeout={}s, embedding_model={:?}, preferred_tagger={:?}",
-        clip, tagger_dev, tagger_wd_dev, det_dev, det_met_dev, ocr_dev, model_precs, idle, active_model, preferred
+        clip,
+        tagger_dev,
+        tagger_wd_dev,
+        det_dev,
+        det_met_dev,
+        ocr_dev,
+        model_precs,
+        idle,
+        active_model,
+        preferred
     );
 
     Ok(AppSettings {

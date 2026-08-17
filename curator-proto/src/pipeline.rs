@@ -1,6 +1,6 @@
+use crate::contracts::DevicePreference;
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::contracts::DevicePreference;
 
 /// A typed I/O port descriptor for node metadata.
 pub struct Port {

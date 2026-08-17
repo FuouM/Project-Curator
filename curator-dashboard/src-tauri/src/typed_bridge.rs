@@ -94,7 +94,10 @@ pub async fn call_typed(
         }
         "SystemService.ReindexFailedVectors" => {
             let mut client = SystemServiceClient::new(channel);
-            let resp = client.reindex_failed_vectors(()).await.map_err(status_err)?;
+            let resp = client
+                .reindex_failed_vectors(())
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
 
@@ -123,12 +126,18 @@ pub async fn call_typed(
         }
         "ImportService.BackfillImageFolders" => {
             let mut client = ImportServiceClient::new(channel);
-            let resp = client.backfill_image_folders(()).await.map_err(status_err)?;
+            let resp = client
+                .backfill_image_folders(())
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "ImportService.BackfillMediaMetadata" => {
             let mut client = ImportServiceClient::new(channel);
-            let resp = client.backfill_media_metadata(()).await.map_err(status_err)?;
+            let resp = client
+                .backfill_media_metadata(())
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "ImportService.RescanFolder" => {
@@ -151,13 +160,18 @@ pub async fn call_typed(
         "ImportService.ClassifyFolderSafety" => {
             let req = decode::<import_pb::ClassifyFolderSafetyRequest>(request_bytes)?;
             let mut client = ImportServiceClient::new(channel);
-            let resp = client.classify_folder_safety(req).await.map_err(status_err)?;
+            let resp = client
+                .classify_folder_safety(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "ImportService.GetSafetyRescanProgress" => {
-
             let mut client = ImportServiceClient::new(channel);
-            let resp = client.get_safety_rescan_progress(()).await.map_err(status_err)?;
+            let resp = client
+                .get_safety_rescan_progress(())
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "ImportService.EphemeralClassifySafety" => {
@@ -203,7 +217,10 @@ pub async fn call_typed(
         }
         "GalleryService.PurgeMissingThumbnails" => {
             let mut client = GalleryServiceClient::new(channel);
-            let resp = client.purge_missing_thumbnails(()).await.map_err(status_err)?;
+            let resp = client
+                .purge_missing_thumbnails(())
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "GalleryService.ClearThumbnailCache" => {
@@ -222,7 +239,10 @@ pub async fn call_typed(
         "SearchService.GetCharacterSuggestions" => {
             let req = decode::<search_pb::GetCharacterSuggestionsRequest>(request_bytes)?;
             let mut client = SearchServiceClient::new(channel);
-            let resp = client.get_character_suggestions(req).await.map_err(status_err)?;
+            let resp = client
+                .get_character_suggestions(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
 
@@ -292,19 +312,28 @@ pub async fn call_typed(
         "CharactersService.DetectCharactersBatch" => {
             let req = decode::<characters_pb::ImageIdsRequest>(request_bytes)?;
             let mut client = CharactersServiceClient::new(channel);
-            let resp = client.detect_characters_batch(req).await.map_err(status_err)?;
+            let resp = client
+                .detect_characters_batch(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "CharactersService.GetCharacterDetections" => {
             let req = decode::<characters_pb::ImageIdRequest>(request_bytes)?;
             let mut client = CharactersServiceClient::new(channel);
-            let resp = client.get_character_detections(req).await.map_err(status_err)?;
+            let resp = client
+                .get_character_detections(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "CharactersService.GetCharacterDetectionsBatch" => {
             let req = decode::<characters_pb::ImageIdsRequest>(request_bytes)?;
             let mut client = CharactersServiceClient::new(channel);
-            let resp = client.get_character_detections_batch(req).await.map_err(status_err)?;
+            let resp = client
+                .get_character_detections_batch(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "CharactersService.GetDetectionCrop" => {
@@ -322,35 +351,53 @@ pub async fn call_typed(
         "CharactersService.AssignCharacterIdentity" => {
             let req = decode::<characters_pb::AssignCharacterIdentityRequest>(request_bytes)?;
             let mut client = CharactersServiceClient::new(channel);
-            let resp = client.assign_character_identity(req).await.map_err(status_err)?;
+            let resp = client
+                .assign_character_identity(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "CharactersService.CreateCharacterIdentity" => {
             let req = decode::<characters_pb::CreateCharacterIdentityRequest>(request_bytes)?;
             let mut client = CharactersServiceClient::new(channel);
-            let resp = client.create_character_identity(req).await.map_err(status_err)?;
+            let resp = client
+                .create_character_identity(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "CharactersService.RenameCharacterIdentity" => {
             let req = decode::<characters_pb::RenameCharacterIdentityRequest>(request_bytes)?;
             let mut client = CharactersServiceClient::new(channel);
-            let resp = client.rename_character_identity(req).await.map_err(status_err)?;
+            let resp = client
+                .rename_character_identity(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "CharactersService.DeleteCharacterIdentity" => {
             let req = decode::<characters_pb::DeleteCharacterIdentityRequest>(request_bytes)?;
             let mut client = CharactersServiceClient::new(channel);
-            let resp = client.delete_character_identity(req).await.map_err(status_err)?;
+            let resp = client
+                .delete_character_identity(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "CharactersService.ListCharacterIdentities" => {
             let mut client = CharactersServiceClient::new(channel);
-            let resp = client.list_character_identities(()).await.map_err(status_err)?;
+            let resp = client
+                .list_character_identities(())
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "CharactersService.ReidentifyAllDetections" => {
             let mut client = CharactersServiceClient::new(channel);
-            let resp = client.reidentify_all_detections(()).await.map_err(status_err)?;
+            let resp = client
+                .reidentify_all_detections(())
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "CharactersService.SearchByCharacter" => {
@@ -362,12 +409,18 @@ pub async fn call_typed(
         "CharactersService.SearchByCharacterBatch" => {
             let req = decode::<characters_pb::SearchByCharacterBatchRequest>(request_bytes)?;
             let mut client = CharactersServiceClient::new(channel);
-            let resp = client.search_by_character_batch(req).await.map_err(status_err)?;
+            let resp = client
+                .search_by_character_batch(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "CharactersService.ListUnassignedDetections" => {
             let mut client = CharactersServiceClient::new(channel);
-            let resp = client.list_unassigned_detections(()).await.map_err(status_err)?;
+            let resp = client
+                .list_unassigned_detections(())
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "CharactersService.DeleteDetection" => {
@@ -379,7 +432,10 @@ pub async fn call_typed(
         "CharactersService.UpdateDetectionBoundingBox" => {
             let req = decode::<characters_pb::UpdateDetectionBoundingBoxRequest>(request_bytes)?;
             let mut client = CharactersServiceClient::new(channel);
-            let resp = client.update_detection_bounding_box(req).await.map_err(status_err)?;
+            let resp = client
+                .update_detection_bounding_box(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "CharactersService.AddDetection" => {
@@ -397,7 +453,10 @@ pub async fn call_typed(
         "CharactersService.EphemeralDetectCharacters" => {
             let req = decode::<characters_pb::EphemeralDetectCharactersRequest>(request_bytes)?;
             let mut client = CharactersServiceClient::new(channel);
-            let resp = client.ephemeral_detect_characters(req).await.map_err(status_err)?;
+            let resp = client
+                .ephemeral_detect_characters(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "CharactersService.ClearCropCache" => {
@@ -427,7 +486,6 @@ pub async fn call_typed(
         }
 
         // ---- ModelsService ----
-
         "ModelsService.GetModelStatus" => {
             let mut client = ModelsServiceClient::new(channel);
             let resp = client.get_model_status(()).await.map_err(status_err)?;
@@ -484,7 +542,10 @@ pub async fn call_typed(
         "ToolsService.EphemeralConvertImages" => {
             let req = decode::<tools_pb::EphemeralConvertImagesRequest>(request_bytes)?;
             let mut client = ToolsServiceClient::new(channel);
-            let resp = client.ephemeral_convert_images(req).await.map_err(status_err)?;
+            let resp = client
+                .ephemeral_convert_images(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "ToolsService.PathExists" => {
@@ -502,13 +563,19 @@ pub async fn call_typed(
         "ToolsService.GetTranscodeProgress" => {
             let req = decode::<tools_pb::GetTranscodeProgressRequest>(request_bytes)?;
             let mut client = ToolsServiceClient::new(channel);
-            let resp = client.get_transcode_progress(req).await.map_err(status_err)?;
+            let resp = client
+                .get_transcode_progress(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "ToolsService.CreateGifFromImages" => {
             let req = decode::<tools_pb::CreateGifFromImagesRequest>(request_bytes)?;
             let mut client = ToolsServiceClient::new(channel);
-            let resp = client.create_gif_from_images(req).await.map_err(status_err)?;
+            let resp = client
+                .create_gif_from_images(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "ToolsService.ProcessGifEffects" => {
@@ -532,7 +599,10 @@ pub async fn call_typed(
         "ToolsService.BenchmarkSingleImage" => {
             let req = decode::<tools_pb::BenchmarkSingleImageRequest>(request_bytes)?;
             let mut client = ToolsServiceClient::new(channel);
-            let resp = client.benchmark_single_image(req).await.map_err(status_err)?;
+            let resp = client
+                .benchmark_single_image(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "ToolsService.GetImageProcessingBenchmarkProgress" => {
@@ -564,7 +634,10 @@ pub async fn call_typed(
         }
         "FoldersService.DetectDuplicateFolders" => {
             let mut client = FoldersServiceClient::new(channel);
-            let resp = client.detect_duplicate_folders(()).await.map_err(status_err)?;
+            let resp = client
+                .detect_duplicate_folders(())
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "FoldersService.MergeFolders" => {
@@ -600,12 +673,18 @@ pub async fn call_typed(
         }
         "BenchmarksService.RunCcipFeatBenchmark" => {
             let mut client = BenchmarksServiceClient::new(channel);
-            let resp = client.run_ccip_feat_benchmark(()).await.map_err(status_err)?;
+            let resp = client
+                .run_ccip_feat_benchmark(())
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "BenchmarksService.RunCcipMetricsBenchmark" => {
             let mut client = BenchmarksServiceClient::new(channel);
-            let resp = client.run_ccip_metrics_benchmark(()).await.map_err(status_err)?;
+            let resp = client
+                .run_ccip_metrics_benchmark(())
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "BenchmarksService.RunOcrDetBenchmark" => {
@@ -625,7 +704,10 @@ pub async fn call_typed(
         }
         "BenchmarksService.RunMangaBubbleBenchmark" => {
             let mut client = BenchmarksServiceClient::new(channel);
-            let resp = client.run_manga_bubble_benchmark(()).await.map_err(status_err)?;
+            let resp = client
+                .run_manga_bubble_benchmark(())
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "BenchmarksService.RunSafetyBenchmark" => {
@@ -669,7 +751,10 @@ pub async fn call_typed(
         "FilenameParserService.TestFilenamePattern" => {
             let req = decode::<parser_pb::TestFilenamePatternRequest>(request_bytes)?;
             let mut client = FilenameParserServiceClient::new(channel);
-            let resp = client.test_filename_pattern(req).await.map_err(status_err)?;
+            let resp = client
+                .test_filename_pattern(req)
+                .await
+                .map_err(status_err)?;
             Ok(resp.into_inner().encode_to_vec())
         }
         "FilenameParserService.CompileTokenBlocks" => {
@@ -701,7 +786,11 @@ pub async fn call_typed(
         "ModelsService.DownloadModel" => {
             let req = decode::<models_pb::ModelIdRequest>(request_bytes)?;
             let mut client = ModelsServiceClient::new(channel);
-            let mut stream = client.download_model(req).await.map_err(status_err)?.into_inner();
+            let mut stream = client
+                .download_model(req)
+                .await
+                .map_err(status_err)?
+                .into_inner();
             match stream.message().await.map_err(status_err)? {
                 Some(msg) => Ok(msg.encode_to_vec()),
                 None => Err("download stream closed before first update".to_string()),
@@ -710,7 +799,11 @@ pub async fn call_typed(
         "ModelsService.ConvertModel" => {
             let req = decode::<models_pb::ModelIdRequest>(request_bytes)?;
             let mut client = ModelsServiceClient::new(channel);
-            let mut stream = client.convert_model(req).await.map_err(status_err)?.into_inner();
+            let mut stream = client
+                .convert_model(req)
+                .await
+                .map_err(status_err)?
+                .into_inner();
             match stream.message().await.map_err(status_err)? {
                 Some(msg) => Ok(msg.encode_to_vec()),
                 None => Err("conversion stream closed before first update".to_string()),
@@ -718,7 +811,11 @@ pub async fn call_typed(
         }
         "ModelsService.DownloadFFmpeg" => {
             let mut client = ModelsServiceClient::new(channel);
-            let mut stream = client.download_f_fmpeg(()).await.map_err(status_err)?.into_inner();
+            let mut stream = client
+                .download_f_fmpeg(())
+                .await
+                .map_err(status_err)?
+                .into_inner();
             match stream.message().await.map_err(status_err)? {
                 Some(msg) => Ok(msg.encode_to_vec()),
                 None => Err("ffmpeg download stream closed before first update".to_string()),

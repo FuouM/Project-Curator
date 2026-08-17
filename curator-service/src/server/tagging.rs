@@ -1,11 +1,11 @@
+use crate::ClientContext;
 use crate::handlers;
 use crate::server::convert;
 use crate::server::internal_status;
-use crate::ClientContext;
 use curator_core::grpc::common as commonpb;
 use curator_core::grpc::tagging::{
-    tagging_service_server::TaggingService, EphemeralTagImageRequest, EphemeralTagResult,
-    TagImageBatchRequest, TagImageRequest, TagImageResult, TaggerStatusResult,
+    EphemeralTagImageRequest, EphemeralTagResult, TagImageBatchRequest, TagImageRequest,
+    TagImageResult, TaggerStatusResult, tagging_service_server::TaggingService,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
@@ -32,9 +32,10 @@ impl TaggingService for TaggingServiceImpl {
         let engine = self.ctx.taggers.engine(&model);
         let threshold = req.threshold.unwrap_or(engine.spec().default_threshold);
         let force = req.force.unwrap_or(false);
-        let outcome = handlers::image::tag_image_logic(req.image_id, threshold, force, &self.ctx.db, engine)
-            .await
-            .map_err(internal_status)?;
+        let outcome =
+            handlers::image::tag_image_logic(req.image_id, threshold, force, &self.ctx.db, engine)
+                .await
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(TagImageResult {
             image_id: req.image_id,
             tags_applied: outcome.tags_applied as u32,
@@ -73,7 +74,13 @@ impl TaggingService for TaggingServiceImpl {
         let preferred = { self.ctx.settings.lock().await.preferred_tagger };
         Ok(TonicResponse::new(TaggerStatusResult {
             preferred_tagger: convert::tagger_to_proto(preferred),
-            taggers: self.ctx.taggers.statuses().into_iter().map(Into::into).collect(),
+            taggers: self
+                .ctx
+                .taggers
+                .statuses()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         }))
     }
 

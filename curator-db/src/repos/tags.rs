@@ -1,8 +1,8 @@
 use anyhow::Result;
 use sqlx::SqlitePool;
 
-use crate::models::TagStat;
 use super::sources::SourceRepo;
+use crate::models::TagStat;
 
 pub struct TagRepo;
 
@@ -64,17 +64,12 @@ impl TagRepo {
     }
 
     /// Remove / blacklist a tag for an image.
-    pub async fn remove_tag(
-        db: &SqlitePool,
-        image_id: i64,
-        tag: &str,
-    ) -> Result<()> {
-        let tag_res: Option<(i64,)> =
-            sqlx::query_as("SELECT id FROM tags WHERE name = ? LIMIT 1")
-                .bind(tag)
-                .fetch_optional(db)
-                .await
-                .unwrap_or(None);
+    pub async fn remove_tag(db: &SqlitePool, image_id: i64, tag: &str) -> Result<()> {
+        let tag_res: Option<(i64,)> = sqlx::query_as("SELECT id FROM tags WHERE name = ? LIMIT 1")
+            .bind(tag)
+            .fetch_optional(db)
+            .await
+            .unwrap_or(None);
 
         if let Some((tag_id,)) = tag_res {
             let source_row: Option<(i64, String)> = sqlx::query_as(
@@ -121,17 +116,12 @@ impl TagRepo {
     }
 
     /// Un-blacklist a tag that was previously removed.
-    pub async fn unblacklist_tag(
-        db: &SqlitePool,
-        image_id: i64,
-        tag: &str,
-    ) -> Result<()> {
-        let tag_res: Option<(i64,)> =
-            sqlx::query_as("SELECT id FROM tags WHERE name = ? LIMIT 1")
-                .bind(tag)
-                .fetch_optional(db)
-                .await
-                .unwrap_or(None);
+    pub async fn unblacklist_tag(db: &SqlitePool, image_id: i64, tag: &str) -> Result<()> {
+        let tag_res: Option<(i64,)> = sqlx::query_as("SELECT id FROM tags WHERE name = ? LIMIT 1")
+            .bind(tag)
+            .fetch_optional(db)
+            .await
+            .unwrap_or(None);
 
         if let Some((tag_id,)) = tag_res {
             let source_row: Option<(i64,)> = sqlx::query_as(
@@ -166,7 +156,9 @@ impl TagRepo {
         db: &SqlitePool,
         preferred_source: &str,
     ) -> Result<Vec<TagStat>> {
-        let source_id = SourceRepo::resolve_source_id(db, preferred_source).await.unwrap_or(0);
+        let source_id = SourceRepo::resolve_source_id(db, preferred_source)
+            .await
+            .unwrap_or(0);
         let tags = sqlx::query_as::<_, TagStat>(
             r#"
             SELECT t.name AS tag, t.category AS category, g.count AS count

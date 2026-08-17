@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
-use serde::{Deserialize, Serialize};
 pub use curator_filename_parser::ParsedMetadata;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Source {
@@ -228,7 +228,6 @@ pub struct FolderDetails {
     pub safety_classified: i64,
     pub safety_pending: i64,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DuplicateFolderInfo {

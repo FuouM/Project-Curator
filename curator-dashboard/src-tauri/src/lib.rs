@@ -1,12 +1,12 @@
+use percent_encoding::percent_decode_str;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, OnceLock};
 use tauri::Emitter;
 use tokio::sync::OnceCell;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use tonic::transport::Channel;
-use percent_encoding::percent_decode_str;
 
 mod typed_bridge;
 
@@ -160,7 +160,8 @@ fn assign_child_to_kill_on_close_job(child: &std::process::Child) {
     const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
 
     unsafe extern "system" {
-        fn CreateJobObjectW(lpJobAttributes: *const std::ffi::c_void, lpName: *const u16) -> HANDLE;
+        fn CreateJobObjectW(lpJobAttributes: *const std::ffi::c_void, lpName: *const u16)
+        -> HANDLE;
         fn SetInformationJobObject(
             hJob: HANDLE,
             JobObjectInformationClass: i32,
@@ -228,14 +229,15 @@ async fn ensure_channel() -> Result<Channel, String> {
     Ok(guard.clone().unwrap())
 }
 
-
-
 static THUMB_DB_PATH: OnceLock<PathBuf> = OnceLock::new();
 static THUMB_CACHE: OnceCell<Arc<ThumbnailCache>> = OnceCell::const_new();
 static IMAGES_DB: OnceCell<SqlitePool> = OnceCell::const_new();
 
 #[tauri::command]
-async fn send_to_service_typed(method: String, request_bytes: Vec<u8>) -> Result<tauri::ipc::Response, String> {
+async fn send_to_service_typed(
+    method: String,
+    request_bytes: Vec<u8>,
+) -> Result<tauri::ipc::Response, String> {
     let channel = ensure_channel().await?;
     match typed_bridge::call_typed(channel, &method, &request_bytes).await {
         Ok(resp_bytes) => Ok(tauri::ipc::Response::new(resp_bytes)),
@@ -251,13 +253,19 @@ async fn send_to_service_typed(method: String, request_bytes: Vec<u8>) -> Result
                 *guard = None;
             }
             let new_channel = ensure_channel().await.map_err(|e| {
-                log_dashboard_event(&format!("send_to_service_typed {} re-connect failed: {}", method, e));
+                log_dashboard_event(&format!(
+                    "send_to_service_typed {} re-connect failed: {}",
+                    method, e
+                ));
                 first_err.clone()
             })?;
             let resp_bytes = typed_bridge::call_typed(new_channel, &method, &request_bytes)
                 .await
                 .map_err(|e| {
-                    log_dashboard_event(&format!("send_to_service_typed {} retry failed: {}", method, e));
+                    log_dashboard_event(&format!(
+                        "send_to_service_typed {} retry failed: {}",
+                        method, e
+                    ));
                     e
                 })?;
             Ok(tauri::ipc::Response::new(resp_bytes))
@@ -283,16 +291,23 @@ async fn select_paths(is_directory: bool) -> Result<Vec<String>, String> {
     if is_directory {
         let folders = dialog.pick_folders().await;
         Ok(folders
-            .map(|list| list.into_iter().map(|f| f.path().to_string_lossy().to_string()).collect())
+            .map(|list| {
+                list.into_iter()
+                    .map(|f| f.path().to_string_lossy().to_string())
+                    .collect()
+            })
             .unwrap_or_default())
     } else {
         let files = dialog.pick_files().await;
         Ok(files
-            .map(|list| list.into_iter().map(|f| f.path().to_string_lossy().to_string()).collect())
+            .map(|list| {
+                list.into_iter()
+                    .map(|f| f.path().to_string_lossy().to_string())
+                    .collect()
+            })
             .unwrap_or_default())
     }
 }
-
 
 #[tauri::command]
 async fn get_file_size(path: String) -> Result<Option<u64>, String> {
@@ -305,7 +320,11 @@ async fn get_file_size(path: String) -> Result<Option<u64>, String> {
 }
 
 #[tauri::command]
-async fn save_file_dialog(suggested_name: String, filter_name: String, extensions: Vec<String>) -> Result<Option<String>, String> {
+async fn save_file_dialog(
+    suggested_name: String,
+    filter_name: String,
+    extensions: Vec<String>,
+) -> Result<Option<String>, String> {
     let ext_refs: Vec<&str> = extensions.iter().map(|s| s.as_str()).collect();
     let file = rfd::AsyncFileDialog::new()
         .set_file_name(&suggested_name)
@@ -381,7 +400,10 @@ async fn save_edited_image(request: tauri::ipc::Request<'_>) -> Result<String, S
         return Err(format!("rename temp file: {e}"));
     }
 
-    log_dashboard_event(&format!("minipaint: saved edited image -> {:?}", final_path));
+    log_dashboard_event(&format!(
+        "minipaint: saved edited image -> {:?}",
+        final_path
+    ));
     Ok(final_path.to_string_lossy().into_owned())
 }
 
@@ -400,7 +422,11 @@ fn sanitize_stem(name: &str) -> String {
         })
         .collect();
     let cleaned = cleaned.trim();
-    if cleaned.is_empty() { "image".to_string() } else { cleaned.to_string() }
+    if cleaned.is_empty() {
+        "image".to_string()
+    } else {
+        cleaned.to_string()
+    }
 }
 
 fn read_last_n_bytes(path: &std::path::Path, max_bytes: usize) -> std::io::Result<String> {
@@ -464,8 +490,9 @@ async fn clear_service_logs() -> Result<(), String> {
 /// Reveal a file in Windows Explorer (selects the file inside its parent
 /// folder). explorer.exe is resolved via the `WINDIR` environment variable.
 fn reveal_in_explorer(path: &std::path::Path) -> Result<(), String> {
-    let win_dir = std::env::var("WINDIR")
-        .map_err(|_| "WINDIR environment variable is not set; cannot resolve explorer.exe".to_string())?;
+    let win_dir = std::env::var("WINDIR").map_err(|_| {
+        "WINDIR environment variable is not set; cannot resolve explorer.exe".to_string()
+    })?;
     let explorer = std::path::Path::new(&win_dir).join("explorer.exe");
     // explorer.exe parses `/segment` as a command-line switch, so forward
     // slashes in the path would be consumed as unknown switches with no path
@@ -549,10 +576,14 @@ async fn get_thumbnail(
     mtime: Option<i64>,
     kind: Option<u8>,
 ) -> Result<tauri::ipc::Response, String> {
-    let cache = THUMB_CACHE.get_or_init(|| async {
-        let db_path = THUMB_DB_PATH.get().expect("THUMB_DB_PATH not set");
-        ThumbnailCache::open(db_path).await.expect("Failed to open thumbnail cache")
-    }).await;
+    let cache = THUMB_CACHE
+        .get_or_init(|| async {
+            let db_path = THUMB_DB_PATH.get().expect("THUMB_DB_PATH not set");
+            ThumbnailCache::open(db_path)
+                .await
+                .expect("Failed to open thumbnail cache")
+        })
+        .await;
 
     let target_kind = kind.unwrap_or(curator_media::thumbnail::THUMB_KIND_STATIC);
 
@@ -566,20 +597,24 @@ async fn get_thumbnail(
     }
 
     // Cache miss — generate locally (after fetching mtime so the cache key is accurate)
-    let db = IMAGES_DB.get_or_init(|| async {
-        let db_path = THUMB_DB_PATH.get().expect("THUMB_DB_PATH not set");
-        let images_db_path = db_path.parent().unwrap().join("curator.db");
-        let opts = SqliteConnectOptions::new()
-            .filename(&images_db_path)
-            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-            .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
-            .pragma("mmap_size", "268435456")
-            .pragma("cache_size", "-64000")
-            .pragma("temp_store", "2")
-            .busy_timeout(std::time::Duration::from_secs(5))
-            .create_if_missing(false);
-        SqlitePool::connect_with(opts).await.expect("Failed to open images DB")
-    }).await;
+    let db = IMAGES_DB
+        .get_or_init(|| async {
+            let db_path = THUMB_DB_PATH.get().expect("THUMB_DB_PATH not set");
+            let images_db_path = db_path.parent().unwrap().join("curator.db");
+            let opts = SqliteConnectOptions::new()
+                .filename(&images_db_path)
+                .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+                .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
+                .pragma("mmap_size", "268435456")
+                .pragma("cache_size", "-64000")
+                .pragma("temp_store", "2")
+                .busy_timeout(std::time::Duration::from_secs(5))
+                .create_if_missing(false);
+            SqlitePool::connect_with(opts)
+                .await
+                .expect("Failed to open images DB")
+        })
+        .await;
 
     let row: Option<(String, i64, Option<String>)> = sqlx::query_as(
         "SELECT current_filepath, mtime, video_frame_path FROM images WHERE id = ? AND deleted_at IS NULL",
@@ -608,12 +643,16 @@ async fn get_thumbnail(
         let vid_path = std::path::PathBuf::from(&filepath);
         tokio::task::spawn_blocking(move || {
             if let Ok(ffmpeg) = ffmpeg_res {
-                if let Ok(animated) = curator_media::thumbnail::generate_video_preview(&vid_path, &ffmpeg, 200, 12, 65) {
+                if let Ok(animated) = curator_media::thumbnail::generate_video_preview(
+                    &vid_path, &ffmpeg, 200, 12, 65,
+                ) {
                     return Ok(animated);
                 }
             }
             let thumb_src = match video_frame_path {
-                Some(ref frame) if std::path::Path::new(frame).exists() => std::path::PathBuf::from(frame),
+                Some(ref frame) if std::path::Path::new(frame).exists() => {
+                    std::path::PathBuf::from(frame)
+                }
                 _ => std::path::PathBuf::from(&filepath),
             };
             curator_media::thumbnail::generate_thumbnail(&thumb_src, 200)
@@ -623,13 +662,17 @@ async fn get_thumbnail(
         .map_err(|e| e.to_string())?
     } else {
         let thumb_src = std::path::PathBuf::from(&filepath);
-        tokio::task::spawn_blocking(move || curator_media::thumbnail::generate_thumbnail(&thumb_src, 200))
-            .await
-            .map_err(|e| e.to_string())?
-            .map_err(|e| e.to_string())?
+        tokio::task::spawn_blocking(move || {
+            curator_media::thumbnail::generate_thumbnail(&thumb_src, 200)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?
     };
 
-    let _ = cache.put(image_id, 200, db_mtime, derived_kind, &webp_bytes).await;
+    let _ = cache
+        .put(image_id, 200, db_mtime, derived_kind, &webp_bytes)
+        .await;
     Ok(tauri::ipc::Response::new(webp_bytes))
 }
 
@@ -669,7 +712,6 @@ pub fn run() {
             select_path,
             select_paths,
             save_file_dialog,
-
             save_edited_image,
             get_file_size,
             read_logs,

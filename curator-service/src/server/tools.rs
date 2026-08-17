@@ -1,13 +1,13 @@
+use crate::ClientContext;
 use crate::handlers;
 use crate::server::internal_status;
-use crate::ClientContext;
 use curator_core::grpc::tools::{
-    tools_service_server::ToolsService, BenchmarkImagesResult, BenchmarkSingleImageRequest,
-    ConvertImagesResult, CreateGifFromImagesRequest,
-    EphemeralConvertImagesRequest, GetBenchmarkImagesRequest, GetTranscodeProgressRequest,
-    ImageProcessingBenchmarkProgress, PathExistsRequest, PathExistsResult, ProcessGifEffectsRequest,
-    RunImageProcessingBenchmarkRequest, SingleImageBenchmarkResult, SplitGifRequest,
-    TranscodeProgressResult, TranscodeVideoRequest,
+    BenchmarkImagesResult, BenchmarkSingleImageRequest, ConvertImagesResult,
+    CreateGifFromImagesRequest, EphemeralConvertImagesRequest, GetBenchmarkImagesRequest,
+    GetTranscodeProgressRequest, ImageProcessingBenchmarkProgress, PathExistsRequest,
+    PathExistsResult, ProcessGifEffectsRequest, RunImageProcessingBenchmarkRequest,
+    SingleImageBenchmarkResult, SplitGifRequest, TranscodeProgressResult, TranscodeVideoRequest,
+    tools_service_server::ToolsService,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -44,9 +44,7 @@ impl ToolsService for ToolsServiceImpl {
         )
         .await
         .map_err(internal_status)?;
-        Ok(TonicResponse::new(ConvertImagesResult {
-            converted,
-        }))
+        Ok(TonicResponse::new(ConvertImagesResult { converted }))
     }
 
     async fn path_exists(
@@ -99,9 +97,11 @@ impl ToolsService for ToolsServiceImpl {
         request: TonicRequest<GetTranscodeProgressRequest>,
     ) -> Result<TonicResponse<TranscodeProgressResult>, Status> {
         let req = request.into_inner();
-        let state =
-            curator_core::transcode::get_transcode_progress(&req.job_id, &self.ctx.transcode_progress)
-                .await;
+        let state = curator_core::transcode::get_transcode_progress(
+            &req.job_id,
+            &self.ctx.transcode_progress,
+        )
+        .await;
         Ok(TonicResponse::new(TranscodeProgressResult {
             job_id: req.job_id,
             running: state.running,
@@ -220,15 +220,15 @@ impl ToolsService for ToolsServiceImpl {
         Ok(TonicResponse::new(()))
     }
 
-
     async fn get_benchmark_images(
         &self,
         request: TonicRequest<GetBenchmarkImagesRequest>,
     ) -> Result<TonicResponse<BenchmarkImagesResult>, Status> {
         let req = request.into_inner();
-        let filepaths = handlers::benchmarks::get_benchmark_images(&self.ctx.db, req.limit as usize)
-            .await
-            .map_err(internal_status)?;
+        let filepaths =
+            handlers::benchmarks::get_benchmark_images(&self.ctx.db, req.limit as usize)
+                .await
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(BenchmarkImagesResult { filepaths }))
     }
 
@@ -244,7 +244,12 @@ impl ToolsService for ToolsServiceImpl {
             &self.ctx.taggers,
         )
         .await
-        .map_err(|e| internal_status(format!("Failed to benchmark image {:?}: {:?}", req.filepath, e)))?;
+        .map_err(|e| {
+            internal_status(format!(
+                "Failed to benchmark image {:?}: {:?}",
+                req.filepath, e
+            ))
+        })?;
         Ok(TonicResponse::new(SingleImageBenchmarkResult {
             read_time_ms: res.read_time_ms,
             decode_time_ms: res.decode_time_ms,
@@ -307,7 +312,9 @@ impl ToolsService for ToolsServiceImpl {
     }
 }
 
-fn progress_to_proto(p: &handlers::ImageProcessingBenchmarkProgress) -> ImageProcessingBenchmarkProgress {
+fn progress_to_proto(
+    p: &handlers::ImageProcessingBenchmarkProgress,
+) -> ImageProcessingBenchmarkProgress {
     ImageProcessingBenchmarkProgress {
         running: p.running,
         processed: p.processed as u32,

@@ -1,13 +1,13 @@
 use anyhow::Result;
+use curator_proto::grpc::common::ConvertedFileInfo;
 use image::{
+    DynamicImage, ExtendedColorType, GenericImageView, ImageEncoder,
     codecs::{
         avif::AvifEncoder, bmp::BmpEncoder, gif::GifEncoder, hdr::HdrEncoder, ico::IcoEncoder,
         jpeg::JpegEncoder, openexr::OpenExrEncoder, png::PngEncoder, pnm::PnmEncoder,
         qoi::QoiEncoder, tga::TgaEncoder, tiff::TiffEncoder, webp::WebPEncoder,
     },
-    DynamicImage, ExtendedColorType, GenericImageView, ImageEncoder,
 };
-use curator_proto::grpc::common::ConvertedFileInfo;
 use std::fs;
 use std::io::{Cursor, Write};
 use std::path::Path;
@@ -107,7 +107,8 @@ pub fn encode_image(
     max_dimension: Option<u32>,
     max_bytes: Option<u64>,
 ) -> Result<(), String> {
-    let mut img = image::open(source).map_err(|e| format!("Failed to open/decode source: {:?}", e))?;
+    let mut img =
+        image::open(source).map_err(|e| format!("Failed to open/decode source: {:?}", e))?;
 
     // Bound the larger side, preserving aspect ratio.
     if let Some(md) = max_dimension {
@@ -241,7 +242,8 @@ pub fn encode_dynamic(img: &DynamicImage, ext: &str, quality: u8) -> Result<Vec<
 }
 
 fn write_file(path: &str, bytes: &[u8]) -> Result<(), String> {
-    let mut f = fs::File::create(path).map_err(|e| format!("Failed to create output file: {:?}", e))?;
+    let mut f =
+        fs::File::create(path).map_err(|e| format!("Failed to create output file: {:?}", e))?;
     f.write_all(bytes)
         .map_err(|e| format!("Failed to write output file: {:?}", e))?;
     Ok(())

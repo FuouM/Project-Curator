@@ -125,7 +125,10 @@ mod tests {
     use super::*;
 
     fn temp_index_path() -> PathBuf {
-        std::env::temp_dir().join(format!("test_vector_index_{}.usearch", uuid::Uuid::new_v4()))
+        std::env::temp_dir().join(format!(
+            "test_vector_index_{}.usearch",
+            uuid::Uuid::new_v4()
+        ))
     }
 
     #[test]
@@ -155,7 +158,10 @@ mod tests {
         let results = index.search(&v1, 3).expect("Search failed");
         assert_eq!(results.len(), 3);
         assert_eq!(results[0].0, 101, "v1 should be closest to itself");
-        assert!((results[0].1).abs() < 1e-4, "Self-cosine distance should be near 0");
+        assert!(
+            (results[0].1).abs() < 1e-4,
+            "Self-cosine distance should be near 0"
+        );
 
         // v3 is at 45 degrees, closer than v2 at 90 degrees
         assert_eq!(results[1].0, 103);
@@ -194,4 +200,3 @@ mod tests {
         let _ = fs::remove_file(&path);
     }
 }
-

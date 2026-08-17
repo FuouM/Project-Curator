@@ -8,9 +8,7 @@ pub fn test_regex(filename: &str, pattern: &str) -> Option<ParsedMetadata> {
     // Cache compiled NFA regexes for reuse across batch calls
     static NFA_CACHE: OnceLock<std::sync::Mutex<std::collections::HashMap<String, Regex>>> =
         OnceLock::new();
-    let cache = NFA_CACHE.get_or_init(|| {
-        std::sync::Mutex::new(std::collections::HashMap::new())
-    });
+    let cache = NFA_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
     let re = {
         let mut guard = cache.lock().unwrap();
         guard

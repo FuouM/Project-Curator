@@ -1,10 +1,10 @@
-use crate::server::internal_status;
 use crate::ClientContext;
+use crate::server::internal_status;
 
 use curator_core::grpc::folders::{
-    folders_service_server::FoldersService, DeleteFolderRequest, DeleteFolderResult,
-    DuplicateFoldersResult, MergeFoldersRequest, MergeFoldersResult,
-    StorageStatsResult, UpdateFolderPathRequest, UpdateFolderPathResult,
+    DeleteFolderRequest, DeleteFolderResult, DuplicateFoldersResult, MergeFoldersRequest,
+    MergeFoldersResult, StorageStatsResult, UpdateFolderPathRequest, UpdateFolderPathResult,
+    folders_service_server::FoldersService,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
@@ -38,9 +38,10 @@ impl FoldersService for FoldersServiceImpl {
         request: TonicRequest<UpdateFolderPathRequest>,
     ) -> Result<TonicResponse<UpdateFolderPathResult>, Status> {
         let req = request.into_inner();
-        let success = curator_core::FolderRepo::update_folder_path(req.id, &req.new_path, &self.ctx.db)
-            .await
-            .map_err(internal_status)?;
+        let success =
+            curator_core::FolderRepo::update_folder_path(req.id, &req.new_path, &self.ctx.db)
+                .await
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(UpdateFolderPathResult { success }))
     }
 
@@ -73,15 +74,16 @@ impl FoldersService for FoldersServiceImpl {
     ) -> Result<TonicResponse<MergeFoldersResult>, Status> {
         let req = request.into_inner();
         let _write_guard = self.ctx.import_lock.lock().await;
-        let (success, images_moved) =
-            curator_core::FolderRepo::merge_folders(req.keep_folder_id, req.merge_folder_id, &self.ctx.db)
-                .await
-                .map_err(internal_status)?;
+        let (success, images_moved) = curator_core::FolderRepo::merge_folders(
+            req.keep_folder_id,
+            req.merge_folder_id,
+            &self.ctx.db,
+        )
+        .await
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(MergeFoldersResult {
             success,
             images_moved,
         }))
     }
 }
-
-

@@ -125,7 +125,6 @@ impl FolderRepo {
                 }
             })
             .collect())
-
     }
 
     /// Update folder path and derived name.
@@ -297,7 +296,9 @@ impl FolderRepo {
                 if let Some(finfo) = folder_map.get(&fid) {
                     let mut overlap: i64 = 0;
                     for (&(a, b), &count) in &overlap_counts {
-                        if (a == fid && group_ids.contains(&b)) || (b == fid && group_ids.contains(&a)) {
+                        if (a == fid && group_ids.contains(&b))
+                            || (b == fid && group_ids.contains(&a))
+                        {
                             overlap += count;
                         }
                     }
@@ -405,4 +406,3 @@ mod tests {
         Ok(())
     }
 }
-

@@ -8,8 +8,8 @@
 
 use crate::grpc::common as commonpb;
 use crate::ipc::{
-    BubbleBoxResult, ConvertedFileInfo, DownloadProgress, EphemeralOcrDetection,
-    ManifestFileInfo, ModelStatusInfo, OcrResult, PluginInfo, SearchMatch, TaggerBenchmarkInfo,
+    BubbleBoxResult, ConvertedFileInfo, DownloadProgress, EphemeralOcrDetection, ManifestFileInfo,
+    ModelStatusInfo, OcrResult, PluginInfo, SearchMatch, TaggerBenchmarkInfo,
 };
 
 impl From<SearchMatch> for commonpb::SearchMatch {
@@ -142,7 +142,6 @@ impl From<OcrResult> for commonpb::OcrResult {
         }
     }
 }
-
 
 impl From<BubbleBoxResult> for commonpb::BubbleBoxResult {
     fn from(v: BubbleBoxResult) -> Self {

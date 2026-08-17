@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use curator_proto::contracts::{DevicePreference, TaggerModel};
 use crate::onnx::ManagedSession;
 use anyhow::{Context, Result};
+use curator_proto::contracts::{DevicePreference, TaggerModel};
 
 use ort::{inputs, value::TensorRef};
 use tracing::{debug, info, warn};
@@ -110,8 +110,10 @@ impl TaggerEngine {
             );
         }
 
-        let meta_bytes = std::fs::read(&self.metadata_path).context("Failed to read metadata JSON")?;
-        let meta: MetadataRoot = serde_json::from_slice(&meta_bytes).context("Failed to parse metadata JSON")?;
+        let meta_bytes =
+            std::fs::read(&self.metadata_path).context("Failed to read metadata JSON")?;
+        let meta: MetadataRoot =
+            serde_json::from_slice(&meta_bytes).context("Failed to parse metadata JSON")?;
 
         let total_tags = meta.dataset_info.tag_mapping.idx_to_tag.len();
 
@@ -119,9 +121,19 @@ impl TaggerEngine {
         let mut tags_by_index = Vec::with_capacity(total_tags);
         for i in 0..total_tags {
             let idx_str = i.to_string();
-            let tag = meta.dataset_info.tag_mapping.idx_to_tag.get(&idx_str).cloned()
+            let tag = meta
+                .dataset_info
+                .tag_mapping
+                .idx_to_tag
+                .get(&idx_str)
+                .cloned()
                 .unwrap_or_else(|| format!("unknown-{}", i));
-            let category = meta.dataset_info.tag_mapping.tag_to_category.get(&tag).cloned()
+            let category = meta
+                .dataset_info
+                .tag_mapping
+                .tag_to_category
+                .get(&tag)
+                .cloned()
                 .unwrap_or_else(|| "general".to_string());
             tags_by_index.push((tag, category));
         }
@@ -176,8 +188,12 @@ impl TaggerEngine {
                     break;
                 }
             }
-            let output_tensor = output_tensor
-                .with_context(|| format!("Failed to get prediction output (tried {:?})", self.spec.output_names))?;
+            let output_tensor = output_tensor.with_context(|| {
+                format!(
+                    "Failed to get prediction output (tried {:?})",
+                    self.spec.output_names
+                )
+            })?;
 
             let output_ref = output_tensor.try_extract_tensor::<f32>()?;
             Ok(output_ref.1.to_vec())
@@ -259,12 +275,14 @@ impl curator_proto::pipeline::SystemNode for TaggerEngine {
         curator_proto::pipeline::NodeInfo {
             id: self.spec.key,
             label: self.spec.display_name,
-            inputs: vec![
-                curator_proto::pipeline::Port { name: "image", type_name: "Image" },
-            ],
-            outputs: vec![
-                curator_proto::pipeline::Port { name: "tags", type_name: "Tags" },
-            ],
+            inputs: vec![curator_proto::pipeline::Port {
+                name: "image",
+                type_name: "Image",
+            }],
+            outputs: vec![curator_proto::pipeline::Port {
+                name: "tags",
+                type_name: "Tags",
+            }],
         }
     }
 
@@ -348,10 +366,26 @@ mod tests {
     #[test]
     fn tagger_ordering_is_character_first() {
         let mut preds = [
-            TagPrediction { tag: "user_tag".to_string(), category: "user".into(), confidence: 0.9 },
-            TagPrediction { tag: "char".to_string(), category: "character".into(), confidence: 0.1 },
-            TagPrediction { tag: "meta_tag".to_string(), category: "meta".into(), confidence: 0.8 },
-            TagPrediction { tag: "copy".to_string(), category: "copyright".into(), confidence: 0.7 },
+            TagPrediction {
+                tag: "user_tag".to_string(),
+                category: "user".into(),
+                confidence: 0.9,
+            },
+            TagPrediction {
+                tag: "char".to_string(),
+                category: "character".into(),
+                confidence: 0.1,
+            },
+            TagPrediction {
+                tag: "meta_tag".to_string(),
+                category: "meta".into(),
+                confidence: 0.8,
+            },
+            TagPrediction {
+                tag: "copy".to_string(),
+                category: "copyright".into(),
+                confidence: 0.7,
+            },
         ];
         preds.sort_by(|a, b| {
             let p_a = tag_category_priority(&a.category);

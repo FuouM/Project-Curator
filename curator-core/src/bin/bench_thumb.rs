@@ -2,7 +2,9 @@ use curator_core::thumbnail::generate_thumbnail;
 use std::time::Instant;
 
 fn main() -> anyhow::Result<()> {
-    let list_file = std::env::args().nth(1).expect("usage: bench_thumb <paths-file>");
+    let list_file = std::env::args()
+        .nth(1)
+        .expect("usage: bench_thumb <paths-file>");
     let content = std::fs::read_to_string(list_file)?;
     let paths: Vec<String> = content.lines().map(str::to_string).collect();
 

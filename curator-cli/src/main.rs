@@ -1,17 +1,17 @@
 use anyhow::{Context, Error};
 use clap::{Parser, Subcommand};
 use curator_core::constants::resolve_data_dir;
-use curator_core::grpc::benchmarks::benchmarks_service_client::BenchmarksServiceClient;
 use curator_core::grpc::benchmarks::RunBenchmarkRequest;
+use curator_core::grpc::benchmarks::benchmarks_service_client::BenchmarksServiceClient;
 use curator_core::grpc::common::{EmbeddingModel, ImageDetails, SearchMatch, TaggerModel};
 use curator_core::grpc::gallery::gallery_service_client::GalleryServiceClient;
 use curator_core::grpc::gallery::{GetImageRequest, ListImagesRequest};
-use curator_core::grpc::import::import_service_client::ImportServiceClient;
 use curator_core::grpc::import::ImportImageRequest;
-use curator_core::grpc::plugins::plugins_service_client::PluginsServiceClient;
+use curator_core::grpc::import::import_service_client::ImportServiceClient;
 use curator_core::grpc::plugins::ValidatePluginRequest;
-use curator_core::grpc::search::search_service_client::SearchServiceClient;
+use curator_core::grpc::plugins::plugins_service_client::PluginsServiceClient;
 use curator_core::grpc::search::SearchRequest;
+use curator_core::grpc::search::search_service_client::SearchServiceClient;
 use curator_core::grpc::system::system_service_client::SystemServiceClient;
 use curator_core::grpc::tagging::tagging_service_client::TaggingServiceClient;
 use curator_core::grpc::tagging::{TagImageBatchRequest, TagImageRequest};
@@ -196,10 +196,7 @@ async fn main() -> Result<(), Error> {
     match cli.command {
         Commands::Ping => {
             let mut client = SystemServiceClient::new(channel);
-            client
-                .ping(())
-                .await
-                .context("gRPC Ping request failed")?;
+            client.ping(()).await.context("gRPC Ping request failed")?;
             println!("Pong! Curator Service is alive and healthy.");
         }
 
@@ -227,7 +224,6 @@ async fn main() -> Result<(), Error> {
                 })
                 .await
                 .context("gRPC ImportImage request failed")?
-
                 .into_inner();
             println!(
                 "Successfully imported image/folder ({} item(s)):",

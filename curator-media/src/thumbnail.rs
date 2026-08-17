@@ -55,9 +55,10 @@ impl ThumbnailCache {
 
         // Backward-compatible cache schema migration: cache DB is rebuildable,
         // so a missing mtime column just means all cached entries are stale.
-        let cols: Vec<String> = sqlx::query_scalar("SELECT name FROM pragma_table_info('thumbnails')")
-            .fetch_all(&db)
-            .await?;
+        let cols: Vec<String> =
+            sqlx::query_scalar("SELECT name FROM pragma_table_info('thumbnails')")
+                .fetch_all(&db)
+                .await?;
         if !cols.iter().any(|name| name == "mtime") {
             sqlx::query("ALTER TABLE thumbnails ADD COLUMN mtime INTEGER NOT NULL DEFAULT 0")
                 .execute(&db)
@@ -119,7 +120,10 @@ impl ThumbnailCache {
         .execute(&self.db)
         .await?;
 
-        let cnt = self.op_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        let cnt = self
+            .op_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
         if cnt % EVICTION_CHECK_INTERVAL == 0 {
             self.evict_if_needed(DEFAULT_MAX_ENTRIES).await?;
         }
@@ -134,7 +138,10 @@ impl ThumbnailCache {
         let mut deleted = 0usize;
         for chunk in missing_ids.chunks(500) {
             let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-            let sql = format!("DELETE FROM thumbnails WHERE image_id IN ({})", placeholders);
+            let sql = format!(
+                "DELETE FROM thumbnails WHERE image_id IN ({})",
+                placeholders
+            );
             let mut q = sqlx::query(&sql);
             for id in chunk {
                 q = q.bind(id);
@@ -149,7 +156,9 @@ impl ThumbnailCache {
 
     /// Delete every cached thumbnail row, returning the number of rows removed.
     pub async fn clear(&self) -> Result<usize> {
-        let result = sqlx::query("DELETE FROM thumbnails").execute(&self.db).await?;
+        let result = sqlx::query("DELETE FROM thumbnails")
+            .execute(&self.db)
+            .await?;
         let deleted = result.rows_affected() as usize;
         info!("Cleared all {} cached thumbnails", deleted);
         Ok(deleted)

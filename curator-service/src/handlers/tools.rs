@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use tokio::sync::Mutex;
 use tracing::info;
 
@@ -49,14 +49,21 @@ where
     f(cell);
 }
 
-pub async fn tool_install_progress_log(map: &ToolInstallProgressMap, tool: &str, line: impl Into<String>) {
+pub async fn tool_install_progress_log(
+    map: &ToolInstallProgressMap,
+    tool: &str,
+    line: impl Into<String>,
+) {
     let line = line.into();
     tool_install_progress_mut(map, tool, |s| s.logs.push(line.clone())).await;
     info!("tool installer [{tool}]: {line}");
 }
 
 /// Read the shared install-progress cell for a tool.
-pub async fn get_tool_install_progress(map: &ToolInstallProgressMap, tool: &str) -> ToolInstallProgress {
+pub async fn get_tool_install_progress(
+    map: &ToolInstallProgressMap,
+    tool: &str,
+) -> ToolInstallProgress {
     let guard = map.lock().await;
     guard.get(tool).cloned().unwrap_or_default()
 }
@@ -79,9 +86,19 @@ pub async fn check_tool(
     tool: &str,
 ) -> Result<ToolStatus> {
     match tool {
-        "ffmpeg" => Ok(super::ffmpeg::get_ffmpeg_status(data_dir, settings).await?.into()),
+        "ffmpeg" => Ok(super::ffmpeg::get_ffmpeg_status(data_dir, settings)
+            .await?
+            .into()),
         "aria2" => {
-            let explicit = { settings.lock().await.tool_paths.get("aria2").cloned().flatten() };
+            let explicit = {
+                settings
+                    .lock()
+                    .await
+                    .tool_paths
+                    .get("aria2")
+                    .cloned()
+                    .flatten()
+            };
             Ok(check_aria2(data_dir, explicit))
         }
         other => bail!("unsupported tool: {other}"),
@@ -89,8 +106,12 @@ pub async fn check_tool(
 }
 
 fn check_aria2(data_dir: &Path, explicit: Option<String>) -> ToolStatus {
-    let bundled = data_dir.join("bin").join(super::download::aria2::aria2_exe());
-    let portable = bundled.is_file().then(|| bundled.to_string_lossy().into_owned());
+    let bundled = data_dir
+        .join("bin")
+        .join(super::download::aria2::aria2_exe());
+    let portable = bundled
+        .is_file()
+        .then(|| bundled.to_string_lossy().into_owned());
     match super::download::aria2::resolve_aria2_path(data_dir, explicit.clone()) {
         Some(path) => {
             let version = super::download::aria2::probe_aria2_version(&path);
@@ -166,7 +187,10 @@ pub async fn install_tool(
 const ARIA2_VERSION: &str = "1.37.0";
 const ARIA2_RELEASE_URL: &str = "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip";
 
-async fn install_aria2(data_dir: &Path, progress: ToolInstallProgressMap) -> Result<ToolInstallOutcome> {
+async fn install_aria2(
+    data_dir: &Path,
+    progress: ToolInstallProgressMap,
+) -> Result<ToolInstallOutcome> {
     let bin_dir = data_dir.join("bin");
     std::fs::create_dir_all(&bin_dir)
         .map_err(|e| anyhow::anyhow!("Failed to create bin directory: {e}"))?;
@@ -181,7 +205,10 @@ async fn install_aria2(data_dir: &Path, progress: ToolInstallProgressMap) -> Res
 
     {
         let guard = progress.lock().await;
-        if matches!(guard.get("aria2").map(|s| s.status.as_str()), Some("downloading" | "extracting")) {
+        if matches!(
+            guard.get("aria2").map(|s| s.status.as_str()),
+            Some("downloading" | "extracting")
+        ) {
             return Ok(ToolInstallOutcome {
                 started: false,
                 error: Some("aria2 download already in progress".to_string()),
@@ -196,7 +223,12 @@ async fn install_aria2(data_dir: &Path, progress: ToolInstallProgressMap) -> Res
         s.logs.clear();
     })
     .await;
-    tool_install_progress_log(&progress, "aria2", format!("Downloading {ARIA2_RELEASE_URL}")).await;
+    tool_install_progress_log(
+        &progress,
+        "aria2",
+        format!("Downloading {ARIA2_RELEASE_URL}"),
+    )
+    .await;
 
     // Run the download/extract on the async runtime (models.rs pattern) so the
     // tokio progress mutex can be taken with `.lock().await` throughout.
@@ -229,7 +261,10 @@ async fn download_aria2_zip(
 ) -> anyhow::Result<()> {
     let mut response = agent
         .get(ARIA2_RELEASE_URL)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Curator/1.0")
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Curator/1.0",
+        )
         .call()
         .map_err(|e| anyhow::anyhow!("download failed: {e}"))?;
 
@@ -270,7 +305,10 @@ async fn download_aria2_zip(
     Ok(())
 }
 
-async fn download_and_extract_aria2(data_dir: &Path, progress: &ToolInstallProgressMap) -> anyhow::Result<()> {
+async fn download_and_extract_aria2(
+    data_dir: &Path,
+    progress: &ToolInstallProgressMap,
+) -> anyhow::Result<()> {
     let bin_dir = data_dir.join("bin");
     let zip_path = bin_dir.join(format!("aria2-{ARIA2_VERSION}-win-64.zip"));
 
@@ -317,7 +355,8 @@ async fn download_and_extract_aria2(data_dir: &Path, progress: &ToolInstallProgr
     .await;
     tool_install_progress_log(progress, "aria2", "Extracting aria2c.exe…").await;
     let zip_file = std::fs::File::open(&zip_path)?;
-    let mut archive = zip::ZipArchive::new(zip_file).map_err(|e| anyhow::anyhow!("open zip: {e}"))?;
+    let mut archive =
+        zip::ZipArchive::new(zip_file).map_err(|e| anyhow::anyhow!("open zip: {e}"))?;
     let mut extracted = false;
     for i in 0..archive.len() {
         let mut entry = archive

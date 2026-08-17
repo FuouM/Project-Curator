@@ -12,14 +12,12 @@ fn might_match(filename: &str, preset_id: &str) -> bool {
 
     match preset_id {
         "pixiv_id" => {
-            let ac = AC_PIXIV.get_or_init(|| {
-                AhoCorasick::new(["illust_", "_p0", "_p1", "_p2", "_p3"]).unwrap()
-            });
+            let ac = AC_PIXIV
+                .get_or_init(|| AhoCorasick::new(["illust_", "_p0", "_p1", "_p2", "_p3"]).unwrap());
             ac.find(filename).is_some()
         }
         "twitter_key" => {
-            let ac = AC_TWITTER
-                .get_or_init(|| AhoCorasick::new(["media_", "status_"]).unwrap());
+            let ac = AC_TWITTER.get_or_init(|| AhoCorasick::new(["media_", "status_"]).unwrap());
             ac.find(filename).is_some()
         }
         "tagged_string" => {
@@ -103,8 +101,8 @@ fn parse_4chan_timestamp(filename: &str) -> Option<ParsedMetadata> {
 /// Pixiv post extractor (illust_123456_..., ..._p0)
 fn parse_pixiv_id(filename: &str) -> Option<ParsedMetadata> {
     static RE_ILLUST: OnceLock<Regex> = OnceLock::new();
-    let re_illust = RE_ILLUST
-        .get_or_init(|| Regex::new(r"illust_(\d+)(?:_(\d{8})_(\d{6}))?").unwrap());
+    let re_illust =
+        RE_ILLUST.get_or_init(|| Regex::new(r"illust_(\d+)(?:_(\d{8})_(\d{6}))?").unwrap());
     if let Some(caps) = re_illust.captures(filename) {
         let pid = caps.get(1)?.as_str().to_string();
         let mut tags = vec![format!("pixiv:{}", pid)];
@@ -141,9 +139,8 @@ fn parse_pixiv_id(filename: &str) -> Option<ParsedMetadata> {
     }
 
     static RE_PAGE: OnceLock<Regex> = OnceLock::new();
-    let re_page = RE_PAGE.get_or_init(|| {
-        Regex::new(r"^(?:(.+)_)?(\d{7,10})_p(\d+)(?:[\s_](.+))?$").unwrap()
-    });
+    let re_page =
+        RE_PAGE.get_or_init(|| Regex::new(r"^(?:(.+)_)?(\d{7,10})_p(\d+)(?:[\s_](.+))?$").unwrap());
     if let Some(caps) = re_page.captures(filename) {
         let artist = caps.get(1).map(|m| m.as_str().trim().to_string());
         let pid = caps.get(2)?.as_str().to_string();
@@ -173,9 +170,8 @@ fn parse_pixiv_id(filename: &str) -> Option<ParsedMetadata> {
 /// Twitter key extractor (media_..., snowflake IDs)
 fn parse_twitter_key(filename: &str) -> Option<ParsedMetadata> {
     static RE_TW: OnceLock<Regex> = OnceLock::new();
-    let re_tw = RE_TW.get_or_init(|| {
-        Regex::new(r"(?:media_|status_)?([A-Za-z0-9_-]{15,25})").unwrap()
-    });
+    let re_tw =
+        RE_TW.get_or_init(|| Regex::new(r"(?:media_|status_)?([A-Za-z0-9_-]{15,25})").unwrap());
     static RE_SNOWFLAKE: OnceLock<Regex> = OnceLock::new();
     let re_snowflake =
         RE_SNOWFLAKE.get_or_init(|| Regex::new(r"([a-zA-Z0-9_-]+-\d{18,20})").unwrap());
@@ -223,9 +219,8 @@ fn parse_danbooru(_filename: &str) -> Option<ParsedMetadata> {
 /// Tagged string extractor `[artist] title (tag1 tag2)`
 fn parse_tagged_string(filename: &str) -> Option<ParsedMetadata> {
     static RE_BRACKET: OnceLock<Regex> = OnceLock::new();
-    let re_bracket = RE_BRACKET.get_or_init(|| {
-        Regex::new(r"^\[([^\]]+)\]\s*(.*?)(?:\s*\(([^)]+)\))?$").unwrap()
-    });
+    let re_bracket = RE_BRACKET
+        .get_or_init(|| Regex::new(r"^\[([^\]]+)\]\s*(.*?)(?:\s*\(([^)]+)\))?$").unwrap());
     if let Some(caps) = re_bracket.captures(filename) {
         let artist = caps.get(1).map(|m| m.as_str().trim().to_string());
         let mut tags = Vec::new();
@@ -277,13 +272,9 @@ fn parse_anime_screenshot(filename: &str) -> Option<ParsedMetadata> {
 
     // Try to find episode number
     let ep_caps = re_ep.captures(stem);
-    let ep_str = ep_caps
-        .as_ref()
-        .and_then(|c| c.get(1).or_else(|| c.get(2)));
+    let ep_str = ep_caps.as_ref().and_then(|c| c.get(1).or_else(|| c.get(2)));
     let ep_num = ep_str.map(|m| m.as_str());
-    let ep_start = ep_caps
-        .as_ref()
-        .and_then(|c| c.get(0).map(|m| m.start()));
+    let ep_start = ep_caps.as_ref().and_then(|c| c.get(0).map(|m| m.start()));
 
     let mut extracted_tags = Vec::new();
     let mut partial = false;
@@ -293,9 +284,7 @@ fn parse_anime_screenshot(filename: &str) -> Option<ParsedMetadata> {
         let before_ep = &stem[..ep_start].trim_end_matches(['-', '_', ' ', '.']);
 
         // Remove leading [Group] tags
-        let name_clean = before_ep
-            .trim_start_matches(['[', '('])
-            .trim_start();
+        let name_clean = before_ep.trim_start_matches(['[', '(']).trim_start();
         let name_clean = if let Some(end) = name_clean.find(']') {
             name_clean[end + 1..].trim()
         } else if let Some(end) = name_clean.find(')') {
@@ -305,10 +294,7 @@ fn parse_anime_screenshot(filename: &str) -> Option<ParsedMetadata> {
         };
 
         // Clean up common separators in anime names
-        let anime_name = name_clean
-            .replace(['_', '.'], " ")
-            .trim()
-            .to_string();
+        let anime_name = name_clean.replace(['_', '.'], " ").trim().to_string();
 
         if !anime_name.is_empty() {
             extracted_tags.push(format!("anime:{}", anime_name));

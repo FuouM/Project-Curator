@@ -1,7 +1,7 @@
+use super::image::batch_get_images_logic;
 use anyhow::Result;
 use curator_core::ipc::SearchMatch;
 use curator_core::vector::{ModelManager, VectorIndex};
-use super::image::batch_get_images_logic;
 
 pub struct SearchParams {
     pub query_text: Option<String>,
@@ -16,7 +16,6 @@ pub struct SearchParams {
     pub media_type: Option<String>,
     pub limit: usize,
 }
-
 
 /// Returns `(WHERE-clause suffix, boolean video predicate)` for a media-kind
 /// filter. The WHERE suffix is used directly in list queries; the boolean
@@ -50,10 +49,9 @@ fn resolve_query_image(
     }
     match curator_core::video::extract_video_frame(query_path, 0, ffmpeg) {
         Ok(frame) => {
-            let tmp = data_dir.join("search_tmp").join(format!(
-                "query_frame_{}.png",
-                uuid::Uuid::new_v4()
-            ));
+            let tmp = data_dir
+                .join("search_tmp")
+                .join(format!("query_frame_{}.png", uuid::Uuid::new_v4()));
             if let Some(parent) = tmp.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
@@ -138,9 +136,8 @@ pub async fn search_logic(
 
     // Filter by character identity
     if let Some(char_id) = character_identity_id {
-
         let rows: Vec<(i64,)> = sqlx::query_as(
-            "SELECT DISTINCT image_id FROM character_detections WHERE identity_id = ?"
+            "SELECT DISTINCT image_id FROM character_detections WHERE identity_id = ?",
         )
         .bind(char_id)
         .fetch_all(db)
@@ -158,15 +155,14 @@ pub async fn search_logic(
 
     // Filter to only images with OCR detections
     if ocr_filter == Some(true) {
-        let rows: Vec<(i64,)> = sqlx::query_as(
-            "SELECT DISTINCT image_id FROM image_ocr_detections"
-        )
-        .fetch_all(db)
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!("Failed to query OCR detections: {:?}", e);
-            Vec::new()
-        });
+        let rows: Vec<(i64,)> =
+            sqlx::query_as("SELECT DISTINCT image_id FROM image_ocr_detections")
+                .fetch_all(db)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to query OCR detections: {:?}", e);
+                    Vec::new()
+                });
         let ids: std::collections::HashSet<i64> = rows.into_iter().map(|r| r.0).collect();
         candidate_ids = Some(match candidate_ids.take() {
             Some(existing) => existing.intersection(&ids).copied().collect(),
@@ -204,7 +200,8 @@ pub async fn search_logic(
             }
 
             // Perceptual hash decodes the image (CPU-bound) — off the reactor.
-            let query_ahash = tokio::task::block_in_place(|| curator_core::vector::compute_ahash(&usable));
+            let query_ahash =
+                tokio::task::block_in_place(|| curator_core::vector::compute_ahash(&usable));
             if let Ok(query_ahash) = query_ahash {
                 let query_val = u64::from_str_radix(&query_ahash, 16).unwrap_or(0);
                 let rows: Vec<(i64, String)> = sqlx::query_as(
@@ -226,7 +223,9 @@ pub async fn search_logic(
             }
 
             // CLIP image embedding = full decode + resize + ONNX (CPU-bound) — off the reactor.
-            let query_vector = match tokio::task::block_in_place(|| model_manager.generate_image_embedding(&usable)) {
+            let query_vector = match tokio::task::block_in_place(|| {
+                model_manager.generate_image_embedding(&usable)
+            }) {
                 Ok(v) => v,
                 Err(e) => {
                     if let Some(cleanup_path) = cleanup.take() {
@@ -256,7 +255,8 @@ pub async fn search_logic(
             let mut ids = std::collections::HashSet::new();
 
             // Text embedding via ONNX (CPU-bound) — off the reactor.
-            let query_vector = tokio::task::block_in_place(|| model_manager.generate_text_embedding(text))?;
+            let query_vector =
+                tokio::task::block_in_place(|| model_manager.generate_text_embedding(text))?;
             let results = vector_index.search(&query_vector, limit.max(100))?;
             for (id, dist) in results {
                 let id_i64 = id as i64;
@@ -271,16 +271,15 @@ pub async fn search_logic(
     // Dedicated OCR text full-text search
     if let Some(ref ocr_text) = ocr_text_search {
         if !ocr_text.trim().is_empty() {
-            let fts_rows: Vec<(i64,)> = sqlx::query_as(
-                "SELECT DISTINCT image_id FROM image_ocr_fts WHERE text MATCH ?"
-            )
-            .bind(ocr_text)
-            .fetch_all(db)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::warn!("Failed to query OCR FTS: {:?}", e);
-                Vec::new()
-            });
+            let fts_rows: Vec<(i64,)> =
+                sqlx::query_as("SELECT DISTINCT image_id FROM image_ocr_fts WHERE text MATCH ?")
+                    .bind(ocr_text)
+                    .fetch_all(db)
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::warn!("Failed to query OCR FTS: {:?}", e);
+                        Vec::new()
+                    });
             let mut ids = std::collections::HashSet::new();
             for (id,) in fts_rows {
                 ids.insert(id);
@@ -330,7 +329,8 @@ pub async fn search_logic(
                               OR twitter_id LIKE ? COLLATE NOCASE
                               OR match_type LIKE ? COLLATE NOCASE
                               OR extracted_tags LIKE ? COLLATE NOCASE
-                              OR raw_matched LIKE ? COLLATE NOCASE)".to_string()
+                              OR raw_matched LIKE ? COLLATE NOCASE)"
+                                .to_string(),
                         );
                     }
                 }
@@ -408,7 +408,9 @@ pub async fn search_logic(
 
         if !tag_names.is_empty() {
             let mut first = true;
-            let source_id = super::common::resolve_source_id(db, preferred_source).await.unwrap_or(0);
+            let source_id = super::common::resolve_source_id(db, preferred_source)
+                .await
+                .unwrap_or(0);
             for tag_name in &tag_names {
                 let tagged_images: Vec<(i64,)> = sqlx::query_as(
                     "SELECT DISTINCT it.image_id FROM image_tags it
@@ -442,7 +444,6 @@ pub async fn search_logic(
         || character_identity_id.is_some()
         || ocr_filter.is_some()
         || ocr_text_search.is_some();
-
 
     let target_ids = if !has_query {
         let (media_where, _) = media_sql_clause(media_type.as_deref());

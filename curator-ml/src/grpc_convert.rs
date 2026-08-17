@@ -31,7 +31,6 @@ impl From<TaggerStatusInfo> for commonpb::TaggerStatusInfo {
 }
 
 impl From<StoredDetection> for commonpb::StoredDetection {
-
     fn from(v: StoredDetection) -> Self {
         commonpb::StoredDetection {
             id: v.id,

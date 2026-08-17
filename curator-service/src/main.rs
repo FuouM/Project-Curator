@@ -3,6 +3,20 @@ use clap::Parser;
 use curator_core::constants::resolve_data_dir;
 use curator_core::db::init_db;
 use curator_core::detection::{CCIPModel, DetectionPipeline, YoloDetector};
+use curator_core::grpc::{
+    benchmarks::benchmarks_service_server::BenchmarksServiceServer,
+    characters::characters_service_server::CharactersServiceServer,
+    folders::folders_service_server::FoldersServiceServer,
+    gallery::gallery_service_server::GalleryServiceServer,
+    import::import_service_server::ImportServiceServer,
+    models::models_service_server::ModelsServiceServer, ocr::ocr_service_server::OcrServiceServer,
+    parser::filename_parser_service_server::FilenameParserServiceServer,
+    plugins::plugins_service_server::PluginsServiceServer,
+    search::search_service_server::SearchServiceServer,
+    system::system_service_server::SystemServiceServer,
+    tagging::tagging_service_server::TaggingServiceServer,
+    tags::tags_service_server::TagsServiceServer, tools::tools_service_server::ToolsServiceServer,
+};
 use curator_core::ipc::TaggerModel;
 use curator_core::tagger::TaggerManager;
 use curator_core::thumbnail::ThumbnailCache;
@@ -15,25 +29,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use curator_core::grpc::{
-    benchmarks::benchmarks_service_server::BenchmarksServiceServer,
-    characters::characters_service_server::CharactersServiceServer,
-    folders::folders_service_server::FoldersServiceServer,
-
-    gallery::gallery_service_server::GalleryServiceServer,
-    import::import_service_server::ImportServiceServer,
-    models::models_service_server::ModelsServiceServer,
-    ocr::ocr_service_server::OcrServiceServer,
-    parser::filename_parser_service_server::FilenameParserServiceServer,
-    plugins::plugins_service_server::PluginsServiceServer,
-    search::search_service_server::SearchServiceServer,
-    system::system_service_server::SystemServiceServer,
-    tagging::tagging_service_server::TaggingServiceServer,
-    tags::tags_service_server::TagsServiceServer,
-    tools::tools_service_server::ToolsServiceServer,
-};
-
-
 
 mod auth;
 mod handlers;
@@ -73,7 +68,6 @@ struct ClientContext {
     import_controller: handlers::import::ImportController,
     import_lock: tokio::sync::Mutex<()>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AppSettings {
@@ -165,8 +159,6 @@ struct Args {
     tagger_model_dir: Option<String>,
 }
 
-
-
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let args = Args::parse();
@@ -185,8 +177,15 @@ async fn main() -> Result<(), Error> {
     struct LocalTimer;
 
     impl tracing_subscriber::fmt::time::FormatTime for LocalTimer {
-        fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
-            write!(w, "{}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f"))
+        fn format_time(
+            &self,
+            w: &mut tracing_subscriber::fmt::format::Writer<'_>,
+        ) -> std::fmt::Result {
+            write!(
+                w,
+                "{}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f")
+            )
         }
     }
 
@@ -219,20 +218,23 @@ async fn main() -> Result<(), Error> {
         (curator_core::constants::SOURCE_MOBILECLIP, "AI_MODEL"),
         (curator_core::constants::SOURCE_USER, "USER"),
     ] {
-        sqlx::query(
-            "INSERT OR IGNORE INTO sources (name, type, manifest) VALUES (?, ?, '{}')",
-        )
-        .bind(name)
-        .bind(source_type)
-        .execute(&db)
-        .await?;
+        sqlx::query("INSERT OR IGNORE INTO sources (name, type, manifest) VALUES (?, ?, '{}')")
+            .bind(name)
+            .bind(source_type)
+            .execute(&db)
+            .await?;
     }
 
     let settings = load_settings(&data_dir);
 
     info!(
         "Settings loaded: clip_device={:?}, tagger_device={:?}, tagger_wd_device={:?}, detection_device={:?}, detection_metrics_device={:?}, idle_timeout={}s",
-        settings.clip_device, settings.tagger_device, settings.tagger_wd_device, settings.detection_device, settings.detection_metrics_device, settings.idle_timeout_secs
+        settings.clip_device,
+        settings.tagger_device,
+        settings.tagger_wd_device,
+        settings.detection_device,
+        settings.detection_metrics_device,
+        settings.idle_timeout_secs
     );
 
     let model_dir = data_dir.join("models");
@@ -275,10 +277,7 @@ async fn main() -> Result<(), Error> {
         "Tagger engines configured at {:?} with devices: camie={:?}, wd={:?} (models load on first use)",
         tagger_dir, settings.tagger_device, settings.tagger_wd_device
     );
-    info!(
-        "Preferred tagger: {:?}",
-        settings.preferred_tagger
-    );
+    info!("Preferred tagger: {:?}", settings.preferred_tagger);
 
     let prefer_quantized_yolo = settings
         .model_precisions
@@ -292,7 +291,11 @@ async fn main() -> Result<(), Error> {
         settings.detection_device.clone(),
         prefer_quantized_yolo,
     );
-    let detection_ccip = CCIPModel::new(&model_dir, settings.detection_device.clone(), settings.detection_metrics_device.clone());
+    let detection_ccip = CCIPModel::new(
+        &model_dir,
+        settings.detection_device.clone(),
+        settings.detection_metrics_device.clone(),
+    );
 
     let thumb_db_path = data_dir.join("thumbnail-cache.db");
     let thumbnail_cache = ThumbnailCache::open(&thumb_db_path)
@@ -302,7 +305,12 @@ async fn main() -> Result<(), Error> {
         .await
         .context("Failed to open crop cache")?;
 
-    let detection = Arc::new(DetectionPipeline::new(detection_yolo, detection_ccip, db.clone(), crop_cache));
+    let detection = Arc::new(DetectionPipeline::new(
+        detection_yolo,
+        detection_ccip,
+        db.clone(),
+        crop_cache,
+    ));
     info!("Detection pipeline configured (YOLO + CCIP, models load on first use)");
 
     let prefer_quantized_ocr = settings
@@ -328,11 +336,17 @@ async fn main() -> Result<(), Error> {
     info!("OCR detector configured (PP-OCRv6 medium, models load on first use)");
 
     let data_dir_arc = Arc::new(data_dir);
-    let safety = Arc::new(handlers::safety::SafetyService::new((*data_dir_arc).clone()));
+    let safety = Arc::new(handlers::safety::SafetyService::new(
+        (*data_dir_arc).clone(),
+    ));
 
-    let worker = BackgroundWorker::new(db.clone(), model_manager.clone(), vector_index.clone(), safety.clone());
+    let worker = BackgroundWorker::new(
+        db.clone(),
+        model_manager.clone(),
+        vector_index.clone(),
+        safety.clone(),
+    );
     worker.start();
-
 
     let settings_arc = Arc::new(tokio::sync::Mutex::new(settings));
 
@@ -369,13 +383,15 @@ async fn main() -> Result<(), Error> {
     let incoming = curator_core::ipc::grpc_helper::server_incoming()?;
     info!("gRPC Transport Server configured (Named Pipe on Windows, UDS on Unix).");
 
-    let download_progress: handlers::models::DownloadProgressMap = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
-    let cancel_tokens: handlers::models::CancelTokens = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
-    let benchmark_progress: handlers::BenchmarkProgressMap = Arc::new(tokio::sync::Mutex::new(None));
+    let download_progress: handlers::models::DownloadProgressMap =
+        Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+    let cancel_tokens: handlers::models::CancelTokens =
+        Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+    let benchmark_progress: handlers::BenchmarkProgressMap =
+        Arc::new(tokio::sync::Mutex::new(None));
     let transcode_progress: curator_core::transcode::TranscodeProgressMap =
         Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
     let plugin_runtime_progress: handlers::plugin_runtime::PluginRuntimeProgressMap =
-
         Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
 
     let download_jobs: handlers::download::DownloadJobsMap =
@@ -384,12 +400,12 @@ async fn main() -> Result<(), Error> {
         Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
     let download_path_claims: handlers::download::DownloadPathClaims =
         Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
-    let engines: handlers::download::EngineRegistry = Arc::new(
-        std::collections::HashMap::from([(
+    let engines: handlers::download::EngineRegistry =
+        Arc::new(std::collections::HashMap::from([(
             "aria2",
-            Arc::new(handlers::download::aria2::Aria2Engine) as Arc<dyn handlers::download::DownloadEngine>,
-        )]),
-    );
+            Arc::new(handlers::download::aria2::Aria2Engine)
+                as Arc<dyn handlers::download::DownloadEngine>,
+        )]));
     let tool_install_progress: handlers::tools::ToolInstallProgressMap =
         Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
 
@@ -418,22 +434,20 @@ async fn main() -> Result<(), Error> {
         import_lock: tokio::sync::Mutex::new(()),
     });
 
-
-
     info!("Starting Tonic gRPC Service...");
     let server = tonic::transport::Server::builder()
-        .add_service(SystemServiceServer::new(server::system::SystemServiceImpl::new(
-            ctx.clone(),
-        )))
-        .add_service(ImportServiceServer::new(server::import::ImportServiceImpl::new(
-            ctx.clone(),
-        )))
-        .add_service(GalleryServiceServer::new(server::gallery::GalleryServiceImpl::new(
-            ctx.clone(),
-        )))
-        .add_service(SearchServiceServer::new(server::search::SearchServiceImpl::new(
-            ctx.clone(),
-        )))
+        .add_service(SystemServiceServer::new(
+            server::system::SystemServiceImpl::new(ctx.clone()),
+        ))
+        .add_service(ImportServiceServer::new(
+            server::import::ImportServiceImpl::new(ctx.clone()),
+        ))
+        .add_service(GalleryServiceServer::new(
+            server::gallery::GalleryServiceImpl::new(ctx.clone()),
+        ))
+        .add_service(SearchServiceServer::new(
+            server::search::SearchServiceImpl::new(ctx.clone()),
+        ))
         .add_service(TagsServiceServer::new(server::tags::TagsServiceImpl::new(
             ctx.clone(),
         )))
@@ -443,14 +457,15 @@ async fn main() -> Result<(), Error> {
         .add_service(CharactersServiceServer::new(
             server::characters::CharactersServiceImpl::new(ctx.clone()),
         ))
-        .add_service(OcrServiceServer::new(server::ocr::OcrServiceImpl::new(ctx.clone())))
-        .add_service(ModelsServiceServer::new(
-
-            server::models::ModelsServiceImpl::new(ctx.clone()),
-        ))
-        .add_service(ToolsServiceServer::new(server::tools::ToolsServiceImpl::new(
+        .add_service(OcrServiceServer::new(server::ocr::OcrServiceImpl::new(
             ctx.clone(),
         )))
+        .add_service(ModelsServiceServer::new(
+            server::models::ModelsServiceImpl::new(ctx.clone()),
+        ))
+        .add_service(ToolsServiceServer::new(
+            server::tools::ToolsServiceImpl::new(ctx.clone()),
+        ))
         .add_service(FoldersServiceServer::new(
             server::folders::FoldersServiceImpl::new(ctx.clone()),
         ))
@@ -468,4 +483,3 @@ async fn main() -> Result<(), Error> {
 
     Ok(())
 }
-

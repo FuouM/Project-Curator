@@ -92,7 +92,10 @@ impl CropCache {
         .bind(now)
         .execute(&self.db)
         .await?;
-        let cnt = self.op_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        let cnt = self
+            .op_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
         if cnt % EVICTION_CHECK_INTERVAL == 0 {
             self.evict_if_needed(DEFAULT_MAX_ENTRIES).await?;
         }
@@ -118,7 +121,10 @@ impl CropCache {
             .await?;
         }
         tx.commit().await?;
-        let cnt = self.op_count.fetch_add(crops.len() as u64, std::sync::atomic::Ordering::Relaxed) + crops.len() as u64;
+        let cnt = self
+            .op_count
+            .fetch_add(crops.len() as u64, std::sync::atomic::Ordering::Relaxed)
+            + crops.len() as u64;
         if cnt % EVICTION_CHECK_INTERVAL == 0 || crops.len() as u64 >= EVICTION_CHECK_INTERVAL {
             self.evict_if_needed(DEFAULT_MAX_ENTRIES).await?;
         }

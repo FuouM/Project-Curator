@@ -64,4 +64,3 @@ pub fn resize_single_rgb_image(
     resizer.resize(&src_image, &mut dst_image, Some(&opts))?;
     Ok(dst_image.buffer().to_vec())
 }
-

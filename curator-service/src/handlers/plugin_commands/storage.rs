@@ -10,8 +10,8 @@
 use std::sync::Arc;
 use tonic::Status;
 
-use crate::handlers;
 use crate::ClientContext;
+use crate::handlers;
 
 /// Resolves a plugin-relative (or `.curator`/absolute) path inside the plugin
 /// sandbox root. Mirrors the historical per-command resolution: empty paths

@@ -1,7 +1,7 @@
 use curator_core::db::init_db;
-use tempfile::NamedTempFile;
 use sqlx::SqlitePool;
 use std::time::Instant;
+use tempfile::NamedTempFile;
 
 // Simple LCG PRNG
 struct SimpleLcg {
@@ -22,20 +22,36 @@ impl SimpleLcg {
 async fn setup_large_db() -> (NamedTempFile, SqlitePool) {
     let temp_file = NamedTempFile::new().unwrap();
     let db_path = temp_file.path();
-    let pool = init_db(db_path).await.expect("Failed to initialize database");
+    let pool = init_db(db_path)
+        .await
+        .expect("Failed to initialize database");
 
     // Populate data
     let mut lcg = SimpleLcg::new(42);
 
     // Insert sources
     sqlx::query("INSERT INTO sources (name, type, manifest) VALUES ('user', 'builtin', '{}')")
-        .execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO sources (name, type, manifest) VALUES ('ai:camie-tagger-v2', 'builtin', '{}')")
-        .execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO sources (name, type, manifest) VALUES ('ai:clip-vit-b-32', 'builtin', '{}')")
-        .execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO sources (name, type, manifest) VALUES ('filename_parser', 'builtin', '{}')")
-        .execute(&pool).await.unwrap();
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO sources (name, type, manifest) VALUES ('ai:camie-tagger-v2', 'builtin', '{}')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO sources (name, type, manifest) VALUES ('ai:clip-vit-b-32', 'builtin', '{}')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO sources (name, type, manifest) VALUES ('filename_parser', 'builtin', '{}')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
 
     // Insert 1000 tags
     let mut tx = pool.begin().await.unwrap();
@@ -50,7 +66,9 @@ async fn setup_large_db() -> (NamedTempFile, SqlitePool) {
         sqlx::query("INSERT INTO tags (name, category) VALUES (?, ?)")
             .bind(&name)
             .bind(category)
-            .execute(&mut *tx).await.unwrap();
+            .execute(&mut *tx)
+            .await
+            .unwrap();
     }
     tx.commit().await.unwrap();
 
@@ -90,7 +108,11 @@ async fn setup_large_db() -> (NamedTempFile, SqlitePool) {
     // Insert image_parsed_metadata (5000 rows)
     let mut tx = pool.begin().await.unwrap();
     for i in 1..=5000 {
-        let artist = if i % 5 == 0 { Some(format!("artist_{}", i % 50)) } else { None };
+        let artist = if i % 5 == 0 {
+            Some(format!("artist_{}", i % 50))
+        } else {
+            None
+        };
         let match_type = if i % 2 == 0 { "preset" } else { "custom_regex" };
         let tags_json = serde_json::to_string(&vec![format!("tag_{}", i % 100)]).unwrap();
         sqlx::query("INSERT INTO image_parsed_metadata (image_id, match_type, artist, extracted_tags, raw_matched) VALUES (?, ?, ?, ?, 'raw')")
@@ -108,7 +130,9 @@ async fn setup_large_db() -> (NamedTempFile, SqlitePool) {
         let name = format!("Character {}", i);
         sqlx::query("INSERT INTO character_identities (name) VALUES (?)")
             .bind(&name)
-            .execute(&mut *tx).await.unwrap();
+            .execute(&mut *tx)
+            .await
+            .unwrap();
     }
     tx.commit().await.unwrap();
 
@@ -116,7 +140,11 @@ async fn setup_large_db() -> (NamedTempFile, SqlitePool) {
     let mut tx = pool.begin().await.unwrap();
     for i in 1..=500 {
         let image_id = (i % 5000) + 1;
-        let identity_id = if i % 5 != 0 { Some((i % 100) + 1) } else { None };
+        let identity_id = if i % 5 != 0 {
+            Some((i % 100) + 1)
+        } else {
+            None
+        };
         let emb = vec![0.1f32; 128];
         let emb_bytes: Vec<u8> = emb.iter().flat_map(|f| f.to_le_bytes().to_vec()).collect();
         sqlx::query("INSERT INTO character_detections (image_id, x0, y0, x1, y1, confidence, ccip_embedding, identity_id) VALUES (?, 0, 0, 100, 100, 0.9, ?, ?)")
@@ -137,11 +165,13 @@ async fn run_db_benchmarks() {
     // Benchmark 1: Query image by id (e.g. get_image_logic)
     {
         let start = Instant::now();
-        let _row: (i64, String) = sqlx::query_as("SELECT id, current_filepath FROM images WHERE id = ? AND deleted_at IS NULL")
-            .bind(2500i64)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let _row: (i64, String) = sqlx::query_as(
+            "SELECT id, current_filepath FROM images WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(2500i64)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         println!("Benchmark 1 (Get Image by ID): {:?}", start.elapsed());
     }
 
@@ -204,7 +234,22 @@ async fn run_db_benchmarks() {
             placeholders
         );
         let start = Instant::now();
-        let mut q = sqlx::query_as::<_, (i64, String, String, i64, String, bool, bool, Option<String>, Option<String>, Option<f32>, Option<String>)>(&sql);
+        let mut q = sqlx::query_as::<
+            _,
+            (
+                i64,
+                String,
+                String,
+                i64,
+                String,
+                bool,
+                bool,
+                Option<String>,
+                Option<String>,
+                Option<f32>,
+                Option<String>,
+            ),
+        >(&sql);
         for id in &ids {
             q = q.bind(id);
         }
@@ -258,7 +303,7 @@ async fn run_db_benchmarks() {
              FROM character_identities ci \
              LEFT JOIN character_detections cd ON cd.identity_id = ci.id \
              GROUP BY ci.id \
-             ORDER BY ci.id"
+             ORDER BY ci.id",
         )
         .fetch_all(&pool)
         .await
@@ -278,7 +323,10 @@ async fn run_db_benchmarks() {
             .await
             .unwrap();
         }
-        println!("Benchmark 9 (Load 100 Identity Embeddings - loop): {:?}", start.elapsed());
+        println!(
+            "Benchmark 9 (Load 100 Identity Embeddings - loop): {:?}",
+            start.elapsed()
+        );
     }
 
     // Benchmark 10: load_identity_embeddings optimized (single query)
@@ -290,7 +338,10 @@ async fn run_db_benchmarks() {
         .fetch_all(&pool)
         .await
         .unwrap();
-        println!("Benchmark 10 (Load Identity Embeddings - optimized single query): {:?}", start.elapsed());
+        println!(
+            "Benchmark 10 (Load Identity Embeddings - optimized single query): {:?}",
+            start.elapsed()
+        );
     }
 
     // Benchmark 11: search_logic phash full-table fetch
@@ -302,6 +353,9 @@ async fn run_db_benchmarks() {
         .fetch_all(&pool)
         .await
         .unwrap();
-        println!("Benchmark 11 (Search Phash Full-table): {:?}", start.elapsed());
+        println!(
+            "Benchmark 11 (Search Phash Full-table): {:?}",
+            start.elapsed()
+        );
     }
 }

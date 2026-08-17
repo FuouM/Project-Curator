@@ -23,7 +23,7 @@ pub async fn reindex_failed_vectors_logic(
 
     let result = sqlx::query(
         "UPDATE image_vectors SET vector_state = 'pending', vector_id = '', vector_checksum = NULL
-         WHERE source_id = ? AND vector_state = 'failed'"
+         WHERE source_id = ? AND vector_state = 'failed'",
     )
     .bind(source_id)
     .execute(db)

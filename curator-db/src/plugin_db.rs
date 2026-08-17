@@ -5,12 +5,12 @@
 //! via `plugin_db_execute` / `plugin_db_query`. The `<plugin_id>` and `db` name are
 //! guarded so a plugin cannot read or write outside its own directory.
 
+use anyhow::{Result, bail};
+use sqlx::sqlite::SqliteConnectOptions;
+use sqlx::{Arguments, Column, Row, SqlitePool};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use anyhow::{bail, Result};
-use sqlx::sqlite::SqliteConnectOptions;
-use sqlx::{Arguments, Column, Row, SqlitePool};
 use tokio::sync::RwLock;
 
 static PLUGIN_POOLS: LazyLock<RwLock<HashMap<PathBuf, SqlitePool>>> =
@@ -32,7 +32,8 @@ fn is_safe_name(s: &str) -> bool {
         && !s.contains('/')
         && !s.contains('\\')
         && !s.contains("..")
-        && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
 
 /// Resolve and open (creating if needed) a plugin-owned database.
@@ -128,16 +129,23 @@ fn row_to_json(row: &sqlx::sqlite::SqliteRow) -> serde_json::Value {
 
 fn cell_to_json(row: &sqlx::sqlite::SqliteRow, i: usize) -> serde_json::Value {
     if let Ok(v) = row.try_get::<Option<i64>, _>(i) {
-        return v.map(serde_json::Value::from).unwrap_or(serde_json::Value::Null);
+        return v
+            .map(serde_json::Value::from)
+            .unwrap_or(serde_json::Value::Null);
     }
     if let Ok(v) = row.try_get::<Option<f64>, _>(i) {
-        return v.map(serde_json::Value::from).unwrap_or(serde_json::Value::Null);
+        return v
+            .map(serde_json::Value::from)
+            .unwrap_or(serde_json::Value::Null);
     }
     if let Ok(v) = row.try_get::<Option<String>, _>(i) {
-        return v.map(serde_json::Value::from).unwrap_or(serde_json::Value::Null);
+        return v
+            .map(serde_json::Value::from)
+            .unwrap_or(serde_json::Value::Null);
     }
     if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(i) {
-        return v.map(|b| serde_json::Value::String(String::from_utf8_lossy(&b).into_owned()))
+        return v
+            .map(|b| serde_json::Value::String(String::from_utf8_lossy(&b).into_owned()))
             .unwrap_or(serde_json::Value::Null);
     }
     serde_json::Value::Null

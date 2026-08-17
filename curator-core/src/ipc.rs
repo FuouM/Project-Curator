@@ -32,7 +32,6 @@ pub use curator_db::models::{
     FolderDetails, ImageDetails, StorageStats, StorageTypeStat, TagStat, TagSummary, VideoSummary,
 };
 
-
 /// Metadata describing a discovered plugin (parsed from `manifest.json`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginInfo {
@@ -94,7 +93,6 @@ pub struct SearchMatch {
     #[serde(default)]
     pub drawing_score: Option<f32>,
 }
-
 
 /// Stored OCR detection representation.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -190,4 +188,3 @@ pub struct DownloadProgress {
     pub elapsed_secs: f64,
     pub error: Option<String>,
 }
-

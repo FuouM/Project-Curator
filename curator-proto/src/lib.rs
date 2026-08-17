@@ -6,11 +6,11 @@
 //! its public API so downstream consumers (`curator-service`, `curator-cli`,
 //! `curator-dashboard/src-tauri`) compile without call-site changes.
 
-pub mod ipc;
-pub mod contracts;
 pub mod constants;
-pub mod util;
+pub mod contracts;
+pub mod ipc;
 pub mod pipeline;
+pub mod util;
 
 pub use contracts::{DevicePreference, EmbeddingModel, ModelPrecision, TaggerModel};
 

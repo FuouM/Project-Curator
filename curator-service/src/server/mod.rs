@@ -34,4 +34,3 @@ pub(crate) async fn preferred_source(ctx: &Arc<ClientContext>) -> String {
     let s = ctx.settings.lock().await;
     s.preferred_tagger.source_name().to_string()
 }
-

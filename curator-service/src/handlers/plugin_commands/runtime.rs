@@ -8,8 +8,8 @@
 use std::sync::Arc;
 use tonic::Status;
 
-use crate::handlers;
 use crate::ClientContext;
+use crate::handlers;
 
 pub async fn check_installed(
     ctx: &Arc<ClientContext>,
@@ -44,8 +44,10 @@ pub async fn install(
     // Guard against a second concurrent install of the same plugin.
     let running = {
         let guard = ctx.plugin_runtime_progress.lock().await;
-        matches!(guard.get(&plugin).map(|s| s.status.as_str()),
-                 Some("downloading" | "extracting"))
+        matches!(
+            guard.get(&plugin).map(|s| s.status.as_str()),
+            Some("downloading" | "extracting")
+        )
     };
     if running {
         return Ok(serde_json::json!({
@@ -68,7 +70,8 @@ pub async fn install(
                 s.error = Some(e.to_string());
             })
             .await;
-            handlers::plugin_runtime::progress_log(&progress, &plugin, format!("[ERROR] {e}")).await;
+            handlers::plugin_runtime::progress_log(&progress, &plugin, format!("[ERROR] {e}"))
+                .await;
         }
     });
     Ok(serde_json::json!({
@@ -83,8 +86,8 @@ pub async fn install_progress(
     let plugin = params["plugin"]
         .as_str()
         .ok_or_else(|| Status::invalid_argument("missing plugin"))?;
-    let p = handlers::plugin_runtime::get_runtime_progress(&ctx.plugin_runtime_progress, plugin)
-        .await;
+    let p =
+        handlers::plugin_runtime::get_runtime_progress(&ctx.plugin_runtime_progress, plugin).await;
     Ok(serde_json::json!({
         "GetPluginRuntimeInstallProgressResult": {
             "status": p.status,

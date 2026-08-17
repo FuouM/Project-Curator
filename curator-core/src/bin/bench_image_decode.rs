@@ -70,11 +70,7 @@ fn png_direct_decode(data: &[u8]) -> Result<DecodeResult> {
             w,
             h,
         ),
-        png::ColorType::Grayscale => (
-            raw.iter().flat_map(|&g| [g, g, g]).collect(),
-            w,
-            h,
-        ),
+        png::ColorType::Grayscale => (raw.iter().flat_map(|&g| [g, g, g]).collect(), w, h),
         png::ColorType::GrayscaleAlpha => (
             raw.chunks_exact(2)
                 .flat_map(|c| [c[0], c[0], c[0]])
@@ -138,7 +134,11 @@ fn compare(a: &DecodeResult, b: &DecodeResult) -> (usize, f64, bool) {
         sum += d as u64;
     }
     let mean = sum as f64 / a.pixels.len() as f64;
-    (max_diff, mean, max_diff <= ACCURATE_MAX_DIFF as usize && mean <= ACCURATE_MAX_MEAN)
+    (
+        max_diff,
+        mean,
+        max_diff <= ACCURATE_MAX_DIFF as usize && mean <= ACCURATE_MAX_MEAN,
+    )
 }
 
 fn run_format(label: &str, data: &[u8], methods: &[Method], runs: usize) {
@@ -161,7 +161,7 @@ fn run_format(label: &str, data: &[u8], methods: &[Method], runs: usize) {
 
     let mut rows = Vec::new();
     for m in methods {
-let median_ms = bench(data, &m.decode, runs);
+        let median_ms = bench(data, &m.decode, runs);
         let (max_diff, mean_diff, dims, verdict) = match (m.decode)(data) {
             Ok(d) => {
                 let (mx, mn, acc) = compare(&reference, &d);
@@ -240,15 +240,14 @@ fn ensure_fixtures(dir: &Path) -> Result<Vec<PathBuf>> {
             Err(e) => println!("  [skip {}] encoder failed: {}", name, e),
         }
     }
-fixtures.push(src_jpg);
+    fixtures.push(src_jpg);
     Ok(fixtures)
 }
 
 // ---- Resize benchmark: OCR-ish (Triangle) vs fast_image_resize vs manual-nearest ----
 
 fn imageops_triangle(rgb: &image::RgbImage, nw: u32, nh: u32) -> Vec<u8> {
-    image::imageops::resize(rgb, nw, nh, image::imageops::FilterType::Triangle)
-        .into_raw()
+    image::imageops::resize(rgb, nw, nh, image::imageops::FilterType::Triangle).into_raw()
 }
 
 fn fir_resize(
@@ -309,15 +308,18 @@ fn compare_slices(a: &[u8], b: &[u8]) -> (usize, f64) {
 }
 
 fn bench_resize_case(runs: usize, name: &str, rgb: &image::RgbImage, nw: u32, nh: u32) {
-    println!("\n  [{name}] resize to {nw}x{nh} (src {}x{})", rgb.width(), rgb.height());
+    println!(
+        "\n  [{name}] resize to {nw}x{nh} (src {}x{})",
+        rgb.width(),
+        rgb.height()
+    );
 
     // Reference: the current OCR path (image crate Triangle).
     let reference = imageops_triangle(rgb, nw, nh);
 
     let mut resizer = fast_image_resize::Resizer::new();
 
-    let run_and_compare = |label: &str,
-                           f: &mut dyn FnMut() -> Vec<u8>| {
+    let run_and_compare = |label: &str, f: &mut dyn FnMut() -> Vec<u8>| {
         let mut samples = vec![0.0f64; runs];
         let _ = f();
         for s in samples.iter_mut() {
@@ -340,14 +342,32 @@ fn bench_resize_case(runs: usize, name: &str, rgb: &image::RgbImage, nw: u32, nh
         );
     };
 
-    run_and_compare("image crate Triangle (OCR)", &mut || imageops_triangle(rgb, nw, nh));
+    run_and_compare("image crate Triangle (OCR)", &mut || {
+        imageops_triangle(rgb, nw, nh)
+    });
     run_and_compare("fast_image_resize Bilinear", &mut || {
-        fir_resize(&mut resizer, rgb, nw, nh, fast_image_resize::FilterType::Bilinear).unwrap()
+        fir_resize(
+            &mut resizer,
+            rgb,
+            nw,
+            nh,
+            fast_image_resize::FilterType::Bilinear,
+        )
+        .unwrap()
     });
     run_and_compare("fast_image_resize Hamming", &mut || {
-        fir_resize(&mut resizer, rgb, nw, nh, fast_image_resize::FilterType::Hamming).unwrap()
+        fir_resize(
+            &mut resizer,
+            rgb,
+            nw,
+            nh,
+            fast_image_resize::FilterType::Hamming,
+        )
+        .unwrap()
     });
-    run_and_compare("manual nearest (YOLO/CCIP)", &mut || manual_nearest(rgb, nw, nh));
+    run_and_compare("manual nearest (YOLO/CCIP)", &mut || {
+        manual_nearest(rgb, nw, nh)
+    });
 }
 
 fn bench_resizes(runs: usize, fixture: &Path) -> Result<()> {
@@ -374,7 +394,10 @@ fn main() -> Result<()> {
         .unwrap_or(30);
 
     println!("=== Image Decode Benchmark ===");
-    println!("runs = {} (median), accuracy tolerance: maxΔ <= {} LSB, meanΔ <= {:.1}", runs, ACCURATE_MAX_DIFF, ACCURATE_MAX_MEAN);
+    println!(
+        "runs = {} (median), accuracy tolerance: maxΔ <= {} LSB, meanΔ <= {:.1}",
+        runs, ACCURATE_MAX_DIFF, ACCURATE_MAX_MEAN
+    );
     println!("source: assets/test_images/ (plus generated fixtures for each import format)");
 
     let fixture_dir = std::env::temp_dir().join("curator_decode_bench");
@@ -388,11 +411,14 @@ fn main() -> Result<()> {
             .unwrap_or("")
             .to_ascii_lowercase();
         let data = std::fs::read(f).context("read fixture")?;
-        let fname = f.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let fname = f
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         let ext_owned: String = ext.clone();
         let prod_decode: DecoderFn = Box::new(move |data: &[u8]| {
-            let tmp = std::env::temp_dir()
-                .join(format!("curator_decode_bench_prod.{}", ext_owned));
+            let tmp = std::env::temp_dir().join(format!("curator_decode_bench_prod.{}", ext_owned));
             std::fs::write(&tmp, data)?;
             let (pixels, width, height) =
                 curator_core::image_decode::decode_rgb(&tmp).context("decode_rgb")?;
@@ -458,7 +484,7 @@ fn main() -> Result<()> {
                 },
             ],
         };
-run_format(&format!("{} ({})", fname, ext), &data, &methods, runs);
+        run_format(&format!("{} ({})", fname, ext), &data, &methods, runs);
     }
 
     // Resize benchmark on the JPEG source (production OCR uses slow imageops::resize;
@@ -473,6 +499,3 @@ run_format(&format!("{} ({})", fname, ext), &data, &methods, runs);
     println!("\n=== done ===");
     Ok(())
 }
-
-
-

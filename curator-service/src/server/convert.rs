@@ -73,4 +73,3 @@ pub(crate) fn tagger_to_proto(v: TaggerModel) -> i32 {
         TaggerModel::Camie => commonpb::TaggerModel::Camie as i32,
     }
 }
-

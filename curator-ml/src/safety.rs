@@ -118,7 +118,10 @@ impl SafetyClassifier {
     pub fn classify_image(&self, img: &RgbImage) -> Result<SafetyClassification> {
         let tensor = preprocess_mini_image(img)?;
         let results = self.run_tensor(&tensor)?;
-        results.into_iter().next().context("Safety classifier returned no result")
+        results
+            .into_iter()
+            .next()
+            .context("Safety classifier returned no result")
     }
 
     /// Batched: builds [N,3,380,380] in small memory-safe chunks (max 4 per DirectML run),
@@ -175,7 +178,6 @@ impl SafetyClassifier {
         }
         all_results
     }
-
 
     fn run_tensor(&self, tensor: &Array4<f32>) -> Result<Vec<SafetyClassification>> {
         self.session.with_session(|session| {
@@ -247,9 +249,7 @@ impl SafetyClassifier {
     }
 }
 
-
 fn softmax(logits: &[f32]) -> Vec<f32> {
-
     if logits.is_empty() {
         return Vec::new();
     }

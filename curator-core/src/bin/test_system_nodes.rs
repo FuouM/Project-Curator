@@ -8,7 +8,10 @@ fn main() -> anyhow::Result<()> {
     // 1. Create ModelManager
     let model_dir = std::path::Path::new(".curator/models");
     if !model_dir.exists() {
-        println!("Model directory not found at {:?}. Skipping inference tests.", model_dir);
+        println!(
+            "Model directory not found at {:?}. Skipping inference tests.",
+            model_dir
+        );
         println!("Creating ModelManager for registry test only...");
         let mm = ModelManager::new(model_dir, curator_core::DevicePreference::Cpu);
         test_registry_with_node(Arc::new(mm));
@@ -24,8 +27,14 @@ fn main() -> anyhow::Result<()> {
     let info = mm_arc.info();
     println!("Node ID: {}", info.id);
     println!("Node Label: {}", info.label);
-    println!("Inputs: {:?}", info.inputs.iter().map(|p| p.name).collect::<Vec<_>>());
-    println!("Outputs: {:?}", info.outputs.iter().map(|p| p.name).collect::<Vec<_>>());
+    println!(
+        "Inputs: {:?}",
+        info.inputs.iter().map(|p| p.name).collect::<Vec<_>>()
+    );
+    println!(
+        "Outputs: {:?}",
+        info.outputs.iter().map(|p| p.name).collect::<Vec<_>>()
+    );
     println!("Device: {:?}", mm_arc.device());
     println!("Is Loaded: {}", mm_arc.is_loaded());
 
@@ -41,7 +50,14 @@ fn test_registry_with_node(node: Arc<dyn SystemNode>) {
     let mut registry = NodeRegistry::new();
     registry.register(node);
     println!("Registered {} node(s)", registry.len());
-    println!("Nodes: {:?}", registry.list_nodes().iter().map(|n| n.id).collect::<Vec<_>>());
+    println!(
+        "Nodes: {:?}",
+        registry
+            .list_nodes()
+            .iter()
+            .map(|n| n.id)
+            .collect::<Vec<_>>()
+    );
 
     // Test get
     let retrieved = registry.get("clip-embedder");

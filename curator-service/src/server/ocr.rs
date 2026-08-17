@@ -1,9 +1,9 @@
+use crate::ClientContext;
 use crate::handlers;
 use crate::server::internal_status;
-use crate::ClientContext;
 use curator_core::grpc::ocr::{
-    ocr_service_server::OcrService, EphemeralOcrResult, EphemeralRunOcrRequest, ImageIdRequest,
-    OcrDetectionsResult,
+    EphemeralOcrResult, EphemeralRunOcrRequest, ImageIdRequest, OcrDetectionsResult,
+    ocr_service_server::OcrService,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};

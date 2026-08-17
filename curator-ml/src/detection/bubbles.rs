@@ -5,9 +5,9 @@ use image::RgbImage;
 use ndarray::Array4;
 use ort::{inputs, value::TensorRef};
 
-use curator_proto::contracts::DevicePreference;
 use crate::onnx::ManagedSession;
 use crate::preprocess::resize_rgb_bilinear;
+use curator_proto::contracts::DevicePreference;
 
 // ============================================================================
 // Manga Bubble Detector (YOLO26)
@@ -30,7 +30,11 @@ pub struct MangaBubbleDetector {
 }
 
 impl MangaBubbleDetector {
-    pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference, prefer_quantized: bool) -> Self {
+    pub fn new(
+        model_dir: impl AsRef<Path>,
+        device: DevicePreference,
+        prefer_quantized: bool,
+    ) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
         let mut model_path = dir.join("manga-bubble-yolo").join("yolo26n.onnx");
         if prefer_quantized {
@@ -53,7 +57,11 @@ impl MangaBubbleDetector {
         self.session.unload();
     }
 
-    pub fn detect_bubbles(&self, image: &RgbImage, conf_threshold: f32) -> Result<Vec<BubbleDetection>> {
+    pub fn detect_bubbles(
+        &self,
+        image: &RgbImage,
+        conf_threshold: f32,
+    ) -> Result<Vec<BubbleDetection>> {
         let (orig_w, orig_h) = image.dimensions();
         let input_size = 1280usize;
         let pad_value: f32 = 114.0 / 255.0;
@@ -70,7 +78,9 @@ impl MangaBubbleDetector {
 
         // Build CHW tensor with letterbox padding
         let mut tensor = Array4::<f32>::zeros((1, 3, input_size, input_size));
-        let slice = tensor.as_slice_mut().context("YOLO tensor slice mapping failed")?;
+        let slice = tensor
+            .as_slice_mut()
+            .context("YOLO tensor slice mapping failed")?;
         let px_stride = input_size * input_size;
 
         // Fill padding with gray (114/255)
@@ -97,11 +107,14 @@ impl MangaBubbleDetector {
         // Run inference
         let data_vec = self.session.with_session(|session| {
             let outputs = session.run(inputs![TensorRef::from_array_view(&tensor)?])?;
-            let output = outputs.get("output0")
+            let output = outputs
+                .get("output0")
                 .or_else(|| outputs.get("output_0"))
                 .or_else(|| outputs.get("fetch_name_0"))
                 .or_else(|| outputs.get("output"))
-                .context("YOLO: output tensor not found (tried output0, output_0, fetch_name_0, output)")?;
+                .context(
+                    "YOLO: output tensor not found (tried output0, output_0, fetch_name_0, output)",
+                )?;
             let (_, data) = output.try_extract_tensor::<f32>()?;
             Ok(data.to_vec())
         })?;
@@ -123,10 +136,18 @@ impl MangaBubbleDetector {
             }
 
             // Reverse letterbox: subtract padding, divide by ratio
-            let x1 = ((x1_raw - pad_x as f32) / ratio).max(0.0).min(orig_w as f32);
-            let y1 = ((y1_raw - pad_y as f32) / ratio).max(0.0).min(orig_h as f32);
-            let x2 = ((x2_raw - pad_x as f32) / ratio).max(0.0).min(orig_w as f32);
-            let y2 = ((y2_raw - pad_y as f32) / ratio).max(0.0).min(orig_h as f32);
+            let x1 = ((x1_raw - pad_x as f32) / ratio)
+                .max(0.0)
+                .min(orig_w as f32);
+            let y1 = ((y1_raw - pad_y as f32) / ratio)
+                .max(0.0)
+                .min(orig_h as f32);
+            let x2 = ((x2_raw - pad_x as f32) / ratio)
+                .max(0.0)
+                .min(orig_w as f32);
+            let y2 = ((y2_raw - pad_y as f32) / ratio)
+                .max(0.0)
+                .min(orig_h as f32);
 
             if x2 > x1 && y2 > y1 {
                 bubbles.push(BubbleDetection {
@@ -138,16 +159,26 @@ impl MangaBubbleDetector {
 
         // Sort top-to-bottom, left-to-right
         bubbles.sort_by(|a, b| {
-            a.bbox[1].partial_cmp(&b.bbox[1])
+            a.bbox[1]
+                .partial_cmp(&b.bbox[1])
                 .unwrap_or(std::cmp::Ordering::Equal)
-                .then(a.bbox[0].partial_cmp(&b.bbox[0]).unwrap_or(std::cmp::Ordering::Equal))
+                .then(
+                    a.bbox[0]
+                        .partial_cmp(&b.bbox[0])
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
         });
 
         // Non-Maximum Suppression (NMS) — filter overlapping boxes
         let iou_threshold = 0.5f32;
         bubbles = nms(bubbles, iou_threshold);
 
-        tracing::debug!("YOLO detected {} bubbles (conf > {}, NMS iou={})", bubbles.len(), conf_threshold, iou_threshold);
+        tracing::debug!(
+            "YOLO detected {} bubbles (conf > {}, NMS iou={})",
+            bubbles.len(),
+            conf_threshold,
+            iou_threshold
+        );
         Ok(bubbles)
     }
 }
@@ -155,14 +186,23 @@ impl MangaBubbleDetector {
 /// Non-Maximum Suppression: remove overlapping bounding boxes, keeping highest confidence.
 fn nms(mut detections: Vec<BubbleDetection>, iou_threshold: f32) -> Vec<BubbleDetection> {
     // Sort by confidence descending
-    detections.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+    detections.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let keep = super::nms::nms_indices(&detections, iou_threshold, |d| d.bbox);
     let mut kept: Vec<BubbleDetection> = keep.into_iter().map(|i| detections[i].clone()).collect();
     kept.sort_by(|a, b| {
-        a.bbox[1].partial_cmp(&b.bbox[1])
+        a.bbox[1]
+            .partial_cmp(&b.bbox[1])
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then(a.bbox[0].partial_cmp(&b.bbox[0]).unwrap_or(std::cmp::Ordering::Equal))
+            .then(
+                a.bbox[0]
+                    .partial_cmp(&b.bbox[0])
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
     });
     kept
 }
@@ -240,12 +280,14 @@ pub fn reorder_by_bubbles(
     {
         let mut group_order: Vec<usize> = (0..bubble_groups.len()).collect();
         group_order.sort_by(|&a, &b| {
-            let a_y = bubble_groups[a].first().map(|&idx| {
-                (db_quads[idx][0][1] + db_quads[idx][2][1]) / 2
-            }).unwrap_or(i32::MAX);
-            let b_y = bubble_groups[b].first().map(|&idx| {
-                (db_quads[idx][0][1] + db_quads[idx][2][1]) / 2
-            }).unwrap_or(i32::MAX);
+            let a_y = bubble_groups[a]
+                .first()
+                .map(|&idx| (db_quads[idx][0][1] + db_quads[idx][2][1]) / 2)
+                .unwrap_or(i32::MAX);
+            let b_y = bubble_groups[b]
+                .first()
+                .map(|&idx| (db_quads[idx][0][1] + db_quads[idx][2][1]) / 2)
+                .unwrap_or(i32::MAX);
             a_y.cmp(&b_y)
         });
 
@@ -273,7 +315,11 @@ pub fn reorder_by_bubbles(
     }
 
     let bubble_count = flags.iter().filter(|&&f| f).count();
-    tracing::debug!("reorder_by_bubbles: {} boxes in bubbles, {} orphans", bubble_count, orphan_boxes.len());
+    tracing::debug!(
+        "reorder_by_bubbles: {} boxes in bubbles, {} orphans",
+        bubble_count,
+        orphan_boxes.len()
+    );
 
     (result, flags)
 }

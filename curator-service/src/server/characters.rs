@@ -1,15 +1,15 @@
-use crate::server::internal_status;
 use crate::ClientContext;
+use crate::server::internal_status;
 use curator_core::grpc::characters::{
-    characters_service_server::CharactersService, AddDetectionRequest, AddDetectionResult,
-    AssignCharacterIdentityRequest, CharacterDetectionsResult, CharacterIdentitiesList,
-    CharacterSearchBatchResult, CharacterSearchResult, CreateCharacterIdentityRequest,
-    DeleteCharacterIdentityRequest, DeleteDetectionRequest, DetectionBatchResult,
-    DetectionCropResult, DetectionCropsResult, EphemeralDetectCharactersRequest,
-    EphemeralDetectionResult, GetDetectionCropRequest, GetDetectionCropsRequest, ImageIdRequest,
-    ImageIdsRequest, IdentifyDetectionRequest, IdentifyDetectionResult, RenameCharacterIdentityRequest,
-    SearchByCharacterBatchRequest, SearchByCharacterRequest, UnassignedDetectionsList,
-    UpdateDetectionBoundingBoxRequest,
+    AddDetectionRequest, AddDetectionResult, AssignCharacterIdentityRequest,
+    CharacterDetectionsResult, CharacterIdentitiesList, CharacterSearchBatchResult,
+    CharacterSearchResult, CreateCharacterIdentityRequest, DeleteCharacterIdentityRequest,
+    DeleteDetectionRequest, DetectionBatchResult, DetectionCropResult, DetectionCropsResult,
+    EphemeralDetectCharactersRequest, EphemeralDetectionResult, GetDetectionCropRequest,
+    GetDetectionCropsRequest, IdentifyDetectionRequest, IdentifyDetectionResult, ImageIdRequest,
+    ImageIdsRequest, RenameCharacterIdentityRequest, SearchByCharacterBatchRequest,
+    SearchByCharacterRequest, UnassignedDetectionsList, UpdateDetectionBoundingBoxRequest,
+    characters_service_server::CharactersService,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
@@ -349,7 +349,10 @@ impl CharactersService for CharactersServiceImpl {
         }))
     }
 
-    async fn clear_crop_cache(&self, _request: TonicRequest<()>) -> Result<TonicResponse<()>, Status> {
+    async fn clear_crop_cache(
+        &self,
+        _request: TonicRequest<()>,
+    ) -> Result<TonicResponse<()>, Status> {
         self.ctx
             .detection
             .crop_cache
@@ -359,4 +362,3 @@ impl CharactersService for CharactersServiceImpl {
         Ok(TonicResponse::new(()))
     }
 }
-

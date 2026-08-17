@@ -14,10 +14,7 @@ pub struct MediaMetadata {
 }
 
 /// Read video metadata (duration, fps, derived frame count) via the resolved FFmpeg/ffprobe.
-pub fn read_media_metadata(
-    path: &Path,
-    ffmpeg_path: &Path,
-) -> Result<MediaMetadata> {
+pub fn read_media_metadata(path: &Path, ffmpeg_path: &Path) -> Result<MediaMetadata> {
     let meta = crate::video::read_video_metadata(path, ffmpeg_path)
         .map_err(|e| anyhow::anyhow!("Failed to read metadata: {}", e))?;
     let duration_secs = meta.duration_ms as f64 / 1000.0;
@@ -69,11 +66,7 @@ where
             if let Some(v) = line.strip_prefix("fps=") {
                 fps = v.trim().parse().unwrap_or(fps);
             } else if let Some(v) = line.strip_prefix("speed=") {
-                speed = v
-                    .trim()
-                    .trim_end_matches('x')
-                    .parse()
-                    .unwrap_or(speed);
+                speed = v.trim().trim_end_matches('x').parse().unwrap_or(speed);
             } else if let Some(v) = line.strip_prefix("out_time_us=") {
                 out_time_us = v.trim().parse().unwrap_or(out_time_us);
             } else if line.starts_with("progress=") {
@@ -108,7 +101,11 @@ pub fn spawn_stderr_tail_drainer(
     })
 }
 
-fn default_job_state(job_id: &str, output_path: String, input_size: Option<u64>) -> (String, TranscodeJobState) {
+fn default_job_state(
+    job_id: &str,
+    output_path: String,
+    input_size: Option<u64>,
+) -> (String, TranscodeJobState) {
     (
         job_id.to_string(),
         TranscodeJobState {
@@ -164,11 +161,18 @@ fn transcode_encoder_args(
     args
 }
 
-fn probe_bitrate_overshoot(input_path: &Path, ffmpeg_path: &Path, video_kbps: u32, fps: f64, target_format: &str, probe_frames: usize) -> f64 {
+fn probe_bitrate_overshoot(
+    input_path: &Path,
+    ffmpeg_path: &Path,
+    video_kbps: u32,
+    fps: f64,
+    target_format: &str,
+    probe_frames: usize,
+) -> f64 {
     let temp_dir = std::env::temp_dir();
     let unique_id = uuid::Uuid::new_v4().to_string();
     let temp_file_path = temp_dir.join(format!("overshoot_probe_{}.mp4", unique_id));
-    
+
     let status = std::process::Command::new(ffmpeg_path)
         .arg("-y")
         .arg("-i")
@@ -182,19 +186,21 @@ fn probe_bitrate_overshoot(input_path: &Path, ffmpeg_path: &Path, video_kbps: u3
         .arg("-an")
         .arg(&temp_file_path)
         .status();
-        
+
     let size = if let Ok(s) = status {
         if s.success() {
-            std::fs::metadata(&temp_file_path).map(|m| m.len()).unwrap_or(0)
+            std::fs::metadata(&temp_file_path)
+                .map(|m| m.len())
+                .unwrap_or(0)
         } else {
             0
         }
     } else {
         0
     };
-    
+
     let _ = std::fs::remove_file(&temp_file_path);
-    
+
     if size == 0 {
         1.0
     } else {
@@ -267,10 +273,14 @@ fn build_custom_args(
         }
     }
     if !has_input {
-        return Err("Custom command must contain the {input} placeholder for the source video".to_string());
+        return Err(
+            "Custom command must contain the {input} placeholder for the source video".to_string(),
+        );
     }
     if !has_output {
-        return Err("Custom command must contain the {output} placeholder for the output file".to_string());
+        return Err(
+            "Custom command must contain the {output} placeholder for the output file".to_string(),
+        );
     }
     Ok(expanded)
 }
@@ -342,8 +352,8 @@ pub async fn start_transcode(
         if ca.trim().is_empty() {
             anyhow::bail!("Custom command is empty");
         }
-        let expanded = build_custom_args(&ca, input_path, output_path)
-            .map_err(anyhow::Error::msg)?;
+        let expanded =
+            build_custom_args(&ca, input_path, output_path).map_err(anyhow::Error::msg)?;
         cmd.args(expanded);
     } else {
         let mut calculated_video_bitrate = video_bitrate;
@@ -352,9 +362,13 @@ pub async fn start_transcode(
         if let Some(budget_mb) = target_size_mb {
             let duration_ms = metadata.duration_ms.max(1000);
             let duration_secs = duration_ms as f64 / 1000.0;
-            
+
             let fps = metadata.fps;
-            let fps = if fps <= 0.0 || fps.is_nan() { 30.0 } else { fps };
+            let fps = if fps <= 0.0 || fps.is_nan() {
+                30.0
+            } else {
+                fps
+            };
 
             let has_audio = if let Some(ref ac) = acodec {
                 ac != "none" && metadata.audio_codec.is_some()
@@ -372,19 +386,28 @@ pub async fn start_transcode(
             let container_overhead_bytes = match target_format {
                 "webm" => {
                     let video_overhead = duration_secs * fps * 8.0;
-                    let audio_overhead = if has_audio { duration_secs * audio_packets_per_sec * 6.0 } else { 0.0 };
+                    let audio_overhead = if has_audio {
+                        duration_secs * audio_packets_per_sec * 6.0
+                    } else {
+                        0.0
+                    };
                     let cluster_overhead = (duration_secs / 2.0).ceil() * 12.0;
                     video_overhead + audio_overhead + cluster_overhead + 4096.0
                 }
                 _ => {
                     let video_overhead = duration_secs * fps * 16.0;
-                    let audio_overhead = if has_audio { duration_secs * audio_packets_per_sec * 16.0 } else { 0.0 };
+                    let audio_overhead = if has_audio {
+                        duration_secs * audio_packets_per_sec * 16.0
+                    } else {
+                        0.0
+                    };
                     video_overhead + audio_overhead + 16384.0
                 }
             };
 
             let budget_bytes = budget_mb * 1024.0 * 1024.0;
-            let available_payload_bytes = (budget_bytes * 0.90 - container_overhead_bytes).max(1024.0);
+            let available_payload_bytes =
+                (budget_bytes * 0.90 - container_overhead_bytes).max(1024.0);
 
             let total_budget_bits = available_payload_bytes * 8.0;
             let total_bitrate_bps = total_budget_bits / duration_secs;
@@ -413,7 +436,11 @@ pub async fn start_transcode(
                 0
             };
 
-            calculated_audio_bitrate = if has_audio { Some(final_audio_kbps) } else { None };
+            calculated_audio_bitrate = if has_audio {
+                Some(final_audio_kbps)
+            } else {
+                None
+            };
 
             let raw_video_kbps = if total_bitrate_kbps > final_audio_kbps {
                 total_bitrate_kbps - final_audio_kbps
@@ -424,21 +451,26 @@ pub async fn start_transcode(
             let total_frames = (duration_secs * fps).round() as usize;
             let probe_frames = total_frames.clamp(15, 100);
 
-            let overshoot_factor = probe_bitrate_overshoot(input, ffmpeg_path, raw_video_kbps, fps, target_format, probe_frames);
+            let overshoot_factor = probe_bitrate_overshoot(
+                input,
+                ffmpeg_path,
+                raw_video_kbps,
+                fps,
+                target_format,
+                probe_frames,
+            );
             let final_video_kbps = (raw_video_kbps as f64 / overshoot_factor) as u32;
 
             calculated_video_bitrate = Some(final_video_kbps.max(50));
         }
 
-        cmd.arg("-i")
-            .arg(input_path)
-            .args(transcode_encoder_args(
-                target_format,
-                vcodec.as_deref(),
-                crf,
-                calculated_video_bitrate,
-                preset.as_deref(),
-            ));
+        cmd.arg("-i").arg(input_path).args(transcode_encoder_args(
+            target_format,
+            vcodec.as_deref(),
+            crf,
+            calculated_video_bitrate,
+            preset.as_deref(),
+        ));
 
         let has_audio = if let Some(ref ac) = acodec {
             ac != "none"
@@ -468,9 +500,15 @@ pub async fn start_transcode(
 
             if let Some(ref md) = mixdown {
                 match md.as_str() {
-                    "mono" => { cmd.arg("-ac").arg("1"); },
-                    "stereo" => { cmd.arg("-ac").arg("2"); },
-                    "5.1" => { cmd.arg("-ac").arg("6"); },
+                    "mono" => {
+                        cmd.arg("-ac").arg("1");
+                    }
+                    "stereo" => {
+                        cmd.arg("-ac").arg("2");
+                    }
+                    "5.1" => {
+                        cmd.arg("-ac").arg("6");
+                    }
                     _ => {}
                 }
             }
@@ -541,31 +579,36 @@ pub async fn start_transcode(
                     let out_path = std::path::Path::new(&output_fin);
                     if out_path.is_file() {
                         state.output_size_bytes = std::fs::metadata(out_path).map(|m| m.len()).ok();
-                        if let Ok(out_meta) = crate::video::read_video_metadata(out_path, &ffmpeg_path_clone) {
+                        if let Ok(out_meta) =
+                            crate::video::read_video_metadata(out_path, &ffmpeg_path_clone)
+                        {
                             let dur_secs = out_meta.duration_ms as f64 / 1000.0;
                             if dur_secs > 0.0 {
                                 if let Some(v_bps) = out_meta.bitrate {
-                                    state.output_video_size_bytes = Some((v_bps as f64 * dur_secs / 8.0) as u64);
+                                    state.output_video_size_bytes =
+                                        Some((v_bps as f64 * dur_secs / 8.0) as u64);
                                 }
                                 if let Some(a_bps) = out_meta.audio_bitrate {
-                                    state.output_audio_size_bytes = Some((a_bps as f64 * dur_secs / 8.0) as u64);
+                                    state.output_audio_size_bytes =
+                                        Some((a_bps as f64 * dur_secs / 8.0) as u64);
                                 }
                             }
                         }
                     }
                 }
                 Ok(s) => {
-                    state.error = Some(format!(
-                        "FFmpeg exited with status: {}",
-                        s
-                    ));
+                    state.error = Some(format!("FFmpeg exited with status: {}", s));
                 }
                 Err(e) => {
                     state.error = Some(format!("{}", e));
                 }
             }
             if state.error.is_some() && !stderr_tail.is_empty() {
-                state.error = Some(format!("{}\n{}", state.error.clone().unwrap_or_default(), stderr_tail));
+                state.error = Some(format!(
+                    "{}\n{}",
+                    state.error.clone().unwrap_or_default(),
+                    stderr_tail
+                ));
             }
             if state.error.is_some() {
                 error!(

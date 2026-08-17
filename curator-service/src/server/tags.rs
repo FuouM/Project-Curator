@@ -1,10 +1,10 @@
+use crate::ClientContext;
 use crate::handlers;
 use crate::server::internal_status;
-use crate::ClientContext;
 use curator_core::grpc::common as commonpb;
 use curator_core::grpc::tags::{
-    tags_service_server::TagsService, AddTagRequest, BackfillTagSourceRequest, RemoveTagRequest,
-    UnblacklistTagRequest,
+    AddTagRequest, BackfillTagSourceRequest, RemoveTagRequest, UnblacklistTagRequest,
+    tags_service_server::TagsService,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
@@ -66,7 +66,6 @@ impl TagsService for TagsServiceImpl {
             tags: tags.into_iter().map(Into::into).collect(),
         }))
     }
-
 
     async fn backfill_tag_source(
         &self,

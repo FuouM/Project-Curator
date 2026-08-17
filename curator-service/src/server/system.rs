@@ -1,12 +1,11 @@
+use crate::ClientContext;
 use crate::handlers;
 use crate::server::convert;
 use crate::server::internal_status;
 use crate::server::preferred_source;
-use crate::ClientContext;
 use curator_core::grpc::system::{
-    system_service_server::SystemService, DashboardInitResult, RandomImageResult,
-    ReindexFailedVectorsResult, ReindexVectorsResult, SettingsResult, StatusResult,
-    UpdateSettingsRequest,
+    DashboardInitResult, RandomImageResult, ReindexFailedVectorsResult, ReindexVectorsResult,
+    SettingsResult, StatusResult, UpdateSettingsRequest, system_service_server::SystemService,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
@@ -121,7 +120,13 @@ impl SystemService for SystemServiceImpl {
                 .map(|(k, v)| (k.clone(), convert::precision_to_proto(v)))
                 .collect(),
             preferred_tagger: convert::tagger_to_proto(s.preferred_tagger),
-            taggers: self.ctx.taggers.statuses().into_iter().map(Into::into).collect(),
+            taggers: self
+                .ctx
+                .taggers
+                .statuses()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         }))
     }
 
@@ -140,28 +145,29 @@ impl SystemService for SystemServiceImpl {
                     .collect(),
             )
         };
-        let s = handlers::settings::update_settings_logic(handlers::settings::UpdateSettingsParams {
-            db: &self.ctx.db,
-            model_manager: &self.ctx.model_manager,
-            vector_index: &self.ctx.vector_index,
-            taggers: &self.ctx.taggers,
-            data_dir: &self.ctx.data_dir,
-            settings: &self.ctx.settings,
-            clip_device: req.clip_device.map(convert::device_from_proto),
-            tagger_device: req.tagger_device.map(convert::device_from_proto),
-            tagger_wd_device: req.tagger_wd_device.map(convert::device_from_proto),
-            idle_timeout_secs: req.idle_timeout_secs,
-            embedding_model: req.embedding_model.map(convert::embedding_from_proto),
-            detection_device: req.detection_device.map(convert::device_from_proto),
-            detection_metrics_device: req
-                .detection_metrics_device
-                .map(convert::device_from_proto),
-            ocr_device: req.ocr_device.map(convert::device_from_proto),
-            model_precisions,
-            preferred_tagger: convert::tagger_from_proto(req.preferred_tagger),
-        })
-        .await
-        .map_err(internal_status)?;
+        let s =
+            handlers::settings::update_settings_logic(handlers::settings::UpdateSettingsParams {
+                db: &self.ctx.db,
+                model_manager: &self.ctx.model_manager,
+                vector_index: &self.ctx.vector_index,
+                taggers: &self.ctx.taggers,
+                data_dir: &self.ctx.data_dir,
+                settings: &self.ctx.settings,
+                clip_device: req.clip_device.map(convert::device_from_proto),
+                tagger_device: req.tagger_device.map(convert::device_from_proto),
+                tagger_wd_device: req.tagger_wd_device.map(convert::device_from_proto),
+                idle_timeout_secs: req.idle_timeout_secs,
+                embedding_model: req.embedding_model.map(convert::embedding_from_proto),
+                detection_device: req.detection_device.map(convert::device_from_proto),
+                detection_metrics_device: req
+                    .detection_metrics_device
+                    .map(convert::device_from_proto),
+                ocr_device: req.ocr_device.map(convert::device_from_proto),
+                model_precisions,
+                preferred_tagger: convert::tagger_from_proto(req.preferred_tagger),
+            })
+            .await
+            .map_err(internal_status)?;
         Ok(TonicResponse::new(SettingsResult {
             clip_device: convert::device_to_proto(&s.clip_device),
             tagger_device: convert::device_to_proto(&s.tagger_device),
@@ -177,7 +183,13 @@ impl SystemService for SystemServiceImpl {
                 .map(|(k, v)| (k.clone(), convert::precision_to_proto(v)))
                 .collect(),
             preferred_tagger: convert::tagger_to_proto(s.preferred_tagger),
-            taggers: self.ctx.taggers.statuses().into_iter().map(Into::into).collect(),
+            taggers: self
+                .ctx
+                .taggers
+                .statuses()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         }))
     }
 

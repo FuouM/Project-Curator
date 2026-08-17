@@ -20,7 +20,12 @@ pub(crate) fn preprocess_image(
     resizer: &mut fast_image_resize::Resizer,
 ) -> Result<Array4<f32>> {
     let (rgb_buf, orig_w, orig_h) = curator_media::decode::decode_rgb(path)?;
-    let cfg = TaggerPreprocessConfig { img_size, mean, std, pad_color };
+    let cfg = TaggerPreprocessConfig {
+        img_size,
+        mean,
+        std,
+        pad_color,
+    };
     preprocess_image_from_rgb(&rgb_buf, (orig_w, orig_h), &cfg, resizer)
 }
 
@@ -70,13 +75,7 @@ pub(crate) fn preprocess_image_from_rgb(
     let data = dst.buffer();
 
     Ok(crate::preprocess::build_tensor(
-        data,
-        img_size,
-        new_w,
-        new_h,
-        mean,
-        std,
-        pad_color,
+        data, img_size, new_w, new_h, mean, std, pad_color,
     ))
 }
 

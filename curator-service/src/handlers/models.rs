@@ -1,16 +1,14 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use std::sync::{Arc, OnceLock};
-use std::time::{Duration, Instant};
 use anyhow::Context;
 use anyhow::Result;
-use curator_core::ipc::{
-    DownloadProgress, ManifestFileInfo, ModelStatusInfo,
-};
-use sha2::{Sha256, Digest};
+use curator_core::ipc::{DownloadProgress, ManifestFileInfo, ModelStatusInfo};
+use sha2::{Digest, Sha256};
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 /// Shared state for tracking active downloads.
 pub type DownloadProgressMap = Arc<Mutex<HashMap<String, DownloadProgress>>>;
@@ -87,8 +85,8 @@ fn read_manifest(data_dir: &Path) -> Result<Vec<ModelManifestEntry>> {
     }
     let content = std::fs::read_to_string(&manifest_path)
         .map_err(|e| anyhow::anyhow!("Failed to read manifest: {}", e))?;
-    let manifest: ModelManifest =
-        serde_json::from_str(&content).map_err(|e| anyhow::anyhow!("Failed to parse manifest: {}", e))?;
+    let manifest: ModelManifest = serde_json::from_str(&content)
+        .map_err(|e| anyhow::anyhow!("Failed to parse manifest: {}", e))?;
     Ok(manifest.models)
 }
 
@@ -205,13 +203,8 @@ pub async fn get_model_status(
                     .file_name()
                     .and_then(|f| f.to_str())
                     .map(|file_name| {
-                        let output_name =
-                            file_name.replace(".onnx", &format!("_{}.onnx", format));
-                        input_path
-                            .parent()
-                            .unwrap()
-                            .join(output_name)
-                            .exists()
+                        let output_name = file_name.replace(".onnx", &format!("_{}.onnx", format));
+                        input_path.parent().unwrap().join(output_name).exists()
                     })
                     .unwrap_or(false)
             });
@@ -326,7 +319,11 @@ pub async fn download_model(
     }
 
     let model_id_owned = model_id.to_string();
-    let files: Vec<_> = entry.files.iter().map(|f| (f.url.clone(), f.dest.clone(), f.sha256.clone())).collect();
+    let files: Vec<_> = entry
+        .files
+        .iter()
+        .map(|f| (f.url.clone(), f.dest.clone(), f.sha256.clone()))
+        .collect();
     let model_dir_owned = model_dir.to_path_buf();
     let progress_map_clone = progress_map.clone();
     let cancel_tokens_clone = cancel_tokens.clone();
@@ -400,9 +397,14 @@ pub async fn download_model(
                 .timeout_global(Some(Duration::from_secs(60)))
                 .build();
             let agent = config.new_agent();
-            let mut response = match agent.get(url)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Curator/1.0")
-                .call() {
+            let mut response = match agent
+                .get(url)
+                .header(
+                    "User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Curator/1.0",
+                )
+                .call()
+            {
                 Ok(r) => r,
                 Err(e) => {
                     let err_msg = format!("Download failed for {}: {}", url, e);
@@ -508,7 +510,10 @@ pub async fn download_model(
                 hasher.update(&content);
                 let hash = format!("{:x}", hasher.finalize());
                 if hash != *expected_sha {
-                    let err_msg = format!("Checksum mismatch for {}: expected {}, got {}", dest, expected_sha, hash);
+                    let err_msg = format!(
+                        "Checksum mismatch for {}: expected {}, got {}",
+                        dest, expected_sha, hash
+                    );
                     error!("{}", err_msg);
                     let _ = std::fs::remove_file(&temp_path);
                     let mut progress = progress_map_clone.lock().await;
@@ -534,7 +539,10 @@ pub async fn download_model(
             }
 
             files_completed += 1;
-            info!("Downloaded {}/{}: {:?}", files_completed, total_files, dest_path);
+            info!(
+                "Downloaded {}/{}: {:?}",
+                files_completed, total_files, dest_path
+            );
 
             // Update progress
             let elapsed = start_time.elapsed().as_secs_f64();
@@ -573,10 +581,12 @@ pub async fn download_model(
     })
 }
 
-const FFMPEG_DOWNLOAD_ID: &str = "ffmpeg-portable";/// Portable Windows FFmpeg essentials build (ffmpeg.exe + ffprobe.exe + a few
+const FFMPEG_DOWNLOAD_ID: &str = "ffmpeg-portable";
+/// Portable Windows FFmpeg essentials build (ffmpeg.exe + ffprobe.exe + a few
 /// DLLs). Pinned to the `release` branch so the URL never depends on a version
 /// string; integrity is verified by executing `ffmpeg -version` after unpack.
-const FFMPEG_DOWNLOAD_URL: &str = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+const FFMPEG_DOWNLOAD_URL: &str =
+    "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
 
 /// Download the portable FFmpeg build into `<data_dir>/bin/` as a background
 /// job. Progress is recorded on the shared download progress map under the
@@ -651,7 +661,9 @@ pub async fn download_ffmpeg(
 
     tokio::spawn(async move {
         let start_time = Instant::now();
-        let zip_path = data_dir_owned.join("bin").join("ffmpeg-release-essentials.zip");
+        let zip_path = data_dir_owned
+            .join("bin")
+            .join("ffmpeg-release-essentials.zip");
         let temp_path = zip_path.with_extension("tmp");
 
         // ── 1. Download zip (streamed, byte-progress reported) ─────────────
@@ -699,7 +711,13 @@ pub async fn download_ffmpeg(
         let mut downloaded: u64 = 0;
         let mut buf = [0u8; 64 * 1024];
         loop {
-            if cancel_tokens_clone.lock().await.get(FFMPEG_DOWNLOAD_ID).map(|t| t.is_cancelled()).unwrap_or(false) {
+            if cancel_tokens_clone
+                .lock()
+                .await
+                .get(FFMPEG_DOWNLOAD_ID)
+                .map(|t| t.is_cancelled())
+                .unwrap_or(false)
+            {
                 let _ = std::fs::remove_file(&temp_path);
                 let mut progress = progress_map_clone.lock().await;
                 if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
@@ -738,7 +756,11 @@ pub async fn download_ffmpeg(
             }
             downloaded += n as u64;
             let elapsed = start_time.elapsed().as_secs_f64();
-            let bps = if elapsed > 0.0 { (downloaded as f64 / elapsed) as u64 } else { 0 };
+            let bps = if elapsed > 0.0 {
+                (downloaded as f64 / elapsed) as u64
+            } else {
+                0
+            };
             let mut progress = progress_map_clone.lock().await;
             if let Some(p) = progress.get_mut(FFMPEG_DOWNLOAD_ID) {
                 p.bytes_downloaded = downloaded;
@@ -775,8 +797,10 @@ pub async fn download_ffmpeg(
         let extract_res = {
             let bin_dir_extract = bin_dir_owned.clone();
             let zip_path_extract = zip_path.clone();
-            tokio::task::spawn_blocking(move || extract_ffmpeg_binaries(&zip_path_extract, &bin_dir_extract))
-                .await
+            tokio::task::spawn_blocking(move || {
+                extract_ffmpeg_binaries(&zip_path_extract, &bin_dir_extract)
+            })
+            .await
         };
         let _ = std::fs::remove_file(&zip_path);
 
@@ -833,9 +857,15 @@ pub async fn download_ffmpeg(
         tokens.remove(FFMPEG_DOWNLOAD_ID);
 
         if verified {
-            info!("FFmpeg download completed and verified at {:?}", ffmpeg_path);
+            info!(
+                "FFmpeg download completed and verified at {:?}",
+                ffmpeg_path
+            );
         } else {
-            error!("FFmpeg download completed but verification failed at {:?}", ffmpeg_path);
+            error!(
+                "FFmpeg download completed but verification failed at {:?}",
+                ffmpeg_path
+            );
         }
     });
 
@@ -859,8 +889,8 @@ fn probe_ffmpeg_binary(path: &Path) -> bool {
 fn extract_ffmpeg_binaries(zip_path: &Path, bin_dir: &Path) -> Result<usize, String> {
     let file = std::fs::File::open(zip_path)
         .map_err(|e| format!("Failed to open downloaded archive: {}", e))?;
-    let mut archive = zip::ZipArchive::new(file)
-        .map_err(|e| format!("Corrupt FFmpeg archive: {}", e))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("Corrupt FFmpeg archive: {}", e))?;
 
     let mut extracted = 0usize;
     for i in 0..archive.len() {
@@ -886,7 +916,8 @@ fn extract_ffmpeg_binaries(zip_path: &Path, bin_dir: &Path) -> Result<usize, Str
 
     if extracted < 2 {
         return Err(format!(
-            "Archive did not contain ffmpeg.exe/ffprobe.exe (found {} binary)", extracted
+            "Archive did not contain ffmpeg.exe/ffprobe.exe (found {} binary)",
+            extracted
         ));
     }
     Ok(extracted)
@@ -975,7 +1006,9 @@ pub async fn remove_model(model_dir: &Path, model_id: &str) -> Result<ModelActio
 }
 
 /// Get progress for all active downloads.
-pub async fn get_download_progress(progress_map: &DownloadProgressMap) -> Result<Vec<DownloadProgress>> {
+pub async fn get_download_progress(
+    progress_map: &DownloadProgressMap,
+) -> Result<Vec<DownloadProgress>> {
     let progress = progress_map.lock().await;
     let downloads: Vec<DownloadProgress> = progress
         .values()
@@ -1083,14 +1116,21 @@ pub async fn quantize_model(
                     success: false,
                     message: format!(
                         "Quantization failed for {}: exit code {:?}.\nStderr: {}\nStdout: {}",
-                        input_path.display(), out.status.code(), stderr.trim(), stdout.trim()
+                        input_path.display(),
+                        out.status.code(),
+                        stderr.trim(),
+                        stdout.trim()
                     ),
                 });
             }
             Err(e) => {
                 return Ok(ModelActionOutcome {
                     success: false,
-                    message: format!("Failed to run quantization command for {}: {}", input_path.display(), e),
+                    message: format!(
+                        "Failed to run quantization command for {}: {}",
+                        input_path.display(),
+                        e
+                    ),
                 });
             }
         }
@@ -1106,7 +1146,8 @@ pub async fn quantize_model(
 }
 
 pub static CONVERSION_RUNNING_MODEL: OnceLock<std::sync::Mutex<Option<String>>> = OnceLock::new();
-pub static CONVERSION_LOGS: OnceLock<std::sync::Mutex<std::collections::HashMap<String, String>>> = OnceLock::new();
+pub static CONVERSION_LOGS: OnceLock<std::sync::Mutex<std::collections::HashMap<String, String>>> =
+    OnceLock::new();
 
 /// In-app conversion of a downloaded Safetensors model to ONNX.
 ///
@@ -1168,7 +1209,11 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
     }
 
     let project_root = find_script_root(&convert.script, model_dir.to_path_buf());
-    let venv_python = project_root.join("scripts").join("venv").join("Scripts").join("python.exe");
+    let venv_python = project_root
+        .join("scripts")
+        .join("venv")
+        .join("Scripts")
+        .join("python.exe");
     let script = project_root.join("scripts").join(&convert.script);
 
     if !venv_python.exists() || !script.exists() {
@@ -1194,8 +1239,12 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
     }
 
     let out_dir_abs = model_out.to_path_buf();
-    let logs_mutex = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-    logs_mutex.lock().unwrap().insert(model_id.to_string(), "Starting conversion process...\n".to_string());
+    let logs_mutex =
+        CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    logs_mutex.lock().unwrap().insert(
+        model_id.to_string(),
+        "Starting conversion process...\n".to_string(),
+    );
 
     let repo_arg = convert.repo.clone();
 
@@ -1216,7 +1265,7 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
 
             tokio::spawn(async move {
                 use tokio::io::{AsyncBufReadExt, BufReader};
-                
+
                 let mut stdout_reader = BufReader::new(stdout).lines();
                 let mut stderr_reader = BufReader::new(stderr).lines();
 
@@ -1262,7 +1311,8 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
                         }
                     }
                 }
-                let running_m = CONVERSION_RUNNING_MODEL.get_or_init(|| std::sync::Mutex::new(None));
+                let running_m =
+                    CONVERSION_RUNNING_MODEL.get_or_init(|| std::sync::Mutex::new(None));
                 let mut active = running_m.lock().unwrap();
                 if active.as_deref() == Some(&model_id_clone) {
                     *active = None;
@@ -1270,11 +1320,15 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
             });
         }
         Err(e) => {
-            let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+            let logs_m = CONVERSION_LOGS
+                .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
             let mut map = logs_m.lock().unwrap();
             let entry = map.entry(target_model_id.clone()).or_default();
             entry.push_str(&format!("Failed to spawn conversion command: {}\n", e));
-            error!("Failed to spawn background conversion command for {}: {}", target_model_id, e);
+            error!(
+                "Failed to spawn background conversion command for {}: {}",
+                target_model_id, e
+            );
             let running_m = CONVERSION_RUNNING_MODEL.get_or_init(|| std::sync::Mutex::new(None));
             let mut active = running_m.lock().unwrap();
             if active.as_deref() == Some(&target_model_id) {
@@ -1290,14 +1344,17 @@ pub async fn convert_model(model_dir: &Path, model_id: &str) -> Result<ModelActi
 }
 
 pub async fn get_conversion_logs(_model_dir: &Path, model_id: &str) -> Result<ConversionLogs> {
-    let logs_m = CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-    let logs = logs_m.lock().unwrap().get(model_id).cloned().unwrap_or_default();
+    let logs_m =
+        CONVERSION_LOGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let logs = logs_m
+        .lock()
+        .unwrap()
+        .get(model_id)
+        .cloned()
+        .unwrap_or_default();
 
     let running_m = CONVERSION_RUNNING_MODEL.get_or_init(|| std::sync::Mutex::new(None));
     let is_running = running_m.lock().unwrap().as_deref() == Some(model_id);
 
-    Ok(ConversionLogs {
-        logs,
-        is_running,
-    })
+    Ok(ConversionLogs { logs, is_running })
 }

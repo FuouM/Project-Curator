@@ -1,12 +1,12 @@
+use crate::ClientContext;
 use crate::handlers;
 use crate::server::internal_status;
-use crate::ClientContext;
 use curator_core::grpc::common as commonpb;
 use curator_core::grpc::models::{
-    models_service_server::ModelsService, ConversionLogsResult, ConversionStatusUpdate,
-    DownloadProgressResult, DownloadStatusUpdate, FFmpegStatusResult,
-    GetMediaMetadataRequest, MediaMetadataResult, ModelActionResult, ModelIdRequest,
-    ModelStatusResult, QuantizeModelRequest, SetFFmpegPathRequest,
+    ConversionLogsResult, ConversionStatusUpdate, DownloadProgressResult, DownloadStatusUpdate,
+    FFmpegStatusResult, GetMediaMetadataRequest, MediaMetadataResult, ModelActionResult,
+    ModelIdRequest, ModelStatusResult, QuantizeModelRequest, SetFFmpegPathRequest,
+    models_service_server::ModelsService,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -76,8 +76,7 @@ impl ModelsService for ModelsServiceImpl {
         }))
     }
 
-    type DownloadModelStream =
-        ReceiverStream<Result<DownloadStatusUpdate, Status>>;
+    type DownloadModelStream = ReceiverStream<Result<DownloadStatusUpdate, Status>>;
 
     async fn download_model(
         &self,
@@ -125,9 +124,10 @@ impl ModelsService for ModelsServiceImpl {
         request: TonicRequest<ModelIdRequest>,
     ) -> Result<TonicResponse<ModelActionResult>, Status> {
         let req = request.into_inner();
-        let outcome = handlers::models::remove_model(&self.ctx.data_dir.join("models"), &req.model_id)
-            .await
-            .map_err(internal_status)?;
+        let outcome =
+            handlers::models::remove_model(&self.ctx.data_dir.join("models"), &req.model_id)
+                .await
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(ModelActionResult {
             success: outcome.success,
             message: outcome.message,
@@ -171,9 +171,10 @@ impl ModelsService for ModelsServiceImpl {
         request: TonicRequest<ModelIdRequest>,
     ) -> Result<TonicResponse<Self::ConvertModelStream>, Status> {
         let req = request.into_inner();
-        let outcome = handlers::models::convert_model(&self.ctx.data_dir.join("models"), &req.model_id)
-            .await
-            .map_err(internal_status)?;
+        let outcome =
+            handlers::models::convert_model(&self.ctx.data_dir.join("models"), &req.model_id)
+                .await
+                .map_err(internal_status)?;
         if !outcome.success {
             // Nothing started — emit a single terminal update carrying the reason.
             let (tx, rx) = tokio::sync::mpsc::channel(1);
@@ -191,7 +192,9 @@ impl ModelsService for ModelsServiceImpl {
         let (tx, rx) = tokio::sync::mpsc::channel(8);
         tokio::spawn(async move {
             loop {
-                let logs = handlers::models::get_conversion_logs(&ctx.data_dir.join("models"), &model_id).await;
+                let logs =
+                    handlers::models::get_conversion_logs(&ctx.data_dir.join("models"), &model_id)
+                        .await;
                 match logs {
                     Ok(logs) => {
                         let complete = !logs.is_running;
@@ -218,9 +221,10 @@ impl ModelsService for ModelsServiceImpl {
         request: TonicRequest<ModelIdRequest>,
     ) -> Result<TonicResponse<ConversionLogsResult>, Status> {
         let req = request.into_inner();
-        let logs = handlers::models::get_conversion_logs(&self.ctx.data_dir.join("models"), &req.model_id)
-            .await
-            .map_err(internal_status)?;
+        let logs =
+            handlers::models::get_conversion_logs(&self.ctx.data_dir.join("models"), &req.model_id)
+                .await
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(ConversionLogsResult {
             logs: logs.logs,
             is_running: logs.is_running,
@@ -300,8 +304,9 @@ impl ModelsService for ModelsServiceImpl {
             .await
             .map_err(internal_status)?;
         let resolved = handlers::resolve_relative_path(&self.ctx.data_dir, &req.path);
-        let meta = curator_core::transcode::read_media_metadata(std::path::Path::new(&resolved), &ffmpeg)
-            .map_err(internal_status)?;
+        let meta =
+            curator_core::transcode::read_media_metadata(std::path::Path::new(&resolved), &ffmpeg)
+                .map_err(internal_status)?;
         Ok(TonicResponse::new(MediaMetadataResult {
             duration_ms: meta.duration_ms,
             fps: meta.fps,
@@ -309,4 +314,3 @@ impl ModelsService for ModelsServiceImpl {
         }))
     }
 }
-

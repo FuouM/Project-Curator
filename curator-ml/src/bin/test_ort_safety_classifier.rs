@@ -9,8 +9,8 @@
 //!
 //! Run: cargo run -p curator-ml --bin test_ort_safety_classifier
 
-use curator_proto::contracts::DevicePreference;
 use curator_ml::SafetyClassifier;
+use curator_proto::contracts::DevicePreference;
 use image::RgbImage;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -28,7 +28,8 @@ fn main() -> anyhow::Result<()> {
         ),
         (
             "Converted fp16",
-            workspace.join(".curator/models/nsfw-detection-2-mini/onnx/nsfw-detection-2-mini_fp16.onnx"),
+            workspace
+                .join(".curator/models/nsfw-detection-2-mini/onnx/nsfw-detection-2-mini_fp16.onnx"),
         ),
         (
             "Converted fp32",
@@ -59,7 +60,11 @@ fn verify_variant(workspace: &Path, onnx_path: &Path) -> anyhow::Result<()> {
     let input_shape = input.dtype().tensor_shape().expect("input is tensor");
     let output_shape = output.dtype().tensor_shape().expect("output is tensor");
     println!("  input name='{}', shape={:?}", input.name(), input_shape);
-    println!("  output name='{}', shape={:?}", output.name(), output_shape);
+    println!(
+        "  output name='{}', shape={:?}",
+        output.name(),
+        output_shape
+    );
 
     assert_eq!(input.name(), "image", "input name must be 'image'");
     assert!(
@@ -86,7 +91,10 @@ fn verify_variant(workspace: &Path, onnx_path: &Path) -> anyhow::Result<()> {
 
     let images = load_test_images(workspace)?;
     if images.is_empty() {
-        println!("No test images found under {:?}; skipping inference.", workspace.join("test_images"));
+        println!(
+            "No test images found under {:?}; skipping inference.",
+            workspace.join("test_images")
+        );
         return Ok(());
     }
     println!("Found {} test images.", images.len());
@@ -139,7 +147,10 @@ fn verify_variant(workspace: &Path, onnx_path: &Path) -> anyhow::Result<()> {
             diff
         );
     }
-    println!("Batch == single parity within 1e-4 (max diff {:.2e}).", max_diff);
+    println!(
+        "Batch == single parity within 1e-4 (max diff {:.2e}).",
+        max_diff
+    );
 
     if let Some((first_name, first_img)) = images.first() {
         println!("\n=== 4. Throughput & Latency Benchmark (CPU) ===");
@@ -182,9 +193,18 @@ fn load_test_images(workspace: &Path) -> anyhow::Result<Vec<(String, RgbImage)>>
         let entry = entry?;
         let p = entry.path();
         let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if matches!(ext.to_ascii_lowercase().as_str(), "jpg" | "jpeg" | "png" | "webp") {
+        if matches!(
+            ext.to_ascii_lowercase().as_str(),
+            "jpg" | "jpeg" | "png" | "webp"
+        ) {
             match image::open(&p) {
-                Ok(img) => out.push((p.file_name().unwrap_or_default().to_string_lossy().into_owned(), img.to_rgb8())),
+                Ok(img) => out.push((
+                    p.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned(),
+                    img.to_rgb8(),
+                )),
                 Err(e) => eprintln!("Failed to open {:?}: {}", p, e),
             }
         }

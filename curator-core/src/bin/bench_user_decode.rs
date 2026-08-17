@@ -2,7 +2,9 @@ use curator_core::image_decode::decode_rgb;
 use std::time::Instant;
 
 fn main() -> anyhow::Result<()> {
-    let list_file = std::env::args().nth(1).expect("usage: bench_user_decode <paths-file>");
+    let list_file = std::env::args()
+        .nth(1)
+        .expect("usage: bench_user_decode <paths-file>");
     let content = std::fs::read_to_string(list_file)?;
     let paths: Vec<String> = content.lines().map(str::to_string).collect();
 
@@ -16,7 +18,9 @@ fn main() -> anyhow::Result<()> {
                 let decode_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
                 let target_width = 200u32;
-                let target_height = ((h as f64 / w as f64) * target_width as f64).round().max(1.0) as u32;
+                let target_height = ((h as f64 / w as f64) * target_width as f64)
+                    .round()
+                    .max(1.0) as u32;
 
                 let t1 = Instant::now();
                 let src = fast_image_resize::images::ImageRef::new(
@@ -92,7 +96,19 @@ fn main() -> anyhow::Result<()> {
                 n += 1;
                 println!(
                     "{:>6.1} dec | {:>4.1} res | {:>4.1}/{:>5}B | {:>4.1}/{:>5}B | {:>4.1}/{:>5}B | {:>5.1} 2stp | {:>6}x{:<5} {:5.2} MP  {}",
-                    decode_ms, resize_ms, encode_ms, size80, encode_m0_ms, size_m0, encode_m2_ms, size_m2, twostep_ms, w, h, (w as f64 * h as f64) / 1e6, p
+                    decode_ms,
+                    resize_ms,
+                    encode_ms,
+                    size80,
+                    encode_m0_ms,
+                    size_m0,
+                    encode_m2_ms,
+                    size_m2,
+                    twostep_ms,
+                    w,
+                    h,
+                    (w as f64 * h as f64) / 1e6,
+                    p
                 );
             }
             Err(e) => println!("ERR {}: {:?}", p, e),

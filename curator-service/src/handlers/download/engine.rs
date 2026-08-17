@@ -99,5 +99,4 @@ pub trait DownloadEngine: Send + Sync {
 
 /// Shared map of registered engines, seeded in `main()`. Adding an engine is
 /// a registry insertion; no changes to the runner or IPC plumbing.
-pub type EngineRegistry =
-    Arc<std::collections::HashMap<&'static str, Arc<dyn DownloadEngine>>>;
+pub type EngineRegistry = Arc<std::collections::HashMap<&'static str, Arc<dyn DownloadEngine>>>;

@@ -1,12 +1,12 @@
+use crate::ClientContext;
 use crate::handlers;
 use crate::server::internal_status;
-use crate::ClientContext;
 use curator_core::grpc::import::{
-    import_service_server::ImportService, BackfillResult, CancelImportResult,
-    ClassifyFolderSafetyRequest, ClassifyFolderSafetyResult, EphemeralClassifySafetyRequest,
-    EphemeralClassifySafetyResult, ImportImageRequest, ImportProgress, ImportResult,
-    ImportedFoldersResult, IndexFolderRequest, IndexFolderResult, MediaMetadataBackfillResult,
-    RescanFolderRequest, RescanFolderResult, RescanSafetyResult, SafetyRescanProgress,
+    BackfillResult, CancelImportResult, ClassifyFolderSafetyRequest, ClassifyFolderSafetyResult,
+    EphemeralClassifySafetyRequest, EphemeralClassifySafetyResult, ImportImageRequest,
+    ImportProgress, ImportResult, ImportedFoldersResult, IndexFolderRequest, IndexFolderResult,
+    MediaMetadataBackfillResult, RescanFolderRequest, RescanFolderResult, RescanSafetyResult,
+    SafetyRescanProgress, import_service_server::ImportService,
 };
 
 use std::sync::Arc;
@@ -57,17 +57,16 @@ impl ImportService for ImportServiceImpl {
         let _write_guard = self.ctx.import_lock.lock().await;
         let active = self.active_embedding_model().await;
         let ffmpeg = self.resolved_ffmpeg().await;
-        let (image_id, sha256, imported_count, folder_ids) =
-            handlers::import::import_paths_logic(
-                &paths,
-                &self.ctx.db,
-                active,
-                ffmpeg.as_deref(),
-                &self.ctx.data_dir,
-                &self.ctx.import_controller,
-            )
-            .await
-            .map_err(internal_status)?;
+        let (image_id, sha256, imported_count, folder_ids) = handlers::import::import_paths_logic(
+            &paths,
+            &self.ctx.db,
+            active,
+            ffmpeg.as_deref(),
+            &self.ctx.data_dir,
+            &self.ctx.import_controller,
+        )
+        .await
+        .map_err(internal_status)?;
 
         Ok(TonicResponse::new(ImportResult {
             image_id,
@@ -76,7 +75,6 @@ impl ImportService for ImportServiceImpl {
             folder_id: folder_ids.first().copied(),
             folder_ids,
         }))
-
     }
 
     async fn get_import_progress(
@@ -108,7 +106,6 @@ impl ImportService for ImportServiceImpl {
         Ok(TonicResponse::new(CancelImportResult { success, message }))
     }
 
-
     async fn get_imported_folders(
         &self,
         _request: TonicRequest<()>,
@@ -120,7 +117,6 @@ impl ImportService for ImportServiceImpl {
             folders: folders.into_iter().map(Into::into).collect(),
         }))
     }
-
 
     async fn backfill_image_folders(
         &self,
@@ -146,7 +142,10 @@ impl ImportService for ImportServiceImpl {
         )
         .await
         .map_err(internal_status)?;
-        Ok(TonicResponse::new(MediaMetadataBackfillResult { processed, updated }))
+        Ok(TonicResponse::new(MediaMetadataBackfillResult {
+            processed,
+            updated,
+        }))
     }
 
     async fn rescan_folder(
@@ -165,8 +164,6 @@ impl ImportService for ImportServiceImpl {
             &self.ctx.data_dir,
             &self.ctx.import_controller,
         )
-
-
         .await
         .map_err(internal_status)?;
         Ok(TonicResponse::new(RescanFolderResult {
@@ -222,7 +219,6 @@ impl ImportService for ImportServiceImpl {
             updated,
         }))
     }
-
 
     async fn get_safety_rescan_progress(
         &self,

@@ -1,12 +1,12 @@
-use std::path::Path;
 use anyhow::{Context, Result};
+use image::{ImageBuffer, Rgb, RgbImage};
 use ndarray::Array4;
 use ort::{inputs, value::TensorRef};
-use image::{ImageBuffer, RgbImage, Rgb};
+use std::path::Path;
 
 use super::bubbles::{BubbleDetection, MangaBubbleDetector, reorder_by_bubbles};
-use curator_proto::contracts::DevicePreference;
 use crate::preprocess::resize_rgb_bilinear;
+use curator_proto::contracts::DevicePreference;
 
 #[derive(Debug, Clone)]
 pub struct OcrDetection {
@@ -27,24 +27,44 @@ pub struct OcrDetector {
 }
 
 impl OcrDetector {
-    pub fn new(model_dir: impl AsRef<Path>, device: DevicePreference, prefer_quantized_ocr: bool, prefer_quantized_bubble: bool) -> Self {
+    pub fn new(
+        model_dir: impl AsRef<Path>,
+        device: DevicePreference,
+        prefer_quantized_ocr: bool,
+        prefer_quantized_bubble: bool,
+    ) -> Self {
         let dir = model_dir.as_ref().to_path_buf();
-        let mut det_model = dir.join("pp-ocrv6-medium").join("det").join("inference.onnx");
+        let mut det_model = dir
+            .join("pp-ocrv6-medium")
+            .join("det")
+            .join("inference.onnx");
         if prefer_quantized_ocr {
-            let int8_path = dir.join("pp-ocrv6-medium").join("det").join("inference_int8.onnx");
+            let int8_path = dir
+                .join("pp-ocrv6-medium")
+                .join("det")
+                .join("inference_int8.onnx");
             if int8_path.exists() {
                 det_model = int8_path;
             }
         }
         let (rec_model, rec_dict) = {
-            let mut model = dir.join("pp-ocrv6-medium").join("rec").join("inference.onnx");
+            let mut model = dir
+                .join("pp-ocrv6-medium")
+                .join("rec")
+                .join("inference.onnx");
             if prefer_quantized_ocr {
-                let int8_path = dir.join("pp-ocrv6-medium").join("rec").join("inference_int8.onnx");
+                let int8_path = dir
+                    .join("pp-ocrv6-medium")
+                    .join("rec")
+                    .join("inference_int8.onnx");
                 if int8_path.exists() {
                     model = int8_path;
                 }
             }
-            let dict  = dir.join("pp-ocrv6-medium").join("rec").join("inference.yml");
+            let dict = dir
+                .join("pp-ocrv6-medium")
+                .join("rec")
+                .join("inference.yml");
             (model, dict)
         };
         tracing::info!("OCR Det: using model path {:?}", det_model);
@@ -79,7 +99,10 @@ impl OcrDetector {
             if !found {
                 let workspace_candidate = std::path::Path::new("onnxruntime.dll");
                 if workspace_candidate.exists() {
-                    tracing::info!("OCR: Setting ORT_DYLIB_PATH to workspace path {:?}", workspace_candidate);
+                    tracing::info!(
+                        "OCR: Setting ORT_DYLIB_PATH to workspace path {:?}",
+                        workspace_candidate
+                    );
                     unsafe {
                         std::env::set_var("ORT_DYLIB_PATH", workspace_candidate);
                     }
@@ -108,10 +131,10 @@ impl OcrDetector {
                     if in_char_dict {
                         if let Some(rest) = trimmed_stripped.strip_prefix("- ") {
                             let ch = if rest.starts_with('\'') && rest.ends_with('\'') {
-                                let inner = &rest[1..rest.len()-1];
+                                let inner = &rest[1..rest.len() - 1];
                                 inner.replace("''", "'")
                             } else if rest.starts_with('"') && rest.ends_with('"') {
-                                rest[1..rest.len()-1].to_string()
+                                rest[1..rest.len() - 1].to_string()
                             } else {
                                 rest.to_string()
                             };
@@ -132,7 +155,11 @@ impl OcrDetector {
             rec_session: ManagedSession::new("OCR Rec", rec_model, device.clone(), 1),
             cls_session,
             rec_chars,
-            bubble_detector: MangaBubbleDetector::new(model_dir.as_ref(), device, prefer_quantized_bubble),
+            bubble_detector: MangaBubbleDetector::new(
+                model_dir.as_ref(),
+                device,
+                prefer_quantized_bubble,
+            ),
         }
     }
 
@@ -141,7 +168,10 @@ impl OcrDetector {
     }
 
     pub fn idle_secs(&self) -> u64 {
-        let mut max_idle = self.det_session.idle_secs().max(self.rec_session.idle_secs());
+        let mut max_idle = self
+            .det_session
+            .idle_secs()
+            .max(self.rec_session.idle_secs());
         if let Some(ref cls) = self.cls_session {
             max_idle = max_idle.max(cls.idle_secs());
         }
@@ -190,7 +220,8 @@ impl OcrDetector {
         // 2. Run detection model
         let (shape, pred_data) = self.det_session.with_session(|session| {
             let outputs = session.run(inputs![TensorRef::from_array_view(&det_tensor)?])?;
-            let output_tensor = outputs.get("fetch_name_0")
+            let output_tensor = outputs
+                .get("fetch_name_0")
                 .or_else(|| outputs.get("maps"))
                 .or_else(|| outputs.get("output_0"))
                 .context("Failed to get detection maps output from OCR model")?;
@@ -249,8 +280,10 @@ impl OcrDetector {
             if let Some(ref cls) = self.cls_session {
                 if let Ok(cls_tensor) = preprocess_cls(&cropped_line) {
                     let cls_res = cls.with_session(|cls_sess| {
-                        let cls_outputs = cls_sess.run(inputs![TensorRef::from_array_view(&cls_tensor)?])?;
-                        let cls_out = cls_outputs.get("fetch_name_0")
+                        let cls_outputs =
+                            cls_sess.run(inputs![TensorRef::from_array_view(&cls_tensor)?])?;
+                        let cls_out = cls_outputs
+                            .get("fetch_name_0")
                             .or_else(|| cls_outputs.get("output_0"))
                             .or_else(|| cls_outputs.get("output"))
                             .context("Failed to get cls output")?;
@@ -275,7 +308,8 @@ impl OcrDetector {
                 Err(_) => continue,
             };
             let rec_res = self.rec_session.with_session(|rec_sess| {
-                let rec_outputs = rec_sess.run(inputs![TensorRef::from_array_view(&rec_tensor)?])?;
+                let rec_outputs =
+                    rec_sess.run(inputs![TensorRef::from_array_view(&rec_tensor)?])?;
                 let rec_tensor_out = rec_outputs
                     .get("fetch_name_0")
                     .or_else(|| rec_outputs.get("output_0"))
@@ -289,7 +323,7 @@ impl OcrDetector {
                 Err(_) => continue,
             };
 
-            let seq_len  = rec_shape[1] as usize;
+            let seq_len = rec_shape[1] as usize;
             let num_classes = rec_shape[2] as usize;
             let (text, confidence) = decode_ctc(&rec_data, seq_len, num_classes, &self.rec_chars);
             if confidence > 0.5 && !text.trim().is_empty() {
@@ -311,12 +345,14 @@ impl curator_proto::pipeline::SystemNode for OcrDetector {
         curator_proto::pipeline::NodeInfo {
             id: "pp-ocr",
             label: "PP-OCR Text Detector",
-            inputs: vec![
-                curator_proto::pipeline::Port { name: "image", type_name: "Image" },
-            ],
-            outputs: vec![
-                curator_proto::pipeline::Port { name: "text", type_name: "TextMetadata" },
-            ],
+            inputs: vec![curator_proto::pipeline::Port {
+                name: "image",
+                type_name: "Image",
+            }],
+            outputs: vec![curator_proto::pipeline::Port {
+                name: "text",
+                type_name: "TextMetadata",
+            }],
         }
     }
 
@@ -338,7 +374,7 @@ impl curator_proto::pipeline::SystemNode for OcrDetector {
 }
 
 /// Preprocess image for the DB text detection model.
-/// 
+///
 /// Reference: DetResizeForTest with limit_side_len=960, limit_type="max"
 /// then NormalizeImage(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225], scale=1/255)
 /// applied to BGR order, then ToCHWImage.
@@ -379,16 +415,18 @@ pub fn preprocess_det(image: &RgbImage) -> Result<(Array4<f32>, usize, usize)> {
     // Since our input is RGB: RGB[r]=BGR[2], RGB[g]=BGR[1], RGB[b]=BGR[0]
     // CHW output: channel 0=B(idx 2 in RGB), channel 1=G(idx 1), channel 2=R(idx 0)
     let mean_bgr = [0.485f32, 0.456, 0.406]; // applied to B, G, R channels in BGR order
-    let std_bgr  = [0.229f32, 0.224, 0.225];
+    let std_bgr = [0.229f32, 0.224, 0.225];
 
     let mut tensor = Array4::<f32>::zeros((1, 3, resize_h, resize_w));
-    let slice = tensor.as_slice_mut().context("Tensor slice mapping failed")?;
+    let slice = tensor
+        .as_slice_mut()
+        .context("Tensor slice mapping failed")?;
 
     let px_stride = resize_h * resize_w;
     for y in 0..resize_h {
         for x in 0..resize_w {
             let src_base = (y * resize_w + x) * 3; // RGB layout: [R,G,B]
-            let r = data[src_base]     as f32 / 255.0;
+            let r = data[src_base] as f32 / 255.0;
             let g = data[src_base + 1] as f32 / 255.0;
             let b = data[src_base + 2] as f32 / 255.0;
 
@@ -421,7 +459,9 @@ pub fn preprocess_rec(image: &RgbImage) -> Result<Array4<f32>> {
     let data = resize_rgb_bilinear(image, target_w as u32, target_h as u32, &mut resizer)?;
 
     let mut tensor = Array4::<f32>::zeros((1, 3, target_h, target_w));
-    let slice = tensor.as_slice_mut().context("Tensor slice mapping failed")?;
+    let slice = tensor
+        .as_slice_mut()
+        .context("Tensor slice mapping failed")?;
 
     let px_stride = target_h * target_w;
 
@@ -431,7 +471,7 @@ pub fn preprocess_rec(image: &RgbImage) -> Result<Array4<f32>> {
     for y in 0..target_h {
         for x in 0..target_w {
             let src_base = (y * target_w + x) * 3;
-            let r = data[src_base]     as f32 / 255.0;
+            let r = data[src_base] as f32 / 255.0;
             let g = data[src_base + 1] as f32 / 255.0;
             let b = data[src_base + 2] as f32 / 255.0;
 
@@ -463,13 +503,15 @@ pub fn preprocess_cls(image: &RgbImage) -> Result<Array4<f32>> {
     let data = resize_rgb_bilinear(image, resized_w as u32, target_h as u32, &mut resizer)?;
 
     let mut tensor = Array4::<f32>::zeros((1, 3, target_h, target_w));
-    let slice = tensor.as_slice_mut().context("Tensor slice mapping failed")?;
+    let slice = tensor
+        .as_slice_mut()
+        .context("Tensor slice mapping failed")?;
 
     let px_stride = target_h * target_w;
     for y in 0..target_h {
         for x in 0..resized_w {
             let src_base = (y * resized_w + x) * 3;
-            let r = data[src_base]     as f32 / 255.0;
+            let r = data[src_base] as f32 / 255.0;
             let g = data[src_base + 1] as f32 / 255.0;
             let b = data[src_base + 2] as f32 / 255.0;
 
@@ -560,10 +602,18 @@ fn extract_boxes_from_map(
             while let Some((cx, cy)) = queue.pop_front() {
                 prob_sum += pred[cy * map_w + cx];
                 pixel_count += 1;
-                if cx < min_x { min_x = cx; }
-                if cx > max_x { max_x = cx; }
-                if cy < min_y { min_y = cy; }
-                if cy > max_y { max_y = cy; }
+                if cx < min_x {
+                    min_x = cx;
+                }
+                if cx > max_x {
+                    max_x = cx;
+                }
+                if cy < min_y {
+                    min_y = cy;
+                }
+                if cy > max_y {
+                    max_y = cy;
+                }
 
                 for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1i32), (0, 1)] {
                     let nx = cx as i32 + dx;
@@ -628,12 +678,7 @@ fn extract_boxes_from_map(
             let ox1 = ((ex1 as f32 * scale_x).round() as i32).clamp(0, orig_w as i32);
             let oy1 = ((ey1 as f32 * scale_y).round() as i32).clamp(0, orig_h as i32);
 
-            boxes.push([
-                [ox0, oy0],
-                [ox1, oy0],
-                [ox1, oy1],
-                [ox0, oy1],
-            ]);
+            boxes.push([[ox0, oy0], [ox1, oy0], [ox1, oy1], [ox0, oy1]]);
         }
     }
 
@@ -646,10 +691,7 @@ fn extract_boxes_from_map(
 /// Boxes within 10px vertically are considered same-line and sorted left-to-right.
 fn sorted_boxes(mut boxes: Vec<[[i32; 2]; 4]>) -> Vec<[[i32; 2]; 4]> {
     // Primary sort: top-left Y, then top-left X
-    boxes.sort_by(|a, b| {
-        a[0][1].cmp(&b[0][1])
-            .then(a[0][0].cmp(&b[0][0]))
-    });
+    boxes.sort_by(|a, b| a[0][1].cmp(&b[0][1]).then(a[0][0].cmp(&b[0][0])));
 
     // Bubble-sort pass: if two adjacent boxes are within 10px vertically
     // but the later one has smaller X, swap them (left-to-right within same line)
@@ -707,12 +749,16 @@ fn merge_fragmented(boxes: Vec<[[i32; 2]; 4]>) -> Vec<[[i32; 2]; 4]> {
         let mut new_merged = Vec::with_capacity(merged.len());
 
         for i in 0..merged.len() {
-            if visited[i] { continue; }
+            if visited[i] {
+                continue;
+            }
             let mut current = merged[i];
             visited[i] = true;
 
             for j in (i + 1)..merged.len() {
-                if visited[j] { continue; }
+                if visited[j] {
+                    continue;
+                }
                 let (min_x1, max_x1, min_y1, max_y1) = box_extents(&current);
                 let (min_x2, max_x2, min_y2, max_y2) = box_extents(&merged[j]);
 
@@ -726,8 +772,10 @@ fn merge_fragmented(boxes: Vec<[[i32; 2]; 4]>) -> Vec<[[i32; 2]; 4]> {
                     let ny_min = min_y1.min(min_y2);
                     let ny_max = max_y1.max(max_y2);
                     current = [
-                        [nx_min, ny_min], [nx_max, ny_min],
-                        [nx_max, ny_max], [nx_min, ny_max],
+                        [nx_min, ny_min],
+                        [nx_max, ny_min],
+                        [nx_max, ny_max],
+                        [nx_min, ny_max],
                     ];
                     visited[j] = true;
                     changed = true;
@@ -740,7 +788,6 @@ fn merge_fragmented(boxes: Vec<[[i32; 2]; 4]>) -> Vec<[[i32; 2]; 4]> {
 
     merged
 }
-
 
 /// Perspective warp to crop and flatten a rotated text line box.
 /// Reference: get_rotate_crop_image from PaddleOCR utils.
@@ -765,7 +812,7 @@ fn get_rotate_crop_image(img: &RgbImage, points: &[[i32; 2]; 4]) -> Result<RgbIm
         [0.0, h as f32],
     ];
 
-    let h_mat = get_perspective_transform(dst, src)?;  // compute H(dstâ†’src) for inverse warp
+    let h_mat = get_perspective_transform(dst, src)?; // compute H(dstâ†’src) for inverse warp
 
     let mut dest_buf: RgbImage = ImageBuffer::new(w, h);
     let (ow, oh) = img.dimensions();
@@ -848,11 +895,7 @@ fn get_perspective_transform(src: [[f32; 2]; 4], dst: [[f32; 2]; 4]) -> Result<[
     }
 
     let h = solve_linear_system(a, b)?;
-    Ok([
-        h[0], h[1], h[2],
-        h[3], h[4], h[5],
-        h[6], h[7], 1.0,
-    ])
+    Ok([h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1.0])
 }
 
 fn solve_linear_system(mut a: [[f32; 8]; 8], mut b: [f32; 8]) -> Result<[f32; 8]> {
@@ -936,7 +979,11 @@ fn decode_ctc(data: &[f32], seq_len: usize, num_classes: usize, dict: &[String])
         prev_idx = max_idx;
     }
 
-    let confidence = if count > 0 { total_prob / count as f32 } else { 0.0 };
+    let confidence = if count > 0 {
+        total_prob / count as f32
+    } else {
+        0.0
+    };
     (text, confidence)
 }
 

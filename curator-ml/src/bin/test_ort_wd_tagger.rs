@@ -8,16 +8,18 @@
 //!
 //! Run: cargo run -p curator-core --bin test_ort_wd_tagger
 
+use curator_ml::tagger::{TaggerEngine, WD_EVA02_SPEC};
 use curator_proto::constants::resolve_data_dir;
 use curator_proto::contracts::DevicePreference;
-use curator_ml::tagger::{TaggerEngine, WD_EVA02_SPEC};
 
 const NUM_CLASSES: usize = 16473;
 const INPUT_SIZE: usize = 448;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model_dir = resolve_data_dir().join("models");
-    let onnx_path = model_dir.join("wd-eva02-tagger-2026-canary").join("wd-eva02-tagger-2026-canary.onnx");
+    let onnx_path = model_dir
+        .join("wd-eva02-tagger-2026-canary")
+        .join("wd-eva02-tagger-2026-canary.onnx");
 
     if !onnx_path.exists() {
         eprintln!(
@@ -31,11 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let session = ort::session::Session::builder()?.commit_from_file(&onnx_path)?;
     let input = session.inputs().first().expect("model has an input");
     let output = session.outputs().first().expect("model has an output");
-    println!(
-        "ONNX input: {} | output: {}",
-        input.name(),
-        output.name()
-    );
+    println!("ONNX input: {} | output: {}", input.name(), output.name());
     let input_shape = input.dtype().tensor_shape().expect("input is tensor");
     let output_shape = output.dtype().tensor_shape().expect("output is tensor");
     println!("  input shape: {:?}", input_shape);
@@ -60,7 +58,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let entry = entry?;
             let p = entry.path();
             let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if matches!(ext.to_ascii_lowercase().as_str(), "jpg" | "jpeg" | "png" | "webp") {
+            if matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "jpg" | "jpeg" | "png" | "webp"
+            ) {
                 sample_path = Some(p);
                 break;
             }
@@ -73,7 +74,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let predictions = engine.tag_image(&image_path, WD_EVA02_SPEC.default_threshold)?;
-    assert!(!predictions.is_empty(), "expected at least one prediction on a real image");
+    assert!(
+        !predictions.is_empty(),
+        "expected at least one prediction on a real image"
+    );
     println!(
         "Engine ran on {:?}: {} predictions at threshold {}",
         image_path,

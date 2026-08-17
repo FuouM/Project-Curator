@@ -121,7 +121,6 @@ impl ImportController {
     }
 }
 
-
 /// Best-effort media metadata extracted from a file header.
 /// Extraction failures are logged and stored as `None`, matching the phash
 /// convention: a corrupt file must never block library import. Missing FFmpeg
@@ -217,7 +216,10 @@ fn extract_media_info(path: &Path, ffmpeg: Option<&Path>, data_dir: &Path) -> Re
         match curator_core::media::read_gif_animation(path) {
             Ok(info) => Some(info),
             Err(e) => {
-                warn!("Failed to read GIF animation metadata for {:?}: {:?}", path, e);
+                warn!(
+                    "Failed to read GIF animation metadata for {:?}: {:?}",
+                    path, e
+                );
                 None
             }
         }
@@ -311,7 +313,6 @@ async fn upsert_video_metadata(
 }
 
 pub async fn get_or_create_folder(folder_path: &str, db: &SqlitePool) -> Result<i64> {
-
     let existing: Option<(i64,)> = sqlx::query_as("SELECT id FROM folders WHERE path = ? LIMIT 1")
         .bind(folder_path)
         .fetch_optional(db)
@@ -426,7 +427,6 @@ pub async fn import_paths_logic(
     data_dir: &Path,
     controller: &ImportController,
 ) -> Result<(i64, String, usize, Vec<i64>)> {
-
     controller.reset();
 
     let clean_paths: Vec<String> = paths
@@ -437,7 +437,9 @@ pub async fn import_paths_logic(
 
     if clean_paths.is_empty() {
         controller.set_failed("No file or folder paths provided for import");
-        return Err(anyhow::anyhow!("No file or folder paths provided for import"));
+        return Err(anyhow::anyhow!(
+            "No file or folder paths provided for import"
+        ));
     }
 
     let mut files_to_prep: Vec<(std::path::PathBuf, i64)> = Vec::new();
@@ -485,7 +487,15 @@ pub async fn import_paths_logic(
                         let ext_lower = ext.to_lowercase();
                         if matches!(
                             ext_lower.as_str(),
-                            "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" | "tiff" | "mp4" | "webm"
+                            "png"
+                                | "jpg"
+                                | "jpeg"
+                                | "webp"
+                                | "bmp"
+                                | "gif"
+                                | "tiff"
+                                | "mp4"
+                                | "webm"
                         ) {
                             files_to_prep.push((current_path, folder_id));
                             total_found += 1;
@@ -498,10 +508,7 @@ pub async fn import_paths_logic(
             }
             controller.set_discovering(total_found as i64, path_str);
         } else if path.is_file() {
-            let parent_dir = path
-                .parent()
-                .and_then(|p| p.to_str())
-                .unwrap_or(path_str);
+            let parent_dir = path.parent().and_then(|p| p.to_str()).unwrap_or(path_str);
             let folder_id = get_or_create_folder(parent_dir, db).await?;
             if !folder_ids.contains(&folder_id) {
                 folder_ids.push(folder_id);
@@ -556,20 +563,14 @@ pub async fn import_paths_logic(
                             .and_then(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).ok())
                             .map(|d| d.as_secs() as i64)
                             .unwrap_or(0);
-                        let media = match extract_media_info(
-                            &p,
-                            ffmpeg_ref.as_deref(),
-                            &data_dir_owned,
-                        ) {
-                            Ok(m) => m,
-                            Err(e) => {
-                                warn!(
-                                    "Failed to extract media info for {:?}: {:?}",
-                                    p, e
-                                );
-                                continue;
-                            }
-                        };
+                        let media =
+                            match extract_media_info(&p, ffmpeg_ref.as_deref(), &data_dir_owned) {
+                                Ok(m) => m,
+                                Err(e) => {
+                                    warn!("Failed to extract media info for {:?}: {:?}", p, e);
+                                    continue;
+                                }
+                            };
                         let sha256 = compute_content_sha(&p, &media);
                         items.push((
                             PreppedImage {
@@ -638,8 +639,14 @@ pub async fn import_paths_logic(
             .await?,
         };
 
-        let img_id = upsert_image_row(&mut tx, &item, Some(item_folder_id), clip_source_id, existing)
-            .await?;
+        let img_id = upsert_image_row(
+            &mut tx,
+            &item,
+            Some(item_folder_id),
+            clip_source_id,
+            existing,
+        )
+        .await?;
 
         upsert_animation_metadata(&mut tx, img_id, &item.media).await?;
         upsert_video_metadata(&mut tx, img_id, &item.media).await?;
@@ -688,9 +695,6 @@ pub async fn import_image_logic(
     .await?;
     Ok((id, sha, count, folder_ids.into_iter().next()))
 }
-
-
-
 
 pub async fn backfill_image_folders(db: &SqlitePool) -> Result<i64> {
     #[derive(Debug, sqlx::FromRow)]
@@ -801,11 +805,12 @@ pub async fn backfill_media_metadata(
     }
     tx.commit().await?;
 
-    info!("Backfilled media metadata: {} processed, {} updated", processed, updated);
+    info!(
+        "Backfilled media metadata: {} processed, {} updated",
+        processed, updated
+    );
     Ok((processed, updated))
 }
-
-
 
 /// Re-scan an imported folder for media files that are not yet in the library
 /// (notably videos that were ignored before video support). Reuses the normal
@@ -820,11 +825,10 @@ pub async fn rescan_folder_logic(
     data_dir: &Path,
     controller: &ImportController,
 ) -> Result<(i64, i64)> {
-    let folder_path: Option<String> =
-        sqlx::query_scalar("SELECT path FROM folders WHERE id = ?")
-            .bind(folder_id)
-            .fetch_optional(db)
-            .await?;
+    let folder_path: Option<String> = sqlx::query_scalar("SELECT path FROM folders WHERE id = ?")
+        .bind(folder_id)
+        .fetch_optional(db)
+        .await?;
     let path = match folder_path {
         Some(p) => p,
         None => anyhow::bail!("Folder not found: id={}", folder_id),
@@ -847,7 +851,6 @@ pub async fn rescan_folder_logic(
     let (_id, _sha, found, _folder_id) =
         import_image_logic(&path, db, active, ffmpeg, data_dir, controller).await?;
 
-
     let after: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM images WHERE folder_id = ? AND deleted_at IS NULL",
     )
@@ -864,7 +867,6 @@ pub async fn rescan_folder_logic(
     Ok((imported, found_i64))
 }
 
-
 /// Queue vector indexing for media in an imported folder that does not yet have
 /// a `ready` vector for the active embedding model. Rows that are already
 /// `pending`/`preprocessing`/`ready` are left untouched, so this is safe to run
@@ -874,11 +876,10 @@ pub async fn index_folder_logic(
     db: &SqlitePool,
     active: EmbeddingModel,
 ) -> Result<i64> {
-    let folder_exists: Option<(i64,)> =
-        sqlx::query_as("SELECT id FROM folders WHERE id = ?")
-            .bind(folder_id)
-            .fetch_optional(db)
-            .await?;
+    let folder_exists: Option<(i64,)> = sqlx::query_as("SELECT id FROM folders WHERE id = ?")
+        .bind(folder_id)
+        .fetch_optional(db)
+        .await?;
     if folder_exists.is_none() {
         anyhow::bail!("Folder not found: id={}", folder_id);
     }
@@ -905,7 +906,6 @@ pub async fn index_folder_logic(
     .execute(db)
     .await?;
 
-
     let queued = result.rows_affected() as i64;
     info!(
         "Queued {} media file(s) for indexing in folder {}",
@@ -913,5 +913,3 @@ pub async fn index_folder_logic(
     );
     Ok(queued)
 }
-
-

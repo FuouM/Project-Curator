@@ -188,11 +188,15 @@ pub async fn set_plugin_enabled(
     let data_dir_buf = data_dir.to_path_buf();
     drop(s);
 
-    let save_res = tokio::task::spawn_blocking(move || crate::save_settings(&data_dir_buf, &settings_to_save))
-        .await;
+    let save_res =
+        tokio::task::spawn_blocking(move || crate::save_settings(&data_dir_buf, &settings_to_save))
+            .await;
     match save_res {
         Ok(Ok(())) => {
-            info!("Plugin enabled state persisted: {} -> {}", plugin_name, enabled);
+            info!(
+                "Plugin enabled state persisted: {} -> {}",
+                plugin_name, enabled
+            );
             Ok(())
         }
         Ok(Err(e)) => anyhow::bail!("Failed to save settings: {:?}", e),
@@ -200,7 +204,11 @@ pub async fn set_plugin_enabled(
     }
 }
 
-pub async fn read_plugin_file(data_dir: &Path, plugin_name: &str, relative_path: &str) -> Result<String> {
+pub async fn read_plugin_file(
+    data_dir: &Path,
+    plugin_name: &str,
+    relative_path: &str,
+) -> Result<String> {
     if !validate_plugin_name(plugin_name) {
         anyhow::bail!("Invalid plugin name: {}", plugin_name);
     }
@@ -313,7 +321,7 @@ pub async fn validate_plugin_logic(manifest_path_str: &str) -> Result<(String, S
             _ => {
                 return Err(anyhow::anyhow!(
                     "Permission 'ui:inject' requires a 'components.ui' entrypoint"
-                ))
+                ));
             }
         }
     }
@@ -325,7 +333,10 @@ pub async fn validate_plugin_logic(manifest_path_str: &str) -> Result<(String, S
     }
 
     // Validate the manifest name matches its folder name (design doc 4.2).
-    if let Some(folder) = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str())
+    if let Some(folder) = path
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
     {
         if folder != name {
             return Err(anyhow::anyhow!(

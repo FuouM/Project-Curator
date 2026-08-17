@@ -1,14 +1,14 @@
+use crate::onnx::ManagedSession;
+use anyhow::{Context, Error};
 use curator_media::decode as image_decode;
 use curator_proto::contracts::{DevicePreference, EmbeddingModel};
-use crate::onnx::ManagedSession;
 use curator_proto::util::now_secs;
-use anyhow::{Context, Error};
 use ndarray::{Array2, Array4};
 use ort::{inputs, value::TensorRef};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use tokenizers::Tokenizer;
 use tracing::{info, warn};
 
@@ -142,7 +142,9 @@ impl ModelManager {
         let (tokenizer_path, vision_path, text_path) = match active {
             EmbeddingModel::ClipVitB32 => (
                 self.model_dir.join("clip-vit-b32").join("tokenizer.json"),
-                self.model_dir.join("clip-vit-b32").join("vision_model.onnx"),
+                self.model_dir
+                    .join("clip-vit-b32")
+                    .join("vision_model.onnx"),
                 self.model_dir.join("clip-vit-b32").join("text_model.onnx"),
             ),
             EmbeddingModel::MobileClipS2 => (
@@ -176,7 +178,12 @@ impl ModelManager {
             let mut vs = self.vision_session.lock().unwrap();
             if vs.is_none() {
                 info!("Loading ONNX Vision Session from {:?}", vision_path);
-                *vs = Some(Arc::new(ManagedSession::new("CLIP Vision", vision_path, device.clone(), 1)));
+                *vs = Some(Arc::new(ManagedSession::new(
+                    "CLIP Vision",
+                    vision_path,
+                    device.clone(),
+                    1,
+                )));
             }
         }
 
@@ -185,7 +192,12 @@ impl ModelManager {
             let mut ts = self.text_session.lock().unwrap();
             if ts.is_none() {
                 info!("Loading ONNX Text Session from {:?}", text_path);
-                *ts = Some(Arc::new(ManagedSession::new("CLIP Text", text_path, device, 1)));
+                *ts = Some(Arc::new(ManagedSession::new(
+                    "CLIP Text",
+                    text_path,
+                    device,
+                    1,
+                )));
             }
         }
 
@@ -232,7 +244,10 @@ impl ModelManager {
         self.last_used.store(now_secs(), Ordering::Relaxed);
         let vs_arc = {
             let guard = self.vision_session.lock().unwrap();
-            guard.as_ref().cloned().context("Vision model not initialized")?
+            guard
+                .as_ref()
+                .cloned()
+                .context("Vision model not initialized")?
         };
 
         // 1. Decode image via shared fast decode
@@ -277,7 +292,9 @@ impl ModelManager {
         //    constants. Pad color [0;3] never surfaces - the crop is square and
         //    fills the tensor exactly.
         let (mean, std) = match active {
-            EmbeddingModel::ClipVitB32 => (&crate::preprocess::CLIP_MEAN, &crate::preprocess::CLIP_STD),
+            EmbeddingModel::ClipVitB32 => {
+                (&crate::preprocess::CLIP_MEAN, &crate::preprocess::CLIP_STD)
+            }
             EmbeddingModel::MobileClipS2 => (&[0.0f32; 3], &[1.0f32; 3]),
         };
         let input_array = crate::preprocess::build_tensor(
@@ -372,7 +389,11 @@ impl ModelManager {
 
                     for (local_i, &path) in chunk.iter().enumerate() {
                         let idx = start_idx + local_i;
-                        let res = image_decode::decode_and_resize_single_image(path, target_size, &mut resizer);
+                        let res = image_decode::decode_and_resize_single_image(
+                            path,
+                            target_size,
+                            &mut resizer,
+                        );
                         results.push((idx, res));
                     }
                     results
@@ -402,7 +423,10 @@ impl ModelManager {
         self.last_used.store(now_secs(), Ordering::Relaxed);
         let vs_arc = {
             let guard = self.vision_session.lock().unwrap();
-            guard.as_ref().cloned().context("Vision model not initialized")?
+            guard
+                .as_ref()
+                .cloned()
+                .context("Vision model not initialized")?
         };
 
         let active = self.active_model();
@@ -542,7 +566,10 @@ impl ModelManager {
         self.last_used.store(now_secs(), Ordering::Relaxed);
         let ts_arc = {
             let guard = self.text_session.lock().unwrap();
-            guard.as_ref().cloned().context("Text model not initialized")?
+            guard
+                .as_ref()
+                .cloned()
+                .context("Text model not initialized")?
         };
         let tok_guard = self.tokenizer.lock().unwrap();
         let tokenizer = tok_guard.as_ref().context("Tokenizer not initialized")?;
@@ -610,12 +637,19 @@ impl curator_proto::pipeline::SystemNode for ModelManager {
             id: "clip-embedder",
             label: "CLIP Visual/Text Embedder",
             inputs: vec![
-                curator_proto::pipeline::Port { name: "image", type_name: "Image" },
-                curator_proto::pipeline::Port { name: "text", type_name: "TextMetadata" },
+                curator_proto::pipeline::Port {
+                    name: "image",
+                    type_name: "Image",
+                },
+                curator_proto::pipeline::Port {
+                    name: "text",
+                    type_name: "TextMetadata",
+                },
             ],
-            outputs: vec![
-                curator_proto::pipeline::Port { name: "embedding", type_name: "EmbeddingVector" },
-            ],
+            outputs: vec![curator_proto::pipeline::Port {
+                name: "embedding",
+                type_name: "EmbeddingVector",
+            }],
         }
     }
 

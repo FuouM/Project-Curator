@@ -1,6 +1,6 @@
-use crate::handlers::{BenchmarkProgressMap, ImageProcessingBenchmarkProgress};
 use crate::AppSettings;
-use anyhow::{bail, Result};
+use crate::handlers::{BenchmarkProgressMap, ImageProcessingBenchmarkProgress};
+use anyhow::{Result, bail};
 use curator_core::ipc::{EmbeddingModel, ModelPrecision, TaggerBenchmarkInfo, TaggerModel};
 use curator_core::tagger::TaggerManager;
 use curator_ml::{ModelManager, SingleImageBenchmarkResult};
@@ -274,7 +274,12 @@ pub async fn run_tagger_benchmark_logic(
             t.gpu_error.clone(),
             t.gpu_time_ms.is_some(),
         ),
-        None => (None, None, Some("Tagger model file not found.".to_string()), false),
+        None => (
+            None,
+            None,
+            Some("Tagger model file not found.".to_string()),
+            false,
+        ),
     };
     Ok(BenchmarkOutcome {
         clip_cpu_time_ms: 0.0,
@@ -391,7 +396,10 @@ impl DetectionBenchmarkOutcome {
         self
     }
 
-    pub fn with_ccip_metrics(mut self, (cpu, gpu, err): (f64, Option<f64>, Option<String>)) -> Self {
+    pub fn with_ccip_metrics(
+        mut self,
+        (cpu, gpu, err): (f64, Option<f64>, Option<String>),
+    ) -> Self {
         self.ccip_metrics_cpu_time_ms = Some(cpu);
         self.ccip_metrics_gpu_time_ms = gpu;
         self.ccip_metrics_gpu_error = err;
@@ -419,7 +427,10 @@ impl DetectionBenchmarkOutcome {
         self
     }
 
-    pub fn with_manga_bubble(mut self, (cpu, gpu, err): (f64, Option<f64>, Option<String>)) -> Self {
+    pub fn with_manga_bubble(
+        mut self,
+        (cpu, gpu, err): (f64, Option<f64>, Option<String>),
+    ) -> Self {
         self.manga_bubble_cpu_time_ms = Some(cpu);
         self.manga_bubble_gpu_time_ms = gpu;
         self.manga_bubble_gpu_error = err;

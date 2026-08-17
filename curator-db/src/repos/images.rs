@@ -3,11 +3,11 @@ use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::models::{
-    AnimationSummary, CharacterIdentitySummary, Image, ImageDetails, ParsedMetadata,
-    StorageStats, StorageTypeStat, TagSummary, VideoSummary,
-};
 use super::sources::SourceRepo;
+use crate::models::{
+    AnimationSummary, CharacterIdentitySummary, Image, ImageDetails, ParsedMetadata, StorageStats,
+    StorageTypeStat, TagSummary, VideoSummary,
+};
 
 pub struct ImageRepo;
 
@@ -92,12 +92,36 @@ impl ImageRepo {
              FROM video_media_metadata WHERE image_id IN ({})",
             placeholders
         );
-        let mut q = sqlx::query_as::<_, (i64, String, i64, f64, String, Option<String>, Option<i64>, Option<i64>, Option<i64>)>(&sql);
+        let mut q = sqlx::query_as::<
+            _,
+            (
+                i64,
+                String,
+                i64,
+                f64,
+                String,
+                Option<String>,
+                Option<i64>,
+                Option<i64>,
+                Option<i64>,
+            ),
+        >(&sql);
         for id in ids {
             q = q.bind(id);
         }
         if let Ok(rows) = q.fetch_all(db).await {
-            for (image_id, format, duration_ms, fps, video_codec, audio_codec, bitrate, width, height) in rows {
+            for (
+                image_id,
+                format,
+                duration_ms,
+                fps,
+                video_codec,
+                audio_codec,
+                bitrate,
+                width,
+                height,
+            ) in rows
+            {
                 map.insert(
                     image_id,
                     VideoSummary {
@@ -129,7 +153,9 @@ impl ImageRepo {
 
         let source_id = SourceRepo::resolve_source_id(db, preferred_source).await?;
         let user_source_id = SourceRepo::resolve_source_id(db, "user").await.unwrap_or(0);
-        let concept_source_id = SourceRepo::resolve_source_id(db, "ai:custom-concepts").await.unwrap_or(0);
+        let concept_source_id = SourceRepo::resolve_source_id(db, "ai:custom-concepts")
+            .await
+            .unwrap_or(0);
 
         let all_tag_rows: Vec<(String, String, f32, Option<String>, bool)> = sqlx::query_as(
             "SELECT t.name, t.category, it.confidence, s.name, (it.is_blacklisted = 1)
@@ -144,7 +170,6 @@ impl ImageRepo {
         .bind(concept_source_id)
         .fetch_all(db)
         .await?;
-
 
         let mut active_tags = Vec::new();
         let mut blacklisted_tags = Vec::new();
@@ -201,22 +226,23 @@ impl ImageRepo {
             }
         });
 
-        let character_identities: Vec<CharacterIdentitySummary> = sqlx::query_as::<_, (i64, String)>(
-            "SELECT ci.id, ci.name
+        let character_identities: Vec<CharacterIdentitySummary> =
+            sqlx::query_as::<_, (i64, String)>(
+                "SELECT ci.id, ci.name
              FROM character_detections cd
              JOIN character_identities ci ON cd.identity_id = ci.id
              WHERE cd.image_id = ? AND cd.identity_id IS NOT NULL
-             GROUP BY ci.id"
-        )
-        .bind(image_id)
-        .fetch_all(db)
-        .await?
-        .into_iter()
-        .map(|(id, name)| CharacterIdentitySummary { id, name })
-        .collect();
+             GROUP BY ci.id",
+            )
+            .bind(image_id)
+            .fetch_all(db)
+            .await?
+            .into_iter()
+            .map(|(id, name)| CharacterIdentitySummary { id, name })
+            .collect();
 
         let ocr_text: Option<String> = sqlx::query_scalar::<_, String>(
-            "SELECT GROUP_CONCAT(text, CHAR(10)) FROM image_ocr_detections WHERE image_id = ?"
+            "SELECT GROUP_CONCAT(text, CHAR(10)) FROM image_ocr_detections WHERE image_id = ?",
         )
         .bind(image_id)
         .fetch_optional(db)
@@ -269,7 +295,9 @@ impl ImageRepo {
 
         let source_id = SourceRepo::resolve_source_id(db, preferred_source).await?;
         let user_source_id = SourceRepo::resolve_source_id(db, "user").await.unwrap_or(0);
-        let concept_source_id = SourceRepo::resolve_source_id(db, "ai:custom-concepts").await.unwrap_or(0);
+        let concept_source_id = SourceRepo::resolve_source_id(db, "ai:custom-concepts")
+            .await
+            .unwrap_or(0);
         let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
 
         #[derive(sqlx::FromRow)]
@@ -407,7 +435,20 @@ impl ImageRepo {
                      FROM image_parsed_metadata WHERE image_id IN ({})",
                     ph
                 );
-                let mut q = sqlx::query_as::<_, (i64, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, String, String)>(&pm_query);
+                let mut q = sqlx::query_as::<
+                    _,
+                    (
+                        i64,
+                        String,
+                        Option<String>,
+                        Option<String>,
+                        Option<String>,
+                        Option<String>,
+                        Option<String>,
+                        String,
+                        String,
+                    ),
+                >(&pm_query);
                 for id in &img_ids {
                     q = q.bind(id);
                 }
@@ -444,8 +485,14 @@ impl ImageRepo {
             let anim_future = Self::fetch_animation_metadata_batch(&img_ids, db);
             let video_future = Self::fetch_video_metadata_batch(&img_ids, db);
 
-            let (vrows, pm_rows, ci_rows, ocr_rows, anim_rows, video_rows) =
-                tokio::join!(vq_future, pm_future, ci_future, ocr_future, anim_future, video_future);
+            let (vrows, pm_rows, ci_rows, ocr_rows, anim_rows, video_rows) = tokio::join!(
+                vq_future,
+                pm_future,
+                ci_future,
+                ocr_future,
+                anim_future,
+                video_future
+            );
 
             for (vid, state) in vrows {
                 if let Some(img) = image_map.get_mut(&vid) {
@@ -453,9 +500,21 @@ impl ImageRepo {
                 }
             }
 
-            for (img_id, match_type, artist, pixiv_id, twitter_id, timestamp_4chan, datetime_iso, extracted_tags_json, raw_matched) in pm_rows {
+            for (
+                img_id,
+                match_type,
+                artist,
+                pixiv_id,
+                twitter_id,
+                timestamp_4chan,
+                datetime_iso,
+                extracted_tags_json,
+                raw_matched,
+            ) in pm_rows
+            {
                 if let Some(img) = image_map.get_mut(&img_id) {
-                    let extracted_tags: Vec<String> = serde_json::from_str(&extracted_tags_json).unwrap_or_default();
+                    let extracted_tags: Vec<String> =
+                        serde_json::from_str(&extracted_tags_json).unwrap_or_default();
                     img.parsed_metadata = Some(ParsedMetadata {
                         match_type,
                         artist,
@@ -581,10 +640,11 @@ impl ImageRepo {
         db: &SqlitePool,
         preferred_source: &str,
     ) -> Result<(ImageDetails, i64)> {
-        let count_row: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM images WHERE deleted_at IS NULL AND is_missing = 0")
-                .fetch_one(db)
-                .await?;
+        let count_row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM images WHERE deleted_at IS NULL AND is_missing = 0",
+        )
+        .fetch_one(db)
+        .await?;
         let total_count = count_row.0;
 
         if total_count == 0 {
@@ -695,7 +755,6 @@ mod tests {
         .execute(&pool)
         .await?;
 
-
         // 2. Insert sources
         sqlx::query("INSERT INTO sources (id, name, type) VALUES (1, 'ai:camie-tagger-v2', 'ai')")
             .execute(&pool)
@@ -725,7 +784,11 @@ mod tests {
         // 6. Query single image with preferred_source = 'ai:camie-tagger-v2'
         let details = ImageRepo::get_image(1, "ai:camie-tagger-v2", &pool).await?;
         assert_eq!(details.id, 1);
-        assert_eq!(details.tags.len(), 2, "Expected 2 tags (1 AI tag + 1 User tag)");
+        assert_eq!(
+            details.tags.len(),
+            2,
+            "Expected 2 tags (1 AI tag + 1 User tag)"
+        );
         let tag_names: Vec<&str> = details.tags.iter().map(|t| t.tag.as_str()).collect();
         assert!(tag_names.contains(&"blonde_hair"));
         assert!(tag_names.contains(&"suooo"));
@@ -741,4 +804,3 @@ mod tests {
         Ok(())
     }
 }
-

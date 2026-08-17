@@ -1,11 +1,11 @@
-use std::path::PathBuf;
-use tonic::transport::{Channel, Endpoint, Uri};
-use tower::service_fn;
-use tonic::transport::server::Connected;
 use hyper_util::rt::tokio::TokioIo;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tonic::transport::server::Connected;
+use tonic::transport::{Channel, Endpoint, Uri};
+use tower::service_fn;
 
 #[cfg(target_os = "windows")]
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeServer, ServerOptions};
@@ -26,19 +26,23 @@ pub async fn connect_ipc() -> Result<Channel, tonic::transport::Error> {
 
     #[cfg(target_os = "windows")]
     {
-        endpoint.connect_with_connector(service_fn(move |_: Uri| async move {
-            let client = ClientOptions::new().open(WINDOWS_PIPE_NAME)?;
-            Ok::<_, std::io::Error>(TokioIo::new(client))
-        })).await
+        endpoint
+            .connect_with_connector(service_fn(move |_: Uri| async move {
+                let client = ClientOptions::new().open(WINDOWS_PIPE_NAME)?;
+                Ok::<_, std::io::Error>(TokioIo::new(client))
+            }))
+            .await
     }
 
     #[cfg(not(target_os = "windows"))]
     {
         let socket_path = get_uds_path();
-        endpoint.connect_with_connector(service_fn(move |_: Uri| async move {
-            let stream = UnixStream::connect(&socket_path).await?;
-            Ok::<_, std::io::Error>(TokioIo::new(stream))
-        })).await
+        endpoint
+            .connect_with_connector(service_fn(move |_: Uri| async move {
+                let stream = UnixStream::connect(&socket_path).await?;
+                Ok::<_, std::io::Error>(TokioIo::new(stream))
+            }))
+            .await
     }
 }
 
@@ -67,11 +71,17 @@ impl<T: AsyncWrite + Unpin> AsyncWrite for IpcStream<T> {
         Pin::new(&mut self.inner).poll_write(cx, buf)
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
         Pin::new(&mut self.inner).poll_flush(cx)
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
         Pin::new(&mut self.inner).poll_shutdown(cx)
     }
 }
@@ -83,7 +93,12 @@ impl<T: Send + Sync + 'static> Connected for IpcStream<T> {
 
 /// Incoming connections stream for the gRPC Server
 #[cfg(target_os = "windows")]
-pub fn server_incoming() -> Result<impl tokio_stream::Stream<Item = Result<IpcStream<NamedPipeServer>, std::io::Error>> + Send + 'static, std::io::Error> {
+pub fn server_incoming() -> Result<
+    impl tokio_stream::Stream<Item = Result<IpcStream<NamedPipeServer>, std::io::Error>>
+    + Send
+    + 'static,
+    std::io::Error,
+> {
     let stream = async_stream::try_stream! {
         let mut is_first = true;
         loop {
@@ -100,14 +115,17 @@ pub fn server_incoming() -> Result<impl tokio_stream::Stream<Item = Result<IpcSt
 
 /// Incoming UDS connections stream for the gRPC Server
 #[cfg(not(target_os = "windows"))]
-pub fn server_incoming() -> Result<impl tokio_stream::Stream<Item = Result<IpcStream<UnixStream>, std::io::Error>> + Send + 'static, std::io::Error> {
+pub fn server_incoming() -> Result<
+    impl tokio_stream::Stream<Item = Result<IpcStream<UnixStream>, std::io::Error>> + Send + 'static,
+    std::io::Error,
+> {
     let socket_path = get_uds_path();
     if let Some(parent) = socket_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
     let _ = std::fs::remove_file(&socket_path);
     let listener = UnixListener::bind(&socket_path)?;
-    
+
     let stream = async_stream::try_stream! {
         loop {
             let (stream, _) = listener.accept().await?;

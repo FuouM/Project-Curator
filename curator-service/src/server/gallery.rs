@@ -1,10 +1,10 @@
+use crate::ClientContext;
 use crate::handlers;
 use crate::server::internal_status;
-use crate::ClientContext;
 use curator_core::grpc::gallery::{
-    gallery_service_server::GalleryService, ClearThumbnailCacheResult, GetImageRequest,
-    GetThumbnailRequest, ImageResult, ListImagesRequest, ListResult, PurgeResult,
-    SetFavoriteRequest, SetNoteRequest, ThumbnailResult,
+    ClearThumbnailCacheResult, GetImageRequest, GetThumbnailRequest, ImageResult,
+    ListImagesRequest, ListResult, PurgeResult, SetFavoriteRequest, SetNoteRequest,
+    ThumbnailResult, gallery_service_server::GalleryService,
 };
 use std::sync::Arc;
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
@@ -79,7 +79,6 @@ impl GalleryService for GalleryServiceImpl {
         Ok(TonicResponse::new(()))
     }
 
-
     async fn get_thumbnail(
         &self,
         request: TonicRequest<GetThumbnailRequest>,
@@ -102,10 +101,12 @@ impl GalleryService for GalleryServiceImpl {
         &self,
         _request: TonicRequest<()>,
     ) -> Result<TonicResponse<PurgeResult>, Status> {
-        let deleted_count =
-            handlers::image::purge_missing_thumbnails_logic(&self.ctx.thumbnail_cache, &self.ctx.db)
-                .await
-                .map_err(internal_status)?;
+        let deleted_count = handlers::image::purge_missing_thumbnails_logic(
+            &self.ctx.thumbnail_cache,
+            &self.ctx.db,
+        )
+        .await
+        .map_err(internal_status)?;
         Ok(TonicResponse::new(PurgeResult { deleted_count }))
     }
 
@@ -116,6 +117,8 @@ impl GalleryService for GalleryServiceImpl {
         let deleted_count = handlers::image::clear_thumbnails_logic(&self.ctx.thumbnail_cache)
             .await
             .map_err(internal_status)?;
-        Ok(TonicResponse::new(ClearThumbnailCacheResult { deleted_count }))
+        Ok(TonicResponse::new(ClearThumbnailCacheResult {
+            deleted_count,
+        }))
     }
 }

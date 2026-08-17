@@ -1,11 +1,11 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use crate::device::{OnnxConfig, apply_device_preference};
 use anyhow::{Context, Result};
-use ort::session::Session;
 use curator_proto::contracts::DevicePreference;
 use curator_proto::util::now_secs;
-use crate::device::{apply_device_preference, OnnxConfig};
+use ort::session::Session;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub struct ManagedSession {
     name: String,
@@ -73,7 +73,11 @@ impl ManagedSession {
     pub fn unload(&self) {
         let mut guard = self.session.lock().unwrap();
         if guard.is_some() {
-            tracing::info!("{}: unloading model (idle {}s)", self.name, self.idle_secs());
+            tracing::info!(
+                "{}: unloading model (idle {}s)",
+                self.name,
+                self.idle_secs()
+            );
             *guard = None;
         }
     }
@@ -118,7 +122,10 @@ impl ManagedSession {
         let mut builder = Session::builder()
             .context(format!("Failed to build {} session", self.name))?
             .with_intra_threads(self.intra_threads)
-            .context(format!("Failed to set {} threads to {}", self.name, self.intra_threads))?;
+            .context(format!(
+                "Failed to set {} threads to {}",
+                self.name, self.intra_threads
+            ))?;
 
         apply_device_preference(&mut builder, &device, &self.name, &self.config);
 

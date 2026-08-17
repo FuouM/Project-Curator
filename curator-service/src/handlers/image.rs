@@ -129,7 +129,10 @@ pub async fn tag_image_logic(
     let mut tx = db.begin().await?;
     for pred in &predictions {
         if blacklisted_names.contains(&pred.tag) {
-            info!("Skipping blacklisted AI tag '{}' for image {}", pred.tag, image_id);
+            info!(
+                "Skipping blacklisted AI tag '{}' for image {}",
+                pred.tag, image_id
+            );
             continue;
         }
         let tag_id = upsert_tag_id(&mut tx, &pred.tag, &pred.category).await?;
@@ -261,8 +264,6 @@ fn warn_scoped(scope: &str, msg: String) {
     tracing::warn!("{} {}", scope, msg);
 }
 
-
-
 pub async fn get_image_logic(
     image_id: i64,
     preferred_source: &str,
@@ -288,7 +289,6 @@ pub async fn list_images_logic(
 ) -> Result<(Vec<ImageDetails>, i64)> {
     curator_core::ImageRepo::list_images(limit, offset, only_favorites, preferred_source, db).await
 }
-
 
 pub async fn get_thumbnail_logic(
     image_id: i64,
@@ -440,8 +440,6 @@ pub async fn get_random_image_logic(
     Ok((img, pos.0))
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,7 +453,9 @@ mod tests {
             .max_connections(1)
             .connect_with(options)
             .await?;
-        sqlx::migrate!("../curator-db/migrations").run(&pool).await?;
+        sqlx::migrate!("../curator-db/migrations")
+            .run(&pool)
+            .await?;
 
         // Insert a test image
         sqlx::query(

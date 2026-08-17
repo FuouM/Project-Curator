@@ -1,6 +1,6 @@
 use super::image;
 use crate::AppSettings;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use curator_core::ipc::{TagSummary, TaggerModel};
 use curator_core::tagger::TaggerManager;
 use sqlx::SqlitePool;

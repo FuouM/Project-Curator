@@ -1,12 +1,12 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use curator_core::grpc::import::{RescanSafetyResult, SafetyRescanProgress};
 use curator_core::image_decode::decode_rgb;
 use curator_core::ipc::DevicePreference;
 use curator_ml::{SafetyClassification, SafetyClassifier};
 use sqlx::SqlitePool;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
@@ -14,9 +14,7 @@ use tracing::{info, warn};
 /// Batch size for safety classification sweeps.
 pub const SAFETY_BATCH_FLUSH: usize = 8;
 
-
 /// Service-side owner of the `SafetyClassifier` and every DB write of the five
-
 
 /// per-class safety columns. The DB only ever records what the model produced —
 /// there is no threshold, no aggregate, and no filtering on the backend.
@@ -68,10 +66,7 @@ impl SafetyService {
         }
         let model_path = SafetyClassifier::resolve_model_path(&self.data_dir);
         if !model_path.exists() {
-            if !self
-                .model_missing_logged
-                .swap(true, Ordering::SeqCst)
-            {
+            if !self.model_missing_logged.swap(true, Ordering::SeqCst) {
                 info!(
                     "Safety classification skipped (model not downloaded): {:?}. \
                      Download nsfw-detection-2-mini in Settings > Models.",
@@ -90,7 +85,6 @@ impl SafetyService {
         let results = classify_paths(&classifier, &batch).await;
         write_classifications(db, &results).await;
     }
-
 
     /// Classify a single arbitrary image file (ephemeral, library-agnostic).
     /// Unlike the import path — where a missing model is a no-op — the toolbox
@@ -228,7 +222,11 @@ impl SafetyService {
     }
 
     /// Classify all unclassified images belonging to a specific folder on demand.
-    pub async fn classify_folder_safety(&self, db: &SqlitePool, folder_id: i64) -> Result<(i64, i64)> {
+    pub async fn classify_folder_safety(
+        &self,
+        db: &SqlitePool,
+        folder_id: i64,
+    ) -> Result<(i64, i64)> {
         let unclassified: Vec<(i64, String, Option<String>)> = sqlx::query_as(
             "SELECT id, current_filepath, video_frame_path FROM images 
              WHERE folder_id = ? AND safe_score IS NULL AND deleted_at IS NULL AND is_missing = 0",
@@ -255,7 +253,6 @@ impl SafetyService {
         self.classify_and_write(db, batch).await;
         Ok((total, total))
     }
-
 
     pub async fn rescan_progress(&self) -> SafetyRescanProgress {
         let prog = self.progress.lock().await;
@@ -323,11 +320,15 @@ async fn classify_paths(
         warn!("Safety classification task panicked: {:?}", e);
         rows_for_error
             .iter()
-            .map(|(id, _)| (*id, Err(anyhow::anyhow!("Safety classification task failed"))))
+            .map(|(id, _)| {
+                (
+                    *id,
+                    Err(anyhow::anyhow!("Safety classification task failed")),
+                )
+            })
             .collect()
     })
 }
-
 
 /// Persist per-class columns for a batch of classification results. Rows whose
 /// classification errored are skipped (columns stay `NULL`). Retries a bounded
@@ -381,10 +382,7 @@ async fn write_classifications(
 
 fn is_db_locked(e: &sqlx::Error) -> bool {
     if let sqlx::Error::Database(db) = e {
-        return db
-            .message()
-            .to_lowercase()
-            .contains("database is locked");
+        return db.message().to_lowercase().contains("database is locked");
     }
     false
 }

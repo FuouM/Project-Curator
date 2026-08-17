@@ -7,8 +7,8 @@
 use std::sync::Arc;
 use tonic::Status;
 
-use crate::handlers;
 use crate::ClientContext;
+use crate::handlers;
 
 pub async fn resolve_output_path(
     ctx: &Arc<ClientContext>,
@@ -71,7 +71,11 @@ pub async fn start(
         user_agent: params["user_agent"].as_str().map(|s| s.to_string()),
         headers: params["headers"]
             .as_array()
-            .map(|a| a.iter().filter_map(|h| h.as_str().map(|s| s.to_string())).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|h| h.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
             .unwrap_or_default(),
         max_tries: params["max_tries"].as_u64(),
         timeout_secs: params["timeout_secs"].as_u64(),

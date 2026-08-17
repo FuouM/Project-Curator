@@ -5,8 +5,8 @@
 use std::sync::Arc;
 use tonic::Status;
 
-use crate::handlers;
 use crate::ClientContext;
+use crate::handlers;
 
 pub async fn check(
     ctx: &Arc<ClientContext>,
@@ -53,7 +53,9 @@ pub async fn install(
     let tool = params["tool"]
         .as_str()
         .ok_or_else(|| Status::invalid_argument("missing tool"))?;
-    match handlers::tools::install_tool(&ctx.data_dir, tool, ctx.tool_install_progress.clone()).await {
+    match handlers::tools::install_tool(&ctx.data_dir, tool, ctx.tool_install_progress.clone())
+        .await
+    {
         Ok(outcome) => Ok(serde_json::json!({
             "InstallToolResult": { "started": outcome.started, "error": outcome.error }
         })),

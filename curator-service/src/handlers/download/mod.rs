@@ -18,11 +18,13 @@ use tracing::error;
 pub use engine::{DownloadEngine, DownloadJob, DownloadJobState, EngineRegistry};
 
 /// Shared live state for active download jobs, keyed by `job_id`.
-pub type DownloadJobsMap = Arc<tokio::sync::Mutex<std::collections::HashMap<String, DownloadJobState>>>;
+pub type DownloadJobsMap =
+    Arc<tokio::sync::Mutex<std::collections::HashMap<String, DownloadJobState>>>;
 
 /// Per-job cancellation signal, keyed by `job_id`. The generic runner watches
 /// the receiver; `DownloadCancel` sends `true` to trigger the graceful stop.
-pub type DownloadCancelMap = Arc<tokio::sync::Mutex<std::collections::HashMap<String, tokio::sync::watch::Sender<bool>>>>;
+pub type DownloadCancelMap =
+    Arc<tokio::sync::Mutex<std::collections::HashMap<String, tokio::sync::watch::Sender<bool>>>>;
 
 /// Reserved output paths, keyed by `job_id`. The backend owns name resolution:
 /// `ResolveOutputPath` claims the next free `_N` name for a queued job, and
@@ -49,7 +51,14 @@ pub async fn start_download(
     // Resolve (and, for queued jobs, reuse) the output path through the shared
     // claim map so the name is exactly what `ResolveOutputPath` reserved at
     // enqueue time - the client never invents `_N` names itself.
-    let resolved = resolve_output_path(&jobs, &claims, &job.job_id, &job.output_path, job.auto_rename).await;
+    let resolved = resolve_output_path(
+        &jobs,
+        &claims,
+        &job.job_id,
+        &job.output_path,
+        job.auto_rename,
+    )
+    .await;
     job.output_path = resolved;
 
     let exe = {
@@ -100,7 +109,16 @@ pub async fn start_download(
     let cancels_run = cancels.clone();
     let claims_run = claims.clone();
     tokio::spawn(async move {
-        run_download(job, engine, exe, cancel_rx, jobs_run, cancels_run, claims_run).await;
+        run_download(
+            job,
+            engine,
+            exe,
+            cancel_rx,
+            jobs_run,
+            cancels_run,
+            claims_run,
+        )
+        .await;
     });
     Ok(())
 }
@@ -176,20 +194,21 @@ async fn run_download(
 ) {
     // Graceful-stop watcher, shared between the cancel listener and the final
     // cleanup path.
-    let watcher = Arc::new(tokio::sync::Mutex::new(
-        engine.watcher_command().and_then(|mut c| {
+    let watcher = Arc::new(tokio::sync::Mutex::new(engine.watcher_command().and_then(
+        |mut c| {
             c.stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null());
             c.spawn().ok()
-        }),
-    ));
+        },
+    )));
     let watcher_pid = {
         let watcher_guard = watcher.lock().await;
         watcher_guard.as_ref().and_then(|w| w.id())
     };
 
     let mut cmd = engine.build_command(&exe, &job, watcher_pid);
-    cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
 
     let command_string = {
         let mut parts = vec![exe.to_string_lossy().into_owned()];
@@ -320,8 +339,9 @@ async fn run_download(
                         state.percent = 100.0;
                     } else {
                         state.status = "failed".to_string();
-                        state.error =
-                            Some("Engine exited successfully but produced no output file".to_string());
+                        state.error = Some(
+                            "Engine exited successfully but produced no output file".to_string(),
+                        );
                     }
                 }
                 Ok(false) => {
@@ -354,7 +374,8 @@ async fn run_download(
                 }
                 Err(_) => {
                     state.status = "failed".to_string();
-                    state.error = Some("Download engine process terminated unexpectedly".to_string());
+                    state.error =
+                        Some("Download engine process terminated unexpectedly".to_string());
                 }
             }
         }
@@ -378,7 +399,13 @@ pub async fn cancel_download(
     cancels: &DownloadCancelMap,
     job_id: &str,
 ) -> anyhow::Result<()> {
-    let running = { jobs.lock().await.get(job_id).map(|s| s.running).unwrap_or(false) };
+    let running = {
+        jobs.lock()
+            .await
+            .get(job_id)
+            .map(|s| s.running)
+            .unwrap_or(false)
+    };
     if !running {
         return Ok(());
     }
@@ -429,11 +456,17 @@ async fn process_raw_line(
     lines: &mut Vec<String>,
     raw: Vec<u8>,
 ) {
-    let start = raw.iter().position(|b| !b.is_ascii_whitespace()).unwrap_or(raw.len());
+    let start = raw
+        .iter()
+        .position(|b| !b.is_ascii_whitespace())
+        .unwrap_or(raw.len());
     if start >= raw.len() {
         return;
     }
-    let end = raw.iter().rposition(|b| !b.is_ascii_whitespace()).unwrap_or(start);
+    let end = raw
+        .iter()
+        .rposition(|b| !b.is_ascii_whitespace())
+        .unwrap_or(start);
     let line = String::from_utf8_lossy(&raw[start..=end]).into_owned();
     if line.is_empty() {
         return;
@@ -526,7 +559,8 @@ mod job_guard {
     }
 
     unsafe extern "system" {
-        fn CreateJobObjectW(lpJobAttributes: *const std::ffi::c_void, lpName: *const u16) -> HANDLE;
+        fn CreateJobObjectW(lpJobAttributes: *const std::ffi::c_void, lpName: *const u16)
+        -> HANDLE;
         fn SetInformationJobObject(
             hJob: HANDLE,
             JobObjectInformationClass: i32,
