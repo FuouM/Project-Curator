@@ -2,7 +2,7 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { typedCall } from "../ipc";
 import { maskPath, SafeHtml, html } from "../components";
 import { renderSearchResults } from "../cards";
-import { setupInputClearButtons } from "../utils";
+import { setupInputClearButtons, escapeHtml } from "../utils";
 import { setupSelectionToolbar } from "../selection-toolbar";
 import { attachAutocomplete } from "../autocomplete";
 import { showErrorAlert } from "../alert";
@@ -197,9 +197,10 @@ export function setupSearch() {
       }
     } catch (e: any) {
       if (statsMeta) statsMeta.style.display = "none";
+      const clean = String(e?.message || e).replace(/^Internal error:\s*/, "");
       if (grid)
-        grid.innerHTML = `<p style="color: #ef4444; padding: 10px;">IPC Search failed: ${e.message || e}</p>`;
-      showErrorAlert("IPC Search failed:\n" + e);
+        grid.innerHTML = `<p style="color: #ef4444; padding: 10px;">Search failed: ${escapeHtml(clean)}</p>`;
+      showErrorAlert(`Search failed: ${clean}`);
     }
   });
 

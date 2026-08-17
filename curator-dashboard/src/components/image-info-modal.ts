@@ -423,6 +423,18 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
         requestDashboardRefresh();
       } catch (e: any) {
         console.error("Detection failed:", e);
+        const detectionsBody = body.querySelector("#detections-body");
+        if (detectionsBody) {
+          let banner = detectionsBody.querySelector(".detect-error") as HTMLElement | null;
+          if (!banner) {
+            banner = document.createElement("div");
+            banner.className = "detect-error";
+            banner.style.cssText =
+              "color:#842029;background:#f8d7da;border:1px solid #f5c2c7;border-radius:4px;padding:6px 8px;margin-top:6px;font-size:11px;";
+            detectionsBody.appendChild(banner);
+          }
+          banner.textContent = `Detection failed: ${e?.message || e}`;
+        }
       } finally {
         detectBtn.disabled = false;
         detectBtn.innerHTML = '<i class="bi bi-bounding-box"></i> Detect Characters';

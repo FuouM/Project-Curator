@@ -242,7 +242,19 @@ pub async fn run_benchmark_logic(
             has_gpu,
             taggers: tagger_infos,
         }),
-        Err(e) => bail!("CLIP model benchmark failed: {:?}", e),
+        Err(e) => {
+            if !vision_path.exists() {
+                bail!(
+                    "The {} embedding model is not downloaded yet (missing {:?}). Download it in Settings > Models.",
+                    match embedding_model {
+                        EmbeddingModel::ClipVitB32 => "CLIP ViT-B/32",
+                        EmbeddingModel::MobileClipS2 => "MobileCLIP-S2",
+                    },
+                    vision_path
+                );
+            }
+            bail!("CLIP model benchmark failed: {:?}", e);
+        }
     }
 }
 
@@ -471,7 +483,9 @@ pub async fn run_detection_benchmark_logic(
             }
             info!("RunYoloBenchmark request: exists={}", path.exists());
             if !path.exists() {
-                bail!("YOLO model file not found.");
+                bail!(
+                    "YOLO Person Detection model is not downloaded yet. Download it in Settings > Models."
+                );
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark(&path, 640)
                 .map_err(|e| anyhow::anyhow!("Yolo benchmark failed: {:?}", e))?;
@@ -481,7 +495,9 @@ pub async fn run_detection_benchmark_logic(
             let path = det_dir.join("ccip/model_feat.onnx");
             info!("RunCcipFeatBenchmark request: exists={}", path.exists());
             if !path.exists() {
-                bail!("CCIP Feature model file not found.");
+                bail!(
+                    "CCIP Feature Extraction model is not downloaded yet. Download it in Settings > Models."
+                );
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark(&path, 384)
                 .map_err(|e| anyhow::anyhow!("CCIP Feature benchmark failed: {:?}", e))?;
@@ -491,7 +507,9 @@ pub async fn run_detection_benchmark_logic(
             let path = det_dir.join("ccip/model_metrics.onnx");
             info!("RunCcipMetricsBenchmark request: exists={}", path.exists());
             if !path.exists() {
-                bail!("CCIP Metrics model file not found.");
+                bail!(
+                    "CCIP Metrics model is not downloaded yet. Download it in Settings > Models."
+                );
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark_2d(&path, 16, 768)
                 .map_err(|e| anyhow::anyhow!("CCIP Metrics benchmark failed: {:?}", e))?;
@@ -506,7 +524,7 @@ pub async fn run_detection_benchmark_logic(
                 }
             }
             if !path.exists() {
-                bail!("OCR Detection model file not found.");
+                bail!("OCR Detection model is not downloaded yet. Download it in Settings > Models.");
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark(&path, 960)
                 .map_err(|e| anyhow::anyhow!("OCR Detection benchmark failed: {:?}", e))?;
@@ -521,7 +539,7 @@ pub async fn run_detection_benchmark_logic(
                 }
             }
             if !path.exists() {
-                bail!("OCR Recognition model file not found.");
+                bail!("OCR Recognition model is not downloaded yet. Download it in Settings > Models.");
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark_4d(&path, 48, 320)
                 .map_err(|e| anyhow::anyhow!("OCR Recognition benchmark failed: {:?}", e))?;
@@ -530,7 +548,7 @@ pub async fn run_detection_benchmark_logic(
         DetectionBenchmarkKind::OcrCls => {
             let path = det_dir.join("pp-lcnet-cls/inference.onnx");
             if !path.exists() {
-                bail!("OCR Classification model file not found.");
+                bail!("OCR Classification model is not downloaded yet. Download it in Settings > Models.");
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark_4d(&path, 80, 160)
                 .map_err(|e| anyhow::anyhow!("OCR Classification benchmark failed: {:?}", e))?;
@@ -545,7 +563,7 @@ pub async fn run_detection_benchmark_logic(
                 }
             }
             if !path.exists() {
-                bail!("Manga Bubble YOLO model file not found.");
+                bail!("Manga Bubble YOLO model is not downloaded yet. Download it in Settings > Models.");
             }
             let (cpu, gpu, err, has_gpu) = curator_ml::run_onnx_benchmark(&path, 1280)
                 .map_err(|e| anyhow::anyhow!("Manga Bubble YOLO benchmark failed: {:?}", e))?;
@@ -581,7 +599,7 @@ pub async fn run_detection_benchmark_logic(
                 ModelPrecision::Original => nsfw_dir.join("nsfw-detection-2-mini.onnx"),
             };
             if !path.exists() {
-                bail!("Safety model file not found at {:?}", path);
+                bail!("NSFW Safety model is not downloaded yet. Download it in Settings > Models.");
             }
             info!("RunSafetyBenchmark request: path={:?}", path);
             let (cpu, gpu, err) = curator_ml::benchmark_safety_classifier(&path)

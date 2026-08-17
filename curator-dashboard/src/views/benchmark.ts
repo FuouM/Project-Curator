@@ -130,7 +130,9 @@ export function setupBenchmark() {
           RunBenchmarkRequestSchema,
           { embeddingModel: EmbeddingModel.CLIP_VIT_B_32, runTagger: false },
           BenchmarkResultSchema,
-        ).catch((e: any) => ({ Error: { message: e.message } })),
+        ).catch((e: any) => ({
+          Error: { message: typeof e === "string" ? e : e?.message || String(e) },
+        })),
       extractResult: (resp) => {
         if (resp == null) return null;
         const { clipCpuTimeMs, clipGpuTimeMs, clipGpuError, hasGpu } = resp;
@@ -159,7 +161,9 @@ export function setupBenchmark() {
           RunBenchmarkRequestSchema,
           { embeddingModel: EmbeddingModel.MOBILECLIP_S2, runTagger: false },
           BenchmarkResultSchema,
-        ).catch((e: any) => ({ Error: { message: e.message } })),
+        ).catch((e: any) => ({
+          Error: { message: typeof e === "string" ? e : e?.message || String(e) },
+        })),
       extractResult: (resp) => {
         if (resp == null) return null;
         const { clipCpuTimeMs, clipGpuTimeMs, clipGpuError } = resp;
@@ -178,7 +182,9 @@ export function setupBenchmark() {
           RunTaggerBenchmarkRequestSchema,
           { tagger: TaggerModel.CAMIE },
           BenchmarkResultSchema,
-        ).catch((e: any) => ({ Error: { message: e.message } })),
+        ).catch((e: any) => ({
+          Error: { message: typeof e === "string" ? e : e?.message || String(e) },
+        })),
       extractResult: (resp) =>
         extractTaggerResult(
           resp,
@@ -200,7 +206,9 @@ export function setupBenchmark() {
           RunTaggerBenchmarkRequestSchema,
           { tagger: TaggerModel.WD_EVA02 },
           BenchmarkResultSchema,
-        ).catch((e: any) => ({ Error: { message: e.message } })),
+        ).catch((e: any) => ({
+          Error: { message: typeof e === "string" ? e : e?.message || String(e) },
+        })),
       extractResult: (resp) =>
         extractTaggerResult(
           resp,
@@ -222,7 +230,9 @@ export function setupBenchmark() {
           null,
           null,
           DetectionBenchmarkResultSchema,
-        ).catch((e: any) => ({ Error: { message: e.message } })),
+        ).catch((e: any) => ({
+          Error: { message: typeof e === "string" ? e : e?.message || String(e) },
+        })),
       extractResult: (resp) => {
         if (resp == null || resp.yoloCpuTimeMs == null) return null;
         return {
@@ -244,7 +254,9 @@ export function setupBenchmark() {
           null,
           null,
           DetectionBenchmarkResultSchema,
-        ).catch((e: any) => ({ Error: { message: e.message } })),
+        ).catch((e: any) => ({
+          Error: { message: typeof e === "string" ? e : e?.message || String(e) },
+        })),
       extractResult: (resp) => {
         if (resp == null || resp.safetyCpuTimeMs == null) return null;
         return {
@@ -266,7 +278,9 @@ export function setupBenchmark() {
           null,
           null,
           DetectionBenchmarkResultSchema,
-        ).catch((e: any) => ({ Error: { message: e.message } })),
+        ).catch((e: any) => ({
+          Error: { message: typeof e === "string" ? e : e?.message || String(e) },
+        })),
       extractResult: (resp) => {
         if (resp == null || resp.ccipFeatCpuTimeMs == null) return null;
         return {
@@ -288,7 +302,9 @@ export function setupBenchmark() {
           null,
           null,
           DetectionBenchmarkResultSchema,
-        ).catch((e: any) => ({ Error: { message: e.message } })),
+        ).catch((e: any) => ({
+          Error: { message: typeof e === "string" ? e : e?.message || String(e) },
+        })),
       extractResult: (resp) => {
         if (resp == null || resp.ccipMetricsCpuTimeMs == null) return null;
         return {
@@ -310,7 +326,9 @@ export function setupBenchmark() {
           null,
           null,
           DetectionBenchmarkResultSchema,
-        ).catch((e: any) => ({ Error: { message: e.message } })),
+        ).catch((e: any) => ({
+          Error: { message: typeof e === "string" ? e : e?.message || String(e) },
+        })),
       extractResult: (resp) => {
         if (resp == null || resp.ocrDetCpuTimeMs == null) return null;
         return {
@@ -332,7 +350,9 @@ export function setupBenchmark() {
           null,
           null,
           DetectionBenchmarkResultSchema,
-        ).catch((e: any) => ({ Error: { message: e.message } })),
+        ).catch((e: any) => ({
+          Error: { message: typeof e === "string" ? e : e?.message || String(e) },
+        })),
       extractResult: (resp) => {
         if (resp == null || resp.ocrRecCpuTimeMs == null) return null;
         return {
@@ -354,7 +374,9 @@ export function setupBenchmark() {
           null,
           null,
           DetectionBenchmarkResultSchema,
-        ).catch((e: any) => ({ Error: { message: e.message } })),
+        ).catch((e: any) => ({
+          Error: { message: typeof e === "string" ? e : e?.message || String(e) },
+        })),
       extractResult: (resp) => {
         if (resp == null || resp.ocrClsCpuTimeMs == null) return null;
         return {
@@ -376,7 +398,9 @@ export function setupBenchmark() {
           null,
           null,
           DetectionBenchmarkResultSchema,
-        ).catch((e: any) => ({ Error: { message: e.message } })),
+        ).catch((e: any) => ({
+          Error: { message: typeof e === "string" ? e : e?.message || String(e) },
+        })),
       extractResult: (resp) => {
         if (resp == null || resp.mangaBubbleCpuTimeMs == null) return null;
         return {
@@ -390,6 +414,7 @@ export function setupBenchmark() {
 
   function initBenchmarkUI() {
     benchmarks.forEach((b, i) => {
+      markCard(b, "ok");
       if (b.cpuEl) b.cpuEl.textContent = i === 0 ? "Running..." : "Queued...";
       if (b.gpuEl) b.gpuEl.textContent = i === 0 ? "Running..." : "Queued...";
       if (b.speedupEl) b.speedupEl.textContent = i === 0 ? "Calculating..." : "Waiting...";
@@ -432,16 +457,35 @@ export function setupBenchmark() {
     }
   }
 
+  function markCard(bench: BenchmarkConfig, state: "ok" | "error") {
+    const btn = document.querySelector<HTMLButtonElement>(`[data-benchmark-key="${bench.key}"]`);
+    const card = btn?.closest(".group-box") as HTMLElement | null;
+    if (!card) return;
+    if (state === "error") {
+      card.style.border = "2px solid #d00000";
+      card.style.backgroundColor = "#fdecea";
+    } else {
+      card.style.border = "";
+      card.style.backgroundColor = "";
+    }
+  }
+
   async function runSingleBenchmark(bench: BenchmarkConfig) {
     startRunningAnimation(bench);
     try {
       const resp = await bench.run();
       if ("Error" in resp) {
-        appendBenchError(`${bench.label}: ${resp.Error.message}`);
+        markCard(bench, "error");
+        const msg = typeof resp.Error?.message === "string" ? resp.Error.message : "Unknown error";
+        appendBenchError(`${bench.label}: ${msg}`);
+        if (bench.cpuEl) bench.cpuEl.textContent = "Failed";
+        if (bench.gpuEl) bench.gpuEl.textContent = "";
+        if (bench.speedupEl) bench.speedupEl.textContent = "—";
         return;
       }
       const result = bench.extractResult(resp);
       if (result) {
+        markCard(bench, "ok");
         displayThroughput(
           bench.cpuEl,
           bench.gpuEl,
@@ -451,6 +495,7 @@ export function setupBenchmark() {
           result.gpuErr,
         );
       } else {
+        markCard(bench, "error");
         if (bench.cpuEl) bench.cpuEl.textContent = "N/A";
         if (bench.gpuEl) bench.gpuEl.textContent = "N/A";
         if (bench.speedupEl) bench.speedupEl.textContent = "—";

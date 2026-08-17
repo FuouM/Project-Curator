@@ -105,7 +105,8 @@ impl ManagedSession {
         }
         if !self.model_path.exists() {
             anyhow::bail!(
-                "{} model file not found at {:?}",
+                "{} model is not downloaded yet (model file not found at {:?}). \
+                 Download it in Settings > Models.",
                 self.name,
                 self.model_path
             );

@@ -104,9 +104,11 @@ impl TaggerEngine {
 
         if !self.metadata_path.exists() {
             anyhow::bail!(
-                "{} metadata not found at {:?}",
+                "{} is not downloaded yet (metadata not found at {:?}). \
+                 Download the {} model in Settings > Models to enable tagging.",
                 self.spec.display_name,
-                self.metadata_path
+                self.metadata_path,
+                self.spec.display_name
             );
         }
 

@@ -461,6 +461,9 @@ async function toggleOcr() {
     updateOcrButton(true);
   } catch (e: any) {
     console.error("Failed to load OCR detections:", e);
+    const waitBtn = document.getElementById("image-viewer-toggle-ocr");
+    if (waitBtn) waitBtn.innerHTML = '<i class="bi bi-fonts"></i> OCR Text';
+    showErrorAlert(`OCR failed: ${e?.message || e}`);
   }
 }
 
@@ -641,8 +644,9 @@ export function setupImageViewer() {
       // Update card OCR text directly
       const ocrText = detections.map((d) => d.text).join("\n");
       refreshCardOcr(currentViewerImageId!, ocrText);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Re-run OCR failed:", err);
+      showErrorAlert(`OCR failed: ${err?.message || err}`);
     } finally {
       if (btn) btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Re-run OCR';
     }

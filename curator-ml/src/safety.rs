@@ -48,7 +48,6 @@ impl SafetyClassifier {
     /// Canonical model resolution order under a data dir:
     ///   <data_dir>/models/nsfw-detection-2-mini/onnx/nsfw-detection-2-mini-fp16.onnx
     ///   <data_dir>/models/nsfw-detection-2-mini/onnx/nsfw-detection-2-mini.onnx
-    ///   <workspace>/reference/nsfw-detection-2-mini/onnx/nsfw-detection-2-mini-fp16.onnx (dev fallback)
     /// Returns the preferred path even when no file exists yet — callers treat a missing
     /// file as "not classified" (a no-op), never as a silent inference fallback.
     pub fn resolve_model_path(data_dir: &Path) -> PathBuf {
@@ -59,32 +58,7 @@ impl SafetyClassifier {
             return fp16;
         }
         let fp32 = base.join(SAFETY_MODEL_FILENAME_FP32);
-        if fp32.exists() {
-            return fp32;
-        }
-
-        // Dev fallback into the workspace reference staging tree (repo checkout only).
-        let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap_or_else(|| Path::new("."));
-        let dev_fp16 = workspace
-            .join("reference")
-            .join(SAFETY_MODEL_ID)
-            .join("onnx")
-            .join(SAFETY_MODEL_FILENAME_FP16);
-        if dev_fp16.exists() {
-            return dev_fp16;
-        }
-        let dev_fp32 = workspace
-            .join("reference")
-            .join(SAFETY_MODEL_ID)
-            .join("onnx")
-            .join(SAFETY_MODEL_FILENAME_FP32);
-        if dev_fp32.exists() {
-            return dev_fp32;
-        }
-
-        fp16
+        fp32
     }
 
     pub fn new(model_path: impl Into<PathBuf>, device: DevicePreference) -> Self {
