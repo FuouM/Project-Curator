@@ -2727,8 +2727,10 @@
       let c = this.c;
       this.attachScrollTracking(), this.attachPreloader(), this.attachWheel();
     }
-    /** Jumps to a page: paged mode slides the strip; scroll mode scrolls into view. */
-    slideTo(index) {
+    /** Jumps to a page: paged mode slides the strip; scroll mode scrolls into view.
+     *  `instant` disables the smooth animation (used for the initial resume restore
+     *  so the first page never flashes while scrolling from the top). */
+    slideTo(index, instant = !1) {
       let c = this.c;
       if (c.isHorizontal)
         c.scrollLock ? (c.strip.style.transition = "", c.strip.style.transform = `translateX(${-index * 100}%)`) : (c.strip.style.transition = "none", c.strip.offsetWidth, c.strip.style.transform = `translateX(${-index * 100}%)`);
@@ -2737,7 +2739,7 @@
           c.isProgrammaticScroll = !1;
         }, 350);
         let target = c.slots[index];
-        target && target.scrollIntoView({ behavior: "smooth", block: "start" });
+        target && target.scrollIntoView({ behavior: instant ? "auto" : "smooth", block: "start" });
       }
     }
     /** Restores the reader to the current page (used on resize / mode / fullscreen changes). */
@@ -3094,8 +3096,39 @@
         }
       }
     }
-    setPage(index) {
-      index < 0 || index >= this.pages.length || (this.currentIndex = index, this.atEnd = this.currentIndex >= this.pages.length - 1, this.updateProgressText(), this.schedulePersist(), this.atEnd && this.persistNow(), this.enqueue(this.currentIndex), this.enqueue(this.currentIndex + 1), this.enqueue(this.currentIndex + 2), this.viewportImpl.slideTo(index));
+    setPage(index, instant = !1) {
+      index < 0 || index >= this.pages.length || (this.currentIndex = index, this.atEnd = this.currentIndex >= this.pages.length - 1, this.updateProgressText(), this.schedulePersist(), this.atEnd && this.persistNow(), this.enqueue(this.currentIndex), this.enqueue(this.currentIndex + 1), this.enqueue(this.currentIndex + 2), this.viewportImpl.slideTo(index, instant));
+    }
+    /**
+     * Reveals the strip once the resume restore has landed. In paged mode the
+     * transform is already exact, so the strip is revealed immediately. In scroll
+     * mode slot heights are image-driven; if the images near the resume page are
+     * still decoding, wait (bounded by a deadline) and re-align the scroll so the
+     * restore lands at the correct offset before revealing.
+     */
+    revealAfterRestore() {
+      if (this.isHorizontal) {
+        this.readerContainer.classList.remove("ds-restoring");
+        return;
+      }
+      let deadline = window.performance.now() + 1e3, poll = () => {
+        var _a;
+        if (this.disposed) return;
+        let ready = !0, start = Math.max(0, this.currentIndex - 1), end = Math.min(this.pages.length - 1, this.currentIndex + 1);
+        for (let i = start; i <= end; i++) {
+          let img = (_a = this.slots[i]) == null ? void 0 : _a.querySelector("img.ds-page-img");
+          if (img && !img.complete) {
+            ready = !1;
+            break;
+          }
+        }
+        if (!ready && window.performance.now() < deadline) {
+          window.setTimeout(poll, 30);
+          return;
+        }
+        this.viewportImpl.slideTo(this.currentIndex, !0), this.readerContainer.classList.remove("ds-restoring");
+      };
+      window.setTimeout(poll, 0);
     }
     // Chapter navigation ------------------------------------------------------
     gotoChapter(c) {
@@ -3125,7 +3158,7 @@
           if (!page) continue;
           let targetPath = this.pageOutputPath(i, page.url), alreadyThere = await this.fileResolve(targetPath);
           if (alreadyThere) {
-            this.cachedMap.get(i) !== targetPath && (await this.setCachedPage(i, alreadyThere, 0), this.cachedMap.set(i, alreadyThere), !this.disposed && this.slots[i] && this.renderSlotImg(this.slots[i], alreadyThere, i + 1), this.updateCacheCount());
+            this.cachedMap.get(i) !== alreadyThere && (await this.setCachedPage(i, alreadyThere, 0), this.cachedMap.set(i, alreadyThere), !this.disposed && this.slots[i] && this.renderSlotImg(this.slots[i], alreadyThere, i + 1), this.updateCacheCount());
             continue;
           }
           let origName = page.url.split("/").pop() || "", ext = ((_a = origName.split(".").pop()) == null ? void 0 : _a.split("?")[0]) || "webp", pad3 = String(i + 1).padStart(3, "0"), pad4 = String(i + 1).padStart(4, "0"), candidates = [
@@ -3149,7 +3182,7 @@
     }
     // Main bootstrap -----------------------------------------------------------
     async init() {
-      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
       let route = this.route, container = this.container;
       this.permalink = (_a = route.chapterPermalink) != null ? _a : "";
       let chapter;
@@ -3165,7 +3198,16 @@
       }
       if (this.disposed) return;
       let seriesTag = ((_b = chapter.tags) != null ? _b : []).find((t) => t.type === "Series");
-      if (this.seriesPermalink = (_d = (_c = route.seriesPermalink) != null ? _c : seriesTag == null ? void 0 : seriesTag.permalink) != null ? _d : null, this.seriesName = (_f = (_e = route.seriesName) != null ? _e : seriesTag == null ? void 0 : seriesTag.name) != null ? _f : chapter.title, this.chapterTitle = (_g = route.chapterTitle) != null ? _g : chapter.title, this.chapterList = (_h = route.chapterList) != null ? _h : [], this.pages = (_i = chapter.pages) != null ? _i : [], this.currentIndex = Math.min((_j = route.startPage) != null ? _j : 0, Math.max(0, this.pages.length - 1)), container.innerHTML = "", this.pages.length === 0) {
+      this.seriesPermalink = (_d = (_c = route.seriesPermalink) != null ? _c : seriesTag == null ? void 0 : seriesTag.permalink) != null ? _d : null, this.seriesName = (_f = (_e = route.seriesName) != null ? _e : seriesTag == null ? void 0 : seriesTag.name) != null ? _f : chapter.title, this.chapterTitle = (_g = route.chapterTitle) != null ? _g : chapter.title, this.chapterList = (_h = route.chapterList) != null ? _h : [], this.pages = (_i = chapter.pages) != null ? _i : [];
+      let startPage = (_j = route.startPage) != null ? _j : 0;
+      if (startPage <= 0)
+        try {
+          let prog = await getReadingProgress(this.permalink);
+          prog && prog.completed !== 1 && prog.page_index > 0 && (startPage = prog.page_index);
+        } catch (err) {
+          console.error("dynasty-scans: failed to load reading progress:", err);
+        }
+      if (this.currentIndex = Math.min(startPage, Math.max(0, this.pages.length - 1)), container.innerHTML = "", this.pages.length === 0) {
         let empty = document.createElement("div");
         empty.className = "ds-muted", empty.textContent = "This chapter has no pages.", container.appendChild(empty);
         return;
@@ -3195,7 +3237,7 @@
         let absPath = this.cachedMap.get(i);
         absPath ? this.renderSlotImg(slot, absPath, i + 1) : isOnline() ? (this.renderSlotState(slot, "spinner", "Queued for download\u2026"), this.enqueue(i)) : this.renderSlotState(slot, "offline", "Offline \u2014 not downloaded"), this.strip.appendChild(slot), this.slots.push(slot);
       }
-      this.cachedMap.has(this.currentIndex) || this.enqueue(this.currentIndex, !0), this.cachedMap.has(this.currentIndex + 1) || this.enqueue(this.currentIndex + 1, !0), this.cachedMap.has(this.currentIndex + 2) || this.enqueue(this.currentIndex + 2, !0), this.toolbarImpl.wireAfterSlots(), this.viewportImpl.wireAfterSlots(), this.updateProgressText(), this.standardizeCachePaths();
+      this.cachedMap.has(this.currentIndex) || this.enqueue(this.currentIndex, !0), this.cachedMap.has(this.currentIndex + 1) || this.enqueue(this.currentIndex + 1, !0), this.cachedMap.has(this.currentIndex + 2) || this.enqueue(this.currentIndex + 2, !0), startPage > 0 && this.readerContainer.classList.add("ds-restoring"), this.toolbarImpl.wireAfterSlots(), this.viewportImpl.wireAfterSlots(), this.updateProgressText(), this.standardizeCachePaths();
       try {
         await addHistory({
           chapterPermalink: this.permalink,
@@ -3252,9 +3294,7 @@
         openBtn.type = "button", openBtn.className = "win-button", openBtn.title = "Open this chapter in your browser", openBtn.innerHTML = '<i class="bi bi-box-arrow-up-right"></i>', openBtn.addEventListener("click", () => {
           openExternal(`https://dynasty-scans.com/chapters/${this.permalink}`);
         }), host.appendChild(openBtn);
-      });
-      let startPage = (_m = route.startPage) != null ? _m : 0;
-      startPage > 0 && this.setPage(startPage);
+      }), startPage > 0 && (this.setPage(startPage, !0), this.revealAfterRestore());
     }
     retry() {
       this.dispose(), this.container.innerHTML = "";
@@ -4222,6 +4262,12 @@
   align-items: center;
   gap: 14px;
   width: 100%;
+}
+/* While restoring a saved position the strip is kept off-screen until the
+   instant jump lands and its images have decoded, so the first page never
+   flashes during the restore. */
+#ds-reader-container.ds-restoring #ds-reader-strip {
+  visibility: hidden;
 }
 .ds-slot {
   display: flex;

@@ -168,6 +168,12 @@
   gap: 14px;
   width: 100%;
 }
+/* While restoring a saved position the strip is kept off-screen until the
+   instant jump lands and its images have decoded, so the first page never
+   flashes during the restore. */
+#ds-reader-container.ds-restoring #ds-reader-strip {
+  visibility: hidden;
+}
 .ds-slot {
   display: flex;
   flex-direction: column;

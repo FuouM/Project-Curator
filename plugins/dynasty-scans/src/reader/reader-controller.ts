@@ -22,6 +22,7 @@ import {
   addHistory,
   getBookmark,
   getCachedPages,
+  getReadingProgress,
   removeBookmark,
   setCachedPage,
   setReadingProgress,
@@ -273,7 +274,7 @@ export class ReaderController {
     }
   }
 
-  setPage(index: number): void {
+  setPage(index: number, instant = false): void {
     if (index < 0 || index >= this.pages.length) return;
     this.currentIndex = index;
     this.atEnd = this.currentIndex >= this.pages.length - 1;
@@ -285,7 +286,42 @@ export class ReaderController {
     this.enqueue(this.currentIndex + 1);
     this.enqueue(this.currentIndex + 2);
 
-    this.viewportImpl.slideTo(index);
+    this.viewportImpl.slideTo(index, instant);
+  }
+
+  /**
+   * Reveals the strip once the resume restore has landed. In paged mode the
+   * transform is already exact, so the strip is revealed immediately. In scroll
+   * mode slot heights are image-driven; if the images near the resume page are
+   * still decoding, wait (bounded by a deadline) and re-align the scroll so the
+   * restore lands at the correct offset before revealing.
+   */
+  private revealAfterRestore(): void {
+    if (this.isHorizontal) {
+      this.readerContainer.classList.remove("ds-restoring");
+      return;
+    }
+    const deadline = window.performance.now() + 1000;
+    const poll = (): void => {
+      if (this.disposed) return;
+      let ready = true;
+      const start = Math.max(0, this.currentIndex - 1);
+      const end = Math.min(this.pages.length - 1, this.currentIndex + 1);
+      for (let i = start; i <= end; i++) {
+        const img = this.slots[i]?.querySelector<HTMLImageElement>("img.ds-page-img");
+        if (img && !img.complete) {
+          ready = false;
+          break;
+        }
+      }
+      if (!ready && window.performance.now() < deadline) {
+        window.setTimeout(poll, 30);
+        return;
+      }
+      this.viewportImpl.slideTo(this.currentIndex, true);
+      this.readerContainer.classList.remove("ds-restoring");
+    };
+    window.setTimeout(poll, 0);
   }
 
   // Chapter navigation ------------------------------------------------------
@@ -319,10 +355,13 @@ export class ReaderController {
         if (!page) continue;
         const targetPath = this.pageOutputPath(i, page.url);
 
-        // Skip if already at canonical path
+        // Skip if already at canonical path. `cachedMap` holds absolute paths,
+        // so compare against the resolved absolute form (not the relative
+        // `targetPath`) — otherwise every cached page gets re-rendered here and
+        // the visible image flashes.
         const alreadyThere = await this.fileResolve(targetPath);
         if (alreadyThere) {
-          if (this.cachedMap.get(i) !== targetPath) {
+          if (this.cachedMap.get(i) !== alreadyThere) {
             await this.setCachedPage(i, alreadyThere, 0);
             this.cachedMap.set(i, alreadyThere);
             if (!this.disposed && this.slots[i]) {
@@ -400,7 +439,21 @@ export class ReaderController {
     this.chapterTitle = route.chapterTitle ?? chapter.title;
     this.chapterList = route.chapterList ?? [];
     this.pages = chapter.pages ?? [];
-    this.currentIndex = Math.min(route.startPage ?? 0, Math.max(0, this.pages.length - 1));
+    // Resolve the starting page: an explicit route `startPage` wins; otherwise
+    // fall back to saved reading progress so resuming works from every entry
+    // point (History, session tab, browse, search, series).
+    let startPage = route.startPage ?? 0;
+    if (startPage <= 0) {
+      try {
+        const prog = await getReadingProgress(this.permalink);
+        if (prog && prog.completed !== 1 && prog.page_index > 0) {
+          startPage = prog.page_index;
+        }
+      } catch (err) {
+        console.error("dynasty-scans: failed to load reading progress:", err);
+      }
+    }
+    this.currentIndex = Math.min(startPage, Math.max(0, this.pages.length - 1));
 
     container.innerHTML = "";
     if (this.pages.length === 0) {
@@ -484,6 +537,12 @@ export class ReaderController {
     if (!this.cachedMap.has(this.currentIndex)) this.enqueue(this.currentIndex, true);
     if (!this.cachedMap.has(this.currentIndex + 1)) this.enqueue(this.currentIndex + 1, true);
     if (!this.cachedMap.has(this.currentIndex + 2)) this.enqueue(this.currentIndex + 2, true);
+
+    // Hide the strip from the first paint: when resuming, the first page image
+    // would otherwise flash before the restore jump below lands.
+    if (startPage > 0) {
+      this.readerContainer.classList.add("ds-restoring");
+    }
 
     this.toolbarImpl.wireAfterSlots();
     this.viewportImpl.wireAfterSlots();
@@ -586,10 +645,12 @@ export class ReaderController {
       host.appendChild(openBtn);
     });
 
-    // Jump to initial resume page
-    const startPage = route.startPage ?? 0;
+    // Restore the resume page. The awaited history/bookmark calls above gave
+    // nearby images time to decode, so the instant scroll lands at the correct
+    // offset; the strip stays hidden until it has landed and been revealed.
     if (startPage > 0) {
-      this.setPage(startPage);
+      this.setPage(startPage, true);
+      this.revealAfterRestore();
     }
   }
 

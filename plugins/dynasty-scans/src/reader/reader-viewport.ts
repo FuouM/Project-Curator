@@ -47,8 +47,10 @@ export class ReaderViewport {
     this.attachWheel();
   }
 
-  /** Jumps to a page: paged mode slides the strip; scroll mode scrolls into view. */
-  slideTo(index: number): void {
+  /** Jumps to a page: paged mode slides the strip; scroll mode scrolls into view.
+   *  `instant` disables the smooth animation (used for the initial resume restore
+   *  so the first page never flashes while scrolling from the top). */
+  slideTo(index: number, instant = false): void {
     const c = this.c;
     if (c.isHorizontal) {
       if (!c.scrollLock) {
@@ -70,7 +72,7 @@ export class ReaderViewport {
 
       const target = c.slots[index];
       if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        target.scrollIntoView({ behavior: instant ? "auto" : "smooth", block: "start" });
       }
     }
   }
