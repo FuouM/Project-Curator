@@ -225,7 +225,7 @@ export function buildCaptionCanvas(
   txt: string,
   originalW: number,
   captionStyle = "ifunny",
-  customSize?: number
+  customSize?: number,
 ): CaptionResult {
   const isOverlay = captionStyle.startsWith("overlay");
   const fontSize = customSize ? Math.round(customSize) : Math.round(originalW / 10);
@@ -328,7 +328,15 @@ export function updateOverlayPosition(): void {
   const bottomOverlay = el("gm-bottom-overlay");
   const parent = el("gm-drop-zone");
 
-  if (!mediaEl || !container || !state.currentMedia || !parent || !wrapper || !ifunnyBar || !bottomOverlay) {
+  if (
+    !mediaEl ||
+    !container ||
+    !state.currentMedia ||
+    !parent ||
+    !wrapper ||
+    !ifunnyBar ||
+    !bottomOverlay
+  ) {
     return;
   }
 
@@ -491,9 +499,19 @@ export function setupInteractiveCrop(): void {
 
   window.addEventListener("pointermove", (e) => {
     const box = container.getBoundingClientRect();
-    if (state.cropState.dragging && state.cropState.startX !== undefined && state.cropState.startY !== undefined) {
-      state.cropState.x = Math.max(0, Math.min(box.width - state.cropState.w, e.clientX - state.cropState.startX));
-      state.cropState.y = Math.max(0, Math.min(box.height - state.cropState.h, e.clientY - state.cropState.startY));
+    if (
+      state.cropState.dragging &&
+      state.cropState.startX !== undefined &&
+      state.cropState.startY !== undefined
+    ) {
+      state.cropState.x = Math.max(
+        0,
+        Math.min(box.width - state.cropState.w, e.clientX - state.cropState.startX),
+      );
+      state.cropState.y = Math.max(
+        0,
+        Math.min(box.height - state.cropState.h, e.clientY - state.cropState.startY),
+      );
       updateVisuals();
     }
     if (
@@ -505,11 +523,17 @@ export function setupInteractiveCrop(): void {
     ) {
       state.cropState.w = Math.max(
         20,
-        Math.min(box.width - state.cropState.x, state.cropState.startW + (e.clientX - state.cropState.startX))
+        Math.min(
+          box.width - state.cropState.x,
+          state.cropState.startW + (e.clientX - state.cropState.startX),
+        ),
       );
       state.cropState.h = Math.max(
         20,
-        Math.min(box.height - state.cropState.y, state.cropState.startH + (e.clientY - state.cropState.startY))
+        Math.min(
+          box.height - state.cropState.y,
+          state.cropState.startH + (e.clientY - state.cropState.startY),
+        ),
       );
       updateVisuals();
     }

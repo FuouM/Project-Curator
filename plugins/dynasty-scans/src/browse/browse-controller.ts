@@ -17,7 +17,11 @@ const TABS: BrowseTab[] = [
   { id: "tags-dir", label: "Tags" },
 ];
 
-export async function renderTabContent(host: HTMLElement, tabId: string, page: number): Promise<void> {
+export async function renderTabContent(
+  host: HTMLElement,
+  tabId: string,
+  page: number,
+): Promise<void> {
   host.innerHTML = "";
   const loading = document.createElement("div");
   loading.className = "ds-muted";

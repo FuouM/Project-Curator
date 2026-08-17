@@ -141,7 +141,8 @@ export function updateSessionMangaTabUI(): void {
   tab.type = "button";
   const isActive = state.route.view === "reader" || state.route.view === "series";
   tab.className = `win-button ds-nav-tab${isActive ? " active" : ""}`;
-  tab.style.cssText = "display:inline-flex;align-items:center;gap:6px;max-width:220px;padding:2px 8px;font-size:11px;";
+  tab.style.cssText =
+    "display:inline-flex;align-items:center;gap:6px;max-width:220px;padding:2px 8px;font-size:11px;";
 
   const icon = document.createElement("i");
   icon.className = "bi bi-book-half";
@@ -314,7 +315,15 @@ export function tagStyle(type: string, name: string): string {
   if (t === "character") {
     return "background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460;";
   }
-  if (t === "series" || t === "anthology" || t === "issue" || t === "doujin" || t === "doujinshi" || t === "copyright" || t === "parody") {
+  if (
+    t === "series" ||
+    t === "anthology" ||
+    t === "issue" ||
+    t === "doujin" ||
+    t === "doujinshi" ||
+    t === "copyright" ||
+    t === "parody"
+  ) {
     return "background-color: #ebdcf9; border: 1px solid #dcbdf5; color: #511c74;";
   }
   if (t === "scanlator" || t === "group" || t === "meta") {

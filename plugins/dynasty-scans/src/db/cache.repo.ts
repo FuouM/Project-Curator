@@ -12,7 +12,7 @@ export async function getCachedPages(chapterPermalink: string): Promise<CachedPa
   return query<CachedPageRow>(
     `SELECT chapter_permalink, page_index, file_path, cached_at
      FROM cached_pages WHERE chapter_permalink = ?`,
-    [chapterPermalink]
+    [chapterPermalink],
   );
 }
 
@@ -20,7 +20,7 @@ export async function setCachedPage(
   chapterPermalink: string,
   pageIndex: number,
   filePath: string,
-  sizeBytes = 0
+  sizeBytes = 0,
 ): Promise<void> {
   await execute(
     `INSERT INTO cached_pages (chapter_permalink, page_index, file_path, size_bytes, cached_at)
@@ -29,37 +29,37 @@ export async function setCachedPage(
        file_path = excluded.file_path,
        size_bytes = excluded.size_bytes,
        cached_at = excluded.cached_at`,
-    [chapterPermalink, pageIndex, filePath, sizeBytes, Date.now()]
+    [chapterPermalink, pageIndex, filePath, sizeBytes, Date.now()],
   );
 }
 
 export async function countCachedPages(chapterPermalink: string): Promise<number> {
   const rows = await query<{ n: number }>(
     `SELECT COUNT(*) AS n FROM cached_pages WHERE chapter_permalink = ?`,
-    [chapterPermalink]
+    [chapterPermalink],
   );
   return Number(rows[0]?.n ?? 0);
 }
 
 /** Cached-page counts for a batch of chapters (one query). */
-export async function getCachedPageCounts(chapterPermalinks: string[]): Promise<ChapterCacheCount[]> {
+export async function getCachedPageCounts(
+  chapterPermalinks: string[],
+): Promise<ChapterCacheCount[]> {
   if (chapterPermalinks.length === 0) return [];
   const placeholders = chapterPermalinks.map(() => "?").join(",");
   return query<ChapterCacheCount>(
     `SELECT chapter_permalink, COUNT(*) AS n FROM cached_pages
      WHERE chapter_permalink IN (${placeholders}) GROUP BY chapter_permalink`,
-    chapterPermalinks
+    chapterPermalinks,
   );
 }
 
 export async function getCacheOverviewStats(): Promise<CacheOverviewStats> {
   const [pageRows, metaRows, diskStat] = await Promise.all([
     query<{ pages: number; chapters: number; total_bytes: number }>(
-      `SELECT COUNT(*) as pages, COUNT(DISTINCT chapter_permalink) as chapters, SUM(COALESCE(size_bytes, 0)) as total_bytes FROM cached_pages`
+      `SELECT COUNT(*) as pages, COUNT(DISTINCT chapter_permalink) as chapters, SUM(COALESCE(size_bytes, 0)) as total_bytes FROM cached_pages`,
     ),
-    query<{ count: number }>(
-      `SELECT COUNT(*) as count FROM cached_metadata`
-    ),
+    query<{ count: number }>(`SELECT COUNT(*) as count FROM cached_metadata`),
     (async () => {
       try {
         const resp = await PH.callService("DirStat", { path: "" });
@@ -89,7 +89,7 @@ export async function getCachedSeriesGroups(): Promise<CachedSeriesGroup[]> {
     last_cached: number;
   }>(
     `SELECT chapter_permalink, COUNT(*) as page_count, SUM(COALESCE(size_bytes, 0)) as size_bytes, MAX(cached_at) as last_cached
-     FROM cached_pages GROUP BY chapter_permalink`
+     FROM cached_pages GROUP BY chapter_permalink`,
   );
 
   if (chapterRows.length === 0) return [];
@@ -98,20 +98,30 @@ export async function getCachedSeriesGroups(): Promise<CachedSeriesGroup[]> {
   const placeholders = permalinks.map(() => "?").join(",");
 
   const [progRows, histRows, metaRows, page0Rows] = await Promise.all([
-    query<{ chapter_permalink: string; series_permalink: string; series_name: string; chapter_title: string }>(
+    query<{
+      chapter_permalink: string;
+      series_permalink: string;
+      series_name: string;
+      chapter_title: string;
+    }>(
       `SELECT chapter_permalink, series_permalink, series_name, chapter_title FROM reading_progress WHERE chapter_permalink IN (${placeholders})`,
-      permalinks
+      permalinks,
     ),
-    query<{ chapter_permalink: string; series_permalink: string; series_name: string; chapter_title: string }>(
+    query<{
+      chapter_permalink: string;
+      series_permalink: string;
+      series_name: string;
+      chapter_title: string;
+    }>(
       `SELECT chapter_permalink, series_permalink, series_name, chapter_title FROM reading_history WHERE chapter_permalink IN (${placeholders})`,
-      permalinks
+      permalinks,
     ),
     query<{ cache_key: string; json_payload: string }>(
-      `SELECT cache_key, json_payload FROM cached_metadata WHERE data_type = 'cover'`
+      `SELECT cache_key, json_payload FROM cached_metadata WHERE data_type = 'cover'`,
     ),
     query<{ chapter_permalink: string; file_path: string }>(
       `SELECT chapter_permalink, file_path FROM cached_pages WHERE page_index = 0 AND chapter_permalink IN (${placeholders})`,
-      permalinks
+      permalinks,
     ),
   ]);
 
@@ -125,7 +135,10 @@ export async function getCachedSeriesGroups(): Promise<CachedSeriesGroup[]> {
     page0Map.set(p.chapter_permalink, p.file_path);
   }
 
-  const chapterInfoMap = new Map<string, { seriesPermalink: string; seriesName: string; chapterTitle: string }>();
+  const chapterInfoMap = new Map<
+    string,
+    { seriesPermalink: string; seriesName: string; chapterTitle: string }
+  >();
   for (const r of histRows) {
     chapterInfoMap.set(r.chapter_permalink, {
       seriesPermalink: r.series_permalink,
@@ -152,7 +165,8 @@ export async function getCachedSeriesGroups(): Promise<CachedSeriesGroup[]> {
     let g = groupMap.get(groupKey);
     if (!g) {
       const coverPath =
-        (seriesPermalink && (coverMap.get(`series:${seriesPermalink}`) || coverMap.get(seriesPermalink))) ||
+        (seriesPermalink &&
+          (coverMap.get(`series:${seriesPermalink}`) || coverMap.get(seriesPermalink))) ||
         coverMap.get(`chapter:${cp}`) ||
         coverMap.get(cp) ||
         page0Map.get(cp) ||
@@ -204,7 +218,7 @@ export async function getCachedSeriesGroups(): Promise<CachedSeriesGroup[]> {
           const placeholders = g.chapterPermalinks.map(() => "?").join(",");
           const pathRows = await query<{ file_path: string }>(
             `SELECT file_path FROM cached_pages WHERE chapter_permalink IN (${placeholders})`,
-            g.chapterPermalinks
+            g.chapterPermalinks,
           );
           for (const row of pathRows) {
             const resp = await PH.callService("FileExists", { path: row.file_path });
@@ -214,7 +228,7 @@ export async function getCachedSeriesGroups(): Promise<CachedSeriesGroup[]> {
 
         g.totalSizeBytes = foundBytes;
       } catch {}
-    })
+    }),
   );
 
   return Array.from(groupMap.values()).sort((a, b) => b.lastCachedAt - a.lastCachedAt);
@@ -226,7 +240,7 @@ async function deleteFiles(paths: string[]): Promise<void> {
       try {
         await PH.callService("FileDelete", { path: p });
       } catch {}
-    })
+    }),
   );
 }
 
@@ -235,12 +249,12 @@ export async function clearCachedGroupPages(chapterPermalinks: string[]): Promis
   const placeholders = chapterPermalinks.map(() => "?").join(",");
   const rows = await query<{ file_path: string }>(
     `SELECT file_path FROM cached_pages WHERE chapter_permalink IN (${placeholders})`,
-    chapterPermalinks
+    chapterPermalinks,
   );
   await deleteFiles(rows.map((r) => r.file_path));
   await execute(
     `DELETE FROM cached_pages WHERE chapter_permalink IN (${placeholders})`,
-    chapterPermalinks
+    chapterPermalinks,
   );
 }
 
@@ -252,7 +266,7 @@ export async function clearAllCachedPages(): Promise<void> {
 
 export async function clearAllCachedCovers(): Promise<void> {
   const coverRows = await query<{ json_payload: string }>(
-    `SELECT json_payload FROM cached_metadata WHERE data_type = 'cover'`
+    `SELECT json_payload FROM cached_metadata WHERE data_type = 'cover'`,
   );
   await deleteFiles(coverRows.map((r) => r.json_payload));
   await execute(`DELETE FROM cached_metadata WHERE data_type = 'cover'`);

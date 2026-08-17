@@ -12,8 +12,19 @@ import { loadPersisted, savePersisted } from "../../lib";
 export const TAB_ID = "image-converter" as const;
 
 export const CONVERT_FORMATS = [
-  "png", "jpg", "webp", "gif", "bmp", "tiff", "qoi",
-  "tga", "pnm", "hdr", "ico", "exr", "avif",
+  "png",
+  "jpg",
+  "webp",
+  "gif",
+  "bmp",
+  "tiff",
+  "qoi",
+  "tga",
+  "pnm",
+  "hdr",
+  "ico",
+  "exr",
+  "avif",
 ] as const;
 
 export interface ConverterState {

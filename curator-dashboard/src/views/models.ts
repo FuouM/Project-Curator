@@ -13,7 +13,11 @@ import {
   ConversionStatusUpdateSchema,
 } from "../gen/models_pb";
 import { SettingsResultSchema, UpdateSettingsRequestSchema } from "../gen/system_pb";
-import { ModelPrecision, ModelStatusInfo as PModelStatusInfo, DownloadProgress as PDownloadProgress } from "../gen/common_pb";
+import {
+  ModelPrecision,
+  ModelStatusInfo as PModelStatusInfo,
+  DownloadProgress as PDownloadProgress,
+} from "../gen/common_pb";
 
 let pollInterval: number | null = null;
 let activeConversionModelId: string | null = null;
@@ -84,7 +88,9 @@ function downloadProgressFromProto(p: PDownloadProgress): DownloadProgress {
   };
 }
 
-function modelPrecisionsFromProto(map: { [key: string]: ModelPrecision } | undefined): Record<string, "original" | "fp16" | "int8"> {
+function modelPrecisionsFromProto(
+  map: { [key: string]: ModelPrecision } | undefined,
+): Record<string, "original" | "fp16" | "int8"> {
   const out: Record<string, "original" | "fp16" | "int8"> = {};
   if (!map) return out;
   for (const [k, v] of Object.entries(map)) {
@@ -97,9 +103,14 @@ function modelPrecisionsFromProto(map: { [key: string]: ModelPrecision } | undef
 
 export function renderModelsHtml(): SafeHtml {
   return html`
-    <div class="group-box" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+    <div
+      class="group-box"
+      style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;"
+    >
       <div class="group-box-title">Model Management</div>
-      <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">Download and manage local AI model weights on disk.</p>
+      <p style="font-size: 11px; color: #333333; margin-bottom: 8px;">
+        Download and manage local AI model weights on disk.
+      </p>
       <div id="settings-models"></div>
     </div>
   `;
@@ -113,7 +124,11 @@ export async function refreshModelStatus() {
   const container = document.getElementById("settings-models");
   if (!container) return;
 
-  const scrollParent = container.closest(".tab-page") || container.closest("#view-settings") || container.parentElement || document.documentElement;
+  const scrollParent =
+    container.closest(".tab-page") ||
+    container.closest("#view-settings") ||
+    container.parentElement ||
+    document.documentElement;
   const savedScrollTop = scrollParent ? scrollParent.scrollTop : 0;
 
   if (container.children.length === 0) {
@@ -121,11 +136,21 @@ export async function refreshModelStatus() {
   }
 
   try {
-    const resp = await typedCall("ModelsService.GetModelStatus", null, null, ModelStatusResultSchema);
+    const resp = await typedCall(
+      "ModelsService.GetModelStatus",
+      null,
+      null,
+      ModelStatusResultSchema,
+    );
 
     let modelPrecisions: Record<string, "original" | "fp16" | "int8"> = {};
     try {
-      const settingsResp = await typedCall("SystemService.GetSettings", null, null, SettingsResultSchema);
+      const settingsResp = await typedCall(
+        "SystemService.GetSettings",
+        null,
+        null,
+        SettingsResultSchema,
+      );
       modelPrecisions = modelPrecisionsFromProto(settingsResp.modelPrecisions);
     } catch (se) {}
     // Check conversion logs for models that support conversion to sync background completions
@@ -133,13 +158,26 @@ export async function refreshModelStatus() {
     for (const m of parsedModels) {
       if (m.files.some((f) => f.dest.endsWith(".safetensors"))) {
         try {
-          const logResp = await typedCall("ModelsService.GetConversionLogs", ModelIdRequestSchema, { modelId: m.id }, ConversionLogsResultSchema);
+          const logResp = await typedCall(
+            "ModelsService.GetConversionLogs",
+            ModelIdRequestSchema,
+            { modelId: m.id },
+            ConversionLogsResultSchema,
+          );
           if (logResp.logs && logResp.logs.trim().length > 0) {
-            const isSuccess = logResp.logs.includes("successfully") || logResp.logs.includes("conversion complete");
-            const statusText = logResp.isRunning ? "Converting..." : (isSuccess ? "Completed" : "Failed");
+            const isSuccess =
+              logResp.logs.includes("successfully") || logResp.logs.includes("conversion complete");
+            const statusText = logResp.isRunning
+              ? "Converting..."
+              : isSuccess
+                ? "Completed"
+                : "Failed";
 
             // Only track if not dismissed, OR if currently running
-            if (logResp.isRunning || (!dismissedConsoleLogs.has(m.id) && (activeConsoleLogs[m.id] || isSuccess))) {
+            if (
+              logResp.isRunning ||
+              (!dismissedConsoleLogs.has(m.id) && (activeConsoleLogs[m.id] || isSuccess))
+            ) {
               activeConsoleLogs[m.id] = {
                 modelId: m.id,
                 logs: logResp.logs,
@@ -165,7 +203,12 @@ export async function refreshModelStatus() {
       scrollParent.scrollTop = savedScrollTop;
     }
 
-    const progResp = await typedCall("ModelsService.GetDownloadProgress", null, null, DownloadProgressResultSchema);
+    const progResp = await typedCall(
+      "ModelsService.GetDownloadProgress",
+      null,
+      null,
+      DownloadProgressResultSchema,
+    );
     if (progResp.downloads.length > 0) {
       startModelDownloadPolling();
     }
@@ -179,11 +222,7 @@ export async function refreshModelStatus() {
 /// focused). Used to avoid re-render/scroll work that would close the popup.
 function isModelsSelectPopupOpen(): boolean {
   const ae = document.activeElement as HTMLElement | null;
-  return (
-    !!ae &&
-    ae.tagName === "SELECT" &&
-    !!ae.closest("#settings-models")
-  );
+  return !!ae && ae.tagName === "SELECT" && !!ae.closest("#settings-models");
 }
 
 /// True when `el` (or a descendant) currently holds focus.
@@ -204,15 +243,19 @@ function getStatusIconHtml(m: ModelStatusInfo): string {
 function getFileStatusText(m: ModelStatusInfo): string {
   const filesCount = m.files.length;
   const downloadedFilesCount = m.downloaded_files.length;
-  const sizeStr = m.total_size > 0
-    ? ` (${formatBytes(m.downloaded_size)} / ${formatBytes(m.total_size)})`
-    : m.downloaded_size > 0
-      ? ` (${formatBytes(m.downloaded_size)})`
-      : "";
+  const sizeStr =
+    m.total_size > 0
+      ? ` (${formatBytes(m.downloaded_size)} / ${formatBytes(m.total_size)})`
+      : m.downloaded_size > 0
+        ? ` (${formatBytes(m.downloaded_size)})`
+        : "";
   return `${downloadedFilesCount}/${filesCount} files ready${sizeStr}`;
 }
 
-function renderModelActionsHtml(m: ModelStatusInfo, modelPrecisions: Record<string, "original" | "fp16" | "int8">): string {
+function renderModelActionsHtml(
+  m: ModelStatusInfo,
+  modelPrecisions: Record<string, "original" | "fp16" | "int8">,
+): string {
   let actionsHtml = "";
   if (m.status !== "downloaded") {
     actionsHtml += `<button class="win-button primary" onclick="downloadModel('${m.id}')"><i class="bi bi-download"></i> Download</button>`;
@@ -220,7 +263,7 @@ function renderModelActionsHtml(m: ModelStatusInfo, modelPrecisions: Record<stri
     actionsHtml += `<button class="win-button danger" onclick="removeModel('${m.id}')"><i class="bi bi-trash"></i> Delete</button>`;
   }
 
-  const needsConversion = m.files.some(f => f.dest.endsWith(".safetensors"));
+  const needsConversion = m.files.some((f) => f.dest.endsWith(".safetensors"));
   if (m.status === "downloaded" && needsConversion) {
     const isConverted = m.quantized_variants.includes("onnx");
     if (isConverted) {
@@ -261,7 +304,10 @@ function renderModelActionsHtml(m: ModelStatusInfo, modelPrecisions: Record<stri
   return actionsHtml;
 }
 
-function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<string, "original" | "fp16" | "int8">) {
+function renderModelsList(
+  models: ModelStatusInfo[],
+  modelPrecisions: Record<string, "original" | "fp16" | "int8">,
+) {
   const container = document.getElementById("settings-models");
   if (!container) return;
 
@@ -317,7 +363,7 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
     embedding: "Embedding Models (Semantic Search)",
     tagging: "Auto-Tagging Models",
     detection: "Character Detection & CCIP",
-    ocr: "Optical Character Recognition (OCR) & Bubble Detection"
+    ocr: "Optical Character Recognition (OCR) & Bubble Detection",
   };
 
   let htmlResult = `<div style="display: flex; flex-direction: column; gap: 16px;">`;
@@ -335,9 +381,10 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
       const fileStatusText = getFileStatusText(m);
       const actionsHtml = renderModelActionsHtml(m, modelPrecisions);
 
-      const reqLabel = m.required_by.length > 0
-        ? `<div style="font-size: 10px; color: #666; margin-top: 2px;">Required by: ${m.required_by.join(", ")}</div>`
-        : "";
+      const reqLabel =
+        m.required_by.length > 0
+          ? `<div style="font-size: 10px; color: #666; margin-top: 2px;">Required by: ${m.required_by.join(", ")}</div>`
+          : "";
 
       const optLabel = m.optional
         ? `<span style="font-size: 9px; padding: 1px 4px; border: 1px solid #b8daff; background: #cce5ff; color: #004085; margin-left: 6px; font-weight: normal; vertical-align: middle;">Optional</span>`
@@ -366,7 +413,7 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
             </div>
           </div>
           <div id="progress-${m.id}" class="model-progress" style="display: none;"></div>
-          <div id="conversion-log-container-${m.id}" style="display: ${isConsoleVisible ? 'block' : 'none'}; margin-top: 8px; border: 1px solid var(--sys-border-dark, #b0b0b0); background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', monospace; font-size: 11px; padding: 6px; border-radius: 2px; box-sizing: border-box;">
+          <div id="conversion-log-container-${m.id}" style="display: ${isConsoleVisible ? "block" : "none"}; margin-top: 8px; border: 1px solid var(--sys-border-dark, #b0b0b0); background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', monospace; font-size: 11px; padding: 6px; border-radius: 2px; box-sizing: border-box;">
             <div style="font-weight: bold; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; color: #858585;">
               <span>CONVERSION CONSOLE LOGS</span>
               <span id="conversion-status-${m.id}">${logStatusText}</span>
@@ -377,7 +424,12 @@ function renderModelsList(models: ModelStatusInfo[], modelPrecisions: Record<str
       `;
     }
 
-    htmlResult = htmlResult.trim().replace(/border-bottom: 1px solid #e0e0e0; display: flex; flex-direction: column; gap: 4px;\s*<\/div>\s*$/, "display: flex; flex-direction: column; gap: 4px;\n</div>");
+    htmlResult = htmlResult
+      .trim()
+      .replace(
+        /border-bottom: 1px solid #e0e0e0; display: flex; flex-direction: column; gap: 4px;\s*<\/div>\s*$/,
+        "display: flex; flex-direction: column; gap: 4px;\n</div>",
+      );
 
     htmlResult += `
         </div>
@@ -398,7 +450,12 @@ export function startModelDownloadPolling() {
 
   const check = async () => {
     try {
-      const result = await typedCall("ModelsService.GetDownloadProgress", null, null, DownloadProgressResultSchema);
+      const result = await typedCall(
+        "ModelsService.GetDownloadProgress",
+        null,
+        null,
+        DownloadProgressResultSchema,
+      );
       updateProgressBars(result.downloads.map(downloadProgressFromProto));
       if (result.downloads.length === 0) {
         stopModelDownloadPolling();
@@ -460,16 +517,18 @@ function updateProgressBars(downloads: DownloadProgress[]) {
       actionsEl.style.display = "none";
     }
 
-    const pct = dl.bytes_total > 0
-      ? Math.round((dl.bytes_downloaded / dl.bytes_total) * 100)
-      : 0;
+    const pct = dl.bytes_total > 0 ? Math.round((dl.bytes_downloaded / dl.bytes_total) * 100) : 0;
 
     const speed = formatBytes(dl.bytes_per_second) + "/s";
-    const eta = dl.bytes_per_second > 0
-      ? Math.ceil((dl.bytes_total - dl.bytes_downloaded) / dl.bytes_per_second)
-      : null;
+    const eta =
+      dl.bytes_per_second > 0
+        ? Math.ceil((dl.bytes_total - dl.bytes_downloaded) / dl.bytes_per_second)
+        : null;
 
-    const statusText = dl.status === "quantizing" ? "Quantizing..." : `Downloading (${dl.files_completed}/${dl.files_total} files)`;
+    const statusText =
+      dl.status === "quantizing"
+        ? "Quantizing..."
+        : `Downloading (${dl.files_completed}/${dl.files_total} files)`;
 
     el.innerHTML = `
       <div style="font-size: 11px; font-weight: bold; min-width: 140px; white-space: nowrap;">${statusText}</div>
@@ -486,7 +545,12 @@ function updateProgressBars(downloads: DownloadProgress[]) {
 
 async function downloadModel(modelId: string) {
   try {
-    const resp = await typedCall("ModelsService.DownloadModel", ModelIdRequestSchema, { modelId }, DownloadStatusUpdateSchema);
+    const resp = await typedCall(
+      "ModelsService.DownloadModel",
+      ModelIdRequestSchema,
+      { modelId },
+      DownloadStatusUpdateSchema,
+    );
     const prog = resp.progress;
     if (prog && prog.status === "downloading" && !resp.complete) {
       startModelDownloadPolling();
@@ -498,7 +562,9 @@ async function downloadModel(modelId: string) {
     } else if (prog && (prog.status === "completed" || resp.complete)) {
       refreshModelStatus();
     } else {
-      showErrorAlert("Failed to start download:\n" + (prog?.error || "Model download did not start."));
+      showErrorAlert(
+        "Failed to start download:\n" + (prog?.error || "Model download did not start."),
+      );
     }
   } catch (e: any) {
     showErrorAlert("Error:\n" + (e.message || e));
@@ -507,7 +573,12 @@ async function downloadModel(modelId: string) {
 
 async function cancelDownload(modelId: string) {
   try {
-    const resp = await typedCall("ModelsService.CancelDownload", ModelIdRequestSchema, { modelId }, ModelActionResultSchema);
+    const resp = await typedCall(
+      "ModelsService.CancelDownload",
+      ModelIdRequestSchema,
+      { modelId },
+      ModelActionResultSchema,
+    );
     if (resp.success) {
       refreshModelStatus();
     } else {
@@ -524,7 +595,12 @@ async function removeModel(modelId: string) {
   }
 
   try {
-    const resp = await typedCall("ModelsService.RemoveModel", ModelIdRequestSchema, { modelId }, ModelActionResultSchema);
+    const resp = await typedCall(
+      "ModelsService.RemoveModel",
+      ModelIdRequestSchema,
+      { modelId },
+      ModelActionResultSchema,
+    );
     showInfoAlert(resp.message);
     refreshModelStatus();
   } catch (e: any) {
@@ -570,11 +646,16 @@ function resumeConversionPolling(modelId: string) {
     const logStatus = document.getElementById(`conversion-status-${modelId}`);
 
     try {
-      const logResp = await typedCall("ModelsService.GetConversionLogs", ModelIdRequestSchema, { modelId }, ConversionLogsResultSchema);
+      const logResp = await typedCall(
+        "ModelsService.GetConversionLogs",
+        ModelIdRequestSchema,
+        { modelId },
+        ConversionLogsResultSchema,
+      );
       const { logs, isRunning } = logResp;
 
       const isSuccess = logs.includes("successfully") || logs.includes("conversion complete");
-      const statusText = isRunning ? "Converting..." : (isSuccess ? "Completed" : "Failed");
+      const statusText = isRunning ? "Converting..." : isSuccess ? "Completed" : "Failed";
 
       activeConsoleLogs[modelId] = {
         modelId,
@@ -643,10 +724,17 @@ async function convertModel(modelId: string) {
   if (logStatus) logStatus.textContent = "Converting...";
 
   try {
-    const firstUpdate = await typedCall("ModelsService.ConvertModel", ModelIdRequestSchema, { modelId }, ConversionStatusUpdateSchema);
+    const firstUpdate = await typedCall(
+      "ModelsService.ConvertModel",
+      ModelIdRequestSchema,
+      { modelId },
+      ConversionStatusUpdateSchema,
+    );
     if (firstUpdate && firstUpdate.complete) {
       if (logText) logText.textContent = firstUpdate.logs;
-      const isSuccess = firstUpdate.logs.includes("successfully") || firstUpdate.logs.includes("conversion complete");
+      const isSuccess =
+        firstUpdate.logs.includes("successfully") ||
+        firstUpdate.logs.includes("conversion complete");
       if (logStatus) logStatus.textContent = isSuccess ? "Completed" : "Failed";
       if (btn) {
         btn.disabled = false;
@@ -678,36 +766,51 @@ async function quantizeModel(modelId: string, format: string) {
   }
 
   try {
-    const resp = await typedCall("ModelsService.QuantizeModel", QuantizeModelRequestSchema, { modelId, format }, ModelActionResultSchema);
+    const resp = await typedCall(
+      "ModelsService.QuantizeModel",
+      QuantizeModelRequestSchema,
+      { modelId, format },
+      ModelActionResultSchema,
+    );
     showInfoAlert(resp.message);
     refreshModelStatus();
   } catch (e: any) {
     showErrorAlert("Quantization failed:\n" + (e.message || e));
     refreshModelStatus();
   }
-};
+}
 
 (window as any).updateModelPrecision = async (modelId: string, precision: string) => {
   try {
-    const settingsResp = await typedCall("SystemService.GetSettings", null, null, SettingsResultSchema);
+    const settingsResp = await typedCall(
+      "SystemService.GetSettings",
+      null,
+      null,
+      SettingsResultSchema,
+    );
 
     const precs: { [key: string]: ModelPrecision } = { ...settingsResp.modelPrecisions };
     if (precision === "int8") precs[modelId] = ModelPrecision.INT8;
     else if (precision === "fp16") precs[modelId] = ModelPrecision.FP16;
     else precs[modelId] = ModelPrecision.ORIGINAL;
 
-    await typedCall("SystemService.UpdateSettings", UpdateSettingsRequestSchema, {
-      clipDevice: settingsResp.clipDevice,
-      taggerDevice: settingsResp.taggerDevice,
-      taggerWdDevice: settingsResp.taggerWdDevice,
-      idleTimeoutSecs: settingsResp.idleTimeoutSecs,
-      embeddingModel: settingsResp.embeddingModel,
-      detectionDevice: settingsResp.detectionDevice,
-      detectionMetricsDevice: settingsResp.detectionMetricsDevice,
-      ocrDevice: settingsResp.ocrDevice,
-      modelPrecisions: precs,
-      preferredTagger: settingsResp.preferredTagger,
-    }, SettingsResultSchema);
+    await typedCall(
+      "SystemService.UpdateSettings",
+      UpdateSettingsRequestSchema,
+      {
+        clipDevice: settingsResp.clipDevice,
+        taggerDevice: settingsResp.taggerDevice,
+        taggerWdDevice: settingsResp.taggerWdDevice,
+        idleTimeoutSecs: settingsResp.idleTimeoutSecs,
+        embeddingModel: settingsResp.embeddingModel,
+        detectionDevice: settingsResp.detectionDevice,
+        detectionMetricsDevice: settingsResp.detectionMetricsDevice,
+        ocrDevice: settingsResp.ocrDevice,
+        modelPrecisions: precs,
+        preferredTagger: settingsResp.preferredTagger,
+      },
+      SettingsResultSchema,
+    );
 
     refreshModelStatus();
   } catch (e: any) {

@@ -141,12 +141,11 @@ export function pollTranscodeProgress({
     fetch: async (): Promise<TranscodeProgress | undefined> => {
       const resp = await PH.callService("GetTranscodeProgress", { job_id: jobId });
       const raw = (resp as Record<string, unknown> | undefined)?.TranscodeProgressResult as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       if (!raw) return undefined;
       return {
         percent: Math.round((raw.percent as number) || 0),
-        running: !!(raw.running),
+        running: !!raw.running,
         error: raw.error as string | undefined,
         fps: raw.fps as number | undefined,
         xSpeed: raw.x_speed as number | undefined,

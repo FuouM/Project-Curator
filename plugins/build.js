@@ -84,12 +84,7 @@ async function buildPlugin(name) {
 function discoverPlugins() {
   return fs
     .readdirSync(ROOT, { withFileTypes: true })
-    .filter(
-      (d) =>
-        d.isDirectory() &&
-        !d.name.startsWith(".") &&
-        d.name !== "node_modules"
-    )
+    .filter((d) => d.isDirectory() && !d.name.startsWith(".") && d.name !== "node_modules")
     .map((d) => d.name);
 }
 

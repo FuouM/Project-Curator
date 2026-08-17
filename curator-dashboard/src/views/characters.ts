@@ -47,7 +47,6 @@ function characterIdentityFromProto(p: PCharacterIdentity): CharacterIdentity {
   };
 }
 
-
 function storedDetectionFromProto(p: StoredDetection): CharacterDetection {
   return {
     id: Number(p.id),
@@ -99,15 +98,23 @@ export async function getSuggestions(query: string): Promise<SuggestionItem[]> {
   const q = query.toLowerCase();
 
   try {
-    const tagResp = await typedCall("SearchService.GetCharacterSuggestions", GetCharacterSuggestionsRequestSchema, { query }, TagStatisticsResultSchema).catch(
-      () => null
-    );
+    const tagResp = await typedCall(
+      "SearchService.GetCharacterSuggestions",
+      GetCharacterSuggestionsRequestSchema,
+      { query },
+      TagStatisticsResultSchema,
+    ).catch(() => null);
 
     let identities: CharacterIdentity[] = [];
     if (identityCache && Date.now() - identityCache.ts < IDENTITY_CACHE_TTL) {
       identities = identityCache.identities;
     } else {
-      const idResp = await typedCall("CharactersService.ListCharacterIdentities", null, null, CharacterIdentitiesListSchema).catch(() => null);
+      const idResp = await typedCall(
+        "CharactersService.ListCharacterIdentities",
+        null,
+        null,
+        CharacterIdentitiesListSchema,
+      ).catch(() => null);
       identities = idResp ? idResp.identities.map(characterIdentityFromProto) : [];
       identityCache = { identities, ts: Date.now() };
     }
@@ -134,7 +141,6 @@ export async function getSuggestions(query: string): Promise<SuggestionItem[]> {
     }
   } catch (_) {}
 
-
   return items.sort((a, b) => {
     const aIsPlaceholder = isPlaceholderName(a.name);
     const bIsPlaceholder = isPlaceholderName(b.name);
@@ -149,7 +155,7 @@ export async function getSuggestions(query: string): Promise<SuggestionItem[]> {
 export function attachIdentityAutocomplete(
   input: HTMLInputElement,
   dropdownId: string,
-  onSelect: (value: string) => void
+  onSelect: (value: string) => void,
 ) {
   attachAutocomplete({
     input,
@@ -191,7 +197,9 @@ function enqueueCropLoad(el: HTMLElement, detectionId: number) {
   }
   els.push(el);
   if (cropFlushTimer === null) {
-    cropFlushTimer = window.setTimeout(() => { flushCropQueue(); }, 0);
+    cropFlushTimer = window.setTimeout(() => {
+      flushCropQueue();
+    }, 0);
   }
 }
 
@@ -204,8 +212,15 @@ async function flushCropQueue() {
   const ids = batch.map(([id]) => id);
 
   try {
-    const resp = await typedCall("CharactersService.GetDetectionCrops", GetDetectionCropsRequestSchema, { detectionIds: ids.map((id) => BigInt(id)), maxSize: 96 }, DetectionCropsResultSchema);
-    const byId = new Map<number, Uint8Array>(resp.crops.map((c) => [Number(c.detectionId), c.cropWebpBytes]));
+    const resp = await typedCall(
+      "CharactersService.GetDetectionCrops",
+      GetDetectionCropsRequestSchema,
+      { detectionIds: ids.map((id) => BigInt(id)), maxSize: 96 },
+      DetectionCropsResultSchema,
+    );
+    const byId = new Map<number, Uint8Array>(
+      resp.crops.map((c) => [Number(c.detectionId), c.cropWebpBytes]),
+    );
     for (const [id, els] of batch) {
       const bytes = byId.get(id);
       if (!bytes) {
@@ -236,7 +251,12 @@ export function setupCharactersView() {
   document.getElementById("create-identity-btn")?.addEventListener("click", async () => {
     const name = prompt("Character name (leave empty for auto-naming):");
     try {
-      await typedCall("CharactersService.CreateCharacterIdentity", CreateCharacterIdentityRequestSchema, { name: name || undefined }, CharacterIdentitiesListSchema);
+      await typedCall(
+        "CharactersService.CreateCharacterIdentity",
+        CreateCharacterIdentityRequestSchema,
+        { name: name || undefined },
+        CharacterIdentitiesListSchema,
+      );
       await refreshCharacters();
     } catch (e: any) {
       console.error("Failed to create identity:", e);
@@ -254,8 +274,15 @@ export function setupCharactersView() {
       btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Reidentifying...';
     }
     try {
-      const resp = await typedCall("CharactersService.ReidentifyAllDetections", null, null, ReidentifyResultSchema);
-      showInfoAlert(`Re-identification complete: ${Number(resp.matched)} matched, ${Number(resp.unmatched)} unmatched out of ${Number(resp.totalDetections)} total.`);
+      const resp = await typedCall(
+        "CharactersService.ReidentifyAllDetections",
+        null,
+        null,
+        ReidentifyResultSchema,
+      );
+      showInfoAlert(
+        `Re-identification complete: ${Number(resp.matched)} matched, ${Number(resp.unmatched)} unmatched out of ${Number(resp.totalDetections)} total.`,
+      );
       await refreshCharacters();
     } catch (e: any) {
       console.error("Re-identification failed:", e);
@@ -290,12 +317,25 @@ export async function refreshCharacters(focusedIdentityId?: number) {
 
   try {
     const [identitiesResp, unassignedResp] = await Promise.all([
-      typedCall("CharactersService.ListCharacterIdentities", null, null, CharacterIdentitiesListSchema),
-      typedCall("CharactersService.ListUnassignedDetections", null, null, UnassignedDetectionsListSchema),
+      typedCall(
+        "CharactersService.ListCharacterIdentities",
+        null,
+        null,
+        CharacterIdentitiesListSchema,
+      ),
+      typedCall(
+        "CharactersService.ListUnassignedDetections",
+        null,
+        null,
+        UnassignedDetectionsListSchema,
+      ),
     ]);
 
-    const identities: CharacterIdentity[] = identitiesResp.identities.map(characterIdentityFromProto);
-    const unassigned: CharacterDetection[] = unassignedResp.detections.map(storedDetectionFromProto);
+    const identities: CharacterIdentity[] = identitiesResp.identities.map(
+      characterIdentityFromProto,
+    );
+    const unassigned: CharacterDetection[] =
+      unassignedResp.detections.map(storedDetectionFromProto);
 
     // Sort identities alphabetically, keeping placeholders at the bottom
     identities.sort(compareIdentities);
@@ -307,9 +347,17 @@ export async function refreshCharacters(focusedIdentityId?: number) {
       .filter((i: CharacterIdentity) => !isPlaceholderName(i.name) && i.detection_count > 0)
       .map((i: CharacterIdentity) => i.id);
     if (realIdentityIds.length > 0) {
-      const searchResp = await typedCall("CharactersService.SearchByCharacterBatch", SearchByCharacterBatchRequestSchema, { identityIds: realIdentityIds.map((id) => BigInt(id)) }, CharacterSearchBatchResultSchema);
+      const searchResp = await typedCall(
+        "CharactersService.SearchByCharacterBatch",
+        SearchByCharacterBatchRequestSchema,
+        { identityIds: realIdentityIds.map((id) => BigInt(id)) },
+        CharacterSearchBatchResultSchema,
+      );
       for (const entry of searchResp.results) {
-        identityImageIds.set(Number(entry.identityId), entry.imageIds.map((id) => Number(id)));
+        identityImageIds.set(
+          Number(entry.identityId),
+          entry.imageIds.map((id) => Number(id)),
+        );
       }
     }
 
@@ -338,7 +386,8 @@ export async function refreshCharacters(focusedIdentityId?: number) {
 
     // Identity cards
     if (identities.length === 0 && unassigned.length === 0) {
-      container.innerHTML = '<p style="color:#64748b;font-style:italic;">No character identities yet. Use "Detect Characters" on an image to start.</p>';
+      container.innerHTML =
+        '<p style="color:#64748b;font-style:italic;">No character identities yet. Use "Detect Characters" on an image to start.</p>';
       return;
     }
 
@@ -362,11 +411,15 @@ export async function refreshCharacters(focusedIdentityId?: number) {
           </div>
           <div class="identity-sample-crops" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; max-height: 180px; overflow-y: auto; margin-top: 6px; padding-right: 4px;" data-identity-id="${identity.id}">
             <!-- Instantly display placeholder thumbnail boxes to prevent layout shift and show outlines -->
-            ${Array.from({ length: Math.min(10, identity.detection_count) }).map(() => `
+            ${Array.from({ length: Math.min(10, identity.detection_count) })
+              .map(
+                () => `
               <div class="crop-placeholder-slot" style="aspect-ratio: 1/1; width: 100%; background:#f8f9fa; border:1px dashed #ced4da; display:flex; align-items:center; justify-content:center; border-radius:2px;">
                 <i class="bi bi-image" style="color:#adb5bd;font-size:16px;"></i>
               </div>
-            `).join("")}
+            `,
+              )
+              .join("")}
           </div>
           <div class="concept-card-actions" style="margin-top:8px;display:flex;gap:6px;">
             <button class="win-button find-all-btn" data-id="${identity.id}" style="font-size:11px;">
@@ -383,7 +436,12 @@ export async function refreshCharacters(focusedIdentityId?: number) {
       const nameInput = card.querySelector(".identity-name-input") as HTMLInputElement;
       attachIdentityAutocomplete(nameInput, dropdownId, async (newName) => {
         if (newName !== identity.name) {
-          await typedCall("CharactersService.RenameCharacterIdentity", RenameCharacterIdentityRequestSchema, { identityId: BigInt(identity.id), name: newName }, EmptySchema);
+          await typedCall(
+            "CharactersService.RenameCharacterIdentity",
+            RenameCharacterIdentityRequestSchema,
+            { identityId: BigInt(identity.id), name: newName },
+            EmptySchema,
+          );
           await refreshCharacters(identity.id);
         }
       });
@@ -404,7 +462,12 @@ export async function refreshCharacters(focusedIdentityId?: number) {
       // Find All
       card.querySelector(".find-all-btn")?.addEventListener("click", async () => {
         try {
-          const searchResp = await typedCall("CharactersService.SearchByCharacter", SearchByCharacterRequestSchema, { identityId: BigInt(identity.id) }, CharacterSearchResultSchema);
+          const searchResp = await typedCall(
+            "CharactersService.SearchByCharacter",
+            SearchByCharacterRequestSchema,
+            { identityId: BigInt(identity.id) },
+            CharacterSearchResultSchema,
+          );
           const imageIds = searchResp.imageIds;
           showInfoAlert(`Found ${imageIds.length} images containing "${identity.name}".`);
         } catch (e: any) {
@@ -414,9 +477,15 @@ export async function refreshCharacters(focusedIdentityId?: number) {
 
       // Delete
       card.querySelector(".delete-identity-btn")?.addEventListener("click", async () => {
-        if (!confirm(`Delete identity "${identity.name}"? Detections will become unassigned.`)) return;
+        if (!confirm(`Delete identity "${identity.name}"? Detections will become unassigned.`))
+          return;
         try {
-          await typedCall("CharactersService.DeleteCharacterIdentity", DeleteCharacterIdentityRequestSchema, { identityId: BigInt(identity.id) }, EmptySchema);
+          await typedCall(
+            "CharactersService.DeleteCharacterIdentity",
+            DeleteCharacterIdentityRequestSchema,
+            { identityId: BigInt(identity.id) },
+            EmptySchema,
+          );
           await refreshCharacters();
         } catch (e: any) {
           console.error("Delete identity failed:", e);
@@ -425,7 +494,8 @@ export async function refreshCharacters(focusedIdentityId?: number) {
     }
   } catch (e) {
     console.error("Failed to load identities:", e);
-    container.innerHTML = '<p style="color:#64748b;font-style:italic;">Failed to load identities.</p>';
+    container.innerHTML =
+      '<p style="color:#64748b;font-style:italic;">Failed to load identities.</p>';
   } finally {
     // Restore scroll position or scroll focused card into view
     if (focusedIdentityId !== undefined) {
@@ -441,7 +511,11 @@ export async function refreshCharacters(focusedIdentityId?: number) {
   }
 }
 
-async function loadIdentitySampleCrops(card: HTMLElement, identityId: number, preFetchedImageIds?: number[]) {
+async function loadIdentitySampleCrops(
+  card: HTMLElement,
+  identityId: number,
+  preFetchedImageIds?: number[],
+) {
   const cropsContainer = card.querySelector(".identity-sample-crops") as HTMLElement;
   if (!cropsContainer) return;
 
@@ -450,14 +524,24 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number, pr
     if (preFetchedImageIds) {
       imageIds = preFetchedImageIds;
     } else {
-      const resp = await typedCall("CharactersService.SearchByCharacter", SearchByCharacterRequestSchema, { identityId: BigInt(identityId) }, CharacterSearchResultSchema);
+      const resp = await typedCall(
+        "CharactersService.SearchByCharacter",
+        SearchByCharacterRequestSchema,
+        { identityId: BigInt(identityId) },
+        CharacterSearchResultSchema,
+      );
       imageIds = resp.imageIds.map((id) => Number(id));
     }
     if (imageIds.length === 0) return;
 
     // Execute fetches in parallel to keep database operations real-time
     const candidateImageIds = imageIds.slice(0, 100);
-    const batchResp = await typedCall("CharactersService.GetCharacterDetectionsBatch", ImageIdsRequestSchema, { imageIds: candidateImageIds.map((id) => BigInt(id)) }, DetectionBatchResultSchema);
+    const batchResp = await typedCall(
+      "CharactersService.GetCharacterDetectionsBatch",
+      ImageIdsRequestSchema,
+      { imageIds: candidateImageIds.map((id) => BigInt(id)) },
+      DetectionBatchResultSchema,
+    );
     const matchingDets: CharacterDetection[] = [];
     for (const item of batchResp.results) {
       for (const d of item.detections) {
@@ -471,13 +555,15 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number, pr
       cropsContainer.innerHTML = "";
       for (const det of matchingDets) {
         const thumb = document.createElement("div");
-        thumb.style.cssText = "position:relative;aspect-ratio:1/1;width:100%;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;border-radius:2px;";
+        thumb.style.cssText =
+          "position:relative;aspect-ratio:1/1;width:100%;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;border-radius:2px;";
         thumb.innerHTML = '<i class="bi bi-image" style="color:#999;font-size:16px;"></i>';
 
         // Unassign button (top-left) with a minus symbol
         const unassignBtn = document.createElement("span");
         unassignBtn.className = "unassign-crop-btn";
-        unassignBtn.style.cssText = "position:absolute;top:2px;left:2px;width:16px;height:16px;background:rgba(231,76,60,0.85);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;z-index:5;";
+        unassignBtn.style.cssText =
+          "position:absolute;top:2px;left:2px;width:16px;height:16px;background:rgba(231,76,60,0.85);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;z-index:5;";
         unassignBtn.innerHTML = '<i class="bi bi-dash"></i>';
         unassignBtn.title = "Unassign detection";
         unassignBtn.addEventListener("click", async (e) => {
@@ -488,7 +574,12 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number, pr
             : "Are you sure you want to unassign this sample from this character identity?";
           if (!confirm(confirmMsg)) return;
           try {
-            await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: undefined }, EmptySchema);
+            await typedCall(
+              "CharactersService.AssignCharacterIdentity",
+              AssignCharacterIdentityRequestSchema,
+              { detectionId: BigInt(det.id), identityId: undefined },
+              EmptySchema,
+            );
             await refreshCharacters();
           } catch (err: any) {
             showErrorAlert("Failed to unassign sample:\n" + err.message);
@@ -499,13 +590,19 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number, pr
         // Open original image button (bottom-left)
         const openImgBtn = document.createElement("span");
         openImgBtn.className = "open-image-btn";
-        openImgBtn.style.cssText = "position:absolute;bottom:2px;left:2px;width:16px;height:16px;background:rgba(52,152,219,0.85);color:#fff;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;cursor:pointer;z-index:5;";
+        openImgBtn.style.cssText =
+          "position:absolute;bottom:2px;left:2px;width:16px;height:16px;background:rgba(52,152,219,0.85);color:#fff;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;cursor:pointer;z-index:5;";
         openImgBtn.innerHTML = '<i class="bi bi-image"></i>';
         openImgBtn.title = "Open original image";
         openImgBtn.addEventListener("click", async (e) => {
           e.stopPropagation();
           try {
-            const imgResp = await typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(det.image_id) }, ImageResultSchema);
+            const imgResp = await typedCall(
+              "GalleryService.GetImage",
+              GetImageRequestSchema,
+              { imageId: BigInt(det.image_id) },
+              ImageResultSchema,
+            );
             if (imgResp.image) {
               const fp = imgResp.image.currentFilepath;
               openImageViewer(fp, det.image_id);
@@ -519,16 +616,22 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number, pr
         // Edit bounding box button (bottom-right)
         const editBtn = document.createElement("span");
         editBtn.className = "edit-crop-btn";
-        editBtn.style.cssText = "position:absolute;bottom:2px;right:2px;width:16px;height:16px;background:rgba(0,0,0,0.65);color:#fff;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;cursor:pointer;z-index:5;";
+        editBtn.style.cssText =
+          "position:absolute;bottom:2px;right:2px;width:16px;height:16px;background:rgba(0,0,0,0.65);color:#fff;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;cursor:pointer;z-index:5;";
         editBtn.innerHTML = '<i class="bi bi-bounding-box"></i>';
         editBtn.title = "Edit bounding box";
         editBtn.addEventListener("click", async (e) => {
           e.stopPropagation();
           try {
-            const imgResp = await typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(det.image_id) }, ImageResultSchema);
+            const imgResp = await typedCall(
+              "GalleryService.GetImage",
+              GetImageRequestSchema,
+              { imageId: BigInt(det.image_id) },
+              ImageResultSchema,
+            );
             if (imgResp.image) {
               const fp = imgResp.image.currentFilepath;
-              import("../bbox-editor").then(m => {
+              import("../bbox-editor").then((m) => {
                 m.openBBoxEditor(det.id, det.image_id, fp, det.x0, det.y0, det.x1, det.y1, () => {
                   invalidateCropCache(det.id);
                   refreshCharacters();
@@ -555,14 +658,16 @@ async function loadIdentitySampleCrops(card: HTMLElement, identityId: number, pr
 function renderUnassignedDetection(
   container: HTMLElement,
   det: CharacterDetection,
-  identities: CharacterIdentity[]
+  identities: CharacterIdentity[],
 ) {
   const row = document.createElement("div");
-  row.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid var(--sys-border-light,#d0d0d0);border-radius:2px;background:var(--sys-window-bg,#fff);font-size:11px;";
+  row.style.cssText =
+    "display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid var(--sys-border-light,#d0d0d0);border-radius:2px;background:var(--sys-window-bg,#fff);font-size:11px;";
 
   // Crop thumbnail
   const cropThumb = document.createElement("div");
-  cropThumb.style.cssText = "width:48px;height:48px;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;";
+  cropThumb.style.cssText =
+    "width:48px;height:48px;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;";
   cropThumb.innerHTML = '<i class="bi bi-image" style="color:#999;"></i>';
   loadCropForElement(cropThumb, det.id);
 
@@ -592,24 +697,44 @@ function renderUnassignedDetection(
   deleteBtn.style.cssText = "font-size:10px;padding:2px 6px;";
   deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
   deleteBtn.addEventListener("click", async () => {
-    await typedCall("CharactersService.DeleteDetection", DeleteDetectionRequestSchema, { detectionId: BigInt(det.id) }, EmptySchema);
+    await typedCall(
+      "CharactersService.DeleteDetection",
+      DeleteDetectionRequestSchema,
+      { detectionId: BigInt(det.id) },
+      EmptySchema,
+    );
     await refreshCharacters();
   });
 
   // Autocomplete assignment handler
   const assignInput = infoEl.querySelector(".assign-identity-input") as HTMLInputElement;
-  
+
   const handleAssign = async (targetName: string) => {
     const name = targetName.trim();
     if (!name) return;
-    const existing = identities.find(i => i.name.toLowerCase() === name.toLowerCase());
+    const existing = identities.find((i) => i.name.toLowerCase() === name.toLowerCase());
     if (existing) {
-      await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: BigInt(existing.id) }, EmptySchema);
+      await typedCall(
+        "CharactersService.AssignCharacterIdentity",
+        AssignCharacterIdentityRequestSchema,
+        { detectionId: BigInt(det.id), identityId: BigInt(existing.id) },
+        EmptySchema,
+      );
     } else {
-      const createResp = await typedCall("CharactersService.CreateCharacterIdentity", CreateCharacterIdentityRequestSchema, { name }, CharacterIdentitiesListSchema);
+      const createResp = await typedCall(
+        "CharactersService.CreateCharacterIdentity",
+        CreateCharacterIdentityRequestSchema,
+        { name },
+        CharacterIdentitiesListSchema,
+      );
       if (createResp.identities.length > 0) {
         const newId = createResp.identities[0].id;
-        await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: BigInt(newId) }, EmptySchema);
+        await typedCall(
+          "CharactersService.AssignCharacterIdentity",
+          AssignCharacterIdentityRequestSchema,
+          { detectionId: BigInt(det.id), identityId: BigInt(newId) },
+          EmptySchema,
+        );
       }
     }
     await refreshCharacters();
@@ -624,7 +749,7 @@ function renderUnassignedDetection(
     fetchItems: async (query) => {
       const suggestions = await getSuggestions(query);
       return suggestions.map((s) => ({ name: s.name, count: s.count }));
-    }
+    },
   });
 
   assignInput.addEventListener("keydown", async (e) => {
@@ -651,7 +776,15 @@ function renderUnassignedDetection(
   select?.addEventListener("change", async () => {
     const val = select.value;
     const identityId = val ? parseInt(val, 10) : null;
-    await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: identityId !== null ? BigInt(identityId) : undefined }, EmptySchema);
+    await typedCall(
+      "CharactersService.AssignCharacterIdentity",
+      AssignCharacterIdentityRequestSchema,
+      {
+        detectionId: BigInt(det.id),
+        identityId: identityId !== null ? BigInt(identityId) : undefined,
+      },
+      EmptySchema,
+    );
     await refreshCharacters();
   });
 
@@ -669,15 +802,27 @@ export function renderCharactersHtml(): SafeHtml {
   return html`
     <div class="group-box">
       <div class="group-box-title"><i class="bi bi-bounding-box"></i> Character Identities</div>
-      <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+      <div
+        style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;"
+      >
         <p style="margin: 0; font-size: 12px; color: var(--sys-text-subtle);">
           Manage auto-discovered character identities from YOLO + CCIP detection.
         </p>
         <div style="display: flex; gap: 8px;">
-          <button type="button" class="win-button" id="refresh-identities-btn" title="Refresh identities list">
+          <button
+            type="button"
+            class="win-button"
+            id="refresh-identities-btn"
+            title="Refresh identities list"
+          >
             <i class="bi bi-arrow-clockwise"></i> Refresh
           </button>
-          <button type="button" class="win-button" id="reidentify-all-btn" title="Re-identify all detections against current identities">
+          <button
+            type="button"
+            class="win-button"
+            id="reidentify-all-btn"
+            title="Re-identify all detections against current identities"
+          >
             <i class="bi bi-arrow-clockwise"></i> Reidentify All
           </button>
           <button type="button" class="win-button primary" id="create-identity-btn">

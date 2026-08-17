@@ -156,9 +156,10 @@
     let d = new Date(ms);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
       d.getDate()
-    ).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(
-      d.getMinutes()
-    ).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+    ).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(
+      2,
+      "0"
+    )}:${String(d.getSeconds()).padStart(2, "0")}`;
   }
   var init_formatting = __esm({
     "dynasty-scans/src/utils/formatting.ts"() {
@@ -286,10 +287,7 @@
     );
   }
   async function touchCached(key) {
-    await execute(
-      "UPDATE cached_metadata SET cached_at = ? WHERE cache_key = ?",
-      [Date.now(), key]
-    );
+    await execute("UPDATE cached_metadata SET cached_at = ? WHERE cache_key = ?", [Date.now(), key]);
   }
   async function deleteCached(key) {
     await execute("DELETE FROM cached_metadata WHERE cache_key = ?", [key]);
@@ -553,9 +551,7 @@
       query(
         "SELECT COUNT(*) as pages, COUNT(DISTINCT chapter_permalink) as chapters, SUM(COALESCE(size_bytes, 0)) as total_bytes FROM cached_pages"
       ),
-      query(
-        "SELECT COUNT(*) as count FROM cached_metadata"
-      ),
+      query("SELECT COUNT(*) as count FROM cached_metadata"),
       (async () => {
         var _a2, _b2;
         try {
@@ -1309,7 +1305,9 @@
     window.open(url, "_blank", "noopener");
   }
   function parseDynastyUrl(input) {
-    let t = input.trim().replace(/\/+$/, ""), m = /^https?:\/\/(?:www\.)?dynasty-scans\.com\/(series|chapters|anthologies|doujins|issues)\/([^\/?#]+)$/i.exec(t);
+    let t = input.trim().replace(/\/+$/, ""), m = /^https?:\/\/(?:www\.)?dynasty-scans\.com\/(series|chapters|anthologies|doujins|issues)\/([^\/?#]+)$/i.exec(
+      t
+    );
     if (!m) return null;
     let permalink = m[2];
     return permalink.toLowerCase().endsWith(".json") && (permalink = permalink.slice(0, -5)), { kind: m[1].toLowerCase() === "chapters" ? "chapter" : "series", permalink };
@@ -1448,15 +1446,24 @@
     });
     let grid = document.createElement("div");
     grid.className = "ds-library-grid", root.appendChild(grid);
-    let { panel: followedPanel, body: followedBody, footer: followedFooter } = createLibraryPanel(
-      '<i class="bi bi-bookmark-heart"></i> Followed Series'
-    );
+    let {
+      panel: followedPanel,
+      body: followedBody,
+      footer: followedFooter
+    } = createLibraryPanel('<i class="bi bi-bookmark-heart"></i> Followed Series');
     grid.appendChild(followedPanel);
-    let { panel: bookmarksPanel, body: bookmarksBody, footer: bookmarksFooter } = createLibraryPanel(
-      '<i class="bi bi-bookmark"></i> Bookmarks'
-    );
+    let {
+      panel: bookmarksPanel,
+      body: bookmarksBody,
+      footer: bookmarksFooter
+    } = createLibraryPanel('<i class="bi bi-bookmark"></i> Bookmarks');
     grid.appendChild(bookmarksPanel);
-    let { panel: historyPanel, head: historyHead, body: historyBody, footer: historyFooter } = createLibraryPanel(
+    let {
+      panel: historyPanel,
+      head: historyHead,
+      body: historyBody,
+      footer: historyFooter
+    } = createLibraryPanel(
       '<span style="display:flex;align-items:center;gap:6px;"><i class="bi bi-clock-history"></i> Reading History</span>'
     ), clearHistoryBtn = createConfirmDeleteButton(
       "Clear all reading history",
@@ -1465,7 +1472,14 @@
       },
       '<i class="bi bi-trash3"></i> Clear'
     );
-    clearHistoryBtn.style.cssText = "font-size:10px;padding:0 5px;height:18px;line-height:18px;margin-left:auto;", historyHead.style.cssText = "display:flex;align-items:center;justify-content:space-between;width:calc(100% - 16px);right:8px;", historyHead.appendChild(clearHistoryBtn), grid.appendChild(historyPanel), loadAll(followedBody, followedFooter, bookmarksBody, bookmarksFooter, historyBody, historyFooter);
+    clearHistoryBtn.style.cssText = "font-size:10px;padding:0 5px;height:18px;line-height:18px;margin-left:auto;", historyHead.style.cssText = "display:flex;align-items:center;justify-content:space-between;width:calc(100% - 16px);right:8px;", historyHead.appendChild(clearHistoryBtn), grid.appendChild(historyPanel), loadAll(
+      followedBody,
+      followedFooter,
+      bookmarksBody,
+      bookmarksFooter,
+      historyBody,
+      historyFooter
+    );
   }
   async function loadAll(followedBody, followedFooter, bookmarksBody, bookmarksFooter, historyBody, historyFooter) {
     try {
@@ -1485,7 +1499,14 @@
     loading.className = "ds-muted", loading.textContent = "Loading followed series\u2026", body.appendChild(loading);
     try {
       let res = await getFollowedSeriesPage(page, 10);
-      renderFollowed(body, footer, res.rows, res.totalPages, res.currentPage, (p) => void loadFollowedPage(body, footer, p));
+      renderFollowed(
+        body,
+        footer,
+        res.rows,
+        res.totalPages,
+        res.currentPage,
+        (p) => void loadFollowedPage(body, footer, p)
+      );
     } catch (err) {
       let msg = err instanceof Error ? err.message : String(err);
       body.innerHTML = "";
@@ -1539,7 +1560,14 @@
     loading.className = "ds-muted", loading.textContent = "Loading bookmarks\u2026", body.appendChild(loading);
     try {
       let res = await getBookmarksPage(page, 15);
-      renderBookmarks(body, footer, res.rows, res.totalPages, res.currentPage, (p) => void loadBookmarksPage(body, footer, p));
+      renderBookmarks(
+        body,
+        footer,
+        res.rows,
+        res.totalPages,
+        res.currentPage,
+        (p) => void loadBookmarksPage(body, footer, p)
+      );
     } catch (err) {
       let msg = err instanceof Error ? err.message : String(err);
       body.innerHTML = "";
@@ -1589,7 +1617,14 @@
     loading.className = "ds-muted", loading.textContent = "Loading history\u2026", body.appendChild(loading);
     try {
       let res = await getHistoryPage(page, 15);
-      renderHistory(body, footer, res.rows, res.totalPages, res.currentPage, (p) => void loadHistoryPage(body, footer, p));
+      renderHistory(
+        body,
+        footer,
+        res.rows,
+        res.totalPages,
+        res.currentPage,
+        (p) => void loadHistoryPage(body, footer, p)
+      );
     } catch (err) {
       let msg = err instanceof Error ? err.message : String(err);
       body.innerHTML = "";
@@ -1742,7 +1777,9 @@
     reobserveUnloadedCovers(host) {
       if (!this.enabled) return;
       let observer = this.getLazyObserver();
-      host.querySelectorAll(".ds-feed-cover-wrap:not(:has(img.ds-feed-cover))").forEach((wrap) => observer.observe(wrap));
+      host.querySelectorAll(
+        ".ds-feed-cover-wrap:not(:has(img.ds-feed-cover))"
+      ).forEach((wrap) => observer.observe(wrap));
     }
     attachScrollTracking() {
       let dsView = document.getElementById("ds-view");
@@ -2013,7 +2050,11 @@
       let res = await checkFeedOnline(url, key, cached == null ? void 0 : cached.etag);
       if (res.status === 200 && res.data) {
         let freshTop = (_b = (_a = res.data.chapters) == null ? void 0 : _a[0]) == null ? void 0 : _b.permalink;
-        return cachedTop !== void 0 && freshTop && freshTop !== cachedTop ? { hasNew: !0, etag: res.etag, status: "new-chapters" } : { hasNew: !1, etag: res.etag, status: cachedTop === void 0 ? "no-baseline" : "unchanged" };
+        return cachedTop !== void 0 && freshTop && freshTop !== cachedTop ? { hasNew: !0, etag: res.etag, status: "new-chapters" } : {
+          hasNew: !1,
+          etag: res.etag,
+          status: cachedTop === void 0 ? "no-baseline" : "unchanged"
+        };
       }
       return res.status === 304 ? { hasNew: !1, etag: (_c = res.etag) != null ? _c : cached == null ? void 0 : cached.etag, status: "unchanged" } : { hasNew: !1, etag: cached == null ? void 0 : cached.etag, status: "error" };
     } catch (e) {
@@ -2264,10 +2305,16 @@
       }
       let parsed = parseDynastyUrl(raw);
       if (!parsed) {
-        setBanner("Unrecognized URL. Use https://dynasty-scans.com/series/<permalink> or /chapters/<permalink>.");
+        setBanner(
+          "Unrecognized URL. Use https://dynasty-scans.com/series/<permalink> or /chapters/<permalink>."
+        );
         return;
       }
-      parsed.kind === "chapter" ? navigate({ view: "reader", chapterPermalink: parsed.permalink, chapterTitle: parsed.permalink }) : navigate({ view: "series", seriesPermalink: parsed.permalink, seriesName: parsed.permalink });
+      parsed.kind === "chapter" ? navigate({
+        view: "reader",
+        chapterPermalink: parsed.permalink,
+        chapterTitle: parsed.permalink
+      }) : navigate({ view: "series", seriesPermalink: parsed.permalink, seriesName: parsed.permalink });
     };
     urlBtn == null || urlBtn.addEventListener("click", openByUrl), urlInput == null || urlInput.addEventListener("keydown", (ev) => {
       ev.key === "Enter" && openByUrl();
@@ -2653,7 +2700,9 @@
         if (c.disposed) return;
         this.failed.add(index);
         let msg = err instanceof Error ? err.message : String(err);
-        slot && c.renderSlotState(slot, "error", `Download failed: ${msg}`), this.firstErrorShown || (this.firstErrorShown = !0, c.setBanner(`Page download failed (page ${index + 1} of ${c.pages.length}). Use the slot's Retry.`));
+        slot && c.renderSlotState(slot, "error", `Download failed: ${msg}`), this.firstErrorShown || (this.firstErrorShown = !0, c.setBanner(
+          `Page download failed (page ${index + 1} of ${c.pages.length}). Use the slot's Retry.`
+        ));
       }
     }
   };
@@ -3136,7 +3185,9 @@
       try {
         cachedRows = await getCachedPages(this.permalink);
       } catch (err) {
-        cachedRows = [], this.setBanner(`Page cache lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+        cachedRows = [], this.setBanner(
+          `Page cache lookup failed: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
       for (let row of cachedRows)
         row.page_index >= 0 && row.page_index < this.pages.length && row.file_path && this.cachedMap.set(row.page_index, row.file_path);
@@ -3241,10 +3292,7 @@
       let loading = document.createElement("div");
       loading.className = "ds-muted", loading.style.cssText = "padding:20px;text-align:center;", loading.textContent = "Calculating storage footprint and cache records\u2026", root.appendChild(loading);
       try {
-        let [stats, groups] = await Promise.all([
-          getCacheOverviewStats(),
-          getCachedSeriesGroups()
-        ]);
+        let [stats, groups] = await Promise.all([getCacheOverviewStats(), getCachedSeriesGroups()]);
         root.innerHTML = "", setActions((host) => {
           let backBtn = document.createElement("button");
           backBtn.type = "button", backBtn.className = "win-button", backBtn.style.cssText = "font-size:11px;padding:2px 8px;", backBtn.innerHTML = '<i class="bi bi-arrow-left"></i> Back to Library', backBtn.addEventListener("click", () => navigate({ view: "library" })), host.appendChild(backBtn);
@@ -3323,7 +3371,9 @@
           listEl.className = "ds-cache-list", listEl.style.cssText = "max-height:none;";
           let renderItems = () => {
             listEl.innerHTML = "";
-            let ft = filterInput.value.toLowerCase().trim(), sortMode = sortSelect.value, filtered = groups.filter((g) => g.seriesName.toLowerCase().includes(ft) || g.seriesPermalink.toLowerCase().includes(ft));
+            let ft = filterInput.value.toLowerCase().trim(), sortMode = sortSelect.value, filtered = groups.filter(
+              (g) => g.seriesName.toLowerCase().includes(ft) || g.seriesPermalink.toLowerCase().includes(ft)
+            );
             if (filtered.sort((a, b) => {
               switch (sortMode) {
                 case "size-desc":
@@ -3349,25 +3399,52 @@
             for (let item of filtered) {
               let row = document.createElement("div");
               if (row.className = "ds-cache-item", row.style.cssText = "padding:8px 10px;", item.coverPath) {
-                let img = renderFeedCover(item.coverPath, item.seriesName, "width:36px;height:50px;cursor:pointer;");
+                let img = renderFeedCover(
+                  item.coverPath,
+                  item.seriesName,
+                  "width:36px;height:50px;cursor:pointer;"
+                );
                 img.title = "Click to view", img.addEventListener("click", () => {
-                  item.isStandalone ? navigate({ view: "reader", chapterPermalink: item.seriesPermalink, chapterTitle: item.seriesName }) : navigate({ view: "series", seriesPermalink: item.seriesPermalink, seriesName: item.seriesName });
+                  item.isStandalone ? navigate({
+                    view: "reader",
+                    chapterPermalink: item.seriesPermalink,
+                    chapterTitle: item.seriesName
+                  }) : navigate({
+                    view: "series",
+                    seriesPermalink: item.seriesPermalink,
+                    seriesName: item.seriesName
+                  });
                 }), row.appendChild(img);
               } else {
-                let ph = renderFeedCover(null, item.seriesName, "width:36px;height:50px;font-size:12px;");
+                let ph = renderFeedCover(
+                  null,
+                  item.seriesName,
+                  "width:36px;height:50px;font-size:12px;"
+                );
                 ph.innerHTML = '<i class="bi bi-book"></i>', row.appendChild(ph);
               }
               let info = document.createElement("div");
               info.style.cssText = "flex:1;min-width:0;";
               let name = document.createElement("div");
               name.style.cssText = "font-size:12px;font-weight:600;cursor:pointer;", name.textContent = decodeEntities(item.seriesName), name.addEventListener("click", () => {
-                item.isStandalone ? navigate({ view: "reader", chapterPermalink: item.seriesPermalink, chapterTitle: item.seriesName }) : navigate({ view: "series", seriesPermalink: item.seriesPermalink, seriesName: item.seriesName });
+                item.isStandalone ? navigate({
+                  view: "reader",
+                  chapterPermalink: item.seriesPermalink,
+                  chapterTitle: item.seriesName
+                }) : navigate({
+                  view: "series",
+                  seriesPermalink: item.seriesPermalink,
+                  seriesName: item.seriesName
+                });
               });
               let meta = document.createElement("div");
               meta.className = "ds-item-meta", meta.innerHTML = `<strong>${formatBytes(item.totalSizeBytes)}</strong> \xB7 ${item.chapterCount} chapter${item.chapterCount > 1 ? "s" : ""} \xB7 ${item.pageCount} page${item.pageCount > 1 ? "s" : ""} cached \xB7 Cached ${formatDate(item.lastCachedAt)}`, info.appendChild(name), info.appendChild(meta), row.appendChild(info);
-              let delBtn = createConfirmDeleteButton(`Delete all cached files for "${item.seriesName}"`, async () => {
-                await clearCachedGroupPages(item.chapterPermalinks), setBanner(`Cleared cache for "${item.seriesName}".`), await loadView();
-              });
+              let delBtn = createConfirmDeleteButton(
+                `Delete all cached files for "${item.seriesName}"`,
+                async () => {
+                  await clearCachedGroupPages(item.chapterPermalinks), setBanner(`Cleared cache for "${item.seriesName}".`), await loadView();
+                }
+              );
               row.appendChild(delBtn), listEl.appendChild(row);
             }
           };

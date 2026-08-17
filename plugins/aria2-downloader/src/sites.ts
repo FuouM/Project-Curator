@@ -47,7 +47,11 @@ export function checkUrlCompatibility(url: string): UrlCheckResult {
   hostname = hostname.replace(/^www\./, "");
 
   // Direct file URLs.
-  if (/\.(zip|rar|7z|tar|gz|xz|iso|img|mp4|mkv|avi|mov|mp3|flac|wav|png|jpg|jpeg|webp|pdf|epub|bin|exe|msi|dmg|deb|rpm)(\?.*)?$/i.test(trimmed)) {
+  if (
+    /\.(zip|rar|7z|tar|gz|xz|iso|img|mp4|mkv|avi|mov|mp3|flac|wav|png|jpg|jpeg|webp|pdf|epub|bin|exe|msi|dmg|deb|rpm)(\?.*)?$/i.test(
+      trimmed,
+    )
+  ) {
     return {
       url: trimmed,
       status: "generic_direct",

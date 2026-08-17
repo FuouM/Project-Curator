@@ -25,7 +25,8 @@ export async function loadSuggestions(q: string, host: HTMLElement): Promise<voi
     const item = document.createElement("div");
     item.className = "ds-typeahead-item";
     const name = document.createElement("span");
-    name.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    name.style.cssText =
+      "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
     name.textContent = decodeEntities(r.name);
     const type = document.createElement("span");
     type.className = "ds-typeahead-type";
@@ -85,11 +86,17 @@ export function wireSearchPanel(panel: HTMLElement): void {
     }
     const parsed = parseDynastyUrl(raw);
     if (!parsed) {
-      setBanner("Unrecognized URL. Use https://dynasty-scans.com/series/<permalink> or /chapters/<permalink>.");
+      setBanner(
+        "Unrecognized URL. Use https://dynasty-scans.com/series/<permalink> or /chapters/<permalink>.",
+      );
       return;
     }
     if (parsed.kind === "chapter") {
-      navigate({ view: "reader", chapterPermalink: parsed.permalink, chapterTitle: parsed.permalink });
+      navigate({
+        view: "reader",
+        chapterPermalink: parsed.permalink,
+        chapterTitle: parsed.permalink,
+      });
     } else {
       navigate({ view: "series", seriesPermalink: parsed.permalink, seriesName: parsed.permalink });
     }

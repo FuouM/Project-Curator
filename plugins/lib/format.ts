@@ -19,11 +19,7 @@
  * formatBytes(null, "unknown size") // "unknown size"
  * formatBytes(2097152, "", 1)       // "2.0 MB"
  */
-export function formatBytes(
-  bytes: number | null | undefined,
-  fallback = "",
-  decimals = 2
-): string {
+export function formatBytes(bytes: number | null | undefined, fallback = "", decimals = 2): string {
   if (bytes == null || isNaN(bytes) || bytes < 0) return fallback;
   if (bytes === 0) return "0 B";
 

@@ -101,7 +101,9 @@ export class ReaderQueue {
       if (slot) c.renderSlotState(slot, "error", `Download failed: ${msg}`);
       if (!this.firstErrorShown) {
         this.firstErrorShown = true;
-        c.setBanner(`Page download failed (page ${index + 1} of ${c.pages.length}). Use the slot's Retry.`);
+        c.setBanner(
+          `Page download failed (page ${index + 1} of ${c.pages.length}). Use the slot's Retry.`,
+        );
       }
     }
   }

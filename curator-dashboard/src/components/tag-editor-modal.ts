@@ -4,24 +4,34 @@ import { showErrorAlert } from "../alert";
 import { EmptySchema } from "@bufbuild/protobuf/wkt";
 import { tagSummaryFromProto } from "../proto-adapters";
 import { GetImageRequestSchema, ImageResultSchema } from "../gen/gallery_pb";
-import { AddTagRequestSchema, RemoveTagRequestSchema, UnblacklistTagRequestSchema } from "../gen/tags_pb";
+import {
+  AddTagRequestSchema,
+  RemoveTagRequestSchema,
+  UnblacklistTagRequestSchema,
+} from "../gen/tags_pb";
 import { TagImageRequestSchema, TagImageResultSchema } from "../gen/tagging_pb";
 import { html, SafeHtml, ComponentMeta } from "./_shared";
 import { maskPath } from "./path-utils";
 import { getTagPillHtml } from "./card-tags";
 import { refreshCardTags } from "../views/tags";
 
-
 export function renderTagEditorModalHtml(imageId: number, filepath: string): SafeHtml {
   return html`
     <div class="modal-header">
       <span class="modal-title">Manage Image Tags</span>
-      <span class="modal-close" id="close-modal" data-action="close-modal"><i class="bi bi-x-lg"></i></span>
+      <span class="modal-close" id="close-modal" data-action="close-modal"
+        ><i class="bi bi-x-lg"></i
+      ></span>
     </div>
     <form id="tag-form">
       <div class="modal-body">
         <input type="hidden" id="tag-image-id" value="${imageId}" />
-        <p style="font-size: 11px; color: #555555; word-break: break-all;" id="tag-image-path-preview">${maskPath(filepath)}</p>
+        <p
+          style="font-size: 11px; color: #555555; word-break: break-all;"
+          id="tag-image-path-preview"
+        >
+          ${maskPath(filepath)}
+        </p>
 
         <div class="group-box" style="margin: 4px 0; padding: 12px 6px 6px 6px;">
           <div class="group-box-title">Active Tags</div>
@@ -30,38 +40,69 @@ export function renderTagEditorModalHtml(imageId: number, filepath: string): Saf
           </div>
         </div>
 
-        <div class="group-box" id="modal-blacklisted-group" style="margin: 8px 0 4px 0; padding: 12px 6px 6px 6px; display: none;">
-          <div class="group-box-title" style="color: #ef4444;"><i class="bi bi-slash-circle"></i> Blacklisted Tags (AI Exclusions)</div>
-          <div id="modal-blacklisted-tag-list" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px;">
+        <div
+          class="group-box"
+          id="modal-blacklisted-group"
+          style="margin: 8px 0 4px 0; padding: 12px 6px 6px 6px; display: none;"
+        >
+          <div class="group-box-title" style="color: #ef4444;">
+            <i class="bi bi-slash-circle"></i> Blacklisted Tags (AI Exclusions)
+          </div>
+          <div
+            id="modal-blacklisted-tag-list"
+            style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px;"
+          >
             <!-- Blacklisted tags list -->
           </div>
         </div>
 
         <div class="form-group" style="margin-top: 8px;">
           <div class="input-wrapper" style="flex: 1;">
-            <input class="input-field has-clear" id="tag-name-input" placeholder="Enter tag name (e.g. meme)..." required />
-            <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
+            <input
+              class="input-field has-clear"
+              id="tag-name-input"
+              placeholder="Enter tag name (e.g. meme)..."
+              required
+            />
+            <button type="button" class="input-clear-btn" tabindex="-1">
+              <i class="bi bi-x-lg"></i>
+            </button>
           </div>
           <button type="submit" class="win-button">Add Tag</button>
         </div>
 
         <!-- AI Auto-Tagging Section -->
         <div style="border-top: 1px solid #d0d0d0; margin-top: 12px; padding-top: 10px;">
-          <div style="font-size: 10px; font-weight: bold; color: #444; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">
+          <div
+            style="font-size: 10px; font-weight: bold; color: #444; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;"
+          >
             <i class="bi bi-stars"></i> AUTO TAG
           </div>
           <div class="form-group">
-            <select class="input-field" id="tagger-threshold-select" style="width: 155px; font-size: 11px;">
+            <select
+              class="input-field"
+              id="tagger-threshold-select"
+              style="width: 155px; font-size: 11px;"
+            >
               <option value="0.5" selected>Balanced (0.50)</option>
               <option value="0.65">High Precision (0.65)</option>
               <option value="0.35">High Recall (0.35)</option>
             </select>
-            <button type="button" class="win-button" id="auto-tag-modal-btn" data-action="auto-tag" style="font-size: 11px;">
+            <button
+              type="button"
+              class="win-button"
+              id="auto-tag-modal-btn"
+              data-action="auto-tag"
+              style="font-size: 11px;"
+            >
               <i class="bi bi-stars"></i> AUTO TAG
             </button>
           </div>
 
-          <p id="auto-tag-modal-status" style="font-size: 11px; margin-top: 4px; color: #555555; min-height: 16px;"></p>
+          <p
+            id="auto-tag-modal-status"
+            style="font-size: 11px; margin-top: 4px; color: #555555; min-height: 16px;"
+          ></p>
         </div>
       </div>
     </form>
@@ -137,12 +178,18 @@ export async function refreshModalTags(imgId: number) {
 
   try {
     logJS(`refreshModalTags calling GetImage for image_id=${imgId}...`);
-    const resp = await typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(imgId) }, ImageResultSchema);
+    const resp = await typedCall(
+      "GalleryService.GetImage",
+      GetImageRequestSchema,
+      { imageId: BigInt(imgId) },
+      ImageResultSchema,
+    );
     logJS(`refreshModalTags GetImage response for image ${imgId}: ` + safeStringify(resp));
 
     const img = resp.image;
     if (!img || img.tags.length === 0) {
-      container.innerHTML = '<span style="color: #999; font-style: italic; font-size: 11px;">No tags assigned yet</span>';
+      container.innerHTML =
+        '<span style="color: #999; font-style: italic; font-size: 11px;">No tags assigned yet</span>';
     } else {
       container.innerHTML = img.tags
         .map((tag) => getTagPillHtml(tagSummaryFromProto(tag), true, imgId))
@@ -155,15 +202,20 @@ export async function refreshModalTags(imgId: number) {
       if (img && img.blacklistedTags.length > 0) {
         blacklistGroup.style.display = "block";
         blacklistContainer.innerHTML = img.blacklistedTags
-          .map((t) => `<span class="tag-pill tag-meta" style="background-color: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444;" title="Blacklisted negative sample — AI auto-tagging will skip this tag"><i class="bi bi-slash-circle"></i> ${t.tag.replace(/_/g, '_\u200B')} <i class="bi bi-arrow-counterclockwise" style="cursor: pointer; margin-left: 4px;" title="Restore (Un-blacklist)" data-action="unblacklist-tag" data-image-id="${imgId}" data-tag-name="${t.tag.replace(/'/g, "\\'")}"></i></span>`)
-            .join("");
+          .map(
+            (t) =>
+              `<span class="tag-pill tag-meta" style="background-color: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444;" title="Blacklisted negative sample — AI auto-tagging will skip this tag"><i class="bi bi-slash-circle"></i> ${t.tag.replace(/_/g, "_\u200B")} <i class="bi bi-arrow-counterclockwise" style="cursor: pointer; margin-left: 4px;" title="Restore (Un-blacklist)" data-action="unblacklist-tag" data-image-id="${imgId}" data-tag-name="${t.tag.replace(/'/g, "\\'")}"></i></span>`,
+          )
+          .join("");
       } else {
         blacklistGroup.style.display = "none";
         blacklistContainer.innerHTML = "";
       }
     }
 
-    logJS(`refreshModalTags rendered ${img ? img.tags.length : 0} active tags and ${img ? img.blacklistedTags.length : 0} blacklisted tags`);
+    logJS(
+      `refreshModalTags rendered ${img ? img.tags.length : 0} active tags and ${img ? img.blacklistedTags.length : 0} blacklisted tags`,
+    );
   } catch (e: any) {
     logJS("refreshModalTags exception: " + (e.message || e));
     container.innerHTML = `<span style="color: #ef4444; font-size: 11px;">IPC Error: ${e.message || e}</span>`;
@@ -172,7 +224,9 @@ export async function refreshModalTags(imgId: number) {
 
 export async function handleModalAutoTag() {
   const idInput = document.getElementById("tag-image-id") as HTMLInputElement | null;
-  const thresholdSelect = document.getElementById("tagger-threshold-select") as HTMLSelectElement | null;
+  const thresholdSelect = document.getElementById(
+    "tagger-threshold-select",
+  ) as HTMLSelectElement | null;
   const statusArea = document.getElementById("auto-tag-modal-status");
   const autoTagBtn = document.getElementById("auto-tag-modal-btn");
 
@@ -199,7 +253,7 @@ export async function handleModalAutoTag() {
       "TaggingService.TagImage",
       TagImageRequestSchema,
       { imageId: BigInt(imageId), threshold, force: true },
-      TagImageResultSchema
+      TagImageResultSchema,
     );
     logJS(`handleModalAutoTag TagImage response: ` + safeStringify(resp));
 
@@ -222,7 +276,12 @@ export async function handleModalAutoTag() {
 async function removeTag(imgId: number, tagName: string) {
   if (!confirm(`Are you sure you want to remove the tag "${tagName}"?`)) return;
   try {
-    await typedCall("TagsService.RemoveTag", RemoveTagRequestSchema, { imageId: BigInt(imgId), tag: tagName }, EmptySchema);
+    await typedCall(
+      "TagsService.RemoveTag",
+      RemoveTagRequestSchema,
+      { imageId: BigInt(imgId), tag: tagName },
+      EmptySchema,
+    );
     await refreshModalTags(imgId);
     await refreshCardTags(imgId);
   } catch (e: any) {
@@ -244,7 +303,12 @@ export function setupTagEditorModal() {
       const tagName = tagNameInput.value.trim();
 
       try {
-        await typedCall("TagsService.AddTag", AddTagRequestSchema, { imageId: BigInt(imgId), tag: tagName, category: "user" }, EmptySchema);
+        await typedCall(
+          "TagsService.AddTag",
+          AddTagRequestSchema,
+          { imageId: BigInt(imgId), tag: tagName, category: "user" },
+          EmptySchema,
+        );
         tagNameInput.value = "";
         tagNameInput.dispatchEvent(new Event("change", { bubbles: true }));
         await refreshModalTags(imgId);
@@ -275,7 +339,12 @@ export function setupTagEditorModal() {
       const tagName = actionEl.dataset.tagName || "";
       if (imgId && tagName) {
         try {
-          await typedCall("TagsService.UnblacklistTag", UnblacklistTagRequestSchema, { imageId: BigInt(imgId), tag: tagName }, EmptySchema);
+          await typedCall(
+            "TagsService.UnblacklistTag",
+            UnblacklistTagRequestSchema,
+            { imageId: BigInt(imgId), tag: tagName },
+            EmptySchema,
+          );
           await refreshModalTags(imgId);
           await refreshCardTags(imgId);
         } catch (err: any) {
@@ -287,13 +356,13 @@ export function setupTagEditorModal() {
     } else if (action === "close-modal") {
       document.getElementById("add-tag-modal")?.classList.remove("active");
     }
-
   });
 }
 
 export const meta: ComponentMeta = {
   name: "Tag Editor Modal",
-  description: "Manage Image Tags overlay with active tag pills, blacklisted AI exclusions, custom tag input, and AI auto-tagging controls.",
+  description:
+    "Manage Image Tags overlay with active tag pills, blacklisted AI exclusions, custom tag input, and AI auto-tagging controls.",
   variants: [
     {
       name: "Active Tags",
@@ -307,24 +376,50 @@ export const meta: ComponentMeta = {
               ${getTagPillHtml({ tag: "series_copyright", category: "copyright" }, true, 1)}
             </div>
           </div>
-        </div>`
+        </div>`,
     },
     {
       name: "Blacklisted Tags",
       render: () =>
         html`<div class="group-box" style="margin: 8px 0 4px 0; padding: 12px 6px 6px 6px;">
-          <div class="group-box-title" style="color: #ef4444;"><i class="bi bi-slash-circle"></i> Blacklisted Tags (AI Exclusions)</div>
-          <div style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px;">
-            <span class="tag-pill tag-meta" style="background-color: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444;" title="Blacklisted negative sample — AI auto-tagging will skip this tag"><i class="bi bi-slash-circle"></i> lowres <i class="bi bi-arrow-counterclockwise" style="cursor: pointer; margin-left: 4px;" title="Restore (Un-blacklist)"></i></span>
-            <span class="tag-pill tag-meta" style="background-color: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444;" title="Blacklisted negative sample — AI auto-tagging will skip this tag"><i class="bi bi-slash-circle"></i> blurry <i class="bi bi-arrow-counterclockwise" style="cursor: pointer; margin-left: 4px;" title="Restore (Un-blacklist)"></i></span>
+          <div class="group-box-title" style="color: #ef4444;">
+            <i class="bi bi-slash-circle"></i> Blacklisted Tags (AI Exclusions)
           </div>
-        </div>`
+          <div style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px;">
+            <span
+              class="tag-pill tag-meta"
+              style="background-color: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444;"
+              title="Blacklisted negative sample — AI auto-tagging will skip this tag"
+              ><i class="bi bi-slash-circle"></i> lowres
+              <i
+                class="bi bi-arrow-counterclockwise"
+                style="cursor: pointer; margin-left: 4px;"
+                title="Restore (Un-blacklist)"
+              ></i
+            ></span>
+            <span
+              class="tag-pill tag-meta"
+              style="background-color: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444;"
+              title="Blacklisted negative sample — AI auto-tagging will skip this tag"
+              ><i class="bi bi-slash-circle"></i> blurry
+              <i
+                class="bi bi-arrow-counterclockwise"
+                style="cursor: pointer; margin-left: 4px;"
+                title="Restore (Un-blacklist)"
+              ></i
+            ></span>
+          </div>
+        </div>`,
     },
     {
       name: "AI Auto-Tagged Controls",
       render: () =>
         html`<div class="form-group">
-          <select class="input-field" id="tagger-threshold-select" style="width: 155px; font-size: 11px;">
+          <select
+            class="input-field"
+            id="tagger-threshold-select"
+            style="width: 155px; font-size: 11px;"
+          >
             <option value="0.5" selected>Balanced (0.50)</option>
             <option value="0.65">High Precision (0.65)</option>
             <option value="0.35">High Recall (0.35)</option>
@@ -332,10 +427,15 @@ export const meta: ComponentMeta = {
           <button type="button" class="win-button" id="auto-tag-modal-btn" style="font-size: 11px;">
             <i class="bi bi-stars"></i> AUTO TAG
           </button>
-          <button type="button" class="win-button primary" id="teach-concept-from-modal-btn" style="font-size: 11px;">
+          <button
+            type="button"
+            class="win-button primary"
+            id="teach-concept-from-modal-btn"
+            style="font-size: 11px;"
+          >
             <i class="bi bi-magic"></i> Teach Concept
           </button>
-        </div>`
-    }
-  ]
+        </div>`,
+    },
+  ],
 };

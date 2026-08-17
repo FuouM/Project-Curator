@@ -34,7 +34,7 @@ export async function renderFeed(
   host: HTMLElement,
   tabId: string,
   page: number,
-  reload: FeedTabReload
+  reload: FeedTabReload,
 ): Promise<void> {
   const url = `${FEED_TAB_TO_URL[tabId]}?page=${page}`;
   const key = `${FEED_TAB_TO_KEY[tabId]}:${page}`;
@@ -81,7 +81,7 @@ export async function renderFeed(
   }
 
   host.appendChild(
-    renderPager(feed.total_pages, feed.current_page, (p) => void reload(host, tabId, p))
+    renderPager(feed.total_pages, feed.current_page, (p) => void reload(host, tabId, p)),
   );
 
   let currentEtag = feedResult.etag;
@@ -257,9 +257,11 @@ export async function renderFeed(
  * fresh head differs from the last cached head. A deeper page revalidating
  * 200 simply means its contents shifted — never a new-chapters signal.
  */
-async function revalidateFeedHead(
-  tabId: string
-): Promise<{ hasNew: boolean; etag?: string; status: "unchanged" | "new-chapters" | "no-baseline" | "error" }> {
+async function revalidateFeedHead(tabId: string): Promise<{
+  hasNew: boolean;
+  etag?: string;
+  status: "unchanged" | "new-chapters" | "no-baseline" | "error";
+}> {
   const url = FEED_TAB_TO_URL[tabId]; // head = page 1
   const key = `${FEED_TAB_TO_KEY[tabId]}:1`;
   const cached = await getCached(key);
@@ -271,7 +273,11 @@ async function revalidateFeedHead(
       if (cachedTop !== undefined && freshTop && freshTop !== cachedTop) {
         return { hasNew: true, etag: res.etag, status: "new-chapters" };
       }
-      return { hasNew: false, etag: res.etag, status: cachedTop === undefined ? "no-baseline" : "unchanged" };
+      return {
+        hasNew: false,
+        etag: res.etag,
+        status: cachedTop === undefined ? "no-baseline" : "unchanged",
+      };
     }
     if (res.status === 304) {
       return { hasNew: false, etag: res.etag ?? cached?.etag, status: "unchanged" };
@@ -350,7 +356,7 @@ function updateFeedStatusFooter(
     status: string;
     etagStatus?: string;
     isStale: boolean;
-  }
+  },
 ): void {
   const dbEl = footer.querySelector(".ds-status-db b");
   if (dbEl && info.cachedAt) {
@@ -382,11 +388,7 @@ function updateFeedStatusFooter(
   }
 }
 
-function showFeedUpdateBanner(
-  host: HTMLElement,
-  tabId: string,
-  reload: FeedTabReload
-): void {
+function showFeedUpdateBanner(host: HTMLElement, tabId: string, reload: FeedTabReload): void {
   if (host.querySelector(".ds-feed-update-banner")) return;
   const banner = document.createElement("div");
   banner.className = "ds-feed-update-banner";

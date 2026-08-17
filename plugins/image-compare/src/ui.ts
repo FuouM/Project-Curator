@@ -55,7 +55,7 @@ function loadImageMetadata(slot: typeof state.slotA, callback?: () => void): voi
 export function loadAssetIntoSlot(
   targetSlot: "A" | "B",
   assetContext: { path: string; asset_id?: number } | null,
-  fileObj?: File
+  fileObj?: File,
 ): void {
   ensureCompareMounted();
   const slotObj = targetSlot === "A" ? state.slotA : state.slotB;
@@ -211,7 +211,7 @@ function applyTransforms(): void {
   const infoB = el("cmp-info-overlay-b");
   if (infoB) {
     infoB.textContent = `B: ${state.slotB.width}×${state.slotB.height} | Zoom: ${Math.round(
-      (state.syncLock ? state.zoomA : state.zoomB) * 100
+      (state.syncLock ? state.zoomA : state.zoomB) * 100,
     )}%`;
   }
 }
@@ -235,7 +235,7 @@ export function setupDropZones(): void {
       } else if (paths.length === 1) {
         loadAssetIntoSlot(targetSlot, { path: paths[0], asset_id: 0 });
       }
-    }
+    },
   );
 }
 
@@ -437,8 +437,24 @@ export function bindEvents(wrapper: HTMLElement): void {
   const clearBtn = wrapper.querySelector("#cmp-clear-all");
   if (clearBtn) {
     clearBtn.addEventListener("click", () => {
-      state.slotA = { id: null, path: "", url: "", name: "Image A", width: 0, height: 0, sizeStr: "" };
-      state.slotB = { id: null, path: "", url: "", name: "Image B", width: 0, height: 0, sizeStr: "" };
+      state.slotA = {
+        id: null,
+        path: "",
+        url: "",
+        name: "Image A",
+        width: 0,
+        height: 0,
+        sizeStr: "",
+      };
+      state.slotB = {
+        id: null,
+        path: "",
+        url: "",
+        name: "Image B",
+        width: 0,
+        height: 0,
+        sizeStr: "",
+      };
       resetZoomAndPan();
       updateSlotHeaders();
       renderCanvasDOM();
@@ -468,7 +484,15 @@ export function bindEvents(wrapper: HTMLElement): void {
   const clearABtn = wrapper.querySelector("#slot-a-clear-btn");
   if (clearABtn) {
     clearABtn.addEventListener("click", () => {
-      state.slotA = { id: null, path: "", url: "", name: "Image A", width: 0, height: 0, sizeStr: "" };
+      state.slotA = {
+        id: null,
+        path: "",
+        url: "",
+        name: "Image A",
+        width: 0,
+        height: 0,
+        sizeStr: "",
+      };
       updateSlotHeaders();
       renderCanvasDOM();
     });
@@ -477,7 +501,15 @@ export function bindEvents(wrapper: HTMLElement): void {
   const clearBBtn = wrapper.querySelector("#slot-b-clear-btn");
   if (clearBBtn) {
     clearBBtn.addEventListener("click", () => {
-      state.slotB = { id: null, path: "", url: "", name: "Image B", width: 0, height: 0, sizeStr: "" };
+      state.slotB = {
+        id: null,
+        path: "",
+        url: "",
+        name: "Image B",
+        width: 0,
+        height: 0,
+        sizeStr: "",
+      };
       updateSlotHeaders();
       renderCanvasDOM();
     });
@@ -600,12 +632,12 @@ function renderHSliderDOM(container: HTMLElement, overlayA: string, overlayB: st
         <div id="cmp-wrapper-shared" style="position: absolute; inset: 0; transform-origin: center center; will-change: transform;">
           <div style="position: absolute; inset: 0; padding: 12px; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">
             <img src="${state.slotA.url || ""}" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; pointer-events: none; display: ${
-      state.slotA.url ? "block" : "none"
-    };" />
+              state.slotA.url ? "block" : "none"
+            };" />
           </div>
           <div id="cmp-layer-b-pinned" style="position: absolute; inset: 0; overflow: hidden; clip-path: inset(0 ${clipVal}% 0 0); will-change: clip-path; display: ${
-      state.slotB.url ? "block" : "none"
-    };">
+            state.slotB.url ? "block" : "none"
+          };">
             <div style="position: absolute; inset: 0; padding: 12px; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">
               <img src="${state.slotB.url || ""}" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; pointer-events: none;" />
             </div>
@@ -664,12 +696,12 @@ function renderVSliderDOM(container: HTMLElement, overlayA: string, overlayB: st
         <div id="cmp-wrapper-shared" style="position: absolute; inset: 0; transform-origin: center center; will-change: transform;">
           <div style="position: absolute; inset: 0; padding: 12px; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">
             <img src="${state.slotA.url || ""}" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; pointer-events: none; display: ${
-      state.slotA.url ? "block" : "none"
-    };" />
+              state.slotA.url ? "block" : "none"
+            };" />
           </div>
           <div id="cmp-layer-b-pinned" style="position: absolute; inset: 0; overflow: hidden; clip-path: inset(0 0 ${clipVal}% 0); will-change: clip-path; display: ${
-      state.slotB.url ? "block" : "none"
-    };">
+            state.slotB.url ? "block" : "none"
+          };">
             <div style="position: absolute; inset: 0; padding: 12px; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">
               <img src="${state.slotB.url || ""}" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; pointer-events: none;" />
             </div>
@@ -812,12 +844,14 @@ function attachCanvasInteractions(container: HTMLElement): void {
           state.zoomA = Math.min(Math.max(state.zoomA * delta, 0.1), 10.0);
         }
         if (state.syncLock || slotType === "both" || slotType === "B") {
-          state.zoomB = state.syncLock ? state.zoomA : Math.min(Math.max(state.zoomB * delta, 0.1), 10.0);
+          state.zoomB = state.syncLock
+            ? state.zoomA
+            : Math.min(Math.max(state.zoomB * delta, 0.1), 10.0);
         }
 
         scheduleTransformUpdate();
       },
-      { passive: false }
+      { passive: false },
     );
 
     vp.addEventListener("mousedown", (e) => {
@@ -1005,15 +1039,15 @@ export function renderCompareTab(): HTMLElement {
             state.syncLock ? "primary" : ""
           }" id="cmp-toggle-sync" title="Toggle Synchronized Zoom & Pan">
             <i class="bi ${state.syncLock ? "bi-lock-fill" : "bi-unlock"}"></i> ${
-    state.syncLock ? "Sync Lock" : "Independent"
-  }
+              state.syncLock ? "Sync Lock" : "Independent"
+            }
           </button>
           <button type="button" class="win-button ${
             state.pinSplitterToImage ? "primary" : ""
           }" id="cmp-toggle-pin-split" title="Toggle Splitter Mode: Viewport Screen Wipe vs Pinned to Image Pixel Space">
             <i class="bi ${state.pinSplitterToImage ? "bi-pin-angle-fill" : "bi-window"}"></i> ${
-    state.pinSplitterToImage ? "Splitter: Pinned to Image" : "Splitter: Viewport"
-  }
+              state.pinSplitterToImage ? "Splitter: Pinned to Image" : "Splitter: Viewport"
+            }
           </button>
 
           <div style="height: 16px; width: 1px; background: var(--sys-border-dark, #b0b0b0); margin: 0 4px;"></div>

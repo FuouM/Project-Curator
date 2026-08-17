@@ -1,9 +1,22 @@
 import { typedCall } from "../../ipc";
 import { maskPath } from "../../components";
-import { SettingsResultSchema, UpdateSettingsRequestSchema, ReindexVectorsResultSchema, ReindexFailedVectorsResultSchema, StatusResultSchema } from "../../gen/system_pb";
+import {
+  SettingsResultSchema,
+  UpdateSettingsRequestSchema,
+  ReindexVectorsResultSchema,
+  ReindexFailedVectorsResultSchema,
+  StatusResultSchema,
+} from "../../gen/system_pb";
 import { DevicePreference, EmbeddingModel, TaggerModel } from "../../gen/common_pb";
 import { setStatusMessage } from "../../utils";
-import { getImageClickAction, setImageClickAction, getTagCopyReplaceUnderscores, setTagCopyReplaceUnderscores, getZenModeFullImages, setZenModeFullImages } from "../../state";
+import {
+  getImageClickAction,
+  setImageClickAction,
+  getTagCopyReplaceUnderscores,
+  setTagCopyReplaceUnderscores,
+  getZenModeFullImages,
+  setZenModeFullImages,
+} from "../../state";
 import { applySettingsToUI, refreshTaggerStatus } from "../dashboard";
 import { updateBenchmarkModelHeader } from "../benchmark";
 import { updateReindexProgress, startReindexPolling } from "../settings-reindex";
@@ -11,7 +24,11 @@ import { setupMaintenanceButtons } from "../settings-maintenance";
 import { refreshFfmpegStatus } from "./ffmpeg-status";
 
 function deviceToEnum(v: string): DevicePreference {
-  return v === "cpu" ? DevicePreference.CPU : v === "gpu" ? DevicePreference.GPU : DevicePreference.AUTO;
+  return v === "cpu"
+    ? DevicePreference.CPU
+    : v === "gpu"
+      ? DevicePreference.GPU
+      : DevicePreference.AUTO;
 }
 
 function embeddingToEnum(v: string): EmbeddingModel {
@@ -26,11 +43,15 @@ export function bindSettingsForm() {
   const clipSelect = document.getElementById("settings-clip-device") as HTMLSelectElement;
   const taggerSelect = document.getElementById("settings-tagger-device") as HTMLSelectElement;
   const taggerWdSelect = document.getElementById("settings-tagger-wd-device") as HTMLSelectElement;
-  const preferredTaggerSelect = document.getElementById("settings-preferred-tagger") as HTMLSelectElement;
+  const preferredTaggerSelect = document.getElementById(
+    "settings-preferred-tagger",
+  ) as HTMLSelectElement;
   const idleSelect = document.getElementById("settings-idle-timeout") as HTMLSelectElement;
   const embeddingSelect = document.getElementById("settings-embedding-model") as HTMLSelectElement;
   const detDeviceSelect = document.getElementById("settings-detection-device") as HTMLSelectElement;
-  const detMetricsSelect = document.getElementById("settings-detection-metrics-device") as HTMLSelectElement;
+  const detMetricsSelect = document.getElementById(
+    "settings-detection-metrics-device",
+  ) as HTMLSelectElement;
   const ocrDeviceSelect = document.getElementById("settings-ocr-device") as HTMLSelectElement;
   const saveBtn = document.getElementById("save-settings-btn");
   const reindexBtn = document.getElementById("reindex-vectors-btn");
@@ -50,7 +71,9 @@ export function bindSettingsForm() {
   saveWdDevBtn?.addEventListener("click", triggerSave);
 
   // Image click action setting (localStorage)
-  const imageClickSelect = document.getElementById("settings-image-click-action") as HTMLSelectElement;
+  const imageClickSelect = document.getElementById(
+    "settings-image-click-action",
+  ) as HTMLSelectElement;
   if (imageClickSelect) {
     imageClickSelect.value = getImageClickAction();
     imageClickSelect.addEventListener("change", () => {
@@ -59,18 +82,22 @@ export function bindSettingsForm() {
   }
 
   // Path visibility setting (localStorage)
-  const pathVisRadios = document.querySelectorAll('input[name="path-vis"]') as NodeListOf<HTMLInputElement>;
+  const pathVisRadios = document.querySelectorAll(
+    'input[name="path-vis"]',
+  ) as NodeListOf<HTMLInputElement>;
   const pathFoldersInput = document.getElementById("settings-path-folders") as HTMLInputElement;
   const pathPreviewEl = document.getElementById("settings-path-preview");
   const savedMode = localStorage.getItem("curator-path-vis-mode") || "filename";
   const savedFolders = parseInt(localStorage.getItem("curator-path-vis-folders") || "1", 10);
-  pathVisRadios.forEach(r => { r.checked = r.value === savedMode; });
+  pathVisRadios.forEach((r) => {
+    r.checked = r.value === savedMode;
+  });
   if (pathFoldersInput) pathFoldersInput.value = savedFolders.toString();
   const SAMPLE_PATH = "C:\\Users\\demo\\Pictures\\Anime\\Series\\Scene 01\\sample_image.png";
   const renderPathPreview = () => {
     if (pathPreviewEl) pathPreviewEl.textContent = maskPath(SAMPLE_PATH);
   };
-  pathVisRadios.forEach(r => {
+  pathVisRadios.forEach((r) => {
     r.addEventListener("change", () => {
       localStorage.setItem("curator-path-vis-mode", r.value);
       renderPathPreview();
@@ -85,7 +112,9 @@ export function bindSettingsForm() {
   renderPathPreview();
 
   // Tag copy formatting setting (localStorage)
-  const tagCopyReplaceUnderscoresCheckbox = document.getElementById("settings-tag-copy-replace-underscores") as HTMLInputElement;
+  const tagCopyReplaceUnderscoresCheckbox = document.getElementById(
+    "settings-tag-copy-replace-underscores",
+  ) as HTMLInputElement;
   if (tagCopyReplaceUnderscoresCheckbox) {
     tagCopyReplaceUnderscoresCheckbox.checked = getTagCopyReplaceUnderscores();
     tagCopyReplaceUnderscoresCheckbox.addEventListener("change", () => {
@@ -94,7 +123,9 @@ export function bindSettingsForm() {
   }
 
   // Zen Mode Full Images setting (localStorage)
-  const zenModeFullImagesCheckbox = document.getElementById("settings-zen-mode-full-images") as HTMLInputElement;
+  const zenModeFullImagesCheckbox = document.getElementById(
+    "settings-zen-mode-full-images",
+  ) as HTMLInputElement;
   if (zenModeFullImagesCheckbox) {
     zenModeFullImagesCheckbox.checked = getZenModeFullImages();
     zenModeFullImagesCheckbox.addEventListener("change", () => {
@@ -106,7 +137,9 @@ export function bindSettingsForm() {
   }
 
   // Favorite button visibility setting (localStorage)
-  const favAlwaysShowCheckbox = document.getElementById("settings-favorite-always-show") as HTMLInputElement;
+  const favAlwaysShowCheckbox = document.getElementById(
+    "settings-favorite-always-show",
+  ) as HTMLInputElement;
   if (favAlwaysShowCheckbox) {
     const savedFavShow = localStorage.getItem("curator-fav-always-show") !== "false";
     favAlwaysShowCheckbox.checked = savedFavShow;
@@ -155,12 +188,23 @@ export function bindSettingsForm() {
         detectionDevice: detDeviceSelect ? deviceToEnum(detDeviceSelect.value) : undefined,
         detectionMetricsDevice: detMetricsSelect ? deviceToEnum(detMetricsSelect.value) : undefined,
         ocrDevice: ocrDeviceSelect ? deviceToEnum(ocrDeviceSelect.value) : undefined,
-        preferredTagger: preferredTaggerSelect ? taggerToEnum(preferredTaggerSelect.value) : undefined,
+        preferredTagger: preferredTaggerSelect
+          ? taggerToEnum(preferredTaggerSelect.value)
+          : undefined,
       };
 
-      await typedCall("SystemService.UpdateSettings", UpdateSettingsRequestSchema, updateReq, SettingsResultSchema);
+      await typedCall(
+        "SystemService.UpdateSettings",
+        UpdateSettingsRequestSchema,
+        updateReq,
+        SettingsResultSchema,
+      );
 
-      setStatusMessage(statusMsg, "Settings saved and applied successfully. If model was changed, reindexing has started.", "success");
+      setStatusMessage(
+        statusMsg,
+        "Settings saved and applied successfully. If model was changed, reindexing has started.",
+        "success",
+      );
       if (embeddingSelect) {
         updateBenchmarkModelHeader(embeddingSelect.value);
       }
@@ -174,13 +218,21 @@ export function bindSettingsForm() {
   // Reindex vectors
   reindexBtn?.addEventListener("click", async () => {
     if (!statusMsg) return;
-    if (!confirm("Are you sure you want to reindex all vectors? This will rebuild the vector search index from scratch.")) {
+    if (
+      !confirm(
+        "Are you sure you want to reindex all vectors? This will rebuild the vector search index from scratch.",
+      )
+    ) {
       return;
     }
     setStatusMessage(statusMsg, "Reindexing all images...", "loading");
     try {
       await typedCall("SystemService.ReindexVectors", null, null, ReindexVectorsResultSchema);
-      setStatusMessage(statusMsg, "Reindexing triggered successfully. The background worker is rebuilding the index.", "success");
+      setStatusMessage(
+        statusMsg,
+        "Reindexing triggered successfully. The background worker is rebuilding the index.",
+        "success",
+      );
       startReindexPolling();
     } catch (e: any) {
       setStatusMessage(statusMsg, "Error: " + (e.message || e), "error");
@@ -194,9 +246,18 @@ export function bindSettingsForm() {
     setStatusMessage(statusMsg, "Retrying failed vectors...", "loading");
     reindexFailedBtn.setAttribute("disabled", "true");
     try {
-      const resp = await typedCall("SystemService.ReindexFailedVectors", null, null, ReindexFailedVectorsResultSchema);
+      const resp = await typedCall(
+        "SystemService.ReindexFailedVectors",
+        null,
+        null,
+        ReindexFailedVectorsResultSchema,
+      );
       const count = Number(resp.requeued);
-      setStatusMessage(statusMsg, `Done! ${count} image(s) queued for re-vectorization.`, "success");
+      setStatusMessage(
+        statusMsg,
+        `Done! ${count} image(s) queued for re-vectorization.`,
+        "success",
+      );
       if (count > 0) startReindexPolling();
     } catch (e: any) {
       setStatusMessage(statusMsg, "Error: " + (e.message || e), "error");

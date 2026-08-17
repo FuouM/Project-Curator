@@ -27,7 +27,12 @@ export interface ToolStatus {
 export async function checkTool(tool: string): Promise<ToolStatus> {
   const resp = await PH.callService("CheckTool", { tool });
   const r = resp?.CheckToolResult as
-    | { installed?: boolean; path?: string | null; version?: string | null; portable_path?: string | null }
+    | {
+        installed?: boolean;
+        path?: string | null;
+        version?: string | null;
+        portable_path?: string | null;
+      }
     | undefined;
   return {
     installed: !!r?.installed,
@@ -63,8 +68,7 @@ export interface ToolInstallProgress {
 export async function getToolInstallProgress(tool: string): Promise<ToolInstallProgress> {
   const resp = await PH.callService("GetToolInstallProgress", { tool });
   const r = resp?.GetToolInstallProgressResult as
-    | { status?: string; percent?: number; logs?: string[]; error?: string | null }
-    | undefined;
+    { status?: string; percent?: number; logs?: string[]; error?: string | null } | undefined;
   return {
     status: r?.status ?? "idle",
     percent: r?.percent ?? 0,
@@ -166,7 +170,7 @@ export async function downloadCancel(jobId: string): Promise<void> {
 export async function resolveOutputPath(
   jobId: string,
   outputPath: string,
-  autoRename: boolean
+  autoRename: boolean,
 ): Promise<string> {
   const resp = await PH.callService("ResolveOutputPath", {
     job_id: jobId,
@@ -189,7 +193,7 @@ export interface DbQueryResult {
 export async function dbQuery(
   sql: string,
   params: unknown[] = [],
-  db = "download_history.db"
+  db = "download_history.db",
 ): Promise<DbQueryResult> {
   const client = createPluginDb(db);
   return { rows: await client.query(sql, params) };
@@ -199,7 +203,7 @@ export async function dbQuery(
 export async function dbExecute(
   sql: string,
   params: unknown[] = [],
-  db = "download_history.db"
+  db = "download_history.db",
 ): Promise<number> {
   const client = createPluginDb(db);
   return client.execute(sql, params);

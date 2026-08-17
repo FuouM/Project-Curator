@@ -1,14 +1,13 @@
-import type {
-  GetTextOptions,
-  HttpResponseText,
-  DirStatResult,
-} from "../types/api";
+import type { GetTextOptions, HttpResponseText, DirStatResult } from "../types/api";
 import { getCached, setCached } from "../db";
 
 const PH = window.PluginHost;
 
 /** Fetches a text/JSON payload via the service. Throws on service error. */
-export async function httpGetText(url: string, opts: GetTextOptions = {}): Promise<HttpResponseText> {
+export async function httpGetText(
+  url: string,
+  opts: GetTextOptions = {},
+): Promise<HttpResponseText> {
   const params: Record<string, unknown> = {
     url,
     timeout_ms: opts.timeoutMs ?? 15000,
@@ -44,7 +43,7 @@ export async function httpGetJson<T>(url: string, opts: GetTextOptions = {}): Pr
 export async function httpDownload(
   url: string,
   outputPath: string,
-  timeoutMs = 30000
+  timeoutMs = 30000,
 ): Promise<string> {
   const resp = await PH.callService("HttpDownload", {
     url,
@@ -62,7 +61,7 @@ export async function httpDownload(
 export async function httpDownloadFull(
   url: string,
   outputPath: string,
-  timeoutMs = 30000
+  timeoutMs = 30000,
 ): Promise<{ absolutePath: string; sizeBytes: number }> {
   const resp = await PH.callService("HttpDownload", {
     url,

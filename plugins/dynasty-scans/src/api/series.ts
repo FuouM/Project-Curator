@@ -7,7 +7,11 @@ import type { Series } from "../types/api";
 const PH = window.PluginHost;
 
 /** Series / anthology / doujin detail. `force` skips the cache (used by the Refresh button). */
-export async function fetchSeries(permalink: string, force = false, preferredType?: string): Promise<Series> {
+export async function fetchSeries(
+  permalink: string,
+  force = false,
+  preferredType?: string,
+): Promise<Series> {
   const key = `series:${permalink}`;
   if (!force) {
     const cached = await getCached(key);
@@ -54,7 +58,10 @@ export async function fetchSeries(permalink: string, force = false, preferredTyp
  * the backend media engine). Feed rows render at 42x58 and the series header at
  * 90px, so a small thumbnail keeps decode cheap while scrolling.
  */
-export async function getSeriesCover(permalink: string, coverUrl: string | null): Promise<string | null> {
+export async function getSeriesCover(
+  permalink: string,
+  coverUrl: string | null,
+): Promise<string | null> {
   if (!coverUrl) return null;
   const key = `cover:${permalink}`;
   const cached = await getCached(key);
@@ -105,7 +112,10 @@ export async function getSeriesCover(permalink: string, coverUrl: string | null)
  * stale; when the path is gone, refetch the thumbnail and persist the new
  * path so the Library never renders a dead image.
  */
-export async function refreshFollowedSeriesCover(permalink: string, currentCover: string | null): Promise<string | null> {
+export async function refreshFollowedSeriesCover(
+  permalink: string,
+  currentCover: string | null,
+): Promise<string | null> {
   if (currentCover) {
     try {
       if (await fileExists(currentCover)) return currentCover;
@@ -156,7 +166,10 @@ export async function getLocalSeriesCover(permalink: string): Promise<string | n
  * Downloads page 1 of a standalone chapter as its cover, automatically
  * optimizing and compressing it into a lightweight WebP thumbnail via the backend media engine.
  */
-export async function getChapterCover(permalink: string, firstPageUrl: string): Promise<string | null> {
+export async function getChapterCover(
+  permalink: string,
+  firstPageUrl: string,
+): Promise<string | null> {
   if (!firstPageUrl) return null;
   const key = `cover:chapter:${permalink}`;
   const cached = await getCached(key);
@@ -203,7 +216,10 @@ export async function getChapterCover(permalink: string, firstPageUrl: string): 
 /**
  * Opportunistic local-first + lazy background cover hydration for a series.
  */
-export async function getOrHydrateSeriesCover(permalink: string, seriesType?: string | null): Promise<string | null> {
+export async function getOrHydrateSeriesCover(
+  permalink: string,
+  seriesType?: string | null,
+): Promise<string | null> {
   if (!permalink) return null;
   const local = await getLocalSeriesCover(permalink);
   if (local) return local;
@@ -241,7 +257,7 @@ export async function getOrHydrateItemCover(
   coverKey: string,
   chapterPermalink: string,
   seriesOrGroupPermalink?: string | null,
-  seriesType?: string | null
+  seriesType?: string | null,
 ): Promise<string | null> {
   if (!coverKey) return null;
   const local = await getLocalCover(coverKey);

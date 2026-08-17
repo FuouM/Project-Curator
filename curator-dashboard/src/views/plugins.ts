@@ -5,17 +5,37 @@ import { SafeHtml, html } from "../components";
 import { showErrorAlert } from "../alert";
 import { pluginInfoFromProto } from "../proto-adapters";
 import { EmptySchema } from "@bufbuild/protobuf/wkt";
-import { PluginsListResultSchema, SetPluginEnabledRequestSchema, ValidatePluginRequestSchema, ValidationResultSchema } from "../gen/plugins_pb";
+import {
+  PluginsListResultSchema,
+  SetPluginEnabledRequestSchema,
+  ValidatePluginRequestSchema,
+  ValidationResultSchema,
+} from "../gen/plugins_pb";
 
 export function renderPluginsHubHtml(): SafeHtml {
   return html`
     <div class="group-box">
       <div class="group-box-title">Installed Plugins</div>
-      <div style="display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;">
-        <button type="button" class="win-button" id="plugins-enable-all-btn"><i class="bi bi-check2-all"></i> Enable All</button>
-        <button type="button" class="win-button" id="plugins-disable-all-btn"><i class="bi bi-x-lg"></i> Disable All</button>
-        <button type="button" class="win-button" id="plugins-autoload-all-btn" style="margin-left: 8px;"><i class="bi bi-play-circle"></i> Autoload All</button>
-        <button type="button" class="win-button" id="plugins-autoload-none-btn"><i class="bi bi-stop-circle"></i> Autoload None</button>
+      <div
+        style="display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;"
+      >
+        <button type="button" class="win-button" id="plugins-enable-all-btn">
+          <i class="bi bi-check2-all"></i> Enable All
+        </button>
+        <button type="button" class="win-button" id="plugins-disable-all-btn">
+          <i class="bi bi-x-lg"></i> Disable All
+        </button>
+        <button
+          type="button"
+          class="win-button"
+          id="plugins-autoload-all-btn"
+          style="margin-left: 8px;"
+        >
+          <i class="bi bi-play-circle"></i> Autoload All
+        </button>
+        <button type="button" class="win-button" id="plugins-autoload-none-btn">
+          <i class="bi bi-stop-circle"></i> Autoload None
+        </button>
       </div>
       <div id="plugins-hub-list">
         <div class="skeleton-loader"></div>
@@ -31,7 +51,7 @@ function permissionBadge(perm: string): string {
     "filesystem:read": "tag-user",
     "filesystem:write": "tag-user",
     "database:read": "tag-character",
-    "sidecar_db": "tag-meta",
+    sidecar_db: "tag-meta",
   };
   const cls = classes[perm] || "tag-meta";
   return `<span class="tag-pill ${cls}" style="font-size: 9px; font-family: monospace;">${perm}</span>`;
@@ -42,9 +62,10 @@ function pluginRowHtml(p: PluginInfo): string {
     ? '<span class="tag-pill custom-concept" style="font-size: 9px;"><i class="bi bi-check-lg"></i> valid manifest</span>'
     : '<span class="tag-pill tag-meta" style="font-size: 9px;"><i class="bi bi-exclamation-triangle"></i> missing / invalid manifest</span>';
 
-  const permsHtml = p.permissions.length > 0
-    ? p.permissions.map(permissionBadge).join(" ")
-    : '<span style="color:#999;font-size:10px;">none</span>';
+  const permsHtml =
+    p.permissions.length > 0
+      ? p.permissions.map(permissionBadge).join(" ")
+      : '<span style="color:#999;font-size:10px;">none</span>';
 
   const hooksText = p.hooks.length > 0 ? `${p.hooks.length} hooks` : "no hooks";
   const autoloadChecked = isPluginAutoloadEnabled(p.name);
@@ -127,7 +148,12 @@ export async function setupPluginsHub() {
       const name = row?.dataset.pluginName || "";
       if (!name) return;
       try {
-        await typedCall("PluginsService.SetPluginEnabled", SetPluginEnabledRequestSchema, { pluginName: name, enabled: cb.checked }, EmptySchema);
+        await typedCall(
+          "PluginsService.SetPluginEnabled",
+          SetPluginEnabledRequestSchema,
+          { pluginName: name, enabled: cb.checked },
+          EmptySchema,
+        );
         await initPlugins();
         rerenderHub();
       } catch (e: any) {
@@ -160,7 +186,12 @@ export async function setupPluginsHub() {
       resultEl.textContent = "Validating...";
 
       try {
-        const r = await typedCall("PluginsService.ValidatePlugin", ValidatePluginRequestSchema, { manifestPath: plugin.manifest_path }, ValidationResultSchema);
+        const r = await typedCall(
+          "PluginsService.ValidatePlugin",
+          ValidatePluginRequestSchema,
+          { manifestPath: plugin.manifest_path },
+          ValidationResultSchema,
+        );
         resultEl.style.color = r.valid ? "#107c41" : "#a80000";
         resultEl.innerHTML = r.valid
           ? `<i class="bi bi-check-circle"></i> Valid: ${r.name} v${r.version}`
@@ -198,7 +229,12 @@ export async function setupPluginsHub() {
 async function setAllPluginsEnabled(plugins: PluginInfo[], enabled: boolean, rerender: () => void) {
   for (const p of plugins) {
     try {
-      await typedCall("PluginsService.SetPluginEnabled", SetPluginEnabledRequestSchema, { pluginName: p.name, enabled }, EmptySchema);
+      await typedCall(
+        "PluginsService.SetPluginEnabled",
+        SetPluginEnabledRequestSchema,
+        { pluginName: p.name, enabled },
+        EmptySchema,
+      );
     } catch (e: any) {
       console.error(`Failed to ${enabled ? "enable" : "disable"} ${p.name}:`, e);
     }

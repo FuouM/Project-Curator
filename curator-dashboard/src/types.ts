@@ -138,7 +138,6 @@ export interface FolderDetails {
   safety_pending: number;
 }
 
-
 export interface DuplicateFolderInfo {
   id: number;
   path: string;
@@ -153,7 +152,6 @@ export interface DuplicateFolderGroup {
 }
 
 export interface CharacterDetection {
-
   id: number;
   image_id: number;
   x0: number;

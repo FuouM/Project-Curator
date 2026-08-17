@@ -90,7 +90,10 @@ export class ReaderController {
 
   private readonly cleanup: (() => void)[] = [];
 
-  constructor(readonly route: Route, container: HTMLElement) {
+  constructor(
+    readonly route: Route,
+    container: HTMLElement,
+  ) {
     this.container = container;
   }
 
@@ -120,7 +123,10 @@ export class ReaderController {
     return fileResolve(path);
   }
 
-  httpDownloadFull(url: string, outPath: string): Promise<{ absolutePath: string; sizeBytes: number }> {
+  httpDownloadFull(
+    url: string,
+    outPath: string,
+  ): Promise<{ absolutePath: string; sizeBytes: number }> {
     return httpDownloadFull(url, outPath);
   }
 
@@ -178,7 +184,8 @@ export class ReaderController {
     }
     const text = document.createElement("span");
     if (kind === "spinner") {
-      const pct = this.pages.length > 0 ? Math.round((this.cachedCount / this.pages.length) * 100) : 0;
+      const pct =
+        this.pages.length > 0 ? Math.round((this.cachedCount / this.pages.length) * 100) : 0;
       text.textContent = `Downloading page ${idx + 1} of ${this.pages.length} (${this.cachedCount}/${this.pages.length} cached · ${pct}%)`;
     } else {
       text.textContent = message;
@@ -203,7 +210,8 @@ export class ReaderController {
   updateCacheCount(): void {
     this.cachedCount = this.cachedMap.size;
     this.updateProgressText();
-    const pct = this.pages.length > 0 ? Math.round((this.cachedCount / this.pages.length) * 100) : 0;
+    const pct =
+      this.pages.length > 0 ? Math.round((this.cachedCount / this.pages.length) * 100) : 0;
     for (const slot of this.slots) {
       const idx = Number(slot.dataset.index);
       const absPath = this.cachedMap.get(idx);
@@ -232,8 +240,10 @@ export class ReaderController {
 
   // Progress + persistence --------------------------------------------------
   updateProgressText(): void {
-    const pct = this.pages.length > 0 ? Math.round(((this.currentIndex + 1) / this.pages.length) * 100) : 0;
-    const cachedNote = this.cachedCount > 0 ? ` · ${this.cachedCount}/${this.pages.length} cached` : "";
+    const pct =
+      this.pages.length > 0 ? Math.round(((this.currentIndex + 1) / this.pages.length) * 100) : 0;
+    const cachedNote =
+      this.cachedCount > 0 ? ` · ${this.cachedCount}/${this.pages.length} cached` : "";
     this.positionLabel.textContent = `Page ${this.currentIndex + 1} of ${this.pages.length} (${pct}%)${cachedNote}`;
     this.progressFill.style.width = `${pct}%`;
     this.prevPageBtn.disabled = this.currentIndex <= 0;
@@ -441,7 +451,9 @@ export class ReaderController {
       cachedRows = await getCachedPages(this.permalink);
     } catch (err) {
       cachedRows = [];
-      this.setBanner(`Page cache lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.setBanner(
+        `Page cache lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
     for (const row of cachedRows) {
       if (row.page_index >= 0 && row.page_index < this.pages.length && row.file_path) {

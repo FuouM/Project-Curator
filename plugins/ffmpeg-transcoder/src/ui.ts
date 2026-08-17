@@ -54,7 +54,8 @@ export function updateQueueList(): void {
     const parts = path.split(/[\\/]/);
     const base = parts.pop()!;
     const label = document.createElement("span");
-    label.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    label.style.cssText =
+      "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
     label.title = path;
     label.textContent = base;
     const remove = document.createElement("button");
@@ -117,7 +118,9 @@ export function setBusy(value: boolean): void {
 }
 
 function makeJobId(): string {
-  return "transcode_" + Date.now().toString(36) + "_" + Math.floor(Math.random() * 1e6).toString(36);
+  return (
+    "transcode_" + Date.now().toString(36) + "_" + Math.floor(Math.random() * 1e6).toString(36)
+  );
 }
 
 export async function runTranscode(): Promise<void> {
@@ -180,15 +183,23 @@ export async function runTranscode(): Promise<void> {
         input_path: src,
         output_path: tgt,
         target_format: state.targetFormat,
-        vcodec: isCustom ? null : (state.vcodec || null),
-        acodec: isCustom ? null : (state.acodec || null),
-        crf: isCustom ? null : (state.qualityMode === "crf" && state.crf > 0 ? state.crf : null),
-        video_bitrate: isCustom ? null : (state.qualityMode === "bitrate" && state.bitrateKbps > 0 ? state.bitrateKbps : null),
-        preset: isCustom ? null : (state.preset || null),
-        target_size_mb: isCustom ? null : (state.qualityMode === "size_budget" && state.targetSizeMb > 0 ? state.targetSizeMb : null),
-        audio_bitrate: isCustom ? null : (state.audioBitrateKbps > 0 ? state.audioBitrateKbps : null),
-        mixdown: isCustom ? null : (state.mixdown || null),
-        sample_rate: isCustom ? null : (state.sampleRate > 0 ? state.sampleRate : null),
+        vcodec: isCustom ? null : state.vcodec || null,
+        acodec: isCustom ? null : state.acodec || null,
+        crf: isCustom ? null : state.qualityMode === "crf" && state.crf > 0 ? state.crf : null,
+        video_bitrate: isCustom
+          ? null
+          : state.qualityMode === "bitrate" && state.bitrateKbps > 0
+            ? state.bitrateKbps
+            : null,
+        preset: isCustom ? null : state.preset || null,
+        target_size_mb: isCustom
+          ? null
+          : state.qualityMode === "size_budget" && state.targetSizeMb > 0
+            ? state.targetSizeMb
+            : null,
+        audio_bitrate: isCustom ? null : state.audioBitrateKbps > 0 ? state.audioBitrateKbps : null,
+        mixdown: isCustom ? null : state.mixdown || null,
+        sample_rate: isCustom ? null : state.sampleRate > 0 ? state.sampleRate : null,
         custom_args: isCustom ? state.customArgs.trim() : null,
       });
       if (resp && resp.Error) {
@@ -217,7 +228,9 @@ export async function runTranscode(): Promise<void> {
         if (fill) fill.style.width = pct + "%";
         const base = src.split(/[\\/]/).pop()!;
         if (text) {
-          const detail = progress.xSpeed ? "  (" + (progress.fps ?? 0).toFixed(1) + " fps, " + progress.xSpeed.toFixed(2) + "x)" : "";
+          const detail = progress.xSpeed
+            ? "  (" + (progress.fps ?? 0).toFixed(1) + " fps, " + progress.xSpeed.toFixed(2) + "x)"
+            : "";
           text.textContent = base + " " + pct + "%" + detail;
         }
         if (state.verbose && !commandLogged && progress.raw.command) {
@@ -227,7 +240,14 @@ export async function runTranscode(): Promise<void> {
       },
       onComplete: (ok) => {
         if (!ok) {
-          log("FAIL " + src + " - transcode job failed or ended early. (" + formatDuration(Date.now() - startedAt) + ")", "error");
+          log(
+            "FAIL " +
+              src +
+              " - transcode job failed or ended early. (" +
+              formatDuration(Date.now() - startedAt) +
+              ")",
+            "error",
+          );
           setBusy(false);
           updateProgress(0, state.queue.length);
           void next(index + 1);
@@ -239,18 +259,38 @@ export async function runTranscode(): Promise<void> {
           const raw = lastProgress.raw;
           const inputSize = raw.input_size_bytes;
           const outputSize = raw.output_size_bytes;
-          if (inputSize !== undefined && inputSize !== null && outputSize !== undefined && outputSize !== null) {
+          if (
+            inputSize !== undefined &&
+            inputSize !== null &&
+            outputSize !== undefined &&
+            outputSize !== null
+          ) {
             let breakdown = "";
             const outVideo = raw.output_video_size_bytes;
             const outAudio = raw.output_audio_size_bytes;
-            if (outVideo !== undefined && outVideo !== null && outAudio !== undefined && outAudio !== null) {
-              breakdown = " (Video: " + formatBytes(outVideo) + ", Audio: " + formatBytes(outAudio) + ")";
+            if (
+              outVideo !== undefined &&
+              outVideo !== null &&
+              outAudio !== undefined &&
+              outAudio !== null
+            ) {
+              breakdown =
+                " (Video: " + formatBytes(outVideo) + ", Audio: " + formatBytes(outAudio) + ")";
             }
-            sizeInfo = " [" + formatBytes(inputSize) + " -> " + formatBytes(outputSize) + breakdown + "]";
+            sizeInfo =
+              " [" + formatBytes(inputSize) + " -> " + formatBytes(outputSize) + breakdown + "]";
           }
         }
 
-        const msg = "OK " + src + sizeInfo + "  ->  " + tgt + "  (" + formatDuration(Date.now() - startedAt) + ")";
+        const msg =
+          "OK " +
+          src +
+          sizeInfo +
+          "  ->  " +
+          tgt +
+          "  (" +
+          formatDuration(Date.now() - startedAt) +
+          ")";
         log(msg, "success");
         console.log("ffmpeg-transcoder: " + msg);
         setBusy(false);
@@ -275,53 +315,49 @@ export function renderTab(): HTMLElement {
     '<div class="group-box">' +
     '  <div class="group-box-title"><i class="bi bi-collection-play"></i> FFmpeg Transcoder</div>' +
     '  <div style="display:flex;flex-direction:column;gap:12px;">' +
-
     '    <div class="form-group">' +
     '      <label for="transcoder-mode" style="min-width:110px;">Mode:</label>' +
     '      <select class="input-field" id="transcoder-mode" style="width:130px;height:24px;">' +
     '        <option value="guided">Guided</option>' +
     '        <option value="custom">Custom command</option>' +
-    '      </select>' +
-    '    </div>' +
-
+    "      </select>" +
+    "    </div>" +
     '    <div class="form-group">' +
     '      <label for="transcoder-output-dir" style="min-width:110px;">Output folder:</label>' +
     '      <div class="input-wrapper" style="flex:1;">' +
     '        <input class="input-field has-clear" id="transcoder-output-dir" placeholder="Where transcoded files should be written..." />' +
     '        <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>' +
-    '      </div>' +
+    "      </div>" +
     '      <button type="button" class="win-button" id="transcoder-browse-btn"><i class="bi bi-folder2-open"></i> Browse...</button>' +
-    '    </div>' +
-
+    "    </div>" +
     '    <div class="form-group">' +
     '      <label for="transcoder-format" style="min-width:110px;">Target format:</label>' +
     '      <select class="input-field" id="transcoder-format" style="width:140px;height:24px;">' +
     '        <option value="mp4">MP4</option>' +
     '        <option value="webm">WebM</option>' +
-    '      </select>' +
+    "      </select>" +
     '      <span id="transcoder-vcodec-wrap"><label for="transcoder-vcodec" style="min-width:70px;">Video codec:</label>' +
     '      <select class="input-field" id="transcoder-vcodec" style="width:130px;height:24px;"></select></span>' +
     '      <span id="transcoder-acodec-wrap"><label for="transcoder-acodec" style="min-width:70px;">Audio codec:</label>' +
     '      <select class="input-field" id="transcoder-acodec" style="width:130px;height:24px;"></select></span>' +
-    '    </div>' +
-
+    "    </div>" +
     '    <div class="form-group" id="transcoder-quality-row">' +
     '      <label for="transcoder-quality-mode" style="min-width:110px;">Quality:</label>' +
     '      <select class="input-field" id="transcoder-quality-mode" style="width:130px;height:24px;">' +
     '        <option value="crf">CRF</option>' +
     '        <option value="bitrate">Avg bitrate</option>' +
     '        <option value="size_budget">Size budget</option>' +
-    '      </select>' +
+    "      </select>" +
     '      <div id="transcoder-crf-group" style="display:flex;align-items:center;gap:8px;flex:1;">' +
     '        <label for="transcoder-crf" style="font-size:10px;color:#777;white-space:nowrap;">more quality</label>' +
     '        <input type="range" id="transcoder-crf" min="0" max="51" value="23" style="flex:1;max-width:160px;" />' +
     '        <label for="transcoder-crf" style="font-size:10px;color:#777;white-space:nowrap;">less quality</label>' +
     '        <span id="transcoder-crf-value" style="font-size:11px;color:#555;min-width:30px;">23</span>' +
-    '      </div>' +
+    "      </div>" +
     '      <div id="transcoder-bitrate-group" style="display:none;align-items:center;gap:8px;">' +
     '        <input type="number" id="transcoder-bitrate" min="100" step="100" value="6000" style="width:100px;height:24px;" class="input-field" />' +
     '        <label for="transcoder-bitrate" style="font-size:10px;color:#777;white-space:nowrap;">kbps</label>' +
-    '      </div>' +
+    "      </div>" +
     '      <div id="transcoder-size-budget-group" style="display:none;align-items:center;gap:8px;">' +
     '        <input type="number" id="transcoder-size-budget" min="1" value="25" style="width:80px;height:24px;" class="input-field" />' +
     '        <label for="transcoder-size-budget" style="font-size:10px;color:#777;white-space:nowrap;">MB</label>' +
@@ -329,10 +365,10 @@ export function renderTab(): HTMLElement {
     '        <button type="button" class="win-button transcoder-size-preset" data-val="25" style="font-size:10px;padding:1px 6px;">25 MB</button>' +
     '        <button type="button" class="win-button transcoder-size-preset" data-val="50" style="font-size:10px;padding:1px 6px;">50 MB</button>' +
     '        <button type="button" class="win-button transcoder-size-preset" data-val="100" style="font-size:10px;padding:1px 6px;">100 MB</button>' +
-    '      </div>' +
+    "      </div>" +
     '      <label for="transcoder-preset" style="min-width:70px;">Preset:</label>' +
     '      <select class="input-field" id="transcoder-preset" style="width:130px;height:24px;"></select>' +
-    '    </div>' +
+    "    </div>" +
     '    <div class="group-box" id="transcoder-audio-settings-block">' +
     '      <div class="group-box-title"><i class="bi bi-music-note-beamed"></i> Audio Settings</div>' +
     '      <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;padding:4px 0;">' +
@@ -346,8 +382,8 @@ export function renderTab(): HTMLElement {
     '            <option value="192">192 kbps</option>' +
     '            <option value="256">256 kbps</option>' +
     '            <option value="320">320 kbps</option>' +
-    '          </select>' +
-    '        </div>' +
+    "          </select>" +
+    "        </div>" +
     '        <div class="form-group" style="margin-bottom:0;">' +
     '          <label for="transcoder-audio-mixdown" style="min-width:60px;">Channels:</label>' +
     '          <select class="input-field" id="transcoder-audio-mixdown" style="width:100px;height:24px;">' +
@@ -355,8 +391,8 @@ export function renderTab(): HTMLElement {
     '            <option value="mono">Mono</option>' +
     '            <option value="stereo">Stereo</option>' +
     '            <option value="5.1">5.1 channels</option>' +
-    '          </select>' +
-    '        </div>' +
+    "          </select>" +
+    "        </div>" +
     '        <div class="form-group" style="margin-bottom:0;">' +
     '          <label for="transcoder-audio-samplerate" style="min-width:80px;">Sample Rate:</label>' +
     '          <select class="input-field" id="transcoder-audio-samplerate" style="width:100px;height:24px;">' +
@@ -365,11 +401,10 @@ export function renderTab(): HTMLElement {
     '            <option value="32000">32000 Hz</option>' +
     '            <option value="44100">44100 Hz</option>' +
     '            <option value="48000">48000 Hz</option>' +
-    '          </select>' +
-    '        </div>' +
-    '      </div>' +
-    '    </div>' +
-
+    "          </select>" +
+    "        </div>" +
+    "      </div>" +
+    "    </div>" +
     '    <div class="group-box" id="transcoder-custom-args-block" style="display:none;">' +
     '      <div class="group-box-title"><i class="bi bi-terminal-plus"></i> Custom FFmpeg command</div>' +
     '      <textarea id="transcoder-custom-args" rows="4" spellcheck="false" style="width:100%;box-sizing:border-box;font-family:\'Consolas\',monospace;font-size:11px;"' +
@@ -377,42 +412,38 @@ export function renderTab(): HTMLElement {
     '      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;">' +
     '        <span style="font-size:10px;color:#777;">Use <b>{input}</b> and <b>{output}</b> placeholders for the source and output paths. The output file extension follows the Target format.</span>' +
     '        <button type="button" class="win-button" id="transcoder-custom-default-btn" style="font-size:10px;padding:1px 8px;flex:none;">Use default template</button>' +
-    '      </div>' +
-    '    </div>' +
-
+    "      </div>" +
+    "    </div>" +
     '    <div id="transcoder-drop-host">' +
     '      <div class="toolbox-drop-zone" id="transcoder-drop-zone" style="flex:none;height:130px;">' +
     '        <div class="toolbox-drop-icon"><i class="bi bi-collection-play"></i></div>' +
-    '        <span>Drop video files (mp4/webm) here to queue them</span>' +
-    '      </div>' +
-    '    </div>' +
-
+    "        <span>Drop video files (mp4/webm) here to queue them</span>" +
+    "      </div>" +
+    "    </div>" +
     '    <div class="group-box" style="margin-top:8px;">' +
     '      <div class="group-box-title">Queue <span id="transcoder-queue-count" style="font-weight:400;color:#777;font-size:10px;">0 file(s) queued</span>' +
     '        <button type="button" class="win-button" id="transcoder-clear-btn" style="font-size:10px;padding:1px 8px;margin-left:8px;"><i class="bi bi-trash3"></i> Clear</button></div>' +
     '      <div id="transcoder-queue-empty" style="font-size:11px;color:#999;font-style:italic;padding:4px 0;">No files queued.</div>' +
     '      <div id="transcoder-queue-list" style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;"></div>' +
-    '    </div>' +
-
+    "    </div>" +
     '    <div style="display:flex;align-items:center;gap:12px;">' +
     '      <button type="button" class="win-button primary" id="transcoder-run-btn" style="padding:4px 14px;">' +
     '        <i class="bi bi-collection-play"></i> Transcode' +
-    '      </button>' +
+    "      </button>" +
     '      <div class="progress-bar" style="flex:1;max-width:300px;">' +
     '        <div class="progress-fill" id="transcoder-progress-fill" style="width:0%;"></div>' +
-    '      </div>' +
+    "      </div>" +
     '      <span id="transcoder-progress-text" style="font-size:11px;color:#555;">0 / 0 (0%)</span>' +
-    '    </div>' +
-
+    "    </div>" +
     '    <div class="group-box" style="margin-top:8px;">' +
     '      <div class="group-box-title"><i class="bi bi-terminal"></i> Output Log' +
     '        <label style="margin-left:8px;font-weight:400;font-size:10px;color:#777;display:inline-flex;align-items:center;gap:4px;cursor:pointer;">' +
     '          <input type="checkbox" id="transcoder-verbose" /> Verbose' +
-    '        </label></div>' +
+    "        </label></div>" +
     '      <div id="transcoder-log" style="height:140px;overflow-y:auto;background-color:#1e1e1e;color:#cccccc;border:1px solid #7a7a7a;padding:8px;font-family:\'Consolas\',monospace;font-size:11px;white-space:pre-wrap;"></div>' +
-    '    </div>' +
-    '  </div>' +
-    '</div>';
+    "    </div>" +
+    "  </div>" +
+    "</div>";
 
   const runBtn = container.querySelector("#transcoder-run-btn");
   if (runBtn) runBtn.addEventListener("click", () => void runTranscode());
@@ -469,33 +500,79 @@ export function renderTab(): HTMLElement {
 
   function setCodecOptions(): void {
     const format = formatSelect ? formatSelect.value : "mp4";
-    const vcodecs = format === "webm"
-      ? [["", "Auto"], ["libvpx-vp9", "VP9"], ["libvpx", "VP8"], ["libaom-av1", "AV1"], ["copy", "Copy stream"]]
-      : [["", "Auto"], ["libx264", "H.264"], ["libx265", "H.265"], ["libaom-av1", "AV1"], ["copy", "Copy stream"]];
-    const acodecs = format === "webm"
-      ? [["", "Auto"], ["libopus", "Opus"], ["vorbis", "Vorbis"], ["copy", "Copy stream"], ["none", "No audio"]]
-      : [["", "Auto"], ["aac", "AAC"], ["mp3", "MP3"], ["vorbis", "Vorbis"], ["copy", "Copy stream"], ["none", "No audio"]];
+    const vcodecs =
+      format === "webm"
+        ? [
+            ["", "Auto"],
+            ["libvpx-vp9", "VP9"],
+            ["libvpx", "VP8"],
+            ["libaom-av1", "AV1"],
+            ["copy", "Copy stream"],
+          ]
+        : [
+            ["", "Auto"],
+            ["libx264", "H.264"],
+            ["libx265", "H.265"],
+            ["libaom-av1", "AV1"],
+            ["copy", "Copy stream"],
+          ];
+    const acodecs =
+      format === "webm"
+        ? [
+            ["", "Auto"],
+            ["libopus", "Opus"],
+            ["vorbis", "Vorbis"],
+            ["copy", "Copy stream"],
+            ["none", "No audio"],
+          ]
+        : [
+            ["", "Auto"],
+            ["aac", "AAC"],
+            ["mp3", "MP3"],
+            ["vorbis", "Vorbis"],
+            ["copy", "Copy stream"],
+            ["none", "No audio"],
+          ];
     if (vcodecSelect) {
       const prevV = state.vcodec;
-      vcodecSelect.innerHTML = vcodecs.map((c) => {
-        return '<option value="' + c[0] + '">' + c[1] + '</option>';
-      }).join("");
+      vcodecSelect.innerHTML = vcodecs
+        .map((c) => {
+          return '<option value="' + c[0] + '">' + c[1] + "</option>";
+        })
+        .join("");
       vcodecSelect.value = vcodecs.some((c) => c[0] === prevV) ? prevV : "";
     }
     if (acodecSelect) {
       const prevA = state.acodec;
-      acodecSelect.innerHTML = acodecs.map((c) => {
-        return '<option value="' + c[0] + '">' + c[1] + '</option>';
-      }).join("");
+      acodecSelect.innerHTML = acodecs
+        .map((c) => {
+          return '<option value="' + c[0] + '">' + c[1] + "</option>";
+        })
+        .join("");
       acodecSelect.value = acodecs.some((c) => c[0] === prevA) ? prevA : "";
     }
     if (presetSelect) {
-      const presets = format === "webm"
-        ? [["", "Default"], ["good", "Good"], ["realtime", "Realtime"], ["best", "Best"]]
-        : [["", "Default"], ["ultrafast", "Ultrafast"], ["fast", "Fast"], ["medium", "Medium"], ["slow", "Slow"], ["veryslow", "Veryslow"]];
-      presetSelect.innerHTML = presets.map((p) => {
-        return '<option value="' + p[0] + '">' + p[1] + '</option>';
-      }).join("");
+      const presets =
+        format === "webm"
+          ? [
+              ["", "Default"],
+              ["good", "Good"],
+              ["realtime", "Realtime"],
+              ["best", "Best"],
+            ]
+          : [
+              ["", "Default"],
+              ["ultrafast", "Ultrafast"],
+              ["fast", "Fast"],
+              ["medium", "Medium"],
+              ["slow", "Slow"],
+              ["veryslow", "Veryslow"],
+            ];
+      presetSelect.innerHTML = presets
+        .map((p) => {
+          return '<option value="' + p[0] + '">' + p[1] + "</option>";
+        })
+        .join("");
     }
     updateAudioControls();
   }
@@ -507,14 +584,20 @@ export function renderTab(): HTMLElement {
       setCodecOptions();
     });
   }
-  if (vcodecSelect) vcodecSelect.addEventListener("change", () => { state.vcodec = vcodecSelect.value; });
+  if (vcodecSelect)
+    vcodecSelect.addEventListener("change", () => {
+      state.vcodec = vcodecSelect.value;
+    });
   if (acodecSelect) {
     acodecSelect.addEventListener("change", () => {
       state.acodec = acodecSelect.value;
       updateAudioControls();
     });
   }
-  if (presetSelect) presetSelect.addEventListener("change", () => { state.preset = presetSelect.value; });
+  if (presetSelect)
+    presetSelect.addEventListener("change", () => {
+      state.preset = presetSelect.value;
+    });
 
   const crfInput = container.querySelector<HTMLInputElement>("#transcoder-crf");
   const crfValue = container.querySelector("#transcoder-crf-value");
@@ -566,7 +649,9 @@ export function renderTab(): HTMLElement {
     });
   });
 
-  const audioBitrateSelect = container.querySelector<HTMLSelectElement>("#transcoder-audio-bitrate");
+  const audioBitrateSelect = container.querySelector<HTMLSelectElement>(
+    "#transcoder-audio-bitrate",
+  );
   if (audioBitrateSelect) {
     audioBitrateSelect.value = String(state.audioBitrateKbps);
     audioBitrateSelect.addEventListener("change", () => {
@@ -574,7 +659,9 @@ export function renderTab(): HTMLElement {
     });
   }
 
-  const audioMixdownSelect = container.querySelector<HTMLSelectElement>("#transcoder-audio-mixdown");
+  const audioMixdownSelect = container.querySelector<HTMLSelectElement>(
+    "#transcoder-audio-mixdown",
+  );
   if (audioMixdownSelect) {
     audioMixdownSelect.value = state.mixdown;
     audioMixdownSelect.addEventListener("change", () => {
@@ -582,7 +669,9 @@ export function renderTab(): HTMLElement {
     });
   }
 
-  const audioSampleRateSelect = container.querySelector<HTMLSelectElement>("#transcoder-audio-samplerate");
+  const audioSampleRateSelect = container.querySelector<HTMLSelectElement>(
+    "#transcoder-audio-samplerate",
+  );
   if (audioSampleRateSelect) {
     audioSampleRateSelect.value = String(state.sampleRate);
     audioSampleRateSelect.addEventListener("change", () => {
@@ -596,7 +685,9 @@ export function renderTab(): HTMLElement {
   const vcodecWrap = container.querySelector<HTMLElement>("#transcoder-vcodec-wrap");
   const acodecWrap = container.querySelector<HTMLElement>("#transcoder-acodec-wrap");
   const qualityRow = container.querySelector<HTMLElement>("#transcoder-quality-row");
-  const audioSettingsBlock = container.querySelector<HTMLElement>("#transcoder-audio-settings-block");
+  const audioSettingsBlock = container.querySelector<HTMLElement>(
+    "#transcoder-audio-settings-block",
+  );
   const customBlock = container.querySelector<HTMLElement>("#transcoder-custom-args-block");
   const customTextarea = container.querySelector<HTMLTextAreaElement>("#transcoder-custom-args");
 
@@ -609,7 +700,7 @@ export function renderTab(): HTMLElement {
     if (qualityRow) qualityRow.style.display = isCustom ? "none" : "";
     if (audioSettingsBlock) {
       const acVal = acodecSelect ? acodecSelect.value : "";
-      audioSettingsBlock.style.display = (isCustom || acVal === "none") ? "none" : "block";
+      audioSettingsBlock.style.display = isCustom || acVal === "none" ? "none" : "block";
     }
     if (customBlock) customBlock.style.display = isCustom ? "block" : "none";
   }

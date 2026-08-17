@@ -66,7 +66,6 @@ export class BrowseCovers {
     this.pendingDomUpdates.length = 0;
   }
 
-
   get coversEnabled(): boolean {
     return this.enabled;
   }
@@ -86,9 +85,22 @@ export class BrowseCovers {
   getItemCoverInfo(ch: FeedChapter): ItemCoverInfo {
     const seriesTag = (ch.tags ?? []).find((t) => {
       const type = (t.type ?? "").toLowerCase();
-      return type === "series" || type === "doujin" || type === "doujinshi" || type === "anthology" || type === "issue";
+      return (
+        type === "series" ||
+        type === "doujin" ||
+        type === "doujinshi" ||
+        type === "anthology" ||
+        type === "issue"
+      );
     });
-    const seriesPermalink = seriesTag?.permalink || (ch.series ? ch.series.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") : "");
+    const seriesPermalink =
+      seriesTag?.permalink ||
+      (ch.series
+        ? ch.series
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "_")
+            .replace(/^_+|_+$/g, "")
+        : "");
     const seriesName = ch.series || seriesTag?.name || "";
     const seriesType = seriesTag?.type || "series";
 
@@ -209,7 +221,9 @@ export class BrowseCovers {
   reobserveUnloadedCovers(host: HTMLElement): void {
     if (!this.enabled) return;
     const observer = this.getLazyObserver();
-    const unmountedWraps = host.querySelectorAll<HTMLElement>(".ds-feed-cover-wrap:not(:has(img.ds-feed-cover))");
+    const unmountedWraps = host.querySelectorAll<HTMLElement>(
+      ".ds-feed-cover-wrap:not(:has(img.ds-feed-cover))",
+    );
     unmountedWraps.forEach((wrap) => observer.observe(wrap));
   }
 
@@ -346,7 +360,7 @@ export class BrowseCovers {
             }
           }
         },
-        { rootMargin: "150px" }
+        { rootMargin: "150px" },
       );
     }
     return this.lazyObserver;
@@ -356,7 +370,11 @@ export class BrowseCovers {
     // Hard gate — no IPC work while scrolling.
     if (this.isScrolling || !this.hydrationHost || this.queue.length === 0) return;
 
-    while (!this.isScrolling && this.activeWorkers < this.MAX_CONCURRENCY && this.queue.length > 0) {
+    while (
+      !this.isScrolling &&
+      this.activeWorkers < this.MAX_CONCURRENCY &&
+      this.queue.length > 0
+    ) {
       // Front-pop: the observer pushes/re-prioritizes nearest-viewport covers to
       // the front on every entry, so this stays correct for down- AND up-scrolls.
       const target = this.queue.shift();
@@ -373,7 +391,7 @@ export class BrowseCovers {
               target.coverKey,
               target.chapterPermalink,
               target.seriesPermalink,
-              target.seriesType
+              target.seriesType,
             );
             this.inflight.set(target.coverKey, task);
           }

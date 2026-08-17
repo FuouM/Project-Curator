@@ -47,7 +47,7 @@ export function attachAutocomplete(options: AutocompleteOptions) {
             `<div class="autocomplete-item" data-name="${s.name}" data-index="${i}">
           <span class="autocomplete-item-tag">${s.name}</span>
           <span class="autocomplete-item-count">${s.count}</span>
-        </div>`
+        </div>`,
         )
         .join("");
       dropdown.style.display = "block";

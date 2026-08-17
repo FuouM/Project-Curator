@@ -25,9 +25,19 @@ const registeredTabs: Array<{
   render: () => HTMLElement;
   chromeLess?: boolean;
 }> = [];
-const registeredRenderers: Array<{ id: string; fn: (asset: AssetContext) => HTMLElement | null }> = [];
-const registeredToolbarButtons: Array<{ id: string; label: string; iconClass: string; fn: (selection: AssetContext[]) => void }> = [];
-const registeredContextMenuItems: Array<{ id: string; label: string; fn: (asset: AssetContext) => void }> = [];
+const registeredRenderers: Array<{ id: string; fn: (asset: AssetContext) => HTMLElement | null }> =
+  [];
+const registeredToolbarButtons: Array<{
+  id: string;
+  label: string;
+  iconClass: string;
+  fn: (selection: AssetContext[]) => void;
+}> = [];
+const registeredContextMenuItems: Array<{
+  id: string;
+  label: string;
+  fn: (asset: AssetContext) => void;
+}> = [];
 const mountedTabs = new Set<string>();
 
 let pluginInfos: PluginInfo[] = [];
@@ -94,7 +104,11 @@ export async function getSelectionAssetContexts(): Promise<AssetContext[]> {
  * JSON-serialized response in the legacy shape, so bundled plugins keep their
  * existing parsing behavior unchanged.
  */
-async function invokePlugin(pluginId: string, command: string, params: object | null | undefined): Promise<any> {
+async function invokePlugin(
+  pluginId: string,
+  command: string,
+  params: object | null | undefined,
+): Promise<any> {
   const resp = await typedCall(
     "PluginsService.InvokePlugin",
     InvokePluginRequestSchema,
@@ -130,9 +144,20 @@ export function setPluginAutoloadEnabled(pluginName: string, autoload: boolean):
 }
 
 export interface PluginHostApi {
-  registerTab(id: string, label: string, iconClass: string, render: () => HTMLElement, chromeLess?: boolean): void;
+  registerTab(
+    id: string,
+    label: string,
+    iconClass: string,
+    render: () => HTMLElement,
+    chromeLess?: boolean,
+  ): void;
   registerMetadataRenderer(id: string, fn: (asset: AssetContext) => HTMLElement | null): void;
-  registerToolbarButton(id: string, label: string, iconClass: string, fn: (selection: AssetContext[]) => void): void;
+  registerToolbarButton(
+    id: string,
+    label: string,
+    iconClass: string,
+    fn: (selection: AssetContext[]) => void,
+  ): void;
   registerContextMenuItem(id: string, label: string, fn: (asset: AssetContext) => void): void;
   callService(method: string, params: object): Promise<any>;
   convertFileSrc(filePath: string): string;
@@ -177,7 +202,9 @@ const basePluginHost: PluginHostApi = {
   fetchAssetContext,
   getSelectionAssetContexts,
   renderMetadataSections(asset) {
-    return registeredRenderers.map((r) => r.fn(asset)).filter((el): el is HTMLElement => el !== null);
+    return registeredRenderers
+      .map((r) => r.fn(asset))
+      .filter((el): el is HTMLElement => el !== null);
   },
   getContextMenuItems() {
     return registeredContextMenuItems.slice();
@@ -243,7 +270,12 @@ window.PluginHost = basePluginHost;
 
 /** Execute a plugin JS bundle in global scope. Throws propagate to the caller's
  *  try/catch (inline script execution is synchronous). */
-function executePluginBundle(code: string, pluginName: string, pluginDir: string, workspaceRoot: string): void {
+function executePluginBundle(
+  code: string,
+  pluginName: string,
+  pluginDir: string,
+  workspaceRoot: string,
+): void {
   // Expose absolute directories before the bundle runs so plugins
   // can construct absolute paths for local binary assets and temporary files.
   (window as any).__curator_plugin_dir__ = pluginDir;
@@ -287,7 +319,7 @@ export async function initPlugins() {
   pluginInfos = resp.plugins.map(pluginInfoFromProto);
 
   const loadable = pluginInfos.filter(
-    (p) => p.enabled && !!p.ui && p.permissions.includes("ui:inject")
+    (p) => p.enabled && !!p.ui && p.permissions.includes("ui:inject"),
   );
 
   for (const p of loadable) {
@@ -300,10 +332,9 @@ export async function initPlugins() {
       );
       // Derive the plugin's absolute directory from its manifest path.
       // manifest_path is e.g. "K:\...\plugins\gif-maker\manifest.json"
-      const pluginDir = p.manifest_path
-        .replace(/[\\/][^\\/]+$/, ""); // strip manifest.json
+      const pluginDir = p.manifest_path.replace(/[\\/][^\\/]+$/, ""); // strip manifest.json
       const workspaceRoot = pluginDir
-        .replace(/[\\/][^\\/]+$/, "")  // strip plugin directory name
+        .replace(/[\\/][^\\/]+$/, "") // strip plugin directory name
         .replace(/[\\/][^\\/]+$/, ""); // strip "plugins"
       executePluginBundle(fileResp.content, p.name, pluginDir, workspaceRoot);
     } catch (e) {
@@ -384,9 +415,11 @@ export function renderTabState(tabId: string): void {
         <i class="bi bi-play-circle"></i> Load View
       </button>
     `;
-    placeholder.querySelector(`#plugin-unloaded-load-btn-${tab.id}`)?.addEventListener("click", () => {
-      setTabLoadedState(tab.id, true);
-    });
+    placeholder
+      .querySelector(`#plugin-unloaded-load-btn-${tab.id}`)
+      ?.addEventListener("click", () => {
+        setTabLoadedState(tab.id, true);
+      });
     section.appendChild(placeholder);
   }
 }
@@ -395,7 +428,8 @@ export function updateHeaderPluginActions(currentView?: string): void {
   const headerActions = document.getElementById("header-actions");
   if (!headerActions) return;
 
-  const activeView = currentView || document.querySelector(".nav-item.active")?.getAttribute("data-view") || "";
+  const activeView =
+    currentView || document.querySelector(".nav-item.active")?.getAttribute("data-view") || "";
   if (!activeView.startsWith("extensions-")) {
     headerActions.innerHTML = "";
     headerActions.style.display = "none";
@@ -444,13 +478,20 @@ function mountPluginTabs() {
   for (const tab of registeredTabs) {
     if (mountedTabs.has(tab.id)) continue;
     mountedTabs.add(tab.id);
-    registerPluginView(tab.id, tab.label, tab.iconClass, `Plugin: ${tab.label}`, () => {
-      const section = document.getElementById(`view-extensions-${tab.id}`);
-      if (section && section.childElementCount === 0) {
-        renderTabState(tab.id);
-      }
-      updateHeaderPluginActions(`extensions-${tab.id}`);
-    }, tab.chromeLess);
+    registerPluginView(
+      tab.id,
+      tab.label,
+      tab.iconClass,
+      `Plugin: ${tab.label}`,
+      () => {
+        const section = document.getElementById(`view-extensions-${tab.id}`);
+        if (section && section.childElementCount === 0) {
+          renderTabState(tab.id);
+        }
+        updateHeaderPluginActions(`extensions-${tab.id}`);
+      },
+      tab.chromeLess,
+    );
   }
 }
 
@@ -460,7 +501,9 @@ function mountPluginTabs() {
 
 export function refreshExtensionsToolbar() {
   const containers = document.querySelectorAll<HTMLElement>(".extensions-toolbar");
-  containers.forEach((c) => { c.innerHTML = ""; });
+  containers.forEach((c) => {
+    c.innerHTML = "";
+  });
 
   for (const btn of registeredToolbarButtons) {
     containers.forEach((container) => {

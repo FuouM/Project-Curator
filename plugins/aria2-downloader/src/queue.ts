@@ -8,12 +8,7 @@
  */
 
 import { formatBytes, pollServiceProgress } from "../../lib";
-import {
-  downloadCancel,
-  downloadProgress,
-  downloadStart,
-  resolveOutputPath,
-} from "./ipc";
+import { downloadCancel, downloadProgress, downloadStart, resolveOutputPath } from "./ipc";
 import { findDuplicateUrls, ensureHistorySchema, recordDownload } from "./history";
 import { state, ARIA2_TOOL, filenameFromUrl, type QueueItem } from "./state";
 import { el, log } from "./ui-core";
@@ -92,7 +87,10 @@ export async function addUrls(raw: string | string[]): Promise<AddUrlsResult> {
     try {
       dupes = await findDuplicateUrls(fresh);
     } catch (err) {
-      log(`Dedup check failed (continuing): ${err instanceof Error ? err.message : String(err)}`, "error");
+      log(
+        `Dedup check failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
+        "error",
+      );
     }
   }
   const dupSet = new Set(dupes);
@@ -252,10 +250,10 @@ function startPoll(jobId: string): void {
       it.command = p.command;
       it.engine = p.engine;
       if (isAbsolutePath(p.outputPath)) {
-      it.outputPath = p.outputPath;
-      const canonical = p.outputPath.split(/[\\/]/).pop();
-      if (canonical) it.filename = canonical;
-    }
+        it.outputPath = p.outputPath;
+        const canonical = p.outputPath.split(/[\\/]/).pop();
+        if (canonical) it.filename = canonical;
+      }
       if (p.logs.length > 0) it.logs = p.logs;
       appendLogDelta(it);
       renderQueueThrottled();
@@ -298,7 +296,7 @@ function finalize(jobId: string, ok: boolean, last: DownloadProgress | undefined
   log(
     `${final.toUpperCase()} ${it.filename} - ${formatBytes(it.downloadedBytes)} in ${formatDuration(it.startedAt, it.completedAt)}` +
       (it.error ? ` (${it.error})` : ""),
-    final === "completed" ? "success" : "error"
+    final === "completed" ? "success" : "error",
   );
 
   if (final === "completed") {
@@ -363,7 +361,7 @@ export function renderQueue(listEl?: HTMLElement): void {
   list.innerHTML = "";
 
   const items = [...state.queue.values()].filter(
-    (i) => !queueStatusFilter || i.status === queueStatusFilter
+    (i) => !queueStatusFilter || i.status === queueStatusFilter,
   );
 
   if (items.length === 0) {

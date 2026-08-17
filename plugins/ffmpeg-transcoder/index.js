@@ -85,9 +85,7 @@
 
   // lib/navigation.ts
   function navigateToTab(tabId) {
-    let item = document.querySelector(
-      `.nav-item[data-view="extensions-${tabId}"]`
-    );
+    let item = document.querySelector(`.nav-item[data-view="extensions-${tabId}"]`);
     item && item.click();
   }
   function closeInfoModal() {
@@ -376,7 +374,10 @@
         },
         onComplete: (ok) => {
           if (!ok) {
-            log("FAIL " + src + " - transcode job failed or ended early. (" + formatDuration(Date.now() - startedAt) + ")", "error"), setBusy(!1), updateProgress(0, state.queue.length), next(index + 1);
+            log(
+              "FAIL " + src + " - transcode job failed or ended early. (" + formatDuration(Date.now() - startedAt) + ")",
+              "error"
+            ), setBusy(!1), updateProgress(0, state.queue.length), next(index + 1);
             return;
           }
           let sizeInfo = "";
@@ -421,7 +422,32 @@
       abSelect && (abSelect.disabled = isCopy), mdSelect && (mdSelect.disabled = isCopy), srSelect && (srSelect.disabled = isCopy);
     }
     function setCodecOptions() {
-      let format = formatSelect ? formatSelect.value : "mp4", vcodecs = format === "webm" ? [["", "Auto"], ["libvpx-vp9", "VP9"], ["libvpx", "VP8"], ["libaom-av1", "AV1"], ["copy", "Copy stream"]] : [["", "Auto"], ["libx264", "H.264"], ["libx265", "H.265"], ["libaom-av1", "AV1"], ["copy", "Copy stream"]], acodecs = format === "webm" ? [["", "Auto"], ["libopus", "Opus"], ["vorbis", "Vorbis"], ["copy", "Copy stream"], ["none", "No audio"]] : [["", "Auto"], ["aac", "AAC"], ["mp3", "MP3"], ["vorbis", "Vorbis"], ["copy", "Copy stream"], ["none", "No audio"]];
+      let format = formatSelect ? formatSelect.value : "mp4", vcodecs = format === "webm" ? [
+        ["", "Auto"],
+        ["libvpx-vp9", "VP9"],
+        ["libvpx", "VP8"],
+        ["libaom-av1", "AV1"],
+        ["copy", "Copy stream"]
+      ] : [
+        ["", "Auto"],
+        ["libx264", "H.264"],
+        ["libx265", "H.265"],
+        ["libaom-av1", "AV1"],
+        ["copy", "Copy stream"]
+      ], acodecs = format === "webm" ? [
+        ["", "Auto"],
+        ["libopus", "Opus"],
+        ["vorbis", "Vorbis"],
+        ["copy", "Copy stream"],
+        ["none", "No audio"]
+      ] : [
+        ["", "Auto"],
+        ["aac", "AAC"],
+        ["mp3", "MP3"],
+        ["vorbis", "Vorbis"],
+        ["copy", "Copy stream"],
+        ["none", "No audio"]
+      ];
       if (vcodecSelect) {
         let prevV = state.vcodec;
         vcodecSelect.innerHTML = vcodecs.map((c) => '<option value="' + c[0] + '">' + c[1] + "</option>").join(""), vcodecSelect.value = vcodecs.some((c) => c[0] === prevV) ? prevV : "";
@@ -431,7 +457,19 @@
         acodecSelect.innerHTML = acodecs.map((c) => '<option value="' + c[0] + '">' + c[1] + "</option>").join(""), acodecSelect.value = acodecs.some((c) => c[0] === prevA) ? prevA : "";
       }
       if (presetSelect) {
-        let presets = format === "webm" ? [["", "Default"], ["good", "Good"], ["realtime", "Realtime"], ["best", "Best"]] : [["", "Default"], ["ultrafast", "Ultrafast"], ["fast", "Fast"], ["medium", "Medium"], ["slow", "Slow"], ["veryslow", "Veryslow"]];
+        let presets = format === "webm" ? [
+          ["", "Default"],
+          ["good", "Good"],
+          ["realtime", "Realtime"],
+          ["best", "Best"]
+        ] : [
+          ["", "Default"],
+          ["ultrafast", "Ultrafast"],
+          ["fast", "Fast"],
+          ["medium", "Medium"],
+          ["slow", "Slow"],
+          ["veryslow", "Veryslow"]
+        ];
         presetSelect.innerHTML = presets.map((p) => '<option value="' + p[0] + '">' + p[1] + "</option>").join("");
       }
       updateAudioControls();
@@ -464,19 +502,27 @@
         sizeBudgetInput && val && (sizeBudgetInput.value = val, state.targetSizeMb = parseFloat(val) || 25);
       });
     });
-    let audioBitrateSelect = container.querySelector("#transcoder-audio-bitrate");
+    let audioBitrateSelect = container.querySelector(
+      "#transcoder-audio-bitrate"
+    );
     audioBitrateSelect && (audioBitrateSelect.value = String(state.audioBitrateKbps), audioBitrateSelect.addEventListener("change", () => {
       state.audioBitrateKbps = parseInt(audioBitrateSelect.value, 10) || 0;
     }));
-    let audioMixdownSelect = container.querySelector("#transcoder-audio-mixdown");
+    let audioMixdownSelect = container.querySelector(
+      "#transcoder-audio-mixdown"
+    );
     audioMixdownSelect && (audioMixdownSelect.value = state.mixdown, audioMixdownSelect.addEventListener("change", () => {
       state.mixdown = audioMixdownSelect.value;
     }));
-    let audioSampleRateSelect = container.querySelector("#transcoder-audio-samplerate");
+    let audioSampleRateSelect = container.querySelector(
+      "#transcoder-audio-samplerate"
+    );
     audioSampleRateSelect && (audioSampleRateSelect.value = String(state.sampleRate), audioSampleRateSelect.addEventListener("change", () => {
       state.sampleRate = parseInt(audioSampleRateSelect.value, 10) || 0;
     })), updateQualityMode();
-    let modeSelect = container.querySelector("#transcoder-mode"), vcodecWrap = container.querySelector("#transcoder-vcodec-wrap"), acodecWrap = container.querySelector("#transcoder-acodec-wrap"), qualityRow = container.querySelector("#transcoder-quality-row"), audioSettingsBlock = container.querySelector("#transcoder-audio-settings-block"), customBlock = container.querySelector("#transcoder-custom-args-block"), customTextarea = container.querySelector("#transcoder-custom-args");
+    let modeSelect = container.querySelector("#transcoder-mode"), vcodecWrap = container.querySelector("#transcoder-vcodec-wrap"), acodecWrap = container.querySelector("#transcoder-acodec-wrap"), qualityRow = container.querySelector("#transcoder-quality-row"), audioSettingsBlock = container.querySelector(
+      "#transcoder-audio-settings-block"
+    ), customBlock = container.querySelector("#transcoder-custom-args-block"), customTextarea = container.querySelector("#transcoder-custom-args");
     function updateMode() {
       let val = modeSelect ? modeSelect.value : "guided";
       state.mode = val;
@@ -517,10 +563,17 @@
     return sendBtn == null || sendBtn.addEventListener("click", () => {
       addToQueue(asset.path), log("Sent to transcoder: " + asset.path, "info"), closeInfoModal(), navigateToTab2();
     }), box;
-  }), PH6.registerToolbarButton("ffmpeg-transcoder-selection", "Transcode Selected", "bi bi-collection-play", (selection) => {
-    let paths = (selection || []).map((a) => a.path).filter(Boolean);
-    paths.length !== 0 && (paths.forEach(addToQueue), closeInfoModal(), navigateToTab2());
-  }), PH6.registerContextMenuItem("ffmpeg-transcoder-ctx", "Send to Transcoder", (asset) => {
+  }), PH6.registerToolbarButton(
+    "ffmpeg-transcoder-selection",
+    "Transcode Selected",
+    "bi bi-collection-play",
+    (selection) => {
+      let paths = (selection || []).map((a) => a.path).filter(Boolean);
+      paths.length !== 0 && (paths.forEach(addToQueue), closeInfoModal(), navigateToTab2());
+    }
+  ), PH6.registerContextMenuItem("ffmpeg-transcoder-ctx", "Send to Transcoder", (asset) => {
     !asset || !asset.path || (addToQueue(asset.path), closeInfoModal(), navigateToTab2());
-  }), console.log("ffmpeg-transcoder: registered tab, renderer, toolbar button, and context menu item.")) : console.error("ffmpeg-transcoder: PluginHost not available; aborting.");
+  }), console.log(
+    "ffmpeg-transcoder: registered tab, renderer, toolbar button, and context menu item."
+  )) : console.error("ffmpeg-transcoder: PluginHost not available; aborting.");
 })();

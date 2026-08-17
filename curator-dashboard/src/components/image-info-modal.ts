@@ -13,11 +13,7 @@ import { requestGalleryRefresh, requestDashboardRefresh } from "../state";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { EmptySchema } from "@bufbuild/protobuf/wkt";
-import {
-  GetImageRequestSchema,
-  ImageResultSchema,
-  SetNoteRequestSchema,
-} from "../gen/gallery_pb";
+import { GetImageRequestSchema, ImageResultSchema, SetNoteRequestSchema } from "../gen/gallery_pb";
 import {
   AssignCharacterIdentityRequestSchema,
   CharacterDetectionsResultSchema,
@@ -66,10 +62,11 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
   const mtime = img.mtime ? new Date(img.mtime * 1000).toLocaleString() : "—";
   const createdAt = img.created_at || "—";
   const tagsCount = img.tags?.length ?? 0;
-  const tagCategories = img.tags?.reduce((acc: Record<string, number>, t) => {
-    acc[t.category] = (acc[t.category] || 0) + 1;
-    return acc;
-  }, {}) ?? {};
+  const tagCategories =
+    img.tags?.reduce((acc: Record<string, number>, t) => {
+      acc[t.category] = (acc[t.category] || 0) + 1;
+      return acc;
+    }, {}) ?? {};
 
   let parsedHtml = "";
   if (img.parsed_metadata) {
@@ -83,8 +80,16 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
     if (pm.raw_matched) fields.push(["Raw Matched", pm.raw_matched]);
     if (pm.extracted_tags.length > 0) fields.push(["Extracted Tags", pm.extracted_tags.join(", ")]);
     if (pm.partial !== undefined) fields.push(["Partial", pm.partial ? "Yes" : "No"]);
-    const rows = fields.map(([k, v]) => `<tr><td style="font-weight:600;width:120px;">${k}</td><td style="word-break:break-all;">${v}</td></tr>`).join("");
-    parsedHtml = '<div class="group-box" style="margin-top:8px;"><div class="group-box-title"><i class="bi bi-file-earmark-code"></i> Parsed Metadata</div><table class="curator-table" style="font-size:11px;"><tbody>' + rows + '</tbody></table></div>';
+    const rows = fields
+      .map(
+        ([k, v]) =>
+          `<tr><td style="font-weight:600;width:120px;">${k}</td><td style="word-break:break-all;">${v}</td></tr>`,
+      )
+      .join("");
+    parsedHtml =
+      '<div class="group-box" style="margin-top:8px;"><div class="group-box-title"><i class="bi bi-file-earmark-code"></i> Parsed Metadata</div><table class="curator-table" style="font-size:11px;"><tbody>' +
+      rows +
+      "</tbody></table></div>";
   }
 
   const mediaRows: [string, string][] = [];
@@ -94,7 +99,12 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
   if (img.animation) {
     mediaRows.push(["Frames", String(img.animation.frame_count)]);
     mediaRows.push(["Duration", formatDuration(img.animation.duration_ms)]);
-    const loopText = img.animation.loop_count === 0 ? "Infinite" : img.animation.loop_count ? `${img.animation.loop_count} time(s)` : "Once";
+    const loopText =
+      img.animation.loop_count === 0
+        ? "Infinite"
+        : img.animation.loop_count
+          ? `${img.animation.loop_count} time(s)`
+          : "Once";
     mediaRows.push(["Loop", loopText]);
   }
   if (img.video) {
@@ -103,12 +113,15 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
     if (img.video.fps > 0) mediaRows.push(["FPS", String(img.video.fps)]);
     mediaRows.push(["Video Codec", img.video.video_codec]);
     if (img.video.audio_codec) mediaRows.push(["Audio Codec", img.video.audio_codec]);
-    if (img.video.bitrate) mediaRows.push(["Bitrate", `${(img.video.bitrate / 1000).toFixed(0)} kb/s`]);
+    if (img.video.bitrate)
+      mediaRows.push(["Bitrate", `${(img.video.bitrate / 1000).toFixed(0)} kb/s`]);
   }
   const mediaHtml = mediaRows.length
     ? '<div class="group-box" style="margin-top:8px;"><div class="group-box-title"><i class="bi bi-film"></i> Media Info</div><table class="curator-table" style="font-size:11px;"><tbody>' +
-      mediaRows.map(([k, v]) => `<tr><td style="font-weight:600;width:120px;">${k}</td><td>${v}</td></tr>`).join("") +
-      '</tbody></table></div>'
+      mediaRows
+        .map(([k, v]) => `<tr><td style="font-weight:600;width:120px;">${k}</td><td>${v}</td></tr>`)
+        .join("") +
+      "</tbody></table></div>"
     : "";
 
   const safetyHtml = isClassified(img)
@@ -123,33 +136,58 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
           { label: "Sexy", icon: "bi-emoji-sunglasses", value: img.sexy_score ?? 0 },
           { label: "Drawing", icon: "bi-palette", value: img.drawing_score ?? 0 },
         ];
-        const rowHtml = rows.map((r) => {
-          const pct = Math.round(r.value * 1000) / 10;
-          const danger = r.label !== "Safe" && r.label !== "Drawing" && r.value >= threshold;
-          const safeHighlight = (r.label === "Safe" || r.label === "Drawing") && r.value >= threshold;
-          const bg = danger ? "background:#f8d7da;" : safeHighlight ? "background:#d1e7dd;" : "";
-          return '<div style="display:flex;align-items:center;gap:6px;font-size:11px;padding:3px 6px;' + bg + '">' +
-            '<i class="bi ' + r.icon + '" style="color:#666;width:14px;"></i>' +
-            '<span style="width:64px;font-weight:600;">' + r.label + '</span>' +
-            '<div class="prob-bar" style="flex:1;"><div style="height:100%;width:' + pct + '%;background:var(--sys-accent,#0078d7);"></div></div>' +
-            '<span style="width:48px;text-align:right;color:#333;">' + pct + '%</span>' +
-            '</div>';
-        }).join("");
-        const nsPct = (ns * 1000 / 10).toFixed(1);
-        const sfPct = (sf * 1000 / 10).toFixed(1);
-        return '<div class="group-box" style="margin-top:8px;"><div class="group-box-title"><i class="bi bi-shield-check"></i> Safety Classification</div>' +
+        const rowHtml = rows
+          .map((r) => {
+            const pct = Math.round(r.value * 1000) / 10;
+            const danger = r.label !== "Safe" && r.label !== "Drawing" && r.value >= threshold;
+            const safeHighlight =
+              (r.label === "Safe" || r.label === "Drawing") && r.value >= threshold;
+            const bg = danger ? "background:#f8d7da;" : safeHighlight ? "background:#d1e7dd;" : "";
+            return (
+              '<div style="display:flex;align-items:center;gap:6px;font-size:11px;padding:3px 6px;' +
+              bg +
+              '">' +
+              '<i class="bi ' +
+              r.icon +
+              '" style="color:#666;width:14px;"></i>' +
+              '<span style="width:64px;font-weight:600;">' +
+              r.label +
+              "</span>" +
+              '<div class="prob-bar" style="flex:1;"><div style="height:100%;width:' +
+              pct +
+              '%;background:var(--sys-accent,#0078d7);"></div></div>' +
+              '<span style="width:48px;text-align:right;color:#333;">' +
+              pct +
+              "%</span>" +
+              "</div>"
+            );
+          })
+          .join("");
+        const nsPct = ((ns * 1000) / 10).toFixed(1);
+        const sfPct = ((sf * 1000) / 10).toFixed(1);
+        return (
+          '<div class="group-box" style="margin-top:8px;"><div class="group-box-title"><i class="bi bi-shield-check"></i> Safety Classification</div>' +
           '<div style="display:flex;gap:16px;font-size:11px;font-weight:600;margin-bottom:6px;">' +
-          '<span style="color:#842029;">NSFW ' + nsPct + '%</span>' +
-          '<span style="color:#2e7d32;">SFW ' + sfPct + '%</span>' +
-          '</div>' +
-          '<div style="display:flex;flex-direction:column;gap:4px;">' + rowHtml + '</div>' +
-          '</div>';
+          '<span style="color:#842029;">NSFW ' +
+          nsPct +
+          "%</span>" +
+          '<span style="color:#2e7d32;">SFW ' +
+          sfPct +
+          "%</span>" +
+          "</div>" +
+          '<div style="display:flex;flex-direction:column;gap:4px;">' +
+          rowHtml +
+          "</div>" +
+          "</div>"
+        );
       })()
     : "";
 
-  const catBreakdown = Object.entries(tagCategories).map(([cat, count]) => `${cat}: ${count}`).join(", ");
+  const catBreakdown = Object.entries(tagCategories)
+    .map(([cat, count]) => `${cat}: ${count}`)
+    .join(", ");
   const tagsHtml = img.tags?.length
-    ? img.tags.map(t => renderTagPill(t)).join(" ")
+    ? img.tags.map((t) => renderTagPill(t)).join(" ")
     : '<span style="color:#999;font-style:italic;">No tags</span>';
 
   const detectionsHtml = `<div class="group-box" style="margin-top:8px;" id="detections-section">
@@ -190,23 +228,43 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
 
   body.innerHTML =
     '<table class="curator-table" style="font-size:11px;"><tbody>' +
-    '<tr><td style="font-weight:600;width:120px;">Image ID</td><td>' + img.id + '</td></tr>' +
-    '<tr><td style="font-weight:600;">Filepath</td><td style="word-break:break-all;">' + img.current_filepath + '</td></tr>' +
-    '<tr><td style="font-weight:600;">SHA-256</td><td style="font-family:monospace;display:flex;align-items:center;gap:6px;"><span id="info-sha256-text">' + sha256Short + '</span><button class="win-button" id="info-copy-sha256" title="Copy full SHA-256" style="font-size:10px;padding:2px 6px;"><i class="bi bi-clipboard"></i></button></td></tr>' +
-    '<tr><td style="font-weight:600;">Modified</td><td>' + mtime + '</td></tr>' +
-    '<tr><td style="font-weight:600;">Imported</td><td>' + createdAt + '</td></tr>' +
-    '<tr><td style="font-weight:600;">Vector State</td><td>' + img.vector_state + '</td></tr>' +
-    '<tr><td style="font-weight:600;">Favorite</td><td>' + (img.favorite ? "Yes" : "No") + '</td></tr>' +
-    '<tr><td style="font-weight:600;">Tags (' + tagsCount + ')</td><td>' + (catBreakdown || "—") + '</td></tr>' +
-    '</tbody></table>' +
-    '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">' + tagsHtml + '</div>' +
+    '<tr><td style="font-weight:600;width:120px;">Image ID</td><td>' +
+    img.id +
+    "</td></tr>" +
+    '<tr><td style="font-weight:600;">Filepath</td><td style="word-break:break-all;">' +
+    img.current_filepath +
+    "</td></tr>" +
+    '<tr><td style="font-weight:600;">SHA-256</td><td style="font-family:monospace;display:flex;align-items:center;gap:6px;"><span id="info-sha256-text">' +
+    sha256Short +
+    '</span><button class="win-button" id="info-copy-sha256" title="Copy full SHA-256" style="font-size:10px;padding:2px 6px;"><i class="bi bi-clipboard"></i></button></td></tr>' +
+    '<tr><td style="font-weight:600;">Modified</td><td>' +
+    mtime +
+    "</td></tr>" +
+    '<tr><td style="font-weight:600;">Imported</td><td>' +
+    createdAt +
+    "</td></tr>" +
+    '<tr><td style="font-weight:600;">Vector State</td><td>' +
+    img.vector_state +
+    "</td></tr>" +
+    '<tr><td style="font-weight:600;">Favorite</td><td>' +
+    (img.favorite ? "Yes" : "No") +
+    "</td></tr>" +
+    '<tr><td style="font-weight:600;">Tags (' +
+    tagsCount +
+    ")</td><td>" +
+    (catBreakdown || "—") +
+    "</td></tr>" +
+    "</tbody></table>" +
+    '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">' +
+    tagsHtml +
+    "</div>" +
     notesHtml +
     parsedHtml +
     mediaHtml +
     safetyHtml +
     '<div style="margin-top:8px;display:flex;gap:4px;align-items:center;">' +
     '<button class="win-button" id="info-send-toolbox" title="Open this image in the Image Toolbox" style="font-size:11px;"><i class="bi bi-tools"></i> Send to Image Toolbox</button>' +
-    '</div>' +
+    "</div>" +
     detectionsHtml;
 
   // --- Notes Handling ---
@@ -220,7 +278,8 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
 
   const renderNoteHtml = (text: string) => {
     if (!text.trim()) {
-      previewDiv.innerHTML = '<span style="color:#999;font-style:italic;">No notes yet. Click to add a note...</span>';
+      previewDiv.innerHTML =
+        '<span style="color:#999;font-style:italic;">No notes yet. Click to add a note...</span>';
     } else {
       try {
         const rawHtml = marked.parse(text) as string;
@@ -250,10 +309,15 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
     statusDiv.style.color = "#0078d7";
 
     try {
-      await typedCall("GalleryService.SetNote", SetNoteRequestSchema, {
-        imageId: BigInt(img.id),
-        note: newVal.trim() ? newVal : undefined,
-      }, EmptySchema);
+      await typedCall(
+        "GalleryService.SetNote",
+        SetNoteRequestSchema,
+        {
+          imageId: BigInt(img.id),
+          note: newVal.trim() ? newVal : undefined,
+        },
+        EmptySchema,
+      );
       statusDiv.textContent = "Saved";
       statusDiv.style.color = "#28a745";
       img.note = newVal;
@@ -329,7 +393,9 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
       try {
         await navigator.clipboard.writeText(sha256Full);
         copySha.innerHTML = '<i class="bi bi-check-lg"></i>';
-        setTimeout(() => { copySha.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 1200);
+        setTimeout(() => {
+          copySha.innerHTML = '<i class="bi bi-clipboard"></i>';
+        }, 1200);
       } catch (_) {}
     });
   }
@@ -345,7 +411,12 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
       const loading = body.querySelector("#detections-loading") as HTMLElement;
       if (loading) loading.style.display = "block";
       try {
-        await typedCall("CharactersService.DetectCharacters", ImageIdRequestSchema, { imageId: BigInt(img.id) }, DetectionResultSchema);
+        await typedCall(
+          "CharactersService.DetectCharacters",
+          ImageIdRequestSchema,
+          { imageId: BigInt(img.id) },
+          DetectionResultSchema,
+        );
         await loadDetectionsForImage(img.id, body);
         await refreshCharacters();
         requestGalleryRefresh();
@@ -363,7 +434,7 @@ export function renderImageInfo(img: ImageDetails, body: HTMLElement) {
   const addDetBtn = body.querySelector("#add-detection-btn") as HTMLButtonElement;
   if (addDetBtn) {
     addDetBtn.addEventListener("click", () => {
-      import("../bbox-editor").then(m => {
+      import("../bbox-editor").then((m) => {
         m.openBBoxEditor(null, img.id, img.current_filepath, 0, 0, 0, 0, () => {
           loadDetectionsForImage(img.id, body);
           refreshCharacters();
@@ -437,7 +508,12 @@ async function loadDetectionsForImage(imageId: number, scopeEl: HTMLElement | Do
   list.innerHTML = "";
 
   try {
-    const resp = await typedCall("CharactersService.GetCharacterDetections", ImageIdRequestSchema, { imageId: BigInt(imageId) }, CharacterDetectionsResultSchema);
+    const resp = await typedCall(
+      "CharactersService.GetCharacterDetections",
+      ImageIdRequestSchema,
+      { imageId: BigInt(imageId) },
+      CharacterDetectionsResultSchema,
+    );
     const detections = resp.detections.map(storedDetectionFromProto);
     if (loading) loading.style.display = "none";
 
@@ -446,7 +522,12 @@ async function loadDetectionsForImage(imageId: number, scopeEl: HTMLElement | Do
       return;
     }
 
-    const idResp = await typedCall("CharactersService.ListCharacterIdentities", null, null, CharacterIdentitiesListSchema);
+    const idResp = await typedCall(
+      "CharactersService.ListCharacterIdentities",
+      null,
+      null,
+      CharacterIdentitiesListSchema,
+    );
     const identities: CharacterIdentity[] = idResp.identities.map(characterIdentityFromProto);
     identities.sort(compareIdentitiesPlaceholderLast);
 
@@ -472,7 +553,12 @@ async function preloadDetectionCrops(detections: CharacterDetection[]) {
   const ids = uncached.map((d) => d.id);
   const revs = new Map<number, number>(uncached.map((d) => [d.id, getCropRevision(d.id)]));
   try {
-    const resp = await typedCall("CharactersService.GetDetectionCrops", GetDetectionCropsRequestSchema, { detectionIds: ids.map((id) => BigInt(id)), maxSize: 96 }, DetectionCropsResultSchema);
+    const resp = await typedCall(
+      "CharactersService.GetDetectionCrops",
+      GetDetectionCropsRequestSchema,
+      { detectionIds: ids.map((id) => BigInt(id)), maxSize: 96 },
+      DetectionCropsResultSchema,
+    );
     for (const entry of resp.crops) {
       const detectionId = Number(entry.detectionId);
       if (getCropRevision(detectionId) !== revs.get(detectionId)) continue;
@@ -484,13 +570,20 @@ async function preloadDetectionCrops(detections: CharacterDetection[]) {
   }
 }
 
-function renderDetectionRow(det: CharacterDetection, identities: CharacterIdentity[], imageId: number, scopeEl: HTMLElement | Document = document): HTMLElement {
+function renderDetectionRow(
+  det: CharacterDetection,
+  identities: CharacterIdentity[],
+  imageId: number,
+  scopeEl: HTMLElement | Document = document,
+): HTMLElement {
   const detEl = document.createElement("div");
-  detEl.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid var(--sys-border-light,#d0d0d0);border-radius:2px;background:var(--sys-window-bg,#fff);font-size:11px;";
+  detEl.style.cssText =
+    "display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid var(--sys-border-light,#d0d0d0);border-radius:2px;background:var(--sys-window-bg,#fff);font-size:11px;";
 
   const cropThumb = document.createElement("div");
   cropThumb.className = "skeleton-pulse";
-  cropThumb.style.cssText = "width:48px;height:48px;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;";
+  cropThumb.style.cssText =
+    "width:48px;height:48px;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;";
   cropThumb.innerHTML = '<i class="bi bi-image" style="color:#999;"></i>';
 
   const cachedCropUrl = getCachedCrop(det.id);
@@ -499,22 +592,30 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
     cropThumb.innerHTML = `<img src="${cachedCropUrl}" style="width:100%;height:100%;object-fit:cover;" />`;
   } else {
     const revAtStart = getCropRevision(det.id);
-    typedCall("CharactersService.GetDetectionCrop", GetDetectionCropRequestSchema, { detectionId: BigInt(det.id), maxSize: 96 }, DetectionCropResultSchema).then((cropResp) => {
-      if (getCropRevision(det.id) !== revAtStart) return;
-      const blob = new Blob([cropResp.cropWebpBytes], { type: "image/webp" });
-      const url = URL.createObjectURL(blob);
-      setCachedCrop(det.id, url);
-      cropThumb.classList.remove("skeleton-pulse");
-      cropThumb.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" />`;
-    }).catch(() => {
-      cropThumb.classList.remove("skeleton-pulse");
-    });
+    typedCall(
+      "CharactersService.GetDetectionCrop",
+      GetDetectionCropRequestSchema,
+      { detectionId: BigInt(det.id), maxSize: 96 },
+      DetectionCropResultSchema,
+    )
+      .then((cropResp) => {
+        if (getCropRevision(det.id) !== revAtStart) return;
+        const blob = new Blob([cropResp.cropWebpBytes], { type: "image/webp" });
+        const url = URL.createObjectURL(blob);
+        setCachedCrop(det.id, url);
+        cropThumb.classList.remove("skeleton-pulse");
+        cropThumb.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" />`;
+      })
+      .catch(() => {
+        cropThumb.classList.remove("skeleton-pulse");
+      });
   }
 
   const infoEl = document.createElement("div");
   infoEl.style.cssText = "flex:1;min-width:0;";
 
-  const assignedIdentity = det.identity_id !== null ? identities.find((i: any) => i.id === det.identity_id) : null;
+  const assignedIdentity =
+    det.identity_id !== null ? identities.find((i: any) => i.id === det.identity_id) : null;
   const dropdownId = `det-ac-${det.id}`;
 
   const currentName = assignedIdentity ? assignedIdentity.name : "";
@@ -541,7 +642,12 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
     const name = targetName.trim();
     if (!name) {
       if (det.identity_id !== null) {
-        await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: undefined }, EmptySchema);
+        await typedCall(
+          "CharactersService.AssignCharacterIdentity",
+          AssignCharacterIdentityRequestSchema,
+          { detectionId: BigInt(det.id), identityId: undefined },
+          EmptySchema,
+        );
         await loadDetectionsForImage(imageId, scopeEl);
         await refreshCharacters();
         requestGalleryRefresh();
@@ -554,14 +660,29 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
       return;
     }
 
-    const existing = identities.find(i => i.name.toLowerCase() === name.toLowerCase());
+    const existing = identities.find((i) => i.name.toLowerCase() === name.toLowerCase());
     if (existing) {
-      await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: BigInt(existing.id) }, EmptySchema);
+      await typedCall(
+        "CharactersService.AssignCharacterIdentity",
+        AssignCharacterIdentityRequestSchema,
+        { detectionId: BigInt(det.id), identityId: BigInt(existing.id) },
+        EmptySchema,
+      );
     } else {
-      const createResp = await typedCall("CharactersService.CreateCharacterIdentity", CreateCharacterIdentityRequestSchema, { name }, CharacterIdentitiesListSchema);
+      const createResp = await typedCall(
+        "CharactersService.CreateCharacterIdentity",
+        CreateCharacterIdentityRequestSchema,
+        { name },
+        CharacterIdentitiesListSchema,
+      );
       const newId = createResp.identities[0]?.id;
       if (newId !== undefined) {
-        await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: newId }, EmptySchema);
+        await typedCall(
+          "CharactersService.AssignCharacterIdentity",
+          AssignCharacterIdentityRequestSchema,
+          { detectionId: BigInt(det.id), identityId: newId },
+          EmptySchema,
+        );
       }
     }
     await loadDetectionsForImage(imageId, scopeEl);
@@ -623,7 +744,12 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
     matchBtn.disabled = true;
     matchBtn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
     try {
-      await typedCall("CharactersService.IdentifyDetection", IdentifyDetectionRequestSchema, { detectionId: BigInt(det.id) }, IdentifyDetectionResultSchema);
+      await typedCall(
+        "CharactersService.IdentifyDetection",
+        IdentifyDetectionRequestSchema,
+        { detectionId: BigInt(det.id) },
+        IdentifyDetectionResultSchema,
+      );
       loadDetectionsForImage(imageId, scopeEl);
       refreshCharacters();
       requestGalleryRefresh();
@@ -637,10 +763,15 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
   });
 
   actionsEl.querySelector(".edit-bbox-btn")?.addEventListener("click", () => {
-    typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(imageId) }, ImageResultSchema).then((imgResp) => {
+    typedCall(
+      "GalleryService.GetImage",
+      GetImageRequestSchema,
+      { imageId: BigInt(imageId) },
+      ImageResultSchema,
+    ).then((imgResp) => {
       if (imgResp.image) {
         const fp = imgResp.image.currentFilepath;
-        import("../bbox-editor").then(m => {
+        import("../bbox-editor").then((m) => {
           m.openBBoxEditor(det.id, imageId, fp, det.x0, det.y0, det.x1, det.y1, async () => {
             invalidateCropCache(det.id);
             await loadDetectionsForImage(imageId, scopeEl);
@@ -654,8 +785,18 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
   });
 
   actionsEl.querySelector(".delete-det-btn")?.addEventListener("click", async () => {
-    if (!confirm("Are you sure you want to delete this detection? This will remove it from the system.")) return;
-    await typedCall("CharactersService.DeleteDetection", DeleteDetectionRequestSchema, { detectionId: BigInt(det.id) }, EmptySchema);
+    if (
+      !confirm(
+        "Are you sure you want to delete this detection? This will remove it from the system.",
+      )
+    )
+      return;
+    await typedCall(
+      "CharactersService.DeleteDetection",
+      DeleteDetectionRequestSchema,
+      { detectionId: BigInt(det.id) },
+      EmptySchema,
+    );
     loadDetectionsForImage(imageId, scopeEl);
     refreshCharacters();
     requestGalleryRefresh();
@@ -666,7 +807,15 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
   select?.addEventListener("change", async () => {
     const val = select.value;
     const identityId = val ? parseInt(val, 10) : null;
-    await typedCall("CharactersService.AssignCharacterIdentity", AssignCharacterIdentityRequestSchema, { detectionId: BigInt(det.id), identityId: identityId !== null ? BigInt(identityId) : undefined }, EmptySchema);
+    await typedCall(
+      "CharactersService.AssignCharacterIdentity",
+      AssignCharacterIdentityRequestSchema,
+      {
+        detectionId: BigInt(det.id),
+        identityId: identityId !== null ? BigInt(identityId) : undefined,
+      },
+      EmptySchema,
+    );
     await loadDetectionsForImage(imageId, scopeEl);
     await refreshCharacters();
     requestGalleryRefresh();
@@ -678,7 +827,8 @@ function renderDetectionRow(det: CharacterDetection, identities: CharacterIdenti
 
 export const meta = {
   name: "Image Info Modal",
-  description: "Image details overlay with metadata grids, media info, markdown notes, and character detection panel.",
+  description:
+    "Image details overlay with metadata grids, media info, markdown notes, and character detection panel.",
   variants: [
     {
       name: "Metadata grid & notes",
@@ -686,10 +836,11 @@ export const meta = {
         <div class="group-box">
           <div class="group-box-title">Image Info Modal</div>
           <div class="group-box-body" style="color:var(--sys-text-subtle);font-size:11px;">
-            Renders the image details table, parsed metadata, media info, markdown note editor, and the character detection panel into #image-info-modal-body.
+            Renders the image details table, parsed metadata, media info, markdown note editor, and
+            the character detection panel into #image-info-modal-body.
           </div>
         </div>
-      `
-    }
-  ]
+      `,
+    },
+  ],
 };

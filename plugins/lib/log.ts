@@ -33,11 +33,7 @@ const CONSOLE_LINE_CSS =
  * Useful when the backend accumulates a growing log array (e.g. an install
  * console) and the frontend only wants to render the delta per poll.
  */
-export function appendLogLines(
-  elementId: string,
-  lines: string[],
-  fromIndex: number
-): number {
+export function appendLogLines(elementId: string, lines: string[], fromIndex: number): number {
   const box = document.getElementById(elementId);
   if (!box || fromIndex >= lines.length) return lines.length;
 
@@ -70,7 +66,9 @@ export function createLogger(elementId: string): Logger {
 
     const line = document.createElement("div");
     line.style.cssText =
-      kind === "info" ? CONSOLE_LINE_CSS : `font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:${LOG_COLORS[kind]};white-space:pre-wrap;word-break:break-all;`;
+      kind === "info"
+        ? CONSOLE_LINE_CSS
+        : `font-family:'Consolas',monospace;font-size:11px;line-height:1.4;color:${LOG_COLORS[kind]};white-space:pre-wrap;word-break:break-all;`;
     line.textContent = message;
     box.appendChild(line);
     box.scrollTop = box.scrollHeight;

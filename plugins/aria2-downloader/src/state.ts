@@ -67,9 +67,7 @@ export const state: PluginState = {
   queue: new Map<string, QueueItem>(),
   history: [],
   settings: {
-    outputDir: workspaceRoot
-      ? `${workspaceRoot.replace(/[\\/]+$/, "")}\\Downloads`
-      : "",
+    outputDir: workspaceRoot ? `${workspaceRoot.replace(/[\\/]+$/, "")}\\Downloads` : "",
     connections: DEFAULT_CONNECTIONS,
     speedLimitKb: 0,
     maxTries: DEFAULT_MAX_TRIES,

@@ -68,7 +68,11 @@ export async function dirStat(path = ""): Promise<DirStatResult> {
 }
 
 /** Downloads a binary payload to the plugin's data dir; resolves to the absolute path. */
-export async function httpDownload(url: string, outputPath: string, timeoutMs = 30000): Promise<string> {
+export async function httpDownload(
+  url: string,
+  outputPath: string,
+  timeoutMs = 30000,
+): Promise<string> {
   const resp = await PH.callService("HttpDownload", {
     url,
     output_path: outputPath,
@@ -82,7 +86,7 @@ export async function httpDownload(url: string, outputPath: string, timeoutMs = 
 export async function httpDownloadFull(
   url: string,
   outputPath: string,
-  timeoutMs = 30000
+  timeoutMs = 30000,
 ): Promise<{ absolutePath: string; sizeBytes: number }> {
   const resp = await PH.callService("HttpDownload", {
     url,

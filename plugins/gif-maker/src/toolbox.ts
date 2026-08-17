@@ -120,7 +120,9 @@ export function setupToolboxPane(): void {
             </button>
           </div>
         `;
-        content.querySelector("#gm-btn-compile-gif")?.addEventListener("click", () => void compileMakerVideo());
+        content
+          .querySelector("#gm-btn-compile-gif")
+          ?.addEventListener("click", () => void compileMakerVideo());
         const nativeFpsChk = content.querySelector<HTMLInputElement>("#gm-chk-native-fps")!;
         const fpsInp = content.querySelector<HTMLInputElement>("#gm-inp-fps")!;
 
@@ -171,10 +173,14 @@ export function setupToolboxPane(): void {
             </button>
           </div>
         `;
-        content.querySelector("#gm-inp-seq-pattern")?.addEventListener("input", function (this: HTMLInputElement) {
-          state.sequencePattern = this.value.trim();
-        });
-        content.querySelector("#gm-btn-compile-gif")?.addEventListener("click", () => void compileImagesToAnimation());
+        content
+          .querySelector("#gm-inp-seq-pattern")
+          ?.addEventListener("input", function (this: HTMLInputElement) {
+            state.sequencePattern = this.value.trim();
+          });
+        content
+          .querySelector("#gm-btn-compile-gif")
+          ?.addEventListener("click", () => void compileImagesToAnimation());
       }
       break;
 
@@ -182,14 +188,19 @@ export function setupToolboxPane(): void {
       title.textContent = "Video Trimming & FPS";
       (() => {
         const fps = state.currentMedia && state.currentMedia.fps ? state.currentMedia.fps : 30.0;
-        const dur = state.currentMedia && state.currentMedia.durationMs ? state.currentMedia.durationMs / 1000 : 10.0;
+        const dur =
+          state.currentMedia && state.currentMedia.durationMs
+            ? state.currentMedia.durationMs / 1000
+            : 10.0;
         const totalF =
           state.currentMedia && state.currentMedia.totalFrames
             ? state.currentMedia.totalFrames
             : Math.round(dur * fps);
 
         let activeExt =
-          state.currentMedia && state.currentMedia.path ? state.currentMedia.path.split(".").pop()!.toLowerCase() : "gif";
+          state.currentMedia && state.currentMedia.path
+            ? state.currentMedia.path.split(".").pop()!.toLowerCase()
+            : "gif";
         if (activeExt === "mov" || activeExt === "avi" || activeExt === "mkv") activeExt = "mp4";
 
         content.innerHTML = `
@@ -198,13 +209,19 @@ export function setupToolboxPane(): void {
               <strong>Playhead:</strong> <span id="gm-trim-info-playhead" style="font-family:monospace; font-weight:bold; color:#dc3545;">0.00s (Frame 0)</span>
             </div>
             <div style="display:flex; justify-content:space-between;"><strong>Duration:</strong> <span>${
-              state.currentMedia && state.currentMedia.durationMs ? (state.currentMedia.durationMs / 1000).toFixed(2) + "s" : "Unknown"
+              state.currentMedia && state.currentMedia.durationMs
+                ? (state.currentMedia.durationMs / 1000).toFixed(2) + "s"
+                : "Unknown"
             }</span></div>
             <div style="display:flex; justify-content:space-between;"><strong>Total Frames:</strong> <span>${
-              state.currentMedia && state.currentMedia.totalFrames ? state.currentMedia.totalFrames : "Unknown"
+              state.currentMedia && state.currentMedia.totalFrames
+                ? state.currentMedia.totalFrames
+                : "Unknown"
             }</span></div>
             <div style="display:flex; justify-content:space-between;"><strong>Probed FPS:</strong> <span>${
-              state.currentMedia && state.currentMedia.fps ? state.currentMedia.fps.toFixed(2) : "Unknown"
+              state.currentMedia && state.currentMedia.fps
+                ? state.currentMedia.fps.toFixed(2)
+                : "Unknown"
             }</span></div>
           </div>
 
@@ -439,7 +456,9 @@ export function setupToolboxPane(): void {
 
         syncTimelineFromInputs();
 
-        content.querySelector("#gm-btn-apply-trim")?.addEventListener("click", () => void handleTrimVideo());
+        content
+          .querySelector("#gm-btn-apply-trim")
+          ?.addEventListener("click", () => void handleTrimVideo());
       })();
       break;
 
@@ -489,7 +508,9 @@ export function setupToolboxPane(): void {
           }
         });
       });
-      content.querySelector("#gm-btn-apply-crop")?.addEventListener("click", () => void handleApplyCrop());
+      content
+        .querySelector("#gm-btn-apply-crop")
+        ?.addEventListener("click", () => void handleApplyCrop());
       break;
 
     case "caption":
@@ -571,7 +592,7 @@ export function setupToolboxPane(): void {
           elem.addEventListener("input", renderWysiwygCanvas);
         });
 
-browseFontBtn.addEventListener("click", async () => {
+        browseFontBtn.addEventListener("click", async () => {
           const path = await pickFile();
           if (path) {
             const ext = path.split(".").pop()!.toLowerCase();
@@ -584,7 +605,9 @@ browseFontBtn.addEventListener("click", async () => {
             }
           }
         });
-        content.querySelector("#gm-btn-apply-caption")?.addEventListener("click", () => void handleApplyCaption());
+        content
+          .querySelector("#gm-btn-apply-caption")
+          ?.addEventListener("click", () => void handleApplyCaption());
       })();
       break;
 
@@ -626,7 +649,9 @@ browseFontBtn.addEventListener("click", async () => {
       slider.addEventListener("input", () => {
         valTxt.textContent = slider.value + "x";
       });
-      content.querySelector("#gm-btn-apply-effects")?.addEventListener("click", () => void handleApplyEffects());
+      content
+        .querySelector("#gm-btn-apply-effects")
+        ?.addEventListener("click", () => void handleApplyEffects());
       break;
 
     case "optimize":
@@ -713,14 +738,18 @@ browseFontBtn.addEventListener("click", async () => {
               .catch(() => {});
           }
         }
-        content.querySelector("#gm-btn-apply-optimize")?.addEventListener("click", () => void handleApplyOptimize());
+        content
+          .querySelector("#gm-btn-apply-optimize")
+          ?.addEventListener("click", () => void handleApplyOptimize());
       })();
       break;
 
     case "split":
       title.textContent = "Split GIF to Frames";
       (() => {
-        const defaultDir = state.currentMedia ? state.currentMedia.path.replace(/[\/\\][^\/\\]+$/, "") : "";
+        const defaultDir = state.currentMedia
+          ? state.currentMedia.path.replace(/[\/\\][^\/\\]+$/, "")
+          : "";
         content.innerHTML = `
           <div style="font-size:11px; color:#666; margin-bottom:8px;">Extracts every frame from the active GIF/video and saves them as individual PNG files to a destination folder.</div>
           <label style="font-size:11px; font-weight:bold; display:block; margin-bottom:4px;">Output Folder</label>
@@ -743,7 +772,9 @@ browseFontBtn.addEventListener("click", async () => {
             logConsole("Folder browse error: " + e, "error");
           }
         });
-        content.querySelector("#gm-btn-split")?.addEventListener("click", () => void handleSplitGif());
+        content
+          .querySelector("#gm-btn-split")
+          ?.addEventListener("click", () => void handleSplitGif());
       })();
       break;
 
@@ -754,7 +785,9 @@ browseFontBtn.addEventListener("click", async () => {
         const origH = (state.currentMedia && state.currentMedia.height) || 0;
 
         let activeExt =
-          state.currentMedia && state.currentMedia.path ? state.currentMedia.path.split(".").pop()!.toLowerCase() : "gif";
+          state.currentMedia && state.currentMedia.path
+            ? state.currentMedia.path.split(".").pop()!.toLowerCase()
+            : "gif";
         if (activeExt === "mov" || activeExt === "avi" || activeExt === "mkv") activeExt = "mp4";
 
         content.innerHTML = `
@@ -830,18 +863,24 @@ browseFontBtn.addEventListener("click", async () => {
         });
         wInp.addEventListener("input", () => {
           if (origW && origH) {
-            hInp.value = String(Math.max(1, Math.round((parseInt(wInp.value || String(origW)) * origH) / origW)));
+            hInp.value = String(
+              Math.max(1, Math.round((parseInt(wInp.value || String(origW)) * origH) / origW)),
+            );
           }
           syncPctFromDims();
         });
         hInp.addEventListener("input", () => {
           if (origW && origH) {
-            wInp.value = String(Math.max(1, Math.round((parseInt(hInp.value || String(origH)) * origW) / origH)));
+            wInp.value = String(
+              Math.max(1, Math.round((parseInt(hInp.value || String(origH)) * origW) / origH)),
+            );
           }
           syncPctFromDims();
         });
       })();
-      content.querySelector("#gm-btn-export")?.addEventListener("click", () => void handleExportResize());
+      content
+        .querySelector("#gm-btn-export")
+        ?.addEventListener("click", () => void handleExportResize());
       break;
   }
 }

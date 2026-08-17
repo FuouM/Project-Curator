@@ -500,12 +500,24 @@
       e.preventDefault(), e.stopPropagation(), handle.setPointerCapture(e.pointerId), state.cropState.resizing = !0, state.cropState.startW = state.cropState.w, state.cropState.startH = state.cropState.h, state.cropState.startX = e.clientX, state.cropState.startY = e.clientY;
     }), window.addEventListener("pointermove", (e) => {
       let box = container.getBoundingClientRect();
-      state.cropState.dragging && state.cropState.startX !== void 0 && state.cropState.startY !== void 0 && (state.cropState.x = Math.max(0, Math.min(box.width - state.cropState.w, e.clientX - state.cropState.startX)), state.cropState.y = Math.max(0, Math.min(box.height - state.cropState.h, e.clientY - state.cropState.startY)), updateVisuals()), state.cropState.resizing && state.cropState.startW !== void 0 && state.cropState.startH !== void 0 && state.cropState.startX !== void 0 && state.cropState.startY !== void 0 && (state.cropState.w = Math.max(
+      state.cropState.dragging && state.cropState.startX !== void 0 && state.cropState.startY !== void 0 && (state.cropState.x = Math.max(
+        0,
+        Math.min(box.width - state.cropState.w, e.clientX - state.cropState.startX)
+      ), state.cropState.y = Math.max(
+        0,
+        Math.min(box.height - state.cropState.h, e.clientY - state.cropState.startY)
+      ), updateVisuals()), state.cropState.resizing && state.cropState.startW !== void 0 && state.cropState.startH !== void 0 && state.cropState.startX !== void 0 && state.cropState.startY !== void 0 && (state.cropState.w = Math.max(
         20,
-        Math.min(box.width - state.cropState.x, state.cropState.startW + (e.clientX - state.cropState.startX))
+        Math.min(
+          box.width - state.cropState.x,
+          state.cropState.startW + (e.clientX - state.cropState.startX)
+        )
       ), state.cropState.h = Math.max(
         20,
-        Math.min(box.height - state.cropState.y, state.cropState.startH + (e.clientY - state.cropState.startY))
+        Math.min(
+          box.height - state.cropState.y,
+          state.cropState.startH + (e.clientY - state.cropState.startY)
+        )
       ), updateVisuals());
     }), window.addEventListener("pointerup", () => {
       state.cropState.dragging = !1, state.cropState.resizing = !1;
@@ -1384,9 +1396,13 @@
             let v = Math.max(10, parseInt(this.value) || 100);
             pctRange.value = String(v), applyPct(v);
           }), wInp.addEventListener("input", () => {
-            origW && origH && (hInp.value = String(Math.max(1, Math.round(parseInt(wInp.value || String(origW)) * origH / origW)))), syncPctFromDims();
+            origW && origH && (hInp.value = String(
+              Math.max(1, Math.round(parseInt(wInp.value || String(origW)) * origH / origW))
+            )), syncPctFromDims();
           }), hInp.addEventListener("input", () => {
-            origW && origH && (wInp.value = String(Math.max(1, Math.round(parseInt(hInp.value || String(origH)) * origW / origH)))), syncPctFromDims();
+            origW && origH && (wInp.value = String(
+              Math.max(1, Math.round(parseInt(hInp.value || String(origH)) * origW / origH))
+            )), syncPctFromDims();
           });
         })(), (_g = content.querySelector("#gm-btn-export")) == null || _g.addEventListener("click", () => void handleExportResize());
         break;
@@ -1502,7 +1518,10 @@
       logConsole("Error: Select files in the main gallery first.", "error");
       return;
     }
-    state.currentTool === "maker" ? (state.droppedFrames = selection.map((asset) => asset.path), logConsole(`Loaded ${state.droppedFrames.length} frames to the GIF Maker frame pool.`, "success"), renderDroppedFrames()) : pushHistoryState(selection[0].path, "Imported selected file");
+    state.currentTool === "maker" ? (state.droppedFrames = selection.map((asset) => asset.path), logConsole(
+      `Loaded ${state.droppedFrames.length} frames to the GIF Maker frame pool.`,
+      "success"
+    ), renderDroppedFrames()) : pushHistoryState(selection[0].path, "Imported selected file");
   }
   async function handleBrowseFile() {
     try {

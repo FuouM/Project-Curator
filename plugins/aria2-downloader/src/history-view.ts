@@ -23,9 +23,7 @@ export async function initHistory(): Promise<void> {
 
 export async function refreshHistoryUI(term: string): Promise<void> {
   try {
-    state.history = term.trim()
-      ? await searchHistory(term.trim())
-      : await queryHistory(200);
+    state.history = term.trim() ? await searchHistory(term.trim()) : await queryHistory(200);
   } catch (err) {
     log(`History load failed: ${err instanceof Error ? err.message : String(err)}`, "error");
     return;

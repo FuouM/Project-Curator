@@ -12,7 +12,7 @@ export function renderCoverImage(
   path: string | null,
   alt: string,
   imgClass = "ds-cover",
-  placeholderClass = "ds-cover-placeholder"
+  placeholderClass = "ds-cover-placeholder",
 ): HTMLElement {
   if (path) {
     const img = el("img", { class: imgClass, title: alt });
@@ -30,7 +30,7 @@ export function renderCoverImage(
 /** Static placeholder box with a fallback glyph. */
 export function renderCoverPlaceholder(
   placeholderClass = "ds-cover-placeholder",
-  glyphClass = "bi bi-image"
+  glyphClass = "bi bi-image",
 ): HTMLElement {
   const ph = el("div", { class: placeholderClass });
   ph.appendChild(icon(glyphClass));
@@ -49,7 +49,7 @@ export function renderFeedCover(path: string | null, coverKey: string, cssText =
     img.addEventListener("error", () => {
       img.style.display = "none";
       img.parentElement?.appendChild(
-        el("div", { class: "ds-feed-cover-placeholder", style: cssText }, icon("bi bi-book"))
+        el("div", { class: "ds-feed-cover-placeholder", style: cssText }, icon("bi bi-book")),
       );
     });
     return img;

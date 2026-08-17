@@ -3,7 +3,15 @@
  * disk space usage, cached series/chapters, and executing granular or bulk cleanup.
  */
 
-import { Route, decodeEntities, formatBytes, formatDate, navigate, setActions, setBanner } from "./state";
+import {
+  Route,
+  decodeEntities,
+  formatBytes,
+  formatDate,
+  navigate,
+  setActions,
+  setBanner,
+} from "./state";
 import {
   CacheOverviewStats,
   CachedSeriesGroup,
@@ -23,7 +31,8 @@ export function renderCache(container: HTMLElement, _route: Route): void {
 
   const root = document.createElement("div");
   root.id = "ds-cache-view-container";
-  root.style.cssText = "display:flex;flex-direction:column;gap:12px;padding:8px 4px;width:100%;box-sizing:border-box;";
+  root.style.cssText =
+    "display:flex;flex-direction:column;gap:12px;padding:8px 4px;width:100%;box-sizing:border-box;";
   container.appendChild(root);
 
   const loadView = async (): Promise<void> => {
@@ -36,10 +45,7 @@ export function renderCache(container: HTMLElement, _route: Route): void {
     root.appendChild(loading);
 
     try {
-      const [stats, groups] = await Promise.all([
-        getCacheOverviewStats(),
-        getCachedSeriesGroups(),
-      ]);
+      const [stats, groups] = await Promise.all([getCacheOverviewStats(), getCachedSeriesGroups()]);
       root.innerHTML = "";
 
       // Setup Top Bar Actions
@@ -115,7 +121,7 @@ export function renderCache(container: HTMLElement, _route: Route): void {
           setBanner("All cache storage successfully purged.");
           await loadView();
         },
-        '<i class="bi bi-trash3"></i> Clear All Cache Storage'
+        '<i class="bi bi-trash3"></i> Clear All Cache Storage',
       );
       actRow.appendChild(clearAllBtn);
 
@@ -126,7 +132,7 @@ export function renderCache(container: HTMLElement, _route: Route): void {
           setBanner("All cached reader page scans cleared.");
           await loadView();
         },
-        '<i class="bi bi-images"></i> Clear Page Scans Only'
+        '<i class="bi bi-images"></i> Clear Page Scans Only',
       );
       actRow.appendChild(clearPagesBtn);
 
@@ -138,7 +144,7 @@ export function renderCache(container: HTMLElement, _route: Route): void {
           setBanner("All cached covers cleared.");
           await loadView();
         },
-        '<i class="bi bi-card-image"></i> Clear Cached Covers Only'
+        '<i class="bi bi-card-image"></i> Clear Cached Covers Only',
       );
       actRow.appendChild(clearCoversBtn);
 
@@ -162,7 +168,8 @@ export function renderCache(container: HTMLElement, _route: Route): void {
         listBox.appendChild(empty);
       } else {
         const toolbar = document.createElement("div");
-        toolbar.style.cssText = "display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;";
+        toolbar.style.cssText =
+          "display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;";
 
         const filterInput = document.createElement("input");
         filterInput.type = "text";
@@ -205,7 +212,11 @@ export function renderCache(container: HTMLElement, _route: Route): void {
           const ft = filterInput.value.toLowerCase().trim();
           const sortMode = sortSelect.value;
 
-          const filtered = groups.filter((g) => g.seriesName.toLowerCase().includes(ft) || g.seriesPermalink.toLowerCase().includes(ft));
+          const filtered = groups.filter(
+            (g) =>
+              g.seriesName.toLowerCase().includes(ft) ||
+              g.seriesPermalink.toLowerCase().includes(ft),
+          );
 
           filtered.sort((a, b) => {
             switch (sortMode) {
@@ -242,18 +253,34 @@ export function renderCache(container: HTMLElement, _route: Route): void {
 
             // Cover thumbnail
             if (item.coverPath) {
-              const img = renderFeedCover(item.coverPath, item.seriesName, "width:36px;height:50px;cursor:pointer;");
+              const img = renderFeedCover(
+                item.coverPath,
+                item.seriesName,
+                "width:36px;height:50px;cursor:pointer;",
+              );
               img.title = "Click to view";
               img.addEventListener("click", () => {
                 if (item.isStandalone) {
-                  navigate({ view: "reader", chapterPermalink: item.seriesPermalink, chapterTitle: item.seriesName });
+                  navigate({
+                    view: "reader",
+                    chapterPermalink: item.seriesPermalink,
+                    chapterTitle: item.seriesName,
+                  });
                 } else {
-                  navigate({ view: "series", seriesPermalink: item.seriesPermalink, seriesName: item.seriesName });
+                  navigate({
+                    view: "series",
+                    seriesPermalink: item.seriesPermalink,
+                    seriesName: item.seriesName,
+                  });
                 }
               });
               row.appendChild(img);
             } else {
-              const ph = renderFeedCover(null, item.seriesName, "width:36px;height:50px;font-size:12px;");
+              const ph = renderFeedCover(
+                null,
+                item.seriesName,
+                "width:36px;height:50px;font-size:12px;",
+              );
               ph.innerHTML = '<i class="bi bi-book"></i>';
               row.appendChild(ph);
             }
@@ -266,9 +293,17 @@ export function renderCache(container: HTMLElement, _route: Route): void {
             name.textContent = decodeEntities(item.seriesName);
             name.addEventListener("click", () => {
               if (item.isStandalone) {
-                navigate({ view: "reader", chapterPermalink: item.seriesPermalink, chapterTitle: item.seriesName });
+                navigate({
+                  view: "reader",
+                  chapterPermalink: item.seriesPermalink,
+                  chapterTitle: item.seriesName,
+                });
               } else {
-                navigate({ view: "series", seriesPermalink: item.seriesPermalink, seriesName: item.seriesName });
+                navigate({
+                  view: "series",
+                  seriesPermalink: item.seriesPermalink,
+                  seriesName: item.seriesName,
+                });
               }
             });
 
@@ -281,11 +316,14 @@ export function renderCache(container: HTMLElement, _route: Route): void {
             row.appendChild(info);
 
             // Delete item button
-            const delBtn = createConfirmDeleteButton(`Delete all cached files for "${item.seriesName}"`, async () => {
-              await clearCachedGroupPages(item.chapterPermalinks);
-              setBanner(`Cleared cache for "${item.seriesName}".`);
-              await loadView();
-            });
+            const delBtn = createConfirmDeleteButton(
+              `Delete all cached files for "${item.seriesName}"`,
+              async () => {
+                await clearCachedGroupPages(item.chapterPermalinks);
+                setBanner(`Cleared cache for "${item.seriesName}".`);
+                await loadView();
+              },
+            );
             row.appendChild(delBtn);
 
             listEl.appendChild(row);

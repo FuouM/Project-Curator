@@ -76,9 +76,7 @@
 
   // lib/navigation.ts
   function navigateToTab(tabId) {
-    let item = document.querySelector(
-      `.nav-item[data-view="extensions-${tabId}"]`
-    );
+    let item = document.querySelector(`.nav-item[data-view="extensions-${tabId}"]`);
     item && item.click();
   }
   function closeInfoModal() {
@@ -156,17 +154,13 @@
     let tauriCore = (_a = window.__TAURI__) == null ? void 0 : _a.core;
     if (!tauriCore)
       throw new Error("Tauri core API not available; cannot save edited image.");
-    return { ok: !0, path: await tauriCore.invoke(
-      "save_edited_image",
-      new Uint8Array(p.bytes),
-      {
-        headers: {
-          "x-filename": encodeURIComponent(p.name),
-          "x-format": p.format,
-          "x-out-dir": encodeURIComponent(p.outputDir)
-        }
+    return { ok: !0, path: await tauriCore.invoke("save_edited_image", new Uint8Array(p.bytes), {
+      headers: {
+        "x-filename": encodeURIComponent(p.name),
+        "x-format": p.format,
+        "x-out-dir": encodeURIComponent(p.outputDir)
       }
-    ) };
+    }) };
   }
 
   // minipaint/src/installer.ts
@@ -343,37 +337,43 @@
       return box.className = "group-box", box.style.cssText = "margin-top:8px;", box.innerHTML = '<div class="group-box-title"><i class="bi bi-palette"></i> Image Editor</div><div style="display:flex;align-items:center;gap:8px;padding:2px 0;">  <span style="font-size:11px;color:#555;flex:1;">Open this image in the miniPaint editor.</span>  <button type="button" class="win-button" id="minipaint-send-asset">    <i class="bi bi-brush"></i> Send to Editor  </button></div>', (_a = box.querySelector("#minipaint-send-asset")) == null || _a.addEventListener("click", () => {
         closeInfoModal(), navigateToTab(TAB_ID), ensureEditor(asset.path);
       }), box;
-    }), PH7.registerTab(TAB_ID, "Image Editor", "bi bi-palette", () => {
-      let rootEl = document.createElement("div");
-      rootEl.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;";
-      let settingsBox = document.createElement("div");
-      settingsBox.className = "group-box", settingsBox.style.cssText = "padding:8px;flex-shrink:0;";
-      let title = document.createElement("div");
-      title.className = "group-box-title", title.innerHTML = '<i class="bi bi-gear"></i> miniPaint Settings';
-      let settingsRow = document.createElement("div");
-      settingsRow.style.cssText = "display:flex;align-items:center;gap:8px;";
-      let outputLabel = document.createElement("span");
-      outputLabel.style.cssText = "font-size:11px;color:#555;", outputLabel.textContent = "Output Directory:";
-      let outputInput = document.createElement("input");
-      outputInput.type = "text", outputInput.className = "win-input", outputInput.value = state.outputDir || `${workspaceRoot}\\edited`, outputInput.style.cssText = "flex:1;font-size:11px;", outputInput.readOnly = !0;
-      let browseBtn = document.createElement("button");
-      browseBtn.type = "button", browseBtn.className = "win-button", browseBtn.style.cssText = "font-size:11px;", browseBtn.innerHTML = '<i class="bi bi-folder2-open"></i> Browse', browseBtn.addEventListener("click", () => {
-        browseOutputDir((dir) => {
-          outputInput.value = dir;
-        });
-      }), toggleBtn = document.createElement("button"), toggleBtn.type = "button", toggleBtn.className = "win-button", toggleBtn.style.cssText = "font-size:11px;", updateToggle(), toggleBtn.addEventListener("click", () => {
-        editorMounted ? unloadEditor() : (ensureEditor(), installerEl && (installerEl.style.display = "none", installerEl = null));
-      }), settingsRow.appendChild(toggleBtn), settingsRow.appendChild(outputLabel), settingsRow.appendChild(outputInput), settingsRow.appendChild(browseBtn), settingsBox.appendChild(title), settingsBox.appendChild(settingsRow), editorHost = document.createElement("div"), editorHost.style.cssText = "display:flex;flex-direction:column;width:100%;flex:1;min-height:0;";
-      let launcherHost = document.createElement("div");
-      launcherHost.style.cssText = "display:flex;flex-direction:column;width:100%;min-height:0;";
-      let installerEl = null, onInstallComplete = () => {
-        launcherHost.appendChild(settingsBox), ensureEditor();
-      };
-      return (() => {
-        launcherHost.innerHTML = "", installerEl = null, checkInstalled().then((installed) => {
-          installed ? (launcherHost.appendChild(settingsBox), (PH7.isAutoloadEnabled ? PH7.isAutoloadEnabled(TAB_ID) : !0) || editorMounted ? ensureEditor() : unloadEditor()) : (installerEl = renderInstaller(onInstallComplete), launcherHost.appendChild(installerEl));
-        });
-      })(), rootEl.appendChild(launcherHost), rootEl.appendChild(editorHost), rootEl;
-    }, !0);
+    }), PH7.registerTab(
+      TAB_ID,
+      "Image Editor",
+      "bi bi-palette",
+      () => {
+        let rootEl = document.createElement("div");
+        rootEl.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;";
+        let settingsBox = document.createElement("div");
+        settingsBox.className = "group-box", settingsBox.style.cssText = "padding:8px;flex-shrink:0;";
+        let title = document.createElement("div");
+        title.className = "group-box-title", title.innerHTML = '<i class="bi bi-gear"></i> miniPaint Settings';
+        let settingsRow = document.createElement("div");
+        settingsRow.style.cssText = "display:flex;align-items:center;gap:8px;";
+        let outputLabel = document.createElement("span");
+        outputLabel.style.cssText = "font-size:11px;color:#555;", outputLabel.textContent = "Output Directory:";
+        let outputInput = document.createElement("input");
+        outputInput.type = "text", outputInput.className = "win-input", outputInput.value = state.outputDir || `${workspaceRoot}\\edited`, outputInput.style.cssText = "flex:1;font-size:11px;", outputInput.readOnly = !0;
+        let browseBtn = document.createElement("button");
+        browseBtn.type = "button", browseBtn.className = "win-button", browseBtn.style.cssText = "font-size:11px;", browseBtn.innerHTML = '<i class="bi bi-folder2-open"></i> Browse', browseBtn.addEventListener("click", () => {
+          browseOutputDir((dir) => {
+            outputInput.value = dir;
+          });
+        }), toggleBtn = document.createElement("button"), toggleBtn.type = "button", toggleBtn.className = "win-button", toggleBtn.style.cssText = "font-size:11px;", updateToggle(), toggleBtn.addEventListener("click", () => {
+          editorMounted ? unloadEditor() : (ensureEditor(), installerEl && (installerEl.style.display = "none", installerEl = null));
+        }), settingsRow.appendChild(toggleBtn), settingsRow.appendChild(outputLabel), settingsRow.appendChild(outputInput), settingsRow.appendChild(browseBtn), settingsBox.appendChild(title), settingsBox.appendChild(settingsRow), editorHost = document.createElement("div"), editorHost.style.cssText = "display:flex;flex-direction:column;width:100%;flex:1;min-height:0;";
+        let launcherHost = document.createElement("div");
+        launcherHost.style.cssText = "display:flex;flex-direction:column;width:100%;min-height:0;";
+        let installerEl = null, onInstallComplete = () => {
+          launcherHost.appendChild(settingsBox), ensureEditor();
+        };
+        return (() => {
+          launcherHost.innerHTML = "", installerEl = null, checkInstalled().then((installed) => {
+            installed ? (launcherHost.appendChild(settingsBox), (PH7.isAutoloadEnabled ? PH7.isAutoloadEnabled(TAB_ID) : !0) || editorMounted ? ensureEditor() : unloadEditor()) : (installerEl = renderInstaller(onInstallComplete), launcherHost.appendChild(installerEl));
+          });
+        })(), rootEl.appendChild(launcherHost), rootEl.appendChild(editorHost), rootEl;
+      },
+      !0
+    );
   }
 })();

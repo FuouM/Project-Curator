@@ -1,6 +1,28 @@
 import { renderPluginNavItemHtml } from "../components/navigation-sidebar";
-import { favoritesPage, setGalleryPage, setFavoritesPage, getImagesPerPage, setImagesPerPage, setGalleryInfiniteScroll, setGalleryZenMode, getGalleryInfiniteScroll, getGalleryZenMode, getGalleryPage, getGalleryTotalCount, getGalleryFullImages, setGalleryFullImages } from "../state";
-import { refreshGallery, refreshFavorites, setupPaginationButtons, setupPageJump, loadMoreGallery, isGalleryLoading, refreshGalleryPreserving } from "./gallery";
+import {
+  favoritesPage,
+  setGalleryPage,
+  setFavoritesPage,
+  getImagesPerPage,
+  setImagesPerPage,
+  setGalleryInfiniteScroll,
+  setGalleryZenMode,
+  getGalleryInfiniteScroll,
+  getGalleryZenMode,
+  getGalleryPage,
+  getGalleryTotalCount,
+  getGalleryFullImages,
+  setGalleryFullImages,
+} from "../state";
+import {
+  refreshGallery,
+  refreshFavorites,
+  setupPaginationButtons,
+  setupPageJump,
+  loadMoreGallery,
+  isGalleryLoading,
+  refreshGalleryPreserving,
+} from "./gallery";
 import { refreshBenchmarkMaxImages } from "./benchmark";
 import { refreshDashboard } from "./dashboard";
 import { refreshLogs, clearLogsData, clearLogsFrontendDom } from "./logs";
@@ -10,7 +32,12 @@ import { refreshComponentStylesheet } from "./components-view";
 import { refreshBatchPreview } from "./filename-parser";
 import { refreshCharacters, setupCharactersView } from "./characters";
 import { refreshModelStatus, clearCompletedModelsConsoleLogs } from "./models";
-import { reobserveUnloadedThumbnails, processVisibleFullImages, setThumbLoadPaused, resumeThumbLoading } from "../cards";
+import {
+  reobserveUnloadedThumbnails,
+  processVisibleFullImages,
+  setThumbLoadPaused,
+  resumeThumbLoading,
+} from "../cards";
 import { updateHeaderPluginActions } from "../plugin-host";
 
 const subtitles: Record<string, { title: string; sub: string }> = {
@@ -18,19 +45,40 @@ const subtitles: Record<string, { title: string; sub: string }> = {
   gallery: { title: "Gallery", sub: "Browse all your imported digital images." },
   favorites: { title: "Favorites", sub: "Browse your favorited images." },
   import: { title: "Import Images", sub: "Register and index new images locally." },
-  search: { title: "General Search", sub: "Perform neural, tag-based, and filename-parsed image retrieval." },
+  search: {
+    title: "General Search",
+    sub: "Perform neural, tag-based, and filename-parsed image retrieval.",
+  },
   plugins: { title: "Plugins", sub: "Discover, validate, and manage sandboxed plugin modules." },
-  logs: { title: "System Diagnostic Logs", sub: "View active traces and stderr/stdout logs from the local engine." },
-  benchmark: { title: "Hardware Performance Benchmark", sub: "Run latency and throughput comparisons on CPU vs GPU." },
+  logs: {
+    title: "System Diagnostic Logs",
+    sub: "View active traces and stderr/stdout logs from the local engine.",
+  },
+  benchmark: {
+    title: "Hardware Performance Benchmark",
+    sub: "Run latency and throughput comparisons on CPU vs GPU.",
+  },
   settings: { title: "Settings", sub: "Configure model device preferences (GPU / CPU)." },
   models: { title: "Model Management", sub: "Download and manage local AI model weights on disk." },
   tagstats: { title: "Tag Statistics", sub: "View tag distribution and filter images by tag." },
   folders: { title: "Imported Folders", sub: "Browse folders and view import statistics." },
-  components: { title: "Component Stylesheet", sub: "A showcase and reference of the application's UI components and styles." },
-  characters: { title: "Character Identities", sub: "Manage auto-discovered character identities from YOLO + CCIP detection." },
+  components: {
+    title: "Component Stylesheet",
+    sub: "A showcase and reference of the application's UI components and styles.",
+  },
+  characters: {
+    title: "Character Identities",
+    sub: "Manage auto-discovered character identities from YOLO + CCIP detection.",
+  },
 
-  toolbox: { title: "Image Toolbox", sub: "Run reverse search, auto-tagging, OCR, and character detection on any image without touching your library." },
-  "filename-parser": { title: "Filename Parser & Tagger", sub: "Extract structured tags, timestamps, artist names, and artwork IDs directly from image filenames." }
+  toolbox: {
+    title: "Image Toolbox",
+    sub: "Run reverse search, auto-tagging, OCR, and character detection on any image without touching your library.",
+  },
+  "filename-parser": {
+    title: "Filename Parser & Tagger",
+    sub: "Extract structured tags, timestamps, artist names, and artwork IDs directly from image filenames.",
+  },
 };
 
 // --- Plugin View Registry (dynamic tabs registered by plugin-host) ---
@@ -48,7 +96,7 @@ export function registerPluginView(
   iconClass: string,
   sub: string,
   refresh: () => void,
-  chromeLess = false
+  chromeLess = false,
 ) {
   const viewKey = `extensions-${id}`;
   if (pluginViews.has(viewKey)) return;
@@ -95,25 +143,28 @@ function buildGalleryInfiniteObserver() {
   if (!mainPanel || !gallerySentinel) return;
 
   const margin = getGalleryZenMode() ? "800px 0px" : "160px 0px";
-  galleryInfiniteObserver = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      if (!getGalleryInfiniteScroll()) continue;
-      if (isGalleryLoading) continue;
+  galleryInfiniteObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        if (!getGalleryInfiniteScroll()) continue;
+        if (isGalleryLoading) continue;
 
-      const perPage = getImagesPerPage();
-      const totalPages = Math.ceil(getGalleryTotalCount() / perPage);
-      const nextPage = getGalleryPage() + 1;
-      if (nextPage >= totalPages) continue;
+        const perPage = getImagesPerPage();
+        const totalPages = Math.ceil(getGalleryTotalCount() / perPage);
+        const nextPage = getGalleryPage() + 1;
+        if (nextPage >= totalPages) continue;
 
-      setGalleryPage(nextPage);
-      loadMoreGallery(nextPage).then(() => {
-        // Re-observe: appended content may leave the sentinel still intersecting
-        // (viewport not yet full). IO does not re-fire on unchanged state; force it.
-        reobserveGallerySentinel();
-      });
-    }
-  }, { root: mainPanel, rootMargin: margin, threshold: 0 });
+        setGalleryPage(nextPage);
+        loadMoreGallery(nextPage).then(() => {
+          // Re-observe: appended content may leave the sentinel still intersecting
+          // (viewport not yet full). IO does not re-fire on unchanged state; force it.
+          reobserveGallerySentinel();
+        });
+      }
+    },
+    { root: mainPanel, rootMargin: margin, threshold: 0 },
+  );
 
   galleryInfiniteObserver.observe(gallerySentinel);
 }
@@ -159,7 +210,7 @@ export function setupNavigation() {
 
     const mainPanel = document.querySelector(".main-panel") as HTMLElement;
     if (mainPanel) {
-      mainPanel.style.overflowY = (view === "logs") ? "hidden" : "auto";
+      mainPanel.style.overflowY = view === "logs" ? "hidden" : "auto";
     }
 
     if (viewTitle && viewSubtitle) {
@@ -217,7 +268,11 @@ export function setupNavigation() {
       refreshBatchPreview();
     } else if (view === "characters") {
       const container = document.getElementById("characters-list-container");
-      if (!container || container.children.length === 0 || container.querySelector(".skeleton-loader")) {
+      if (
+        !container ||
+        container.children.length === 0 ||
+        container.querySelector(".skeleton-loader")
+      ) {
         refreshCharacters();
       }
     } else if (view === "benchmark") {
@@ -225,7 +280,9 @@ export function setupNavigation() {
     } else if (view === "models") {
       refreshModelStatus();
     } else if (view === "plugins") {
-      import("./plugins").then((m) => m.setupPluginsHub()).catch((e) => console.error("plugins hub:", e));
+      import("./plugins")
+        .then((m) => m.setupPluginsHub())
+        .catch((e) => console.error("plugins hub:", e));
     } else {
       const pluginView = pluginViews.get(view);
       if (pluginView) pluginView.refresh();
@@ -240,14 +297,61 @@ export function setupNavigation() {
     activateView(item);
   });
 
-
   // Gallery & Favorites Pagination Setup
-  setupPaginationButtons("gallery-prev-btn", "gallery-next-btn", { get value() { return getGalleryPage(); }, set value(v) { setGalleryPage(v); } }, refreshGallery);
-  setupPaginationButtons("favorites-prev-btn", "favorites-next-btn", { get value() { return favoritesPage; }, set value(v) { setFavoritesPage(v); } }, refreshFavorites);
+  setupPaginationButtons(
+    "gallery-prev-btn",
+    "gallery-next-btn",
+    {
+      get value() {
+        return getGalleryPage();
+      },
+      set value(v) {
+        setGalleryPage(v);
+      },
+    },
+    refreshGallery,
+  );
+  setupPaginationButtons(
+    "favorites-prev-btn",
+    "favorites-next-btn",
+    {
+      get value() {
+        return favoritesPage;
+      },
+      set value(v) {
+        setFavoritesPage(v);
+      },
+    },
+    refreshFavorites,
+  );
 
   // Gallery & Favorites Page Jump
-  setupPageJump("gallery-jump-btn", "gallery-page-jump", { get value() { return getGalleryPage(); }, set value(v) { setGalleryPage(v); } }, refreshGallery);
-  setupPageJump("favorites-jump-btn", "favorites-page-jump", { get value() { return favoritesPage; }, set value(v) { setFavoritesPage(v); } }, refreshFavorites);
+  setupPageJump(
+    "gallery-jump-btn",
+    "gallery-page-jump",
+    {
+      get value() {
+        return getGalleryPage();
+      },
+      set value(v) {
+        setGalleryPage(v);
+      },
+    },
+    refreshGallery,
+  );
+  setupPageJump(
+    "favorites-jump-btn",
+    "favorites-page-jump",
+    {
+      get value() {
+        return favoritesPage;
+      },
+      set value(v) {
+        setFavoritesPage(v);
+      },
+    },
+    refreshFavorites,
+  );
 
   // Gallery per-page selector
   const perPageSelect = document.getElementById("gallery-per-page-select") as HTMLSelectElement;
@@ -261,7 +365,9 @@ export function setupNavigation() {
   }
 
   // Favorites per-page selector
-  const favPerPageSelect = document.getElementById("favorites-per-page-select") as HTMLSelectElement;
+  const favPerPageSelect = document.getElementById(
+    "favorites-per-page-select",
+  ) as HTMLSelectElement;
   if (favPerPageSelect) {
     favPerPageSelect.value = getImagesPerPage().toString();
     favPerPageSelect.addEventListener("change", () => {
@@ -351,7 +457,9 @@ export function setupNavigation() {
       setGalleryFullImages(active);
       fullImagesToggleBtn.classList.toggle("primary", active);
 
-      const settingsCheckbox = document.getElementById("settings-zen-mode-full-images") as HTMLInputElement | null;
+      const settingsCheckbox = document.getElementById(
+        "settings-zen-mode-full-images",
+      ) as HTMLInputElement | null;
       if (settingsCheckbox) settingsCheckbox.checked = active;
 
       if (active) {

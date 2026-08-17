@@ -18,7 +18,10 @@ export async function openExternal(url: string): Promise<void> {
 /** Extracts a series/chapter permalink from a dynasty-scans.com URL. */
 export function parseDynastyUrl(input: string): ParsedDynastyUrl | null {
   const t = input.trim().replace(/\/+$/, "");
-  const m = /^https?:\/\/(?:www\.)?dynasty-scans\.com\/(series|chapters|anthologies|doujins|issues)\/([^\/?#]+)$/i.exec(t);
+  const m =
+    /^https?:\/\/(?:www\.)?dynasty-scans\.com\/(series|chapters|anthologies|doujins|issues)\/([^\/?#]+)$/i.exec(
+      t,
+    );
   if (!m) return null;
   let permalink = m[2];
   if (permalink.toLowerCase().endsWith(".json")) permalink = permalink.slice(0, -5);
@@ -30,7 +33,7 @@ export function pageOutputPath(
   seriesPermalink: string,
   chapterPermalink: string,
   pageIndex: number,
-  pageUrl: string
+  pageUrl: string,
 ): string {
   const cleanSeries = (seriesPermalink || "_singles").replace(/[^a-zA-Z0-9_-]/g, "_");
   const cleanChapter = (chapterPermalink || "chapter").replace(/[^a-zA-Z0-9_-]/g, "_");

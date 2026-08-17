@@ -232,7 +232,10 @@
     columnResizeState.liveWidth = width, columnResizeState.th.style.width = `${width}px`;
   }
   function columnResizeMouseUp() {
-    columnResizeState && (localStorage.setItem(COL_WIDTH_KEY + columnResizeState.colKey, String(columnResizeState.liveWidth)), columnResizeState = null, document.body.style.cursor = "", document.body.style.userSelect = "");
+    columnResizeState && (localStorage.setItem(
+      COL_WIDTH_KEY + columnResizeState.colKey,
+      String(columnResizeState.liveWidth)
+    ), columnResizeState = null, document.body.style.cursor = "", document.body.style.userSelect = "");
   }
   var columnResizeWired = !1;
   function wireColumnResize() {
@@ -544,7 +547,9 @@
       let match = trimmed.match(/^https?:\/\/([^/?#]+)/i);
       hostname = match ? match[1].toLowerCase() : trimmed.toLowerCase();
     }
-    return hostname = hostname.replace(/^www\./, ""), /\.(zip|rar|7z|tar|gz|xz|iso|img|mp4|mkv|avi|mov|mp3|flac|wav|png|jpg|jpeg|webp|pdf|epub|bin|exe|msi|dmg|deb|rpm)(\?.*)?$/i.test(trimmed) ? {
+    return hostname = hostname.replace(/^www\./, ""), /\.(zip|rar|7z|tar|gz|xz|iso|img|mp4|mkv|avi|mov|mp3|flac|wav|png|jpg|jpeg|webp|pdf|epub|bin|exe|msi|dmg|deb|rpm)(\?.*)?$/i.test(
+      trimmed
+    ) ? {
       url: trimmed,
       status: "generic_direct",
       label: `Direct File (${hostname})`,
@@ -889,7 +894,10 @@ ${r.label} \u2014 ${statusText}`, chip.textContent = statusText, chips.appendChi
       try {
         dupes = await findDuplicateUrls(fresh);
       } catch (err) {
-        log(`Dedup check failed (continuing): ${err instanceof Error ? err.message : String(err)}`, "error");
+        log(
+          `Dedup check failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
+          "error"
+        );
       }
     let dupSet = new Set(dupes);
     for (let d of dupes)
@@ -1339,7 +1347,10 @@ ${r.label} \u2014 ${statusText}`, chip.textContent = statusText, chips.appendChi
         res.skippedHistory > 0 ? (showFeedback(
           `<i class="bi bi-exclamation-triangle"></i> Rejected: <b>${res.skippedHistory}</b> URL(s) were already downloaded previously.<br/><span style="opacity:0.85;font-size:10px;">Enable <i>"Rename if exists (_1, _2, ...)"</i> below if you wish to download duplicate copies.</span>`,
           !0
-        ), log(`Rejected: ${res.skippedHistory} URL(s) were already downloaded previously. Enable "Rename if exists" to download duplicates.`, "warn")) : res.skippedQueue > 0 ? (showFeedback(
+        ), log(
+          `Rejected: ${res.skippedHistory} URL(s) were already downloaded previously. Enable "Rename if exists" to download duplicates.`,
+          "warn"
+        )) : res.skippedQueue > 0 ? (showFeedback(
           `<i class="bi bi-info-circle"></i> <b>${res.skippedQueue}</b> URL(s) are already present in the active download queue.`,
           !0
         ), log(`Rejected: ${res.skippedQueue} URL(s) are already in the queue.`, "warn")) : showFeedback('<i class="bi bi-x-circle"></i> No valid URLs found to download.', !0);
@@ -1384,7 +1395,9 @@ ${r.label} \u2014 ${statusText}`, chip.textContent = statusText, chips.appendChi
     }));
     let startAllBtn = root.querySelector("#ad-start-all-btn");
     startAllBtn && startAllBtn.addEventListener("click", () => void startAllQueued());
-    let queueFilterEls = root.querySelectorAll("#ad-queue-filter .ad-filter-btn");
+    let queueFilterEls = root.querySelectorAll(
+      "#ad-queue-filter .ad-filter-btn"
+    );
     return queueFilterEls.forEach(
       (btn) => btn.addEventListener("click", () => {
         var _a2;
@@ -1405,7 +1418,10 @@ ${r.label} \u2014 ${statusText}`, chip.textContent = statusText, chips.appendChi
       state.settings.connections
     ), state.settings.speedLimitKb = Math.max(
       0,
-      parseInt(loadPersisted("aria2-downloader-speed-limit", String(state.settings.speedLimitKb)), 10) || 0
+      parseInt(
+        loadPersisted("aria2-downloader-speed-limit", String(state.settings.speedLimitKb)),
+        10
+      ) || 0
     ), state.settings.maxTries = Math.max(
       0,
       parseInt(loadPersisted("aria2-downloader-max-tries", String(state.settings.maxTries)), 10) || 0

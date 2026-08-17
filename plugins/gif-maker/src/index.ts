@@ -3,12 +3,7 @@
  */
 
 import { TAB_ID, state } from "./state";
-import {
-  logConsole,
-  renderDroppedFrames,
-  pushHistoryState,
-  renderGifMakerTab,
-} from "./ui";
+import { logConsole, renderDroppedFrames, pushHistoryState, renderGifMakerTab } from "./ui";
 
 const PH = window.PluginHost;
 if (!PH) {

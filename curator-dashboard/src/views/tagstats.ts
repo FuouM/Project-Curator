@@ -24,7 +24,7 @@ function renderTagCategorySection(cat: string, catIdx: number, expanded: boolean
   if (catTags.length === 0) return html``;
 
   const info = categoryLabels[cat] || categoryLabels.other;
-  const maxCount = Math.max(...catTags.map(t => t.count));
+  const maxCount = Math.max(...catTags.map((t) => t.count));
   const showAll = expanded || catTags.length <= MAX_TAGS_PER_CATEGORY;
   const visible = showAll ? catTags : catTags.slice(0, MAX_TAGS_PER_CATEGORY);
   const remaining = showAll ? 0 : catTags.length - visible.length;
@@ -36,9 +36,9 @@ function renderTagCategorySection(cat: string, catIdx: number, expanded: boolean
     </div>
     <div class="tagstats-chart" id="chart-${catIdx}" style="display: none;">`;
   for (const t of visible) {
-    const pct = maxCount > 0 ? (t.count / maxCount * 100) : 0;
+    const pct = maxCount > 0 ? (t.count / maxCount) * 100 : 0;
     content += `<div class="tagstats-bar-row" data-tag="${t.tag}">
-      <span class="tagstats-bar-label" title="${t.tag}">${t.tag.replace(/_/g, '_\u200B')}</span>
+      <span class="tagstats-bar-label" title="${t.tag}">${t.tag.replace(/_/g, "_\u200B")}</span>
       <div class="tagstats-bar-track">
         <div class="tagstats-bar-fill" style="width: ${pct}%; background: ${info.color};"></div>
       </div>
@@ -47,7 +47,7 @@ function renderTagCategorySection(cat: string, catIdx: number, expanded: boolean
   }
   content += `</div><div class="tagstats-list">`;
   for (const t of visible) {
-    content += `<span class="tag-pill tagstats-pill tag-${cat || 'tag-rank-3'}" data-tag="${t.tag}" title="${t.tag} (${t.count} images)">${t.tag.replace(/_/g, '_\u200B')} <span class="tagstats-badge">${t.count}</span></span>`;
+    content += `<span class="tag-pill tagstats-pill tag-${cat || "tag-rank-3"}" data-tag="${t.tag}" title="${t.tag} (${t.count} images)">${t.tag.replace(/_/g, "_\u200B")} <span class="tagstats-badge">${t.count}</span></span>`;
   }
   content += `</div>`;
   if (remaining > 0) {
@@ -107,7 +107,12 @@ export async function refreshTagStats() {
   container.innerHTML = '<p style="color: #666; font-style: italic;">Loading tag statistics...</p>';
 
   try {
-    const resp = await typedCall("TagsService.GetTagStatistics", null, null, TagStatisticsResultSchema);
+    const resp = await typedCall(
+      "TagsService.GetTagStatistics",
+      null,
+      null,
+      TagStatisticsResultSchema,
+    );
     const tags = resp.tags.map(tagStatFromProto);
     if (tags.length === 0) {
       container.innerHTML = '<p style="color: #999; font-style: italic;">No tags found.</p>';

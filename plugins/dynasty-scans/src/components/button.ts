@@ -10,7 +10,7 @@ import { el } from "./dom";
 export function createButton(
   html: string,
   title?: string,
-  cssText = "font-size:11px;padding:2px 8px;"
+  cssText = "font-size:11px;padding:2px 8px;",
 ): HTMLButtonElement {
   const btn = el("button", { type: "button", class: "win-button", style: cssText, title });
   btn.innerHTML = html;
@@ -25,7 +25,7 @@ export function createButton(
 export function createConfirmDeleteButton(
   title: string,
   onConfirm: () => Promise<void>,
-  initialHtml = '<i class="bi bi-trash3"></i>'
+  initialHtml = '<i class="bi bi-trash3"></i>',
 ): HTMLElement {
   const btn = el("button", {
     type: "button",

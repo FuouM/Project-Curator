@@ -28,7 +28,7 @@ function tokenBlockToProto(b: TokenBlock) {
 let currentTokenBlocks: TokenBlock[] = [
   { token_type: "artist" },
   { token_type: "delimiter", value: "_" },
-  { token_type: "number" }
+  { token_type: "number" },
 ];
 
 export function setupFilenameParserView() {
@@ -42,19 +42,31 @@ export function setupFilenameParserView() {
 
   // Tab switching
   modePresetsBtn?.addEventListener("click", () => {
-    setActiveMode("presets", [modePresetsBtn, modeRegexBtn, modeTokenBtn], [panelPresets, panelRegex, panelToken]);
+    setActiveMode(
+      "presets",
+      [modePresetsBtn, modeRegexBtn, modeTokenBtn],
+      [panelPresets, panelRegex, panelToken],
+    );
     runSandboxTest();
     refreshBatchPreview();
   });
 
   modeRegexBtn?.addEventListener("click", () => {
-    setActiveMode("regex", [modePresetsBtn, modeRegexBtn, modeTokenBtn], [panelPresets, panelRegex, panelToken]);
+    setActiveMode(
+      "regex",
+      [modePresetsBtn, modeRegexBtn, modeTokenBtn],
+      [panelPresets, panelRegex, panelToken],
+    );
     runSandboxTest();
     refreshBatchPreview();
   });
 
   modeTokenBtn?.addEventListener("click", () => {
-    setActiveMode("token", [modePresetsBtn, modeRegexBtn, modeTokenBtn], [panelPresets, panelRegex, panelToken]);
+    setActiveMode(
+      "token",
+      [modePresetsBtn, modeRegexBtn, modeTokenBtn],
+      [panelPresets, panelRegex, panelToken],
+    );
     renderTokenBlocks();
     runSandboxTest();
     refreshBatchPreview();
@@ -149,7 +161,7 @@ export function setupFilenameParserView() {
     if (!text) return;
     try {
       const parsed = JSON.parse(text);
-      const blocks: TokenBlock[] = Array.isArray(parsed) ? parsed : (parsed.blocks || parsed);
+      const blocks: TokenBlock[] = Array.isArray(parsed) ? parsed : parsed.blocks || parsed;
       if (!Array.isArray(blocks) || blocks.length === 0) {
         showWarningAlert("Invalid block sequence: expected a non-empty JSON array.");
         return;
@@ -174,7 +186,9 @@ export function setupFilenameParserView() {
     if (currentTokenBlocks.length === 0) return;
     const name = prompt("Name this pattern:", "");
     if (!name) return;
-    const matchTypeSelect = document.getElementById("fn-token-match-type-select") as HTMLSelectElement;
+    const matchTypeSelect = document.getElementById(
+      "fn-token-match-type-select",
+    ) as HTMLSelectElement;
     const matchType = matchTypeSelect?.value || "custom_regex";
     const saved = JSON.parse(localStorage.getItem("fn_token_patterns") || "{}");
     saved[name] = { blocks: currentTokenBlocks, matchType };
@@ -191,7 +205,9 @@ export function setupFilenameParserView() {
     const entry = saved[name];
     if (!entry) return;
     currentTokenBlocks = entry.blocks || entry; // Support old format (just blocks array)
-    const matchTypeSelect = document.getElementById("fn-token-match-type-select") as HTMLSelectElement;
+    const matchTypeSelect = document.getElementById(
+      "fn-token-match-type-select",
+    ) as HTMLSelectElement;
     if (entry.matchType && matchTypeSelect) matchTypeSelect.value = entry.matchType;
     renderTokenBlocks();
     runSandboxTest();
@@ -203,7 +219,9 @@ export function setupFilenameParserView() {
   refreshTokenLoadDropdown();
 
   // Anime screenshot warning
-  const matchTypeSelect = document.getElementById("fn-token-match-type-select") as HTMLSelectElement;
+  const matchTypeSelect = document.getElementById(
+    "fn-token-match-type-select",
+  ) as HTMLSelectElement;
   const animeWarning = document.getElementById("fn-token-anime-warning");
   matchTypeSelect?.addEventListener("change", () => {
     const val = matchTypeSelect.value;
@@ -252,7 +270,7 @@ export function setupFilenameParserView() {
       ],
     };
     if (presets[val]) {
-      currentTokenBlocks = presets[val].map(b => ({ ...b }));
+      currentTokenBlocks = presets[val].map((b) => ({ ...b }));
       renderTokenBlocks();
       runSandboxTest();
       refreshBatchPreview();
@@ -270,11 +288,16 @@ function refreshTokenLoadDropdown() {
   if (!select) return;
   const saved = JSON.parse(localStorage.getItem("fn_token_patterns") || "{}");
   const names = Object.keys(saved);
-  select.innerHTML = `<option value="">Load...</option>` +
-    names.map(n => `<option value="${n}">${n}</option>`).join("");
+  select.innerHTML =
+    `<option value="">Load...</option>` +
+    names.map((n) => `<option value="${n}">${n}</option>`).join("");
 }
 
-export function getActiveRuleConfig(): { ruleType: string; patternOrType: string; tokenConfig: TokenBlock[] | null } {
+export function getActiveRuleConfig(): {
+  ruleType: string;
+  patternOrType: string;
+  tokenConfig: TokenBlock[] | null;
+} {
   let ruleType = "preset";
   let patternOrType = "4chan_timestamp";
   let tokenConfig: TokenBlock[] | null = null;
@@ -303,7 +326,11 @@ export function getActiveRuleConfig(): { ruleType: string; patternOrType: string
   return { ruleType, patternOrType, tokenConfig };
 }
 
-function setActiveMode(mode: string, buttons: (HTMLElement | null)[], panels: (HTMLElement | null)[]) {
+function setActiveMode(
+  mode: string,
+  buttons: (HTMLElement | null)[],
+  panels: (HTMLElement | null)[],
+) {
   buttons.forEach((b) => b?.classList.remove("active", "btn-primary"));
   panels.forEach((p) => {
     if (p) p.style.display = "none";
@@ -334,24 +361,24 @@ function renderTokenBlocks() {
 
     if (block.token_type === "delimiter") {
       chip.innerHTML = `
-        <button type="button" class="token-toggle-btn win-button" style="padding: 1px 4px; font-size: 9px; ${isEnabled ? 'color: #155724;' : 'color: #999;'}" data-idx="${idx}" title="${isEnabled ? 'Disable' : 'Enable'}"><i class="bi bi-${isEnabled ? 'check-circle-fill' : 'circle'}"></i></button>
+        <button type="button" class="token-toggle-btn win-button" style="padding: 1px 4px; font-size: 9px; ${isEnabled ? "color: #155724;" : "color: #999;"}" data-idx="${idx}" title="${isEnabled ? "Disable" : "Enable"}"><i class="bi bi-${isEnabled ? "check-circle-fill" : "circle"}"></i></button>
         <span style="color: #155724; font-family: monospace; font-weight: 600;">Delimiter:</span>
-        <input type="text" value="${block.value || '_'}" class="token-delim-val input-field" style="width: 28px; text-align: center; padding: 1px 2px; font-size: 11px; font-family: monospace;" data-idx="${idx}" ${!isEnabled ? 'disabled' : ''} />
+        <input type="text" value="${block.value || "_"}" class="token-delim-val input-field" style="width: 28px; text-align: center; padding: 1px 2px; font-size: 11px; font-family: monospace;" data-idx="${idx}" ${!isEnabled ? "disabled" : ""} />
         <button type="button" class="token-remove-btn win-button" style="padding: 1px 4px; font-size: 10px;" data-idx="${idx}"><i class="bi bi-x-lg"></i></button>
       `;
     } else if (block.token_type === "whitespace") {
       chip.innerHTML = `
-        <button type="button" class="token-toggle-btn win-button" style="padding: 1px 4px; font-size: 9px; ${isEnabled ? 'color: #155724;' : 'color: #999;'}" data-idx="${idx}" title="${isEnabled ? 'Disable' : 'Enable'}"><i class="bi bi-${isEnabled ? 'check-circle-fill' : 'circle'}"></i></button>
+        <button type="button" class="token-toggle-btn win-button" style="padding: 1px 4px; font-size: 9px; ${isEnabled ? "color: #155724;" : "color: #999;"}" data-idx="${idx}" title="${isEnabled ? "Disable" : "Enable"}"><i class="bi bi-${isEnabled ? "check-circle-fill" : "circle"}"></i></button>
         <span style="color: #666; font-family: monospace; font-weight: 600; font-style: italic;">Space</span>
         <button type="button" class="token-remove-btn win-button" style="padding: 1px 4px; font-size: 10px;" data-idx="${idx}"><i class="bi bi-x-lg"></i></button>
       `;
     } else {
       const bracket = block.token_type === "bracketed" ? "[]" : "{}";
       chip.innerHTML = `
-        <button type="button" class="token-toggle-btn win-button" style="padding: 1px 4px; font-size: 9px; ${isEnabled ? 'color: #155724;' : 'color: #999;'}" data-idx="${idx}" title="${isEnabled ? 'Disable' : 'Enable'}"><i class="bi bi-${isEnabled ? 'check-circle-fill' : 'circle'}"></i></button>
+        <button type="button" class="token-toggle-btn win-button" style="padding: 1px 4px; font-size: 9px; ${isEnabled ? "color: #155724;" : "color: #999;"}" data-idx="${idx}" title="${isEnabled ? "Disable" : "Enable"}"><i class="bi bi-${isEnabled ? "check-circle-fill" : "circle"}"></i></button>
         <span style="color: #004085; font-family: monospace; font-weight: 600;">${bracket[0]}${block.token_type}${bracket[1]}</span>
-        <input type="text" value="${block.label || ''}" placeholder="label" class="token-label-input input-field" style="width: 90px; padding: 1px 4px; font-size: 10px; font-family: monospace;" data-idx="${idx}" ${!isEnabled ? 'disabled' : ''} />
-        <input type="text" value="${block.optional_prefix || ''}" placeholder="opt. prefix" class="token-prefix-input input-field" style="width: 70px; padding: 1px 4px; font-size: 10px; font-family: monospace; ${block.optional_prefix ? 'color: #856404; background: #fff3cd;' : ''}" data-idx="${idx}" title="Optional prefix to strip (e.g. sample-)" ${!isEnabled ? 'disabled' : ''} />
+        <input type="text" value="${block.label || ""}" placeholder="label" class="token-label-input input-field" style="width: 90px; padding: 1px 4px; font-size: 10px; font-family: monospace;" data-idx="${idx}" ${!isEnabled ? "disabled" : ""} />
+        <input type="text" value="${block.optional_prefix || ""}" placeholder="opt. prefix" class="token-prefix-input input-field" style="width: 70px; padding: 1px 4px; font-size: 10px; font-family: monospace; ${block.optional_prefix ? "color: #856404; background: #fff3cd;" : ""}" data-idx="${idx}" title="Optional prefix to strip (e.g. sample-)" ${!isEnabled ? "disabled" : ""} />
         <button type="button" class="token-remove-btn win-button" style="padding: 1px 4px; font-size: 10px;" data-idx="${idx}"><i class="bi bi-x-lg"></i></button>
       `;
     }
@@ -394,9 +421,16 @@ function renderTokenBlocks() {
       // Update compiled regex preview without re-rendering
       const regexPreview = document.getElementById("fn-compiled-regex-preview");
       if (regexPreview && currentTokenBlocks.length > 0) {
-        typedCall("FilenameParserService.CompileTokenBlocks", CompileTokenBlocksRequestSchema, { tokenConfig: currentTokenBlocks.map(tokenBlockToProto) }, CompileTokenBlocksResultSchema).then(res => {
-          if (regexPreview) regexPreview.textContent = res.regex;
-        }).catch(() => {});
+        typedCall(
+          "FilenameParserService.CompileTokenBlocks",
+          CompileTokenBlocksRequestSchema,
+          { tokenConfig: currentTokenBlocks.map(tokenBlockToProto) },
+          CompileTokenBlocksResultSchema,
+        )
+          .then((res) => {
+            if (regexPreview) regexPreview.textContent = res.regex;
+          })
+          .catch(() => {});
       }
       runSandboxTest();
       refreshBatchPreview();
@@ -434,11 +468,18 @@ function renderTokenBlocks() {
     if (currentTokenBlocks.length === 0) {
       regexPreview.textContent = "";
     } else {
-      typedCall("FilenameParserService.CompileTokenBlocks", CompileTokenBlocksRequestSchema, { tokenConfig: currentTokenBlocks.map(tokenBlockToProto) }, CompileTokenBlocksResultSchema).then(res => {
-        if (regexPreview) regexPreview.textContent = res.regex;
-      }).catch(() => {
-        if (regexPreview) regexPreview.textContent = "compile error";
-      });
+      typedCall(
+        "FilenameParserService.CompileTokenBlocks",
+        CompileTokenBlocksRequestSchema,
+        { tokenConfig: currentTokenBlocks.map(tokenBlockToProto) },
+        CompileTokenBlocksResultSchema,
+      )
+        .then((res) => {
+          if (regexPreview) regexPreview.textContent = res.regex;
+        })
+        .catch(() => {
+          if (regexPreview) regexPreview.textContent = "compile error";
+        });
     }
   }
 }
@@ -462,12 +503,17 @@ export async function runSandboxTest() {
   }
 
   try {
-    const res = await typedCall("FilenameParserService.TestFilenamePattern", TestFilenamePatternRequestSchema, {
-      filename,
-      patternOrType: patternOrType,
-      ruleType: ruleType,
-      tokenConfig: tokenConfig ? tokenConfig.map(tokenBlockToProto) : [],
-    }, TestFilenamePatternResultSchema);
+    const res = await typedCall(
+      "FilenameParserService.TestFilenamePattern",
+      TestFilenamePatternRequestSchema,
+      {
+        filename,
+        patternOrType: patternOrType,
+        ruleType: ruleType,
+        tokenConfig: tokenConfig ? tokenConfig.map(tokenBlockToProto) : [],
+      },
+      TestFilenamePatternResultSchema,
+    );
 
     const match: ParsedMetadata | null = res.result ? parsedMetadataFromProto(res.result) : null;
     renderSandboxResult(match, filename);
@@ -496,7 +542,7 @@ function renderSandboxResult(match: ParsedMetadata | null, filename: string) {
   const tagsHtml = match.extracted_tags
     .map(
       (t) =>
-        `<span class="tag-pill tag-rank-3" style="font-family: monospace;">${escapeHtml(t)}</span>`
+        `<span class="tag-pill tag-rank-3" style="font-family: monospace;">${escapeHtml(t)}</span>`,
     )
     .join(" ");
 
@@ -547,19 +593,26 @@ export async function refreshBatchPreview() {
   // Get output match type override for token builder
   let outputMatchType: string | null = null;
   if (ruleType === "token_builder") {
-    const matchTypeSelect = document.getElementById("fn-token-match-type-select") as HTMLSelectElement;
+    const matchTypeSelect = document.getElementById(
+      "fn-token-match-type-select",
+    ) as HTMLSelectElement;
     const val = matchTypeSelect?.value;
     if (val && val !== "custom_regex") outputMatchType = val;
   }
 
   try {
-    const res = await typedCall("FilenameParserService.PreviewBatchFilenameParsing", PreviewBatchFilenameParsingRequestSchema, {
-      limit,
-      patternOrType: patternOrType,
-      ruleType: ruleType,
-      tokenConfig: tokenConfig ? tokenConfig.map(tokenBlockToProto) : [],
-      outputMatchType: outputMatchType ?? undefined,
-    }, PreviewBatchFilenameParsingResultSchema);
+    const res = await typedCall(
+      "FilenameParserService.PreviewBatchFilenameParsing",
+      PreviewBatchFilenameParsingRequestSchema,
+      {
+        limit,
+        patternOrType: patternOrType,
+        ruleType: ruleType,
+        tokenConfig: tokenConfig ? tokenConfig.map(tokenBlockToProto) : [],
+        outputMatchType: outputMatchType ?? undefined,
+      },
+      PreviewBatchFilenameParsingResultSchema,
+    );
     const items: BatchPreviewItem[] = res.items.map(batchPreviewItemFromProto);
     renderBatchTable(items);
   } catch (err) {
@@ -611,9 +664,15 @@ function renderBatchTable(items: BatchPreviewItem[]) {
         ? `<span class="tag-pill custom-concept" style="font-size: 10px; font-weight: 600;"><i class="bi bi-check-lg"></i> ${escapeHtml(item.match_result!.match_type)}</span>`
         : `<span class="tag-pill tag-meta" style="font-size: 10px; font-weight: 600;">No Match</span>`;
 
-      const tagsHtml = isMatch && item.match_result!.extracted_tags.length > 0
-        ? item.match_result!.extracted_tags.map(t => `<span class="tag-pill tag-rank-3" style="font-size: 10px; font-family: monospace;">${escapeHtml(t)}</span>`).join(" ")
-        : `<span style="color: #888; font-size: 11px;">-</span>`;
+      const tagsHtml =
+        isMatch && item.match_result!.extracted_tags.length > 0
+          ? item
+              .match_result!.extracted_tags.map(
+                (t) =>
+                  `<span class="tag-pill tag-rank-3" style="font-size: 10px; font-family: monospace;">${escapeHtml(t)}</span>`,
+              )
+              .join(" ")
+          : `<span style="color: #888; font-size: 11px;">-</span>`;
 
       return `
         <tr>
@@ -658,18 +717,25 @@ export async function runBatchParsing() {
 
   let outputMatchType: string | null = null;
   if (ruleType === "token_builder") {
-    const matchTypeSelect = document.getElementById("fn-token-match-type-select") as HTMLSelectElement;
+    const matchTypeSelect = document.getElementById(
+      "fn-token-match-type-select",
+    ) as HTMLSelectElement;
     const val = matchTypeSelect?.value;
     if (val && val !== "custom_regex") outputMatchType = val;
   }
 
   try {
-    const res = await typedCall("FilenameParserService.RunBatchFilenameParsing", RunBatchFilenameParsingRequestSchema, {
-      patternOrType: patternOrType,
-      ruleType: ruleType,
-      tokenConfig: tokenConfig ? tokenConfig.map(tokenBlockToProto) : [],
-      outputMatchType: outputMatchType ?? undefined,
-    }, RunBatchFilenameParsingResultSchema);
+    const res = await typedCall(
+      "FilenameParserService.RunBatchFilenameParsing",
+      RunBatchFilenameParsingRequestSchema,
+      {
+        patternOrType: patternOrType,
+        ruleType: ruleType,
+        tokenConfig: tokenConfig ? tokenConfig.map(tokenBlockToProto) : [],
+        outputMatchType: outputMatchType ?? undefined,
+      },
+      RunBatchFilenameParsingResultSchema,
+    );
 
     if (statusEl) {
       statusEl.innerHTML = `
@@ -680,7 +746,8 @@ export async function runBatchParsing() {
     }
     refreshBatchPreview();
   } catch (err) {
-    if (statusEl) statusEl.innerHTML = `<span style="color: #721c24; font-size: 11px;">Error: ${err}</span>`;
+    if (statusEl)
+      statusEl.innerHTML = `<span style="color: #721c24; font-size: 11px;">Error: ${err}</span>`;
   }
 }
 
@@ -693,8 +760,12 @@ export function renderFilenameParserHtml(): SafeHtml {
     <div style="display: flex; flex-direction: column; gap: 16px;">
       <!-- Mode Selection & Rule Config Header -->
       <div class="group-box">
-        <div class="group-box-title"><i class="bi bi-gear-wide-connected"></i> Rule Engine Configuration</div>
-        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px;">
+        <div class="group-box-title">
+          <i class="bi bi-gear-wide-connected"></i> Rule Engine Configuration
+        </div>
+        <div
+          style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px;"
+        >
           <button type="button" class="win-button active btn-primary" id="fn-mode-presets-btn">
             <i class="bi bi-lightning-charge-fill"></i> Presets Engine
           </button>
@@ -708,11 +779,21 @@ export function renderFilenameParserHtml(): SafeHtml {
 
         <!-- Preset Panel -->
         <div id="fn-panel-presets" style="display: flex; flex-direction: column; gap: 6px;">
-          <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);">Select Active Preset Extractor Pattern:</label>
-          <select class="input-field" id="fn-preset-select" style="width: 100%; max-width: 480px; font-size: 11px;">
-            <option value="4chan_timestamp" selected>4chan Unix Timestamps (10, 13, 16 digit dates)</option>
+          <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);"
+            >Select Active Preset Extractor Pattern:</label
+          >
+          <select
+            class="input-field"
+            id="fn-preset-select"
+            style="width: 100%; max-width: 480px; font-size: 11px;"
+          >
+            <option value="4chan_timestamp" selected>
+              4chan Unix Timestamps (10, 13, 16 digit dates)
+            </option>
             <option value="pixiv_id">Pixiv Artwork ID &amp; Page (illust_123456, artist_p0)</option>
-            <option value="twitter_key">Twitter Snowflake &amp; Media Keys (media_..., status ID)</option>
+            <option value="twitter_key">
+              Twitter Snowflake &amp; Media Keys (media_..., status ID)
+            </option>
             <option value="danbooru">Danbooru (SlimTags + Artist + Hash)</option>
             <option value="tagged_string">Bracketed Tagged String ([artist] title (tags))</option>
             <option value="anime_screenshot">Anime Screenshot (name + episode)</option>
@@ -721,54 +802,152 @@ export function renderFilenameParserHtml(): SafeHtml {
 
         <!-- Token Builder Panel -->
         <div id="fn-panel-token" style="display: none; flex-direction: column; gap: 8px;">
-          <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);">Click building blocks to assemble custom pattern:</label>
+          <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);"
+            >Click building blocks to assemble custom pattern:</label
+          >
           <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;">
-            <button type="button" class="win-button fn-add-token-btn" data-token-type="artist">+ {Artist}</button>
-            <button type="button" class="win-button fn-add-token-btn" data-token-type="timestamp_4chan">+ {4chan Timestamp}</button>
-            <button type="button" class="win-button fn-add-token-btn" data-token-type="pixiv_id">+ {Pixiv ID}</button>
-            <button type="button" class="win-button fn-add-token-btn" data-token-type="twitter_id">+ {Twitter ID}</button>
-            <button type="button" class="win-button fn-add-token-btn" data-token-type="number">+ {Number}</button>
-            <button type="button" class="win-button fn-add-token-btn" data-token-type="md5_hash">+ {MD5 Hash}</button>
-            <button type="button" class="win-button fn-add-token-btn" data-token-type="delimiter">+ Delimiter (_)</button>
-            <button type="button" class="win-button fn-add-token-btn" data-token-type="wildcard">+ {Wildcard}</button>
-            <button type="button" class="win-button fn-add-token-btn" data-token-type="bracketed">+ [Bracketed]</button>
-            <button type="button" class="win-button fn-add-token-btn" data-token-type="whitespace">+ Space</button>
-            <button type="button" class="win-button fn-add-token-btn" data-token-type="tag">+ {Tag}</button>
+            <button type="button" class="win-button fn-add-token-btn" data-token-type="artist">
+              + {Artist}
+            </button>
+            <button
+              type="button"
+              class="win-button fn-add-token-btn"
+              data-token-type="timestamp_4chan"
+            >
+              + {4chan Timestamp}
+            </button>
+            <button type="button" class="win-button fn-add-token-btn" data-token-type="pixiv_id">
+              + {Pixiv ID}
+            </button>
+            <button type="button" class="win-button fn-add-token-btn" data-token-type="twitter_id">
+              + {Twitter ID}
+            </button>
+            <button type="button" class="win-button fn-add-token-btn" data-token-type="number">
+              + {Number}
+            </button>
+            <button type="button" class="win-button fn-add-token-btn" data-token-type="md5_hash">
+              + {MD5 Hash}
+            </button>
+            <button type="button" class="win-button fn-add-token-btn" data-token-type="delimiter">
+              + Delimiter (_)
+            </button>
+            <button type="button" class="win-button fn-add-token-btn" data-token-type="wildcard">
+              + {Wildcard}
+            </button>
+            <button type="button" class="win-button fn-add-token-btn" data-token-type="bracketed">
+              + [Bracketed]
+            </button>
+            <button type="button" class="win-button fn-add-token-btn" data-token-type="whitespace">
+              + Space
+            </button>
+            <button type="button" class="win-button fn-add-token-btn" data-token-type="tag">
+              + {Tag}
+            </button>
           </div>
-          <div style="padding: 8px 10px; background-color: var(--sys-window-bg); border: 1px solid var(--sys-border-light);">
-            <div style="font-size: 11px; font-weight: 600; color: #555; margin-bottom: 6px;">Active Blocks Sequence:</div>
-            <div id="fn-token-blocks-container" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; align-items: center;"></div>
+          <div
+            style="padding: 8px 10px; background-color: var(--sys-window-bg); border: 1px solid var(--sys-border-light);"
+          >
+            <div style="font-size: 11px; font-weight: 600; color: #555; margin-bottom: 6px;">
+              Active Blocks Sequence:
+            </div>
+            <div
+              id="fn-token-blocks-container"
+              style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; align-items: center;"
+            ></div>
           </div>
           <div style="display: flex; flex-direction: column; gap: 4px;">
             <div style="font-size: 11px; color: #555;">
-              Compiled Regex: <code id="fn-compiled-regex-preview" style="font-family: monospace; font-weight: 600; color: #004085; background: #e2e3e5; padding: 2px 6px; border-radius: 2px;"></code>
+              Compiled Regex:
+              <code
+                id="fn-compiled-regex-preview"
+                style="font-family: monospace; font-weight: 600; color: #004085; background: #e2e3e5; padding: 2px 6px; border-radius: 2px;"
+              ></code>
             </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+            <div
+              style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;"
+            >
               <div style="display: flex; align-items: center; gap: 4px;">
                 <label style="font-size: 10px; color: #555;">Type:</label>
-                <select class="input-field" id="fn-token-match-type-select" style="font-size: 10px; height: 22px; padding: 1px 4px; width: 110px;">
+                <select
+                  class="input-field"
+                  id="fn-token-match-type-select"
+                  style="font-size: 10px; height: 22px; padding: 1px 4px; width: 110px;"
+                >
                   <option value="custom_regex">Custom Regex</option>
                   <option value="anime_screenshot">Anime Screenshot</option>
                   <option value="danbooru">Danbooru</option>
                 </select>
-                <span id="fn-token-anime-warning" style="font-size: 9px; color: #856404; display: none;"><i class="bi bi-exclamation-triangle"></i> <span id="fn-token-warning-text"></span></span>
+                <span
+                  id="fn-token-anime-warning"
+                  style="font-size: 9px; color: #856404; display: none;"
+                  ><i class="bi bi-exclamation-triangle"></i>
+                  <span id="fn-token-warning-text"></span
+                ></span>
               </div>
               <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
-                <button type="button" class="win-button" id="fn-token-clear-btn" style="font-size: 10px; padding: 2px 8px;" title="Clear all blocks"><i class="bi bi-trash"></i> Clear</button>
-                <button type="button" class="win-button" id="fn-token-save-btn" style="font-size: 10px; padding: 2px 8px;" title="Save current pattern"><i class="bi bi-save"></i> Save</button>
-                <select class="input-field" id="fn-token-load-select" style="font-size: 10px; height: 22px; padding: 1px 4px; width: 120px;" title="Load saved pattern">
+                <button
+                  type="button"
+                  class="win-button"
+                  id="fn-token-clear-btn"
+                  style="font-size: 10px; padding: 2px 8px;"
+                  title="Clear all blocks"
+                >
+                  <i class="bi bi-trash"></i> Clear
+                </button>
+                <button
+                  type="button"
+                  class="win-button"
+                  id="fn-token-save-btn"
+                  style="font-size: 10px; padding: 2px 8px;"
+                  title="Save current pattern"
+                >
+                  <i class="bi bi-save"></i> Save
+                </button>
+                <select
+                  class="input-field"
+                  id="fn-token-load-select"
+                  style="font-size: 10px; height: 22px; padding: 1px 4px; width: 120px;"
+                  title="Load saved pattern"
+                >
                   <option value="">Load...</option>
                 </select>
-                <select class="input-field" id="fn-token-preset-select" style="font-size: 10px; height: 22px; padding: 1px 4px; width: 140px;">
+                <select
+                  class="input-field"
+                  id="fn-token-preset-select"
+                  style="font-size: 10px; height: 22px; padding: 1px 4px; width: 140px;"
+                >
                   <option value="">Load Preset...</option>
                   <option value="pixiv_artist_page">Pixiv: artist_p0</option>
                   <option value="pixiv_illust">Pixiv: illust_ID</option>
                   <option value="booru_source">Booru: source_ID_tags</option>
                   <option value="bracketed_title">Bracketed: [source] title</option>
                 </select>
-                <button type="button" class="win-button" id="fn-token-export-btn" style="font-size: 10px; padding: 2px 8px;" title="Export block sequence to text field"><i class="bi bi-arrow-up-right"></i> Export</button>
-                <input type="text" id="fn-token-seq-input" class="input-field" style="font-size: 10px; font-family: monospace; height: 22px; padding: 1px 4px; width: 220px;" placeholder="Block sequence JSON..." title="Paste a block sequence here, then click Import" />
-                <button type="button" class="win-button" id="fn-token-import-btn" style="font-size: 10px; padding: 2px 8px;" title="Import block sequence from text field"><i class="bi bi-arrow-down-left"></i> Import</button>
+                <button
+                  type="button"
+                  class="win-button"
+                  id="fn-token-export-btn"
+                  style="font-size: 10px; padding: 2px 8px;"
+                  title="Export block sequence to text field"
+                >
+                  <i class="bi bi-arrow-up-right"></i> Export
+                </button>
+                <input
+                  type="text"
+                  id="fn-token-seq-input"
+                  class="input-field"
+                  style="font-size: 10px; font-family: monospace; height: 22px; padding: 1px 4px; width: 220px;"
+                  placeholder="Block sequence JSON..."
+                  title="Paste a block sequence here, then click Import"
+                />
+                <button
+                  type="button"
+                  class="win-button"
+                  id="fn-token-import-btn"
+                  style="font-size: 10px; padding: 2px 8px;"
+                  title="Import block sequence from text field"
+                >
+                  <i class="bi bi-arrow-down-left"></i> Import
+                </button>
               </div>
             </div>
           </div>
@@ -776,9 +955,20 @@ export function renderFilenameParserHtml(): SafeHtml {
 
         <!-- Custom Regex Panel -->
         <div id="fn-panel-regex" style="display: none; flex-direction: column; gap: 6px;">
-          <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);">Enter Regular Expression with Named Capture Groups:</label>
-          <input class="input-field" id="fn-regex-input" value="^(?P&lt;artist&gt;[A-Za-z0-9_-]+)_(?P&lt;pixiv_id&gt;\\d{7,10})_p(?P&lt;page&gt;\\d+)$" placeholder="e.g. ^(?P<artist>\\w+)_(?P<timestamp>\\d+)$" style="width: 100%; font-family: monospace; font-size: 11px;" />
-          <p style="font-size: 11px; color: #666; margin: 2px 0 0 0;">Supported group names: <code>artist</code>, <code>pixiv_id</code>, <code>twitter_id</code>, <code>timestamp</code>, <code>tag</code>.</p>
+          <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);"
+            >Enter Regular Expression with Named Capture Groups:</label
+          >
+          <input
+            class="input-field"
+            id="fn-regex-input"
+            value="^(?P&lt;artist&gt;[A-Za-z0-9_-]+)_(?P&lt;pixiv_id&gt;\\d{7,10})_p(?P&lt;page&gt;\\d+)$"
+            placeholder="e.g. ^(?P<artist>\\w+)_(?P<timestamp>\\d+)$"
+            style="width: 100%; font-family: monospace; font-size: 11px;"
+          />
+          <p style="font-size: 11px; color: #666; margin: 2px 0 0 0;">
+            Supported group names: <code>artist</code>, <code>pixiv_id</code>,
+            <code>twitter_id</code>, <code>timestamp</code>, <code>tag</code>.
+          </p>
         </div>
       </div>
 
@@ -788,18 +978,44 @@ export function renderFilenameParserHtml(): SafeHtml {
         <div style="display: flex; flex-direction: column; gap: 12px;">
           <div style="display: flex; flex-wrap: wrap; gap: 12px;">
             <div style="flex: 1; min-width: 280px;">
-              <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);">Test Filename (or pick sample):</label>
-              <input class="input-field" id="fn-sandbox-input" value="1652448237000.jpg" placeholder="Type filename to test pattern..." style="width: 100%; font-family: monospace; font-size: 11px; margin-top: 4px;" />
+              <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);"
+                >Test Filename (or pick sample):</label
+              >
+              <input
+                class="input-field"
+                id="fn-sandbox-input"
+                value="1652448237000.jpg"
+                placeholder="Type filename to test pattern..."
+                style="width: 100%; font-family: monospace; font-size: 11px; margin-top: 4px;"
+              />
             </div>
             <div style="min-width: 280px;">
-              <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);">Preset Test Samples:</label>
-              <select class="input-field" id="fn-sandbox-sample-select" style="width: 100%; font-size: 11px; margin-top: 4px;">
-                <option value="1652448237000.png" selected>4chan Unix Timestamp (1652448237000)</option>
-                <option value="illust_108521179_20230513_212357.jpg">Pixiv Illust (illust_108521179_...)</option>
-                <option value="gwitch_suletta_Mineori_108521179_p0.png">Pixiv Page (gwitch_..._p0)</option>
+              <label style="font-size: 11px; font-weight: 600; color: var(--sys-text-subtle);"
+                >Preset Test Samples:</label
+              >
+              <select
+                class="input-field"
+                id="fn-sandbox-sample-select"
+                style="width: 100%; font-size: 11px; margin-top: 4px;"
+              >
+                <option value="1652448237000.png" selected>
+                  4chan Unix Timestamp (1652448237000)
+                </option>
+                <option value="illust_108521179_20230513_212357.jpg">
+                  Pixiv Illust (illust_108521179_...)
+                </option>
+                <option value="gwitch_suletta_Mineori_108521179_p0.png">
+                  Pixiv Page (gwitch_..._p0)
+                </option>
                 <option value="media_FR49d0XWUAImXfA.jpg_large">Twitter Key (media_FR4...)</option>
-                <option value="__hiroi_kikuri_and_rupa_bocchi_the_rock_and_1_more_drawn_by_poop_frog__eda85cef4365c0b4f25c1cedb9abbe31.jpg">Danbooru (__...__hash)</option>
-                <option value="[Mineori] Witch from Mercury (Suletta Miorine).jpg">Bracketed Tagged ([Mineori] ...)</option>
+                <option
+                  value="__hiroi_kikuri_and_rupa_bocchi_the_rock_and_1_more_drawn_by_poop_frog__eda85cef4365c0b4f25c1cedb9abbe31.jpg"
+                >
+                  Danbooru (__...__hash)
+                </option>
+                <option value="[Mineori] Witch from Mercury (Suletta Miorine).jpg">
+                  Bracketed Tagged ([Mineori] ...)
+                </option>
               </select>
             </div>
           </div>
@@ -811,28 +1027,56 @@ export function renderFilenameParserHtml(): SafeHtml {
 
       <!-- Database Batch Preview & Batch Runner -->
       <div class="group-box">
-        <div class="group-box-title" style="display: flex; align-items: center; justify-content: space-between;">
+        <div
+          class="group-box-title"
+          style="display: flex; align-items: center; justify-content: space-between;"
+        >
           <span><i class="bi bi-table"></i> Database Batch Preview &amp; Execution</span>
         </div>
 
         <!-- Button Bar & Info -->
-        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--sys-border-light, #d0d0d0);">
-          <span style="font-size: 11px; color: #555;">Preview match results across database files before applying.</span>
+        <div
+          style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--sys-border-light, #d0d0d0);"
+        >
+          <span style="font-size: 11px; color: #555;"
+            >Preview match results across database files before applying.</span
+          >
           <div style="display: flex; align-items: center; gap: 8px;">
             <label style="font-size: 11px; color: #555; white-space: nowrap;">Samples:</label>
-            <input type="number" class="input-field" id="fn-batch-sample-count" value="50" max="5000" style="width: 60px; height: 22px; font-size: 11px; padding: 1px 4px; text-align: center;" />
+            <input
+              type="number"
+              class="input-field"
+              id="fn-batch-sample-count"
+              value="50"
+              max="5000"
+              style="width: 60px; height: 22px; font-size: 11px; padding: 1px 4px; text-align: center;"
+            />
             <span style="font-size: 10px; color: #888;">-1 = unlimited</span>
             <label style="font-size: 11px; color: #555; white-space: nowrap;">Sort:</label>
-            <select class="input-field" id="fn-batch-sort-order" style="width: 100px; height: 22px; font-size: 11px; padding: 1px 4px;">
+            <select
+              class="input-field"
+              id="fn-batch-sort-order"
+              style="width: 100px; height: 22px; font-size: 11px; padding: 1px 4px;"
+            >
               <option value="match_first">Match First</option>
               <option value="id_desc">Newest First</option>
               <option value="id_asc">Oldest First</option>
               <option value="filename">Filename A-Z</option>
             </select>
-            <button type="button" class="win-button" id="fn-batch-preview-btn" style="padding: 4px 12px;">
+            <button
+              type="button"
+              class="win-button"
+              id="fn-batch-preview-btn"
+              style="padding: 4px 12px;"
+            >
               <i class="bi bi-arrow-clockwise"></i> Preview DB Files
             </button>
-            <button type="button" class="win-button primary" id="fn-batch-run-btn" style="padding: 4px 12px;">
+            <button
+              type="button"
+              class="win-button primary"
+              id="fn-batch-run-btn"
+              style="padding: 4px 12px;"
+            >
               <i class="bi bi-play-fill"></i> Apply Rules to Entire DB
             </button>
           </div>
@@ -844,4 +1088,3 @@ export function renderFilenameParserHtml(): SafeHtml {
     </div>
   `;
 }
-

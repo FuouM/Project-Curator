@@ -49,9 +49,7 @@
 
   // lib/navigation.ts
   function navigateToTab(tabId) {
-    let item = document.querySelector(
-      `.nav-item[data-view="extensions-${tabId}"]`
-    );
+    let item = document.querySelector(`.nav-item[data-view="extensions-${tabId}"]`);
     item && item.click();
   }
   function closeInfoModal() {
@@ -283,7 +281,23 @@
     });
     let clearBtn = wrapper.querySelector("#cmp-clear-all");
     clearBtn && clearBtn.addEventListener("click", () => {
-      state.slotA = { id: null, path: "", url: "", name: "Image A", width: 0, height: 0, sizeStr: "" }, state.slotB = { id: null, path: "", url: "", name: "Image B", width: 0, height: 0, sizeStr: "" }, resetZoomAndPan(), updateSlotHeaders(), renderCanvasDOM();
+      state.slotA = {
+        id: null,
+        path: "",
+        url: "",
+        name: "Image A",
+        width: 0,
+        height: 0,
+        sizeStr: ""
+      }, state.slotB = {
+        id: null,
+        path: "",
+        url: "",
+        name: "Image B",
+        width: 0,
+        height: 0,
+        sizeStr: ""
+      }, resetZoomAndPan(), updateSlotHeaders(), renderCanvasDOM();
     });
     let inputA = wrapper.querySelector("#slot-a-file-input");
     inputA && inputA.addEventListener("change", (e) => {
@@ -297,11 +311,27 @@
     });
     let clearABtn = wrapper.querySelector("#slot-a-clear-btn");
     clearABtn && clearABtn.addEventListener("click", () => {
-      state.slotA = { id: null, path: "", url: "", name: "Image A", width: 0, height: 0, sizeStr: "" }, updateSlotHeaders(), renderCanvasDOM();
+      state.slotA = {
+        id: null,
+        path: "",
+        url: "",
+        name: "Image A",
+        width: 0,
+        height: 0,
+        sizeStr: ""
+      }, updateSlotHeaders(), renderCanvasDOM();
     });
     let clearBBtn = wrapper.querySelector("#slot-b-clear-btn");
     clearBBtn && clearBBtn.addEventListener("click", () => {
-      state.slotB = { id: null, path: "", url: "", name: "Image B", width: 0, height: 0, sizeStr: "" }, updateSlotHeaders(), renderCanvasDOM();
+      state.slotB = {
+        id: null,
+        path: "",
+        url: "",
+        name: "Image B",
+        width: 0,
+        height: 0,
+        sizeStr: ""
+      }, updateSlotHeaders(), renderCanvasDOM();
     });
   }
   function renderCanvasDOM() {
@@ -715,13 +745,18 @@
     return btnB == null || btnB.addEventListener("click", () => {
       loadAssetIntoSlot("B", asset), closeInfoModal(), navigateToTab2();
     }), box;
-  }), PH6.registerToolbarButton("compare-selected", "Compare Selected", "bi bi-layout-split", (selection) => {
-    if (!selection || selection.length === 0) {
-      alert("No images selected.");
-      return;
+  }), PH6.registerToolbarButton(
+    "compare-selected",
+    "Compare Selected",
+    "bi bi-layout-split",
+    (selection) => {
+      if (!selection || selection.length === 0) {
+        alert("No images selected.");
+        return;
+      }
+      selection.length >= 2 ? (loadAssetIntoSlot("A", selection[0]), loadAssetIntoSlot("B", selection[1])) : loadAssetIntoSlot("A", selection[0]), closeInfoModal(), navigateToTab2();
     }
-    selection.length >= 2 ? (loadAssetIntoSlot("A", selection[0]), loadAssetIntoSlot("B", selection[1])) : loadAssetIntoSlot("A", selection[0]), closeInfoModal(), navigateToTab2();
-  }), PH6.registerContextMenuItem("send-to-compare-a", "Compare: Set as Image A", (asset) => {
+  ), PH6.registerContextMenuItem("send-to-compare-a", "Compare: Set as Image A", (asset) => {
     asset && (loadAssetIntoSlot("A", asset), closeInfoModal(), navigateToTab2());
   }), PH6.registerContextMenuItem("send-to-compare-b", "Compare: Set as Image B", (asset) => {
     asset && (loadAssetIntoSlot("B", asset), closeInfoModal(), navigateToTab2());

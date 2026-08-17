@@ -28,7 +28,8 @@ export function updateChips(): void {
     const inHistory = !state.settings.autoRename && historyUrls.has(u);
 
     let statusText = r.badgeText;
-    let chipClass = r.status === "verified_direct" ? "ok" : r.status === "generic_direct" ? "warn" : "bad";
+    let chipClass =
+      r.status === "verified_direct" ? "ok" : r.status === "generic_direct" ? "warn" : "bad";
     if (inQueue) {
       statusText += " (In Queue)";
       chipClass = "warn";

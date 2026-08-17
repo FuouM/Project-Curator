@@ -54,7 +54,7 @@ export function previewMediaFile(filePath: string): void {
     workspaceRoot,
     filePath,
     absolutePath,
-    safeUrl
+    safeUrl,
   });
 
   if (isVideo) {
@@ -74,9 +74,9 @@ export function previewMediaFile(filePath: string): void {
             state.currentMedia!.totalFrames = resp.MediaMetadataResult.total_frames;
             logConsole(
               `Probed media: ${(state.currentMedia!.durationMs! / 1000).toFixed(2)}s, ${state.currentMedia!.fps!.toFixed(
-                2
+                2,
               )} fps, ${state.currentMedia!.totalFrames} frames`,
-              "success"
+              "success",
             );
             if (state.currentTool === "trim") {
               const cp = el("gm-panel-content");
@@ -106,9 +106,9 @@ export function previewMediaFile(filePath: string): void {
             state.currentMedia!.totalFrames = resp.MediaMetadataResult.total_frames;
             logConsole(
               `Probed animated image: ${(state.currentMedia!.durationMs! / 1000).toFixed(
-                2
+                2,
               )}s, ${state.currentMedia!.fps!.toFixed(2)} fps, ${state.currentMedia!.totalFrames} frames`,
-              "success"
+              "success",
             );
             if (state.currentTool === "trim") {
               const cp = el("gm-panel-content");

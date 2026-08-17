@@ -18,7 +18,9 @@ export function setupSelectionToolbar(options: SelectionToolbarOptions) {
     toggleBtn.classList.toggle("primary", isSelectMode);
     if (!isSelectMode) {
       selectedImageIds.clear();
-      document.querySelectorAll(".image-card.selected").forEach((c) => c.classList.remove("selected"));
+      document
+        .querySelectorAll(".image-card.selected")
+        .forEach((c) => c.classList.remove("selected"));
       document.querySelectorAll(".card-select-checkbox").forEach((cb: any) => (cb.checked = false));
     }
     updateSelectionUI();
@@ -40,9 +42,10 @@ export function setupSelectionToolbar(options: SelectionToolbarOptions) {
 
   clearBtn?.addEventListener("click", () => {
     selectedImageIds.clear();
-    document.querySelectorAll(".image-card.selected").forEach((c) => c.classList.remove("selected"));
+    document
+      .querySelectorAll(".image-card.selected")
+      .forEach((c) => c.classList.remove("selected"));
     document.querySelectorAll(".card-select-checkbox").forEach((cb: any) => (cb.checked = false));
     updateSelectionUI();
   });
 }
-

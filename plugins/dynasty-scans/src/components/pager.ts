@@ -9,14 +9,14 @@ export function renderPager(
   totalPages: number,
   currentPage: number,
   onPage: (p: number) => void,
-  opts: { cssText?: string; showLabels?: boolean; ariaLabel?: string } = {}
+  opts: { cssText?: string; showLabels?: boolean; ariaLabel?: string } = {},
 ): HTMLElement {
   const showLabels = opts.showLabels ?? false;
   const row = el("div", {
     class: "ds-row",
-    style: opts.cssText ?? (showLabels
-      ? "align-items:center;justify-content:space-between;"
-      : "margin-top:8px;"),
+    style:
+      opts.cssText ??
+      (showLabels ? "align-items:center;justify-content:space-between;" : "margin-top:8px;"),
   });
 
   const prev = el("button", {

@@ -3,12 +3,7 @@
  */
 
 import { TAB_ID } from "./state";
-import {
-  loadAssetIntoSlot,
-  closeInfoModal,
-  navigateToTab,
-  renderCompareTab,
-} from "./ui";
+import { loadAssetIntoSlot, closeInfoModal, navigateToTab, renderCompareTab } from "./ui";
 
 const PH = window.PluginHost;
 if (!PH) {
@@ -29,11 +24,11 @@ if (!PH) {
       '  <span style="font-size:11px;color:#555;flex:1;">Send image to Image Compare tool.</span>' +
       '  <button type="button" class="win-button" id="cmp-send-slot-a">' +
       '    <i class="bi bi-arrow-left-square"></i> Set as Image A' +
-      '  </button>' +
+      "  </button>" +
       '  <button type="button" class="win-button" id="cmp-send-slot-b">' +
       '    <i class="bi bi-arrow-right-square"></i> Set as Image B' +
-      '  </button>' +
-      '</div>';
+      "  </button>" +
+      "</div>";
 
     const btnA = box.querySelector("#cmp-send-slot-a");
     btnA?.addEventListener("click", () => {
@@ -53,20 +48,25 @@ if (!PH) {
   });
 
   // Toolbar Button ("Compare Selected") for grid toolbars
-  PH.registerToolbarButton("compare-selected", "Compare Selected", "bi bi-layout-split", (selection) => {
-    if (!selection || selection.length === 0) {
-      alert("No images selected.");
-      return;
-    }
-    if (selection.length >= 2) {
-      loadAssetIntoSlot("A", selection[0]);
-      loadAssetIntoSlot("B", selection[1]);
-    } else {
-      loadAssetIntoSlot("A", selection[0]);
-    }
-    closeInfoModal();
-    navigateToTab();
-  });
+  PH.registerToolbarButton(
+    "compare-selected",
+    "Compare Selected",
+    "bi bi-layout-split",
+    (selection) => {
+      if (!selection || selection.length === 0) {
+        alert("No images selected.");
+        return;
+      }
+      if (selection.length >= 2) {
+        loadAssetIntoSlot("A", selection[0]);
+        loadAssetIntoSlot("B", selection[1]);
+      } else {
+        loadAssetIntoSlot("A", selection[0]);
+      }
+      closeInfoModal();
+      navigateToTab();
+    },
+  );
 
   // Context Menu Items
   PH.registerContextMenuItem("send-to-compare-a", "Compare: Set as Image A", (asset) => {

@@ -5,7 +5,16 @@ import type { GalleryCardViewData } from "./components/gallery-card";
 import { openImageInfoModal } from "./components/image-info-modal";
 import { CardImageData, ImageDetails, SearchMatch } from "./types";
 import { imageBytesToPngBlob } from "./utils";
-import { getImageClickAction, isSelectMode, selectedImageIds, luckyHighlightId, formatCopiedTags, getGalleryFullImages, notifySelectionChange, requestFavoritesRefresh } from "./state";
+import {
+  getImageClickAction,
+  isSelectMode,
+  selectedImageIds,
+  luckyHighlightId,
+  formatCopiedTags,
+  getGalleryFullImages,
+  notifySelectionChange,
+  requestFavoritesRefresh,
+} from "./state";
 import { openImageViewer } from "./image-viewer";
 import { typedCall } from "./ipc";
 import { openTagModal } from "./components/tag-editor-modal";
@@ -103,26 +112,29 @@ function invokeThumbnail(job: ThumbJob) {
     imageId: job.imageId,
     mtime: job.mtime,
     kind: job.isVideo ? 1 : 0,
-  }).then((data: any) => {
-    if (!data) return;
-    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-    const blob = new Blob([bytes], { type: "image/webp" });
-    const url = URL.createObjectURL(blob);
-    cacheThumbnail(job.imageId, url);
-    if (job.img.isConnected) {
-      job.img.src = url;
-      job.img.classList.add("loaded");
-      maybeSwapFullImage();
-    }
-  }).catch(() => {}).finally(() => {
-    if (job.preview) job.preview.classList.remove("thumb-loading");
-    if (thumbTotal > 0) {
-      thumbLoaded++;
-      updateThumbProgress();
-    }
-    activeCount--;
-    processQueue();
-  });
+  })
+    .then((data: any) => {
+      if (!data) return;
+      const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+      const blob = new Blob([bytes], { type: "image/webp" });
+      const url = URL.createObjectURL(blob);
+      cacheThumbnail(job.imageId, url);
+      if (job.img.isConnected) {
+        job.img.src = url;
+        job.img.classList.add("loaded");
+        maybeSwapFullImage();
+      }
+    })
+    .catch(() => {})
+    .finally(() => {
+      if (job.preview) job.preview.classList.remove("thumb-loading");
+      if (thumbTotal > 0) {
+        thumbLoaded++;
+        updateThumbProgress();
+      }
+      activeCount--;
+      processQueue();
+    });
 }
 
 const fullImageCache = new LruCache<string>(1000);
@@ -169,14 +181,18 @@ function updateFullImageProgress() {
 
   if (fullLoaded >= fullTotal) {
     if (fullHideTimer) clearTimeout(fullHideTimer);
-    fullHideTimer = window.setTimeout(() => { cell.style.display = "none"; }, 1000);
+    fullHideTimer = window.setTimeout(() => {
+      cell.style.display = "none";
+    }, 1000);
   }
 }
 
 export function processVisibleFullImages() {
   if (!getGalleryFullImages() || isScrolling) return;
 
-  const visibleImgs = Array.from(document.querySelectorAll<HTMLImageElement>(".image-grid img[data-thumb-id]"));
+  const visibleImgs = Array.from(
+    document.querySelectorAll<HTMLImageElement>(".image-grid img[data-thumb-id]"),
+  );
   const vh = window.innerHeight;
 
   // Filter to visible candidates
@@ -198,7 +214,10 @@ export function processVisibleFullImages() {
 
   fullTotal = candidates.length;
   fullLoaded = 0;
-  if (fullHideTimer) { clearTimeout(fullHideTimer); fullHideTimer = null; }
+  if (fullHideTimer) {
+    clearTimeout(fullHideTimer);
+    fullHideTimer = null;
+  }
   updateFullImageProgress();
 
   // Load sequentially one image at a time to prevent GPU frame drops
@@ -238,7 +257,9 @@ export function processVisibleFullImages() {
 
 // Revert off-screen full images back to light thumbnails when user starts scrolling
 function revertOffscreenFullImagesToThumbnails() {
-  const allImgs = document.querySelectorAll<HTMLImageElement>(".image-grid img[data-full-loaded='1']");
+  const allImgs = document.querySelectorAll<HTMLImageElement>(
+    ".image-grid img[data-full-loaded='1']",
+  );
   const vh = window.innerHeight;
 
   allImgs.forEach((img) => {
@@ -282,74 +303,86 @@ function updateThumbProgress() {
 
   if (thumbLoaded >= thumbTotal) {
     if (thumbHideTimer) clearTimeout(thumbHideTimer);
-    thumbHideTimer = window.setTimeout(() => { cell.style.display = "none"; }, 1000);
+    thumbHideTimer = window.setTimeout(() => {
+      cell.style.display = "none";
+    }, 1000);
   }
 }
 
 // --- Lazy Loading via IntersectionObserver (queues jobs, does not invoke directly) ---
 const observedThumbs = new Set<HTMLImageElement>();
 
-const lazyObserver = new IntersectionObserver((entries) => {
-  for (const entry of entries) {
-    const img = entry.target as HTMLImageElement;
-    const imageId = parseInt(img.dataset.thumbId || "0", 10);
-    if (imageId === 0) continue;
-    const preview = img.closest(".image-preview") as HTMLElement;
-    const fp = img.dataset.filepath || "";
+const lazyObserver = new IntersectionObserver(
+  (entries) => {
+    for (const entry of entries) {
+      const img = entry.target as HTMLImageElement;
+      const imageId = parseInt(img.dataset.thumbId || "0", 10);
+      if (imageId === 0) continue;
+      const preview = img.closest(".image-preview") as HTMLElement;
+      const fp = img.dataset.filepath || "";
 
-    if (entry.isIntersecting) {
-      if (img.dataset.pending === "1" || !img.getAttribute("src")) {
-        const cachedUrl = thumbCache.get(imageId);
-        if (cachedUrl) {
-          img.src = cachedUrl;
-          img.classList.add("loaded");
-          img.dataset.pending = "0";
-          if (preview) preview.classList.remove("thumb-loading");
-          maybeSwapFullImage();
-          if (thumbTotal > 0) {
-            thumbLoaded++;
-            updateThumbProgress();
-          }
-        } else {
-          img.dataset.pending = "0";
-          if (/\.gif$/i.test(fp)) {
-            img.src = convertFileSrc(fp);
+      if (entry.isIntersecting) {
+        if (img.dataset.pending === "1" || !img.getAttribute("src")) {
+          const cachedUrl = thumbCache.get(imageId);
+          if (cachedUrl) {
+            img.src = cachedUrl;
             img.classList.add("loaded");
+            img.dataset.pending = "0";
             if (preview) preview.classList.remove("thumb-loading");
+            maybeSwapFullImage();
             if (thumbTotal > 0) {
               thumbLoaded++;
               updateThumbProgress();
             }
           } else {
-            if (thumbLoadPaused) continue;
-            if (preview) preview.classList.add("thumb-loading");
-            const mtime = parseInt(img.dataset.mtime || "0", 10);
-            const isVideo = img.dataset.isVideo === "1";
-            queue.push({ imageId, mtime: mtime > 0 ? mtime : undefined, isVideo, img, preview, gen: generation });
-            processQueue();
+            img.dataset.pending = "0";
+            if (/\.gif$/i.test(fp)) {
+              img.src = convertFileSrc(fp);
+              img.classList.add("loaded");
+              if (preview) preview.classList.remove("thumb-loading");
+              if (thumbTotal > 0) {
+                thumbLoaded++;
+                updateThumbProgress();
+              }
+            } else {
+              if (thumbLoadPaused) continue;
+              if (preview) preview.classList.add("thumb-loading");
+              const mtime = parseInt(img.dataset.mtime || "0", 10);
+              const isVideo = img.dataset.isVideo === "1";
+              queue.push({
+                imageId,
+                mtime: mtime > 0 ? mtime : undefined,
+                isVideo,
+                img,
+                preview,
+                gen: generation,
+              });
+              processQueue();
+            }
           }
         }
-      }
-    } else {
-      // Unload if scrolled out of view and has a loaded src that is a blob URL.
-      // Small deterministic grids (dashboard latest imports) set keep-loaded so
-      // their images are never unloaded/re-fetched on scroll.
-      if (img.dataset.keepLoaded === "1") continue;
-      const src = img.getAttribute("src");
-      if (src && src.startsWith("blob:")) {
-        img.removeAttribute("src");
-        img.classList.remove("loaded");
-        img.dataset.pending = "1";
-        img.dataset.fullLoaded = "0";
-        if (preview) preview.classList.remove("thumb-loading");
+      } else {
+        // Unload if scrolled out of view and has a loaded src that is a blob URL.
+        // Small deterministic grids (dashboard latest imports) set keep-loaded so
+        // their images are never unloaded/re-fetched on scroll.
+        if (img.dataset.keepLoaded === "1") continue;
+        const src = img.getAttribute("src");
+        if (src && src.startsWith("blob:")) {
+          img.removeAttribute("src");
+          img.classList.remove("loaded");
+          img.dataset.pending = "1";
+          img.dataset.fullLoaded = "0";
+          if (preview) preview.classList.remove("thumb-loading");
+        }
       }
     }
-  }
-}, { rootMargin: "600px" });
+  },
+  { rootMargin: "600px" },
+);
 
 export function reobserveUnloadedThumbnails(container: HTMLElement) {
   const imgs = container.querySelectorAll<HTMLImageElement>("img[data-thumb-id]");
-  imgs.forEach(img => {
+  imgs.forEach((img) => {
     const imageId = parseInt(img.dataset.thumbId || "0", 10);
     if (imageId <= 0) return;
 
@@ -382,7 +415,6 @@ function clearObservedThumbs() {
 }
 
 // --- Tag / Metadata renders moved to ./components/card-tags (see implementation_plan_cards.md) ---
-
 
 // --- Event Delegation (one listener per grid, not per card) ---
 
@@ -543,7 +575,9 @@ export function setupGridDelegation(grid: HTMLElement) {
 
     if (target.closest(".image-path")) {
       const openFolderBtn = card.querySelector(".image-open-folder-btn") as HTMLElement;
-      if (openFolderBtn) openFolderBtn.style.display = openFolderBtn.style.display === "none" ? "inline-flex" : "none";
+      if (openFolderBtn)
+        openFolderBtn.style.display =
+          openFolderBtn.style.display === "none" ? "inline-flex" : "none";
       return;
     }
 
@@ -596,7 +630,7 @@ export function attachCardEventHandlers(
   filepath: string,
   _imageData: any,
   _previewSelector: string,
-  _isFeatured: boolean
+  _isFeatured: boolean,
 ): () => void {
   const handler = (e: Event) => {
     const target = e.target as HTMLElement;
@@ -657,7 +691,9 @@ const OCR_DRAG_PX = 5;
 const ocrDownPos = new WeakMap<HTMLElement, { x: number; y: number }>();
 
 function trackOcrMouseDown(e: globalThis.MouseEvent) {
-  const block = (e.target as HTMLElement).closest("[data-action='toggle-ocr']") as HTMLElement | null;
+  const block = (e.target as HTMLElement).closest(
+    "[data-action='toggle-ocr']",
+  ) as HTMLElement | null;
   if (block) ocrDownPos.set(block, { x: e.clientX, y: e.clientY });
 }
 
@@ -675,7 +711,8 @@ function handleOcrCopy(icon: HTMLElement) {
   const text = icon.dataset.ocrCopy || "";
   if (!text) return;
   const originalHtml = icon.innerHTML;
-  navigator.clipboard.writeText(text)
+  navigator.clipboard
+    .writeText(text)
     .then(() => {
       icon.innerHTML = '<i class="bi bi-check-lg"></i>';
       icon.classList.add("copied");
@@ -691,7 +728,8 @@ function handleCardTagsCopy(btn: HTMLElement) {
   const text = formatCopiedTags(btn.dataset.copyTags || "");
   if (!text) return;
   const originalHtml = btn.innerHTML;
-  navigator.clipboard.writeText(text)
+  navigator.clipboard
+    .writeText(text)
     .then(() => {
       btn.innerHTML = '<i class="bi bi-check-lg"></i>';
       btn.classList.add("copied");
@@ -708,21 +746,28 @@ function handleStarClick(card: HTMLElement, imageId: number) {
   if (!starBtn) return;
   const newFav = !starBtn.classList.contains("favorite");
 
-  typedCall("GalleryService.SetFavorite", SetFavoriteRequestSchema, { imageId: BigInt(imageId), favorite: newFav }, EmptySchema).then(() => {
-    document.querySelectorAll(`[data-image-id="${imageId}"] .star-btn`).forEach(btn => {
-      if (newFav) {
-        btn.classList.add("favorite");
-        btn.querySelector("i")?.setAttribute("class", "bi bi-star-fill");
-      } else {
-        btn.classList.remove("favorite");
-        btn.querySelector("i")?.setAttribute("class", "bi bi-star");
+  typedCall(
+    "GalleryService.SetFavorite",
+    SetFavoriteRequestSchema,
+    { imageId: BigInt(imageId), favorite: newFav },
+    EmptySchema,
+  )
+    .then(() => {
+      document.querySelectorAll(`[data-image-id="${imageId}"] .star-btn`).forEach((btn) => {
+        if (newFav) {
+          btn.classList.add("favorite");
+          btn.querySelector("i")?.setAttribute("class", "bi bi-star-fill");
+        } else {
+          btn.classList.remove("favorite");
+          btn.querySelector("i")?.setAttribute("class", "bi bi-star");
+        }
+      });
+      const activeNav = document.querySelector(".nav-item.active");
+      if (activeNav && activeNav.getAttribute("data-view") === "favorites" && !newFav) {
+        requestFavoritesRefresh();
       }
-    });
-    const activeNav = document.querySelector(".nav-item.active");
-    if (activeNav && activeNav.getAttribute("data-view") === "favorites" && !newFav) {
-      requestFavoritesRefresh();
-    }
-  }).catch(() => {});
+    })
+    .catch(() => {});
 }
 
 function handleCopyClick(card: HTMLElement, _imageId: number) {
@@ -730,32 +775,48 @@ function handleCopyClick(card: HTMLElement, _imageId: number) {
   if (!copyBtn) return;
   const filepath = card.dataset.filepath || "";
 
-  invoke("read_image_bytes", { path: filepath }).then((bytes: any) => {
-    const uint8 = new Uint8Array(bytes);
-    return imageBytesToPngBlob(uint8);
-  }).then((blob) => {
-    return navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-  }).then(() => {
-    copyBtn.classList.add("copied");
-    copyBtn.querySelector("i")?.setAttribute("class", "bi bi-check-lg");
-    setTimeout(() => {
-      copyBtn.classList.remove("copied");
-      copyBtn.querySelector("i")?.setAttribute("class", "bi bi-clipboard");
-    }, 1500);
-  }).catch(() => {});
+  invoke("read_image_bytes", { path: filepath })
+    .then((bytes: any) => {
+      const uint8 = new Uint8Array(bytes);
+      return imageBytesToPngBlob(uint8);
+    })
+    .then((blob) => {
+      return navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    })
+    .then(() => {
+      copyBtn.classList.add("copied");
+      copyBtn.querySelector("i")?.setAttribute("class", "bi bi-check-lg");
+      setTimeout(() => {
+        copyBtn.classList.remove("copied");
+        copyBtn.querySelector("i")?.setAttribute("class", "bi bi-clipboard");
+      }, 1500);
+    })
+    .catch(() => {});
 }
 
 function handleInfoClick(imageId: number) {
-  typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(imageId) }, ImageResultSchema).then((resp) => {
-    if (resp.image) {
-      openImageInfoModal(imageDetailsFromProto(resp.image));
-    }
-  }).catch(() => {});
+  typedCall(
+    "GalleryService.GetImage",
+    GetImageRequestSchema,
+    { imageId: BigInt(imageId) },
+    ImageResultSchema,
+  )
+    .then((resp) => {
+      if (resp.image) {
+        openImageInfoModal(imageDetailsFromProto(resp.image));
+      }
+    })
+    .catch(() => {});
 }
 
 // --- Card Rendering (no per-card event handlers) ---
 
-export function renderCards(cards: CardImageData[], grid: HTMLElement, append = false, keepLoaded = false) {
+export function renderCards(
+  cards: CardImageData[],
+  grid: HTMLElement,
+  append = false,
+  keepLoaded = false,
+) {
   if (!append) {
     clearObservedThumbs();
     grid.innerHTML = "";
@@ -789,11 +850,13 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement, append = 
       ocrText: img.ocrText,
       parsedMetadata: img.parsedMetadata,
       characterIdentities: img.characterIdentities,
-      video: img.video ? {
-        format: img.video.format,
-        durationMs: img.video.duration_ms,
-        codec: img.video.video_codec,
-      } : undefined,
+      video: img.video
+        ? {
+            format: img.video.format,
+            durationMs: img.video.duration_ms,
+            codec: img.video.video_codec,
+          }
+        : undefined,
       badgeHtml: img.badgeHtml,
       width: img.width ?? undefined,
       height: img.height ?? undefined,
@@ -813,7 +876,7 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement, append = 
     }
 
     // Observe new image elements before appending (appending empties the fragment)
-    cardNode.querySelectorAll<HTMLImageElement>("img[data-thumb-id]").forEach(imgEl => {
+    cardNode.querySelectorAll<HTMLImageElement>("img[data-thumb-id]").forEach((imgEl) => {
       observedThumbs.add(imgEl);
       lazyObserver.observe(imgEl);
     });
@@ -829,17 +892,26 @@ export function renderCards(cards: CardImageData[], grid: HTMLElement, append = 
       queue.splice(i, 1);
     }
   }
-  if (thumbHideTimer) { clearTimeout(thumbHideTimer); thumbHideTimer = null; }
-  const pendingCount = cards.filter(c => !thumbCache.has(c.id) && !/\.gif$/i.test(c.filepath)).length;
+  if (thumbHideTimer) {
+    clearTimeout(thumbHideTimer);
+    thumbHideTimer = null;
+  }
+  const pendingCount = cards.filter(
+    (c) => !thumbCache.has(c.id) && !/\.gif$/i.test(c.filepath),
+  ).length;
   thumbTotal = pendingCount;
   thumbLoaded = 0;
   updateThumbProgress();
 }
 
-export function renderImages(images: ImageDetails[], gridId: string, append = false, keepLoaded = false) {
+export function renderImages(
+  images: ImageDetails[],
+  gridId: string,
+  append = false,
+  keepLoaded = false,
+) {
   const grid = document.getElementById(gridId);
   if (!grid) return;
-
 
   if (images.length === 0) {
     if (!append) {
@@ -848,7 +920,7 @@ export function renderImages(images: ImageDetails[], gridId: string, append = fa
     return;
   }
 
-  const cards: CardImageData[] = images.map(img => ({
+  const cards: CardImageData[] = images.map((img) => ({
     id: img.id,
     filepath: img.current_filepath,
     tags: img.tags,
@@ -880,15 +952,24 @@ export function renderSearchResults(matches: SearchMatch[]) {
   if (!grid) return;
 
   if (matches.length === 0) {
-    grid.innerHTML = "<p style='color: #64748b; font-style: italic;'>No matching results found.</p>";
+    grid.innerHTML =
+      "<p style='color: #64748b; font-style: italic;'>No matching results found.</p>";
     return;
   }
 
-  const cards: CardImageData[] = matches.map(m => {
-    const badgeBg = m.match_type === "exact" ? "#dff6dd" : m.match_type === "perceptual" ? "#deecf9" : "#f3f2f1";
-    const badgeColor = m.match_type === "exact" ? "#107c41" : m.match_type === "perceptual" ? "#005a9e" : "#323130";
-    const badgeBorder = m.match_type === "exact" ? "#107c41" : m.match_type === "perceptual" ? "#005a9e" : "#8a8886";
-    const scoreBadgeText = m.match_type === "exact" ? "Exact Match" : m.match_type === "perceptual" ? `Perceptual (d=${m.hamming_distance})` : `Score: ${m.score.toFixed(4)}`;
+  const cards: CardImageData[] = matches.map((m) => {
+    const badgeBg =
+      m.match_type === "exact" ? "#dff6dd" : m.match_type === "perceptual" ? "#deecf9" : "#f3f2f1";
+    const badgeColor =
+      m.match_type === "exact" ? "#107c41" : m.match_type === "perceptual" ? "#005a9e" : "#323130";
+    const badgeBorder =
+      m.match_type === "exact" ? "#107c41" : m.match_type === "perceptual" ? "#005a9e" : "#8a8886";
+    const scoreBadgeText =
+      m.match_type === "exact"
+        ? "Exact Match"
+        : m.match_type === "perceptual"
+          ? `Perceptual (d=${m.hamming_distance})`
+          : `Score: ${m.score.toFixed(4)}`;
     return {
       id: m.id,
       filepath: m.filepath,
@@ -920,7 +1001,11 @@ export function renderSearchResults(matches: SearchMatch[]) {
 
 // --- Browse Button Helper ---
 
-export function setupBrowseButton(btnId: string, targetInput: HTMLInputElement, isDirectory: boolean) {
+export function setupBrowseButton(
+  btnId: string,
+  targetInput: HTMLInputElement,
+  isDirectory: boolean,
+) {
   document.getElementById(btnId)?.addEventListener("click", async () => {
     try {
       const selected: string | null = await invoke("select_path", { isDirectory });
@@ -934,7 +1019,11 @@ export function setupBrowseButton(btnId: string, targetInput: HTMLInputElement, 
   });
 }
 
-export function setupBrowseMultiButton(btnId: string, targetInput: HTMLInputElement, isDirectory: boolean) {
+export function setupBrowseMultiButton(
+  btnId: string,
+  targetInput: HTMLInputElement,
+  isDirectory: boolean,
+) {
   document.getElementById(btnId)?.addEventListener("click", async () => {
     try {
       const selected: string[] = await invoke("select_paths", { isDirectory });
@@ -947,6 +1036,3 @@ export function setupBrowseMultiButton(btnId: string, targetInput: HTMLInputElem
     }
   });
 }
-
-
-

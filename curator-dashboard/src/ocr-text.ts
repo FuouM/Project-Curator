@@ -41,10 +41,12 @@ export function estimateLabelWidth(text: string, fontSize: number): number {
   for (const ch of text) {
     const code = ch.codePointAt(0) ?? 0;
     // CJK ideographs/radicals, kana, Hangul, and fullwidth forms are ~1em wide
-    if ((code >= 0x2e80 && code <= 0x9fff) ||
-        (code >= 0xac00 && code <= 0xd7af) ||
-        (code >= 0x3040 && code <= 0x30ff) ||
-        (code >= 0xff00 && code <= 0xffef)) {
+    if (
+      (code >= 0x2e80 && code <= 0x9fff) ||
+      (code >= 0xac00 && code <= 0xd7af) ||
+      (code >= 0x3040 && code <= 0x30ff) ||
+      (code >= 0xff00 && code <= 0xffef)
+    ) {
       w += fontSize;
     } else {
       w += fontSize * 0.6;
@@ -73,10 +75,19 @@ export function isVerticalBox(pts: number[][]): boolean {
 // Returns tspan markup that stacks each character one below the next, so a
 // vertical OCR box renders the text as a top-to-bottom column instead of a
 // single horizontal line. Font size is set explicitly on every tspan.
-export function buildVerticalSpans(text: string, x: number, baselineY: number, fontSize: number, spacing: number = 0): string {
+export function buildVerticalSpans(
+  text: string,
+  x: number,
+  baselineY: number,
+  fontSize: number,
+  spacing: number = 0,
+): string {
   const chars = Array.from(text);
   return chars
-    .map((ch, i) => `<tspan x="${x}" y="${baselineY + i * (fontSize + spacing)}" font-size="${fontSize}" style="font-size: ${fontSize}px;">${ch}</tspan>`)
+    .map(
+      (ch, i) =>
+        `<tspan x="${x}" y="${baselineY + i * (fontSize + spacing)}" font-size="${fontSize}" style="font-size: ${fontSize}px;">${ch}</tspan>`,
+    )
     .join("");
 }
 
@@ -118,17 +129,17 @@ export function fitLabelInBox(
     const availableWidth = boxW - 2 * pad;
     const availableHeight = boxH - 2 * pad;
     const maxFactor = chars.length
-      ? Math.max(...chars.map(ch => estimateLabelWidth(ch, 1)))
+      ? Math.max(...chars.map((ch) => estimateLabelWidth(ch, 1)))
       : 0.6;
     // Scale font size so each character fills the box width.
     let fontSize = Math.max(MIN_FIT_FONT_SIZE, availableWidth / maxFactor);
     let widestWidth = chars.length
-      ? Math.max(...chars.map(ch => measureTextWidth(ch, fontFamily, fontSize)))
+      ? Math.max(...chars.map((ch) => measureTextWidth(ch, fontFamily, fontSize)))
       : fontSize * 0.6;
     if (widestWidth > availableWidth) {
       fontSize = Math.max(MIN_FIT_FONT_SIZE, fontSize * (availableWidth / widestWidth));
       widestWidth = chars.length
-        ? Math.max(...chars.map(ch => measureTextWidth(ch, fontFamily, fontSize)))
+        ? Math.max(...chars.map((ch) => measureTextWidth(ch, fontFamily, fontSize)))
         : fontSize * 0.6;
     }
     // Check height constraint: if column height exceeds available height, scale font down.
@@ -136,15 +147,13 @@ export function fitLabelInBox(
     if (baseHeight > availableHeight) {
       fontSize = Math.max(MIN_FIT_FONT_SIZE, fontSize * (availableHeight / baseHeight));
       widestWidth = chars.length
-        ? Math.max(...chars.map(ch => measureTextWidth(ch, fontFamily, fontSize)))
+        ? Math.max(...chars.map((ch) => measureTextWidth(ch, fontFamily, fontSize)))
         : fontSize * 0.6;
       baseHeight = fontSize * count;
     }
     // Compute vertical character spacing to fill box height.
     const gapCount = Math.max(count - 1, 0);
-    const spacing = gapCount > 0
-      ? Math.max(0, (availableHeight - baseHeight) / gapCount)
-      : 0;
+    const spacing = gapCount > 0 ? Math.max(0, (availableHeight - baseHeight) / gapCount) : 0;
     const labelW = widestWidth;
     const labelH = baseHeight + spacing * gapCount;
     return {
@@ -166,9 +175,7 @@ export function fitLabelInBox(
     baseWidth = measureTextWidth(text, fontFamily, fontSize);
   }
   const gapCount = Math.max(Array.from(text).length - 1, 0);
-  const spacing = gapCount > 0
-    ? Math.max(0, (availableWidth - baseWidth) / gapCount)
-    : 0;
+  const spacing = gapCount > 0 ? Math.max(0, (availableWidth - baseWidth) / gapCount) : 0;
   const labelW = baseWidth + spacing * gapCount;
   const labelH = fontSize;
   return {
@@ -200,8 +207,12 @@ export function placeLabelAvoidingOverlap(
   while (guard++ < 64) {
     let hit: PlacedLabel | null = null;
     for (const p of placed) {
-      if (lx < p.x + p.w + pad && lx + w + pad > p.x &&
-          ly < p.y + p.h + pad && ly + h + pad > p.y) {
+      if (
+        lx < p.x + p.w + pad &&
+        lx + w + pad > p.x &&
+        ly < p.y + p.h + pad &&
+        ly + h + pad > p.y
+      ) {
         hit = p;
         break;
       }
@@ -237,7 +248,7 @@ export function buildOcrLabelSvg(boxes: OcrPreviewBox[], viewW: number, viewH: n
     const by = Math.min(b.pts[0][1], b.pts[1][1], b.pts[2][1], b.pts[3][1]);
     const ax = Math.min(a.pts[0][0], a.pts[1][0], a.pts[2][0], a.pts[3][0]);
     const bx = Math.min(b.pts[0][0], b.pts[1][0], b.pts[2][0], b.pts[3][0]);
-    return (ay - by) || (ax - bx);
+    return ay - by || ax - bx;
   });
 
   const placed: PlacedLabel[] = [];
@@ -268,7 +279,10 @@ export function buildOcrLabelSvg(boxes: OcrPreviewBox[], viewW: number, viewH: n
       const fit = fitLabelInBox(b.text, boxW, boxH, pad, true, fontFamily);
       fs = fit.fontSize;
       pos = { x: minX + fit.x, y: minY + fit.y };
-      const final = placeLabelAvoidingOverlap(pos.x, pos.y, fit.w, fit.h, placed, 3, { w: viewW, h: viewH });
+      const final = placeLabelAvoidingOverlap(pos.x, pos.y, fit.w, fit.h, placed, 3, {
+        w: viewW,
+        h: viewH,
+      });
       pos = { x: final.x, y: final.y };
       placed.push({ x: pos.x, y: pos.y, w: fit.w, h: fit.h });
       labelBody = buildVerticalSpans(b.text, pos.x, pos.y + fs, fs, fit.spacing);
@@ -276,10 +290,13 @@ export function buildOcrLabelSvg(boxes: OcrPreviewBox[], viewW: number, viewH: n
       const chars = Array.from(b.text);
       const count = Math.max(chars.length, 1);
       const labelW = chars.length
-        ? Math.max(...chars.map(ch => estimateLabelWidth(ch, fs)))
+        ? Math.max(...chars.map((ch) => estimateLabelWidth(ch, fs)))
         : fs * 0.6;
       const labelH = fs * count;
-      pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placed, 3, { w: viewW, h: viewH });
+      pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placed, 3, {
+        w: viewW,
+        h: viewH,
+      });
       placed.push({ x: pos.x, y: pos.y, w: labelW, h: labelH });
       labelBody = buildVerticalSpans(b.text, pos.x, pos.y + fs, fs, 0);
     } else if (fitEffective) {
@@ -287,13 +304,19 @@ export function buildOcrLabelSvg(boxes: OcrPreviewBox[], viewW: number, viewH: n
       fs = fit.fontSize;
       pos = { x: minX + fit.x, y: minY + fit.y };
       letterSpacing = fit.spacing;
-      const final = placeLabelAvoidingOverlap(pos.x, pos.y, fit.w, fit.h, placed, 3, { w: viewW, h: viewH });
+      const final = placeLabelAvoidingOverlap(pos.x, pos.y, fit.w, fit.h, placed, 3, {
+        w: viewW,
+        h: viewH,
+      });
       pos = { x: final.x, y: final.y };
       placed.push({ x: pos.x, y: pos.y, w: fit.w, h: fit.h });
     } else {
       const labelW = estimateLabelWidth(b.text, fs);
       const labelH = fs + 4;
-      pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placed, 3, { w: viewW, h: viewH });
+      pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placed, 3, {
+        w: viewW,
+        h: viewH,
+      });
       placed.push({ x: pos.x, y: pos.y, w: labelW, h: labelH });
     }
     const textX = vertical ? "0" : pos.x;

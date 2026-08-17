@@ -1,11 +1,7 @@
 import { SITE_ROOT } from "../state";
 import { getCached, setCached, touchCached } from "../db";
 import { httpGetText, cachedJson } from "./client";
-import type {
-  Feed,
-  FeedRevalidationResult,
-  RevalidateOnlineResult,
-} from "../types/api";
+import type { Feed, FeedRevalidationResult, RevalidateOnlineResult } from "../types/api";
 
 export const FEED_TTL_MS = 60 * 60 * 1000;
 
@@ -21,7 +17,7 @@ export function fetchFeed(urlPath: string, key: string): Promise<Feed> {
 export async function checkFeedOnline(
   urlPath: string,
   key: string,
-  etag?: string
+  etag?: string,
 ): Promise<RevalidateOnlineResult> {
   const url = SITE_ROOT + urlPath;
   const headers: Record<string, string> = {};
@@ -50,7 +46,7 @@ export async function checkFeedOnline(
  */
 export async function fetchFeedWithRevalidation(
   urlPath: string,
-  key: string
+  key: string,
 ): Promise<FeedRevalidationResult> {
   const url = SITE_ROOT + urlPath;
   const cached = await getCached(key);

@@ -76,9 +76,7 @@
 
   // lib/navigation.ts
   function navigateToTab(tabId) {
-    let item = document.querySelector(
-      `.nav-item[data-view="extensions-${tabId}"]`
-    );
+    let item = document.querySelector(`.nav-item[data-view="extensions-${tabId}"]`);
     item && item.click();
   }
   function closeInfoModal() {
@@ -317,13 +315,7 @@
       let paths = (selection != null ? selection : []).map((a) => a.path).filter(Boolean);
       paths.length !== 0 && (paths.forEach(addToQueue), closeInfoModal(), navigateToTab2());
     }
-  ), PH6.registerContextMenuItem(
-    "image-converter-ctx",
-    "Send to Converter",
-    (asset) => {
-      asset != null && asset.path && (addToQueue(asset.path), closeInfoModal(), navigateToTab2());
-    }
-  ), console.log(
-    "image-converter: registered tab, renderer, toolbar button, and context menu item."
-  )) : console.error("image-converter: PluginHost not available; aborting.");
+  ), PH6.registerContextMenuItem("image-converter-ctx", "Send to Converter", (asset) => {
+    asset != null && asset.path && (addToQueue(asset.path), closeInfoModal(), navigateToTab2());
+  }), console.log("image-converter: registered tab, renderer, toolbar button, and context menu item.")) : console.error("image-converter: PluginHost not available; aborting.");
 })();

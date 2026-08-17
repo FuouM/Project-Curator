@@ -13,13 +13,7 @@
  */
 
 import { TAB_ID } from "./state";
-import {
-  addToQueue,
-  closeInfoModal,
-  log,
-  navigateToTab,
-  renderTab,
-} from "./ui";
+import { addToQueue, closeInfoModal, log, navigateToTab, renderTab } from "./ui";
 
 const PH = window.PluginHost;
 if (!PH) {
@@ -44,14 +38,12 @@ if (!PH) {
       "  </button>" +
       "</div>";
 
-    box
-      .querySelector<HTMLButtonElement>("#converter-send-asset")
-      ?.addEventListener("click", () => {
-        addToQueue(asset.path);
-        log(`Sent to converter: ${asset.path}`, "info");
-        closeInfoModal();
-        navigateToTab();
-      });
+    box.querySelector<HTMLButtonElement>("#converter-send-asset")?.addEventListener("click", () => {
+      addToQueue(asset.path);
+      log(`Sent to converter: ${asset.path}`, "info");
+      closeInfoModal();
+      navigateToTab();
+    });
 
     return box;
   });
@@ -67,22 +59,16 @@ if (!PH) {
       paths.forEach(addToQueue);
       closeInfoModal();
       navigateToTab();
-    }
+    },
   );
 
   // ── Right-click context menu ───────────────────────────────────────────────
-  PH.registerContextMenuItem(
-    "image-converter-ctx",
-    "Send to Converter",
-    (asset) => {
-      if (!asset?.path) return;
-      addToQueue(asset.path);
-      closeInfoModal();
-      navigateToTab();
-    }
-  );
+  PH.registerContextMenuItem("image-converter-ctx", "Send to Converter", (asset) => {
+    if (!asset?.path) return;
+    addToQueue(asset.path);
+    closeInfoModal();
+    navigateToTab();
+  });
 
-  console.log(
-    "image-converter: registered tab, renderer, toolbar button, and context menu item."
-  );
+  console.log("image-converter: registered tab, renderer, toolbar button, and context menu item.");
 }

@@ -7,7 +7,7 @@ let reindexPollInterval: number | null = null;
 export function updateReindexProgress(
   vector_count: number,
   pending_jobs: number,
-  preprocessing_jobs: number
+  preprocessing_jobs: number,
 ) {
   const container = document.getElementById("reindex-progress-container");
   const preBar = document.getElementById("reindex-preprocess-bar");

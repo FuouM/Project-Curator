@@ -194,7 +194,7 @@ export class ReaderViewport {
           }
         }
       },
-      { root: c.viewport, rootMargin: "400px 0px", threshold: 0 }
+      { root: c.viewport, rootMargin: "400px 0px", threshold: 0 },
     );
     c.slots.forEach((s) => observer.observe(s));
     c.onDispose(() => observer.disconnect());

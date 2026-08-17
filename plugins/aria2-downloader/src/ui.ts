@@ -190,13 +190,16 @@ export function buildWorkspaceRoot(): HTMLElement {
       if (res.skippedHistory > 0) {
         showFeedback(
           `<i class="bi bi-exclamation-triangle"></i> Rejected: <b>${res.skippedHistory}</b> URL(s) were already downloaded previously.<br/><span style="opacity:0.85;font-size:10px;">Enable <i>"Rename if exists (_1, _2, ...)"</i> below if you wish to download duplicate copies.</span>`,
-          true
+          true,
         );
-        log(`Rejected: ${res.skippedHistory} URL(s) were already downloaded previously. Enable "Rename if exists" to download duplicates.`, "warn");
+        log(
+          `Rejected: ${res.skippedHistory} URL(s) were already downloaded previously. Enable "Rename if exists" to download duplicates.`,
+          "warn",
+        );
       } else if (res.skippedQueue > 0) {
         showFeedback(
           `<i class="bi bi-info-circle"></i> <b>${res.skippedQueue}</b> URL(s) are already present in the active download queue.`,
-          true
+          true,
         );
         log(`Rejected: ${res.skippedQueue} URL(s) are already in the queue.`, "warn");
       } else {
@@ -289,13 +292,15 @@ export function buildWorkspaceRoot(): HTMLElement {
   const startAllBtn = root.querySelector("#ad-start-all-btn");
   if (startAllBtn) startAllBtn.addEventListener("click", () => void startAllQueued());
 
-  const queueFilterEls = root.querySelectorAll<HTMLButtonElement>("#ad-queue-filter .ad-filter-btn");
+  const queueFilterEls = root.querySelectorAll<HTMLButtonElement>(
+    "#ad-queue-filter .ad-filter-btn",
+  );
   queueFilterEls.forEach((btn) =>
     btn.addEventListener("click", () => {
       setQueueStatusFilter(btn.dataset.status ?? "");
       queueFilterEls.forEach((b) => b.classList.toggle("active", b === btn));
       renderQueue();
-    })
+    }),
   );
 
   wireColumnResize();
@@ -322,20 +327,24 @@ export function renderTab(): HTMLElement {
 
 export async function bootstrap(): Promise<void> {
   state.settings.outputDir =
-    loadPersisted("aria2-downloader-output-dir", state.settings.outputDir) || state.settings.outputDir;
+    loadPersisted("aria2-downloader-output-dir", state.settings.outputDir) ||
+    state.settings.outputDir;
   state.settings.connections = clampNum(
     parseInt(loadPersisted("aria2-downloader-connections", String(state.settings.connections)), 10),
     1,
     16,
-    state.settings.connections
+    state.settings.connections,
   );
   state.settings.speedLimitKb = Math.max(
     0,
-    parseInt(loadPersisted("aria2-downloader-speed-limit", String(state.settings.speedLimitKb)), 10) || 0
+    parseInt(
+      loadPersisted("aria2-downloader-speed-limit", String(state.settings.speedLimitKb)),
+      10,
+    ) || 0,
   );
   state.settings.maxTries = Math.max(
     0,
-    parseInt(loadPersisted("aria2-downloader-max-tries", String(state.settings.maxTries)), 10) || 0
+    parseInt(loadPersisted("aria2-downloader-max-tries", String(state.settings.maxTries)), 10) || 0,
   );
   state.settings.autoRename = loadPersisted("aria2-downloader-auto-rename", "0") === "1";
   state.settings.autoStart = loadPersisted("aria2-downloader-auto-start", "1") === "1";

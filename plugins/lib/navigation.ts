@@ -17,9 +17,7 @@
  *                selector `.nav-item[data-view="extensions-<tabId>"]`.
  */
 export function navigateToTab(tabId: string): void {
-  const item = document.querySelector<HTMLElement>(
-    `.nav-item[data-view="extensions-${tabId}"]`
-  );
+  const item = document.querySelector<HTMLElement>(`.nav-item[data-view="extensions-${tabId}"]`);
   if (item) item.click();
 }
 

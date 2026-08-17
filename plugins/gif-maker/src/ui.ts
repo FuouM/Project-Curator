@@ -29,7 +29,10 @@ export async function handleLoadSelection(): Promise<void> {
 
   if (state.currentTool === "maker") {
     state.droppedFrames = selection.map((asset) => asset.path);
-    logConsole(`Loaded ${state.droppedFrames.length} frames to the GIF Maker frame pool.`, "success");
+    logConsole(
+      `Loaded ${state.droppedFrames.length} frames to the GIF Maker frame pool.`,
+      "success",
+    );
     renderDroppedFrames();
   } else {
     void pushHistoryState(selection[0].path, "Imported selected file");
@@ -86,8 +89,12 @@ export function setupEvents(root: HTMLElement): void {
   });
 
   root.querySelector("#gm-btn-save-final")?.addEventListener("click", () => void handleSaveFinal());
-  root.querySelector("#gm-btn-load-selection")?.addEventListener("click", () => void handleLoadSelection());
-  root.querySelector("#gm-btn-browse-file")?.addEventListener("click", () => void handleBrowseFile());
+  root
+    .querySelector("#gm-btn-load-selection")
+    ?.addEventListener("click", () => void handleLoadSelection());
+  root
+    .querySelector("#gm-btn-browse-file")
+    ?.addEventListener("click", () => void handleBrowseFile());
 
   // Setup Tauri v2 native drops
   _setupDropZone(TAB_ID, "gm-drop-zone", (paths) => {
@@ -110,7 +117,7 @@ export function renderGifMakerTab(): HTMLElement {
   // Load Roboto Condensed Bold immediately
   const robotoFace = new FontFace(
     "Roboto Condensed Bold",
-    `url(${PH.convertFileSrc(pluginDir + "\\Roboto_Condensed_Bold.otf")})`
+    `url(${PH.convertFileSrc(pluginDir + "\\Roboto_Condensed_Bold.otf")})`,
   );
   robotoFace
     .load()

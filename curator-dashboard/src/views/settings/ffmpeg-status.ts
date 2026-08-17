@@ -2,7 +2,12 @@ import { typedCall } from "../../ipc";
 import { invoke } from "@tauri-apps/api/core";
 import { EmptySchema } from "@bufbuild/protobuf/wkt";
 import { setStatusMessage } from "../../utils";
-import { FFmpegStatusResultSchema, SetFFmpegPathRequestSchema, DownloadProgressResultSchema, DownloadStatusUpdateSchema } from "../../gen/models_pb";
+import {
+  FFmpegStatusResultSchema,
+  SetFFmpegPathRequestSchema,
+  DownloadProgressResultSchema,
+  DownloadStatusUpdateSchema,
+} from "../../gen/models_pb";
 
 let ffmpegStatusRow: HTMLElement | null = null;
 let ffmpegPathInput: HTMLInputElement | null = null;
@@ -12,7 +17,12 @@ let ffmpegDlTimer: number | null = null;
 export async function refreshFfmpegStatus() {
   if (!ffmpegStatusRow) return;
   try {
-    const resp = await typedCall("ModelsService.GetFFmpegStatus", null, null, FFmpegStatusResultSchema);
+    const resp = await typedCall(
+      "ModelsService.GetFFmpegStatus",
+      null,
+      null,
+      FFmpegStatusResultSchema,
+    );
     const r = resp;
     if (r.available) {
       ffmpegStatusRow.innerHTML =
@@ -33,12 +43,13 @@ export async function refreshFfmpegStatus() {
     if (existingPortableBtn) existingPortableBtn.remove();
 
     const portablePath: string | null = r.portablePath ?? null;
-    const isAlreadyUsingPortable = r.resolvedPath && portablePath &&
-      r.resolvedPath.toLowerCase() === portablePath.toLowerCase();
+    const isAlreadyUsingPortable =
+      r.resolvedPath && portablePath && r.resolvedPath.toLowerCase() === portablePath.toLowerCase();
 
     if (portablePath && !isAlreadyUsingPortable) {
       const portableRow = document.createElement("div");
-      portableRow.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;";
+      portableRow.style.cssText =
+        "display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;";
       portableRow.innerHTML =
         `<span style="font-size:11px;color:#107c41;"><i class="bi bi-box-seam"></i> Portable build available</span>` +
         `<code style="font-size:10px;word-break:break-all;">${portablePath}</code>` +
@@ -49,7 +60,12 @@ export async function refreshFfmpegStatus() {
         if (!ffmpegSaveStatus) return;
         setStatusMessage(ffmpegSaveStatus, "Switching to portable build...", "loading");
         try {
-          await typedCall("ModelsService.SetFFmpegPath", SetFFmpegPathRequestSchema, { path: portablePath }, EmptySchema);
+          await typedCall(
+            "ModelsService.SetFFmpegPath",
+            SetFFmpegPathRequestSchema,
+            { path: portablePath },
+            EmptySchema,
+          );
           setStatusMessage(ffmpegSaveStatus, "Switched to portable build.", "success");
           await refreshFfmpegStatus();
         } catch (e: any) {
@@ -71,14 +87,17 @@ function ffmpegDlStartPolling() {
   ffmpegDlStopPolling();
   ffmpegDlTimer = window.setInterval(async () => {
     try {
-      const resp = await typedCall("ModelsService.GetDownloadProgress", null, null, DownloadProgressResultSchema);
-      const dl = resp.downloads.find(d => d.modelId === "ffmpeg-portable");
+      const resp = await typedCall(
+        "ModelsService.GetDownloadProgress",
+        null,
+        null,
+        DownloadProgressResultSchema,
+      );
+      const dl = resp.downloads.find((d) => d.modelId === "ffmpeg-portable");
       if (!dl) return;
       const bytesTotal = Number(dl.bytesTotal);
       const bytesDownloaded = Number(dl.bytesDownloaded);
-      const pct = bytesTotal > 0
-        ? Math.round((bytesDownloaded / bytesTotal) * 100)
-        : 0;
+      const pct = bytesTotal > 0 ? Math.round((bytesDownloaded / bytesTotal) * 100) : 0;
       const ffmpegDlBar = document.getElementById("ffmpeg-dl-progress");
       const ffmpegDlFill = document.getElementById("ffmpeg-dl-progress-fill");
       const ffmpegDlStatus = document.getElementById("ffmpeg-dl-status-msg");
@@ -86,11 +105,16 @@ function ffmpegDlStartPolling() {
       if (ffmpegDlBar) ffmpegDlBar.style.display = "";
       if (dl.status === "extracting") {
         if (ffmpegDlFill) ffmpegDlFill.style.width = "100%";
-        if (ffmpegDlStatus) setStatusMessage(ffmpegDlStatus, "Extracting... please wait", "loading");
+        if (ffmpegDlStatus)
+          setStatusMessage(ffmpegDlStatus, "Extracting... please wait", "loading");
       } else {
         if (ffmpegDlFill) ffmpegDlFill.style.width = pct + "%";
         if (ffmpegDlStatus) {
-          setStatusMessage(ffmpegDlStatus, `Downloading... ${pct}% (${bytesDownloaded} / ${bytesTotal} bytes)`, "loading");
+          setStatusMessage(
+            ffmpegDlStatus,
+            `Downloading... ${pct}% (${bytesDownloaded} / ${bytesTotal} bytes)`,
+            "loading",
+          );
         }
       }
       if (dl.status === "completed") {
@@ -114,7 +138,7 @@ function ffmpegDlStartPolling() {
 export function setupFfmpegListeners(
   ffmpegStatusRowEl: HTMLElement | null,
   ffmpegPathInputEl: HTMLInputElement | null,
-  ffmpegSaveStatusEl: HTMLElement | null
+  ffmpegSaveStatusEl: HTMLElement | null,
 ) {
   ffmpegStatusRow = ffmpegStatusRowEl;
   ffmpegPathInput = ffmpegPathInputEl;
@@ -136,7 +160,12 @@ export function setupFfmpegListeners(
     const value = ffmpegPathInput ? ffmpegPathInput.value.trim() : "";
     setStatusMessage(ffmpegSaveStatus, "Saving...", "loading");
     try {
-      await typedCall("ModelsService.SetFFmpegPath", SetFFmpegPathRequestSchema, { path: value || undefined }, EmptySchema);
+      await typedCall(
+        "ModelsService.SetFFmpegPath",
+        SetFFmpegPathRequestSchema,
+        { path: value || undefined },
+        EmptySchema,
+      );
       setStatusMessage(ffmpegSaveStatus, "FFmpeg path saved.", "success");
       await refreshFfmpegStatus();
     } catch (e: any) {
@@ -155,7 +184,12 @@ export function setupFfmpegListeners(
     setStatusMessage(ffmpegDlStatus, "Starting download...", "loading");
     ffmpegDlBtn?.setAttribute("disabled", "true");
     try {
-      const resp = await typedCall("ModelsService.DownloadFFmpeg", null, null, DownloadStatusUpdateSchema);
+      const resp = await typedCall(
+        "ModelsService.DownloadFFmpeg",
+        null,
+        null,
+        DownloadStatusUpdateSchema,
+      );
       const prog = resp.progress;
       if (prog && prog.status === "downloading" && !resp.complete) {
         setStatusMessage(ffmpegDlStatus, "Download started.", "loading");

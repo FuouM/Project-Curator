@@ -41,8 +41,8 @@ export function renderDroppedFrames(): void {
     card.innerHTML = `
       <img class="gm-frame-img" src="${PH.convertFileSrc(path)}" />
       <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${path}">Frame ${
-      idx + 1
-    }: ${path.split(/[\\/]/).pop()}</span>
+        idx + 1
+      }: ${path.split(/[\\/]/).pop()}</span>
       <div style="display:flex; gap:2px;">
         <button type="button" class="win-button" style="padding:0px 4px; font-size:9px;" onclick="window.GifMaker_moveFrame(${idx}, -1)"><i class="bi bi-arrow-up"></i></button>
         <button type="button" class="win-button" style="padding:0px 4px; font-size:9px;" onclick="window.GifMaker_moveFrame(${idx}, 1)"><i class="bi bi-arrow-down"></i></button>

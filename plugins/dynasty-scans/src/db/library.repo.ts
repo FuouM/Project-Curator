@@ -15,7 +15,7 @@ export async function getFollowedSeries(): Promise<FollowedSeriesRow[]> {
     `SELECT permalink, name, cover, last_checked_at, latest_chapter_permalink,
             latest_chapter_title, created_at
      FROM followed_series
-     ORDER BY name COLLATE NOCASE`
+     ORDER BY name COLLATE NOCASE`,
   );
 }
 
@@ -24,7 +24,10 @@ export async function getFollowedSeriesCount(): Promise<number> {
   return rows[0]?.count ?? 0;
 }
 
-export async function getFollowedSeriesPage(page = 1, pageSize = 10): Promise<FollowedSeriesPageResult> {
+export async function getFollowedSeriesPage(
+  page = 1,
+  pageSize = 10,
+): Promise<FollowedSeriesPageResult> {
   const totalCount = await getFollowedSeriesCount();
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const currentPage = Math.min(Math.max(1, page), totalPages);
@@ -34,7 +37,7 @@ export async function getFollowedSeriesPage(page = 1, pageSize = 10): Promise<Fo
             latest_chapter_title, created_at
      FROM followed_series
      ORDER BY name COLLATE NOCASE LIMIT ? OFFSET ?`,
-    [pageSize, offset]
+    [pageSize, offset],
   );
   return { rows, totalPages, currentPage, totalCount };
 }
@@ -44,7 +47,7 @@ export async function getFollowedSeriesRow(permalink: string): Promise<FollowedS
     `SELECT permalink, name, cover, last_checked_at, latest_chapter_permalink,
             latest_chapter_title, created_at
      FROM followed_series WHERE permalink = ?`,
-    [permalink]
+    [permalink],
   );
   return rows.length > 0 ? rows[0] : null;
 }
@@ -74,7 +77,7 @@ export async function followSeries(row: {
       row.latestChapterPermalink,
       row.latestChapterTitle,
       Date.now(),
-    ]
+    ],
   );
 }
 
@@ -86,16 +89,21 @@ export async function unfollowSeries(permalink: string): Promise<void> {
  * Updates only the stored cover path of a followed series. Keeps the library
  * cover in sync after a cover cache clear re-downloads a fresh thumbnail.
  */
-export async function updateFollowedSeriesCover(permalink: string, cover: string | null): Promise<void> {
+export async function updateFollowedSeriesCover(
+  permalink: string,
+  cover: string | null,
+): Promise<void> {
   await execute(`UPDATE followed_series SET cover = ? WHERE permalink = ?`, [cover, permalink]);
 }
 
-export async function getReadingProgress(chapterPermalink: string): Promise<ReadingProgressRow | null> {
+export async function getReadingProgress(
+  chapterPermalink: string,
+): Promise<ReadingProgressRow | null> {
   const rows = await query<ReadingProgressRow>(
     `SELECT chapter_permalink, series_permalink, series_name, chapter_title,
             page_index, page_total, completed, updated_at
      FROM reading_progress WHERE chapter_permalink = ?`,
-    [chapterPermalink]
+    [chapterPermalink],
   );
   return rows.length > 0 ? rows[0] : null;
 }
@@ -130,7 +138,7 @@ export async function setReadingProgress(p: {
       p.pageTotal,
       p.completed ? 1 : 0,
       Date.now(),
-    ]
+    ],
   );
 }
 
@@ -139,7 +147,7 @@ export async function getProgressForSeries(seriesPermalink: string): Promise<Ser
   return query<SeriesProgressRow>(
     `SELECT chapter_permalink, page_index, page_total, completed
      FROM reading_progress WHERE series_permalink = ?`,
-    [seriesPermalink]
+    [seriesPermalink],
   );
 }
 
@@ -150,21 +158,21 @@ export async function addHistory(p: {
   chapterTitle: string;
 }): Promise<void> {
   const lastRows = await query<HistoryRow>(
-    `SELECT id, chapter_permalink FROM reading_history ORDER BY id DESC LIMIT 1`
+    `SELECT id, chapter_permalink FROM reading_history ORDER BY id DESC LIMIT 1`,
   );
   if (lastRows.length > 0 && lastRows[0].chapter_permalink === p.chapterPermalink) {
     await execute(
       `UPDATE reading_history
        SET series_permalink = ?, series_name = ?, chapter_title = ?, read_at = ?
        WHERE id = ?`,
-      [p.seriesPermalink, p.seriesName, p.chapterTitle, Date.now(), lastRows[0].id]
+      [p.seriesPermalink, p.seriesName, p.chapterTitle, Date.now(), lastRows[0].id],
     );
   } else {
     await execute(
       `INSERT INTO reading_history (chapter_permalink, series_permalink, series_name,
          chapter_title, read_at)
        VALUES (?, ?, ?, ?, ?)`,
-      [p.chapterPermalink, p.seriesPermalink, p.seriesName, p.chapterTitle, Date.now()]
+      [p.chapterPermalink, p.seriesPermalink, p.seriesName, p.chapterTitle, Date.now()],
     );
   }
 }
@@ -182,7 +190,7 @@ export async function getHistory(limit = 100): Promise<HistoryRow[]> {
     `SELECT id, chapter_permalink, series_permalink, series_name, chapter_title, read_at
      FROM reading_history
      ORDER BY read_at DESC, id DESC LIMIT ?`,
-    [limit]
+    [limit],
   );
 }
 
@@ -200,7 +208,7 @@ export async function getHistoryPage(page = 1, pageSize = 15): Promise<HistoryPa
     `SELECT id, chapter_permalink, series_permalink, series_name, chapter_title, read_at
      FROM reading_history
      ORDER BY read_at DESC, id DESC LIMIT ? OFFSET ?`,
-    [pageSize, offset]
+    [pageSize, offset],
   );
   return { rows, totalPages, currentPage, totalCount };
 }
@@ -211,7 +219,7 @@ export async function getHistoryPermalinks(permalinks: string[]): Promise<Set<st
   const placeholders = permalinks.map(() => "?").join(",");
   const rows = await query<{ chapter_permalink: string }>(
     `SELECT DISTINCT chapter_permalink FROM reading_history WHERE chapter_permalink IN (${placeholders})`,
-    permalinks
+    permalinks,
   );
   return new Set(rows.map((r) => r.chapter_permalink));
 }
@@ -220,7 +228,7 @@ export async function getBookmarks(): Promise<BookmarkRow[]> {
   return query<BookmarkRow>(
     `SELECT chapter_permalink, series_permalink, series_name, chapter_title,
             page_index, created_at
-     FROM bookmarks ORDER BY created_at DESC`
+     FROM bookmarks ORDER BY created_at DESC`,
   );
 }
 
@@ -238,7 +246,7 @@ export async function getBookmarksPage(page = 1, pageSize = 15): Promise<Bookmar
     `SELECT chapter_permalink, series_permalink, series_name, chapter_title,
             page_index, created_at
      FROM bookmarks ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-    [pageSize, offset]
+    [pageSize, offset],
   );
   return { rows, totalPages, currentPage, totalCount };
 }
@@ -248,7 +256,7 @@ export async function getBookmark(chapterPermalink: string): Promise<BookmarkRow
     `SELECT chapter_permalink, series_permalink, series_name, chapter_title,
             page_index, created_at
      FROM bookmarks WHERE chapter_permalink = ?`,
-    [chapterPermalink]
+    [chapterPermalink],
   );
   return rows.length > 0 ? rows[0] : null;
 }
@@ -259,7 +267,7 @@ export async function getBookmarkPermalinks(permalinks: string[]): Promise<Set<s
   const placeholders = permalinks.map(() => "?").join(",");
   const rows = await query<{ chapter_permalink: string }>(
     `SELECT chapter_permalink FROM bookmarks WHERE chapter_permalink IN (${placeholders})`,
-    permalinks
+    permalinks,
   );
   return new Set(rows.map((r) => r.chapter_permalink));
 }
@@ -278,7 +286,7 @@ export async function addBookmark(p: {
      ON CONFLICT(chapter_permalink) DO UPDATE SET
        page_index = excluded.page_index,
        created_at = excluded.created_at`,
-    [p.chapterPermalink, p.seriesPermalink, p.seriesName, p.chapterTitle, p.pageIndex, Date.now()]
+    [p.chapterPermalink, p.seriesPermalink, p.seriesName, p.chapterTitle, p.pageIndex, Date.now()],
   );
 }
 

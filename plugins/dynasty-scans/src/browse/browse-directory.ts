@@ -12,7 +12,7 @@ export async function renderDirectory(
   host: HTMLElement,
   kind: "series" | "tags",
   page: number,
-  reload: DirectoryReload
+  reload: DirectoryReload,
 ): Promise<void> {
   const url = kind === "series" ? `/series.json?page=${page}` : `/tags.json?page=${page}`;
   const key = `${kind === "series" ? "dir:series" : "dir:tags"}:${page}`;
@@ -39,7 +39,8 @@ export async function renderDirectory(
     for (const entry of group.entries) {
       const item = document.createElement("div");
       item.className = "ds-item";
-      item.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:3px 6px;";
+      item.style.cssText =
+        "display:flex;align-items:center;justify-content:space-between;padding:3px 6px;";
       const title = document.createElement("div");
       title.className = "ds-item-title";
       title.style.cssText = "flex:1;min-width:0;cursor:pointer;";
@@ -81,6 +82,6 @@ export async function renderDirectory(
   }
 
   host.appendChild(
-    renderPager(dir.total_pages, dir.current_page, (p) => void reload(host, kind, p))
+    renderPager(dir.total_pages, dir.current_page, (p) => void reload(host, kind, p)),
   );
 }

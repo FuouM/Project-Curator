@@ -15,7 +15,7 @@ const PH = window.PluginHost;
  */
 export async function checkFileExists(path: string): Promise<boolean> {
   const resp = await PH.callService("PathExists", { path });
-  return !!(resp?.PathExistsResult?.exists);
+  return !!resp?.PathExistsResult?.exists;
 }
 
 /**
@@ -78,7 +78,7 @@ export function getPluginDirs(): { pluginDir: string; workspaceRoot: string } {
 export async function getUniqueOutputPath(
   sourcePath: string,
   outputDir: string,
-  targetExt: string
+  targetExt: string,
 ): Promise<string> {
   const base = sourcePath.split(/[/\\]/).pop()!;
   const dotIdx = base.lastIndexOf(".");
@@ -90,8 +90,7 @@ export async function getUniqueOutputPath(
 
   let n = 0;
   while (true) {
-    const name =
-      n === 0 ? `${stem}.${targetExt}` : `${stem}_${n}.${targetExt}`;
+    const name = n === 0 ? `${stem}.${targetExt}` : `${stem}_${n}.${targetExt}`;
     const candidate = `${cleanDir}${sep}${name}`;
 
     if (candidate.toLowerCase() === sourcePath.toLowerCase()) {

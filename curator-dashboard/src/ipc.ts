@@ -1,8 +1,19 @@
 import { invoke } from "@tauri-apps/api/core";
-import { create, fromBinary, toBinary, type Message, type MessageInitShape } from "@bufbuild/protobuf";
+import {
+  create,
+  fromBinary,
+  toBinary,
+  type Message,
+  type MessageInitShape,
+} from "@bufbuild/protobuf";
 import type { GenMessage } from "@bufbuild/protobuf/codegenv2";
 import { logJS } from "./utils";
-import { RescanSafetyResultSchema, SafetyRescanProgressSchema, RescanSafetyResult, SafetyRescanProgress } from "./gen/import_pb";
+import {
+  RescanSafetyResultSchema,
+  SafetyRescanProgressSchema,
+  RescanSafetyResult,
+  SafetyRescanProgress,
+} from "./gen/import_pb";
 
 /**
  * Invoke a typed protobuf gRPC method over the shared Named Pipe bridge.

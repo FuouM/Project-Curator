@@ -1,11 +1,7 @@
 import { SITE_ROOT } from "../state";
 import { cachedJson, httpGetText } from "./client";
 import { FEED_TTL_MS } from "./feed";
-import type {
-  Directory,
-  DirectoryGroup,
-  SuggestResult,
-} from "../types/api";
+import type { Directory, DirectoryGroup, SuggestResult } from "../types/api";
 
 /** Series / tag directories, cached for one hour. */
 export function fetchDirectory(urlPath: string, key: string): Promise<Directory> {

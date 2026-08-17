@@ -38,7 +38,11 @@ export function clearMediaFilter(target: HTMLElement): void {
   target.querySelectorAll("[data-media-filter-region]").forEach((el) => el.remove());
 }
 
-function applyRegionFilter(target: HTMLElement, effect: MediaFilterEffect, region: FilterRegion): void {
+function applyRegionFilter(
+  target: HTMLElement,
+  effect: MediaFilterEffect,
+  region: FilterRegion,
+): void {
   const rect = target.getBoundingClientRect();
   const width = region.width || rect.width;
   const height = region.height || rect.height;

@@ -18,7 +18,12 @@ export function defaultBannerText(): string {
     : "aria2 engine not found. Download & install it to enable multi-connection downloads.";
 }
 
-export function setToolBanner(available: boolean, version: string | null, message: string, bannerEl?: HTMLElement): void {
+export function setToolBanner(
+  available: boolean,
+  version: string | null,
+  message: string,
+  bannerEl?: HTMLElement,
+): void {
   const banner = bannerEl ?? el("ad-banner");
   const text = banner?.querySelector<HTMLElement>("#ad-banner-text");
   if (!banner || !text) return;

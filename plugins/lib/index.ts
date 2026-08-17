@@ -14,7 +14,13 @@ export type { LogKind, Logger } from "./log";
 
 export { formatBytes } from "./format";
 
-export { checkFileExists, getUniqueOutputPath, pickDirectory, pickFile, getPluginDirs } from "./ipc-utils";
+export {
+  checkFileExists,
+  getUniqueOutputPath,
+  pickDirectory,
+  pickFile,
+  getPluginDirs,
+} from "./ipc-utils";
 
 export { createPluginDb } from "./db";
 export type { PluginDb, Row } from "./db";

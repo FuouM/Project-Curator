@@ -16,9 +16,11 @@ export interface TagPillData {
 export function renderTagPill(t: TagPillData, compact = true): HTMLElement {
   const pill = el("span", {
     class: tagClass(t.type, t.name),
-    style: tagStyle(t.type, t.name) + (compact
-      ? "font-size:10px;padding:1px 6px;border-radius:2px;"
-      : "font-size:10px;padding:2px 6px;border-radius:2px;"),
+    style:
+      tagStyle(t.type, t.name) +
+      (compact
+        ? "font-size:10px;padding:1px 6px;border-radius:2px;"
+        : "font-size:10px;padding:2px 6px;border-radius:2px;"),
     title: `${t.type}: ${t.name} (click to open)`,
   });
   pill.textContent = t.name;
@@ -44,7 +46,12 @@ export function renderTagPill(t: TagPillData, compact = true): HTMLElement {
       url = t.permalink
         ? `https://dynasty-scans.com/scanlators/${t.permalink}`
         : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`;
-    } else if (type === "doujin" || type === "doujinshi" || type === "copyright" || type === "parody") {
+    } else if (
+      type === "doujin" ||
+      type === "doujinshi" ||
+      type === "copyright" ||
+      type === "parody"
+    ) {
       url = t.permalink
         ? `https://dynasty-scans.com/doujins/${t.permalink}`
         : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`;

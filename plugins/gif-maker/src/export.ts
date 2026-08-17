@@ -441,14 +441,16 @@ export async function handleSaveFinal(): Promise<void> {
   const filterExts = extMap[ext] || [ext];
   const filterName = ext.toUpperCase() + " File";
 
-  const finalDest = await window.__TAURI__.core.invoke("save_file_dialog", {
-    suggestedName,
-    filterName,
-    extensions: filterExts,
-  }).catch((err: unknown) => {
-    logConsole("Save dialog error: " + err, "error");
-    return null;
-  });
+  const finalDest = await window.__TAURI__.core
+    .invoke("save_file_dialog", {
+      suggestedName,
+      filterName,
+      extensions: filterExts,
+    })
+    .catch((err: unknown) => {
+      logConsole("Save dialog error: " + err, "error");
+      return null;
+    });
 
   if (!finalDest) return;
 
@@ -478,7 +480,11 @@ export async function handleSaveFinal(): Promise<void> {
   }
 }
 
-export function pollCompilationProgress(jobId: string, description: string, filePath: string): void {
+export function pollCompilationProgress(
+  jobId: string,
+  description: string,
+  filePath: string,
+): void {
   const bar = el("gm-progress-bar");
   const text = el("gm-progress-text");
   const startTime = Date.now();

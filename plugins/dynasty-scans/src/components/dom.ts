@@ -39,7 +39,10 @@ export function icon(className: string): HTMLElement {
 }
 
 /** WinForms-style section container: `.group-box` fieldset with a title header. */
-export function group(titleHtml: string, ...children: (Node | string | null | undefined)[]): HTMLElement {
+export function group(
+  titleHtml: string,
+  ...children: (Node | string | null | undefined)[]
+): HTMLElement {
   const box = el("div", { class: "group-box" });
   const head = el("div", { class: "group-box-title" });
   head.innerHTML = titleHtml;

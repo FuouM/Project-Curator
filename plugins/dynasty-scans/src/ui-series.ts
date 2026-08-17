@@ -4,14 +4,7 @@
  * "chapter → reader" route carries the full ordered chapter list for prev/next.
  */
 
-import {
-  Route,
-  ChapterRef,
-  decodeEntities,
-  navigate,
-  setActions,
-  setBanner,
-} from "./state";
+import { Route, ChapterRef, decodeEntities, navigate, setActions, setBanner } from "./state";
 import {
   ChapterCacheCount,
   SeriesProgressRow,
@@ -174,7 +167,8 @@ function renderSanitizedDescription(container: HTMLElement, htmlOrText: string):
         if (href) {
           const a = document.createElement("a");
           a.className = "ds-external-link";
-          a.style.cssText = "color:var(--sys-primary,#0078d4);text-decoration:underline;cursor:pointer;word-break:break-all;";
+          a.style.cssText =
+            "color:var(--sys-primary,#0078d4);text-decoration:underline;cursor:pointer;word-break:break-all;";
           // Show both the text and the full link
           if (text && text !== href) {
             a.textContent = `${text} — ${href}`;
@@ -223,7 +217,7 @@ function buildBody(
   chapters: ChapterMeta[],
   progress: Map<string, SeriesProgressRow>,
   cacheCounts: Map<string, number>,
-  readHistorySet: Set<string>
+  readHistorySet: Set<string>,
 ): void {
   const head = document.createElement("div");
   head.className = "ds-series-head";
@@ -253,7 +247,8 @@ function buildBody(
     linkRow.style.cssText = "margin:4px 0;";
     const a = document.createElement("a");
     a.className = "ds-external-link";
-    a.style.cssText = "color:var(--sys-primary,#0078d4);text-decoration:underline;cursor:pointer;word-break:break-all;";
+    a.style.cssText =
+      "color:var(--sys-primary,#0078d4);text-decoration:underline;cursor:pointer;word-break:break-all;";
     a.textContent = `Official / Source Link — ${series.link}`;
     a.title = series.link;
     a.addEventListener("click", (ev) => {
@@ -282,7 +277,12 @@ function buildBody(
       authorTags.push(t);
     } else if (type === "scanlator" || type === "group") {
       groupMap.set(t.permalink || t.name, t);
-    } else if (type === "doujin" || type === "doujinshi" || type === "copyright" || type === "parody") {
+    } else if (
+      type === "doujin" ||
+      type === "doujinshi" ||
+      type === "copyright" ||
+      type === "parody"
+    ) {
       doujinTags.push(t);
     } else if (type === "pairing") {
       pairingTags.push(t);
@@ -364,7 +364,8 @@ function buildBody(
 
   const chapterHeader = document.createElement("div");
   chapterHeader.className = "ds-row";
-  chapterHeader.style.cssText = "justify-content:space-between;align-items:center;padding:4px 2px;border-bottom:1px solid var(--sys-border-light, #ddd);";
+  chapterHeader.style.cssText =
+    "justify-content:space-between;align-items:center;padding:4px 2px;border-bottom:1px solid var(--sys-border-light, #ddd);";
 
   const chapterCount = document.createElement("div");
   chapterCount.style.cssText = "font-size:12px;font-weight:600;";
@@ -374,12 +375,16 @@ function buildBody(
   sortBtn.type = "button";
   sortBtn.className = "win-button";
   sortBtn.style.cssText = "font-size:11px;padding:2px 8px;";
-  
+
   const updateSortBtn = () => {
-    sortBtn.innerHTML = sortOrder === "asc"
-      ? '<i class="bi bi-sort-numeric-down"></i> Sort: Ascending'
-      : '<i class="bi bi-sort-numeric-down-alt"></i> Sort: Descending';
-    sortBtn.title = sortOrder === "asc" ? "Oldest first (click to sort newest first)" : "Newest first (click to sort oldest first)";
+    sortBtn.innerHTML =
+      sortOrder === "asc"
+        ? '<i class="bi bi-sort-numeric-down"></i> Sort: Ascending'
+        : '<i class="bi bi-sort-numeric-down-alt"></i> Sort: Descending';
+    sortBtn.title =
+      sortOrder === "asc"
+        ? "Oldest first (click to sort newest first)"
+        : "Newest first (click to sort oldest first)";
   };
   updateSortBtn();
 
@@ -411,8 +416,8 @@ function buildBody(
           chapters,
           series.permalink,
           series.name,
-          readHistorySet.has(ch.permalink)
-        )
+          readHistorySet.has(ch.permalink),
+        ),
       );
     }
   };
@@ -434,7 +439,7 @@ function chapterRow(
   chapterList: ChapterMeta[],
   seriesPermalink: string,
   seriesName: string,
-  isReadInHistory: boolean
+  isReadInHistory: boolean,
 ): HTMLElement {
   const row = document.createElement("div");
   const isCompleted = prog?.completed === 1;
@@ -487,7 +492,7 @@ function buildActions(
   series: Series,
   coverPath: string | null,
   followed: boolean,
-  chapters: ChapterMeta[]
+  chapters: ChapterMeta[],
 ): void {
   const seriesPermalink = series.permalink;
   const seriesName = series.name;

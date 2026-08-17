@@ -1,4 +1,4 @@
-import { html, SafeHtml, ComponentMeta } from './_shared';
+import { html, SafeHtml, ComponentMeta } from "./_shared";
 
 export interface StatCardOptions {
   id?: string;
@@ -31,7 +31,7 @@ export const meta: ComponentMeta = {
           ${renderStatCard("Custom Concepts", "6", { style: "color: var(--sys-border-focus);" })}
           ${renderStatCard("Queue Size", "0")}
         </div>
-      `
-    }
-  ]
+      `,
+    },
+  ],
 };

@@ -69,16 +69,16 @@ function renderTab(): HTMLElement {
     '  <div id="ds-nav-tabs" style="display:flex;align-items:center;gap:4px;">' +
     '    <button type="button" class="win-button ds-nav-tab" id="ds-tab-browse">' +
     '      <i class="bi bi-compass"></i> Browse &amp; Recent' +
-    '    </button>' +
+    "    </button>" +
     '    <button type="button" class="win-button ds-nav-tab" id="ds-tab-library">' +
     '      <i class="bi bi-collection"></i> Library' +
-    '    </button>' +
+    "    </button>" +
     '    <div id="ds-session-tab-wrap" style="display:none;margin-left:4px;"></div>' +
-    '  </div>' +
+    "  </div>" +
     '  <span id="ds-title" style="margin-left:8px;"></span>' +
     '  <div id="ds-banner"></div>' +
     '  <div id="ds-actions"></div>' +
-    '</div>' +
+    "</div>" +
     '<div id="ds-view"></div>';
 
   const libBtn = container.querySelector<HTMLButtonElement>("#ds-tab-library");

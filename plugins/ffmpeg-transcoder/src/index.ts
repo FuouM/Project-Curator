@@ -3,13 +3,7 @@
  */
 
 import { TAB_ID, VIDEO_RE } from "./state";
-import {
-  addToQueue,
-  closeInfoModal,
-  log,
-  navigateToTab,
-  renderTab,
-} from "./ui";
+import { addToQueue, closeInfoModal, log, navigateToTab, renderTab } from "./ui";
 
 const PH = window.PluginHost;
 if (!PH) {
@@ -29,8 +23,8 @@ if (!PH) {
       '  <span style="font-size:11px;color:#555;flex:1;">Queue this video for transcoding.</span>' +
       '  <button type="button" class="win-button" id="transcoder-send-asset">' +
       '    <i class="bi bi-send"></i> Send to Transcoder' +
-      '  </button>' +
-      '</div>';
+      "  </button>" +
+      "</div>";
 
     const sendBtn = box.querySelector("#transcoder-send-asset");
     sendBtn?.addEventListener("click", () => {
@@ -42,13 +36,18 @@ if (!PH) {
     return box;
   });
 
-  PH.registerToolbarButton("ffmpeg-transcoder-selection", "Transcode Selected", "bi bi-collection-play", (selection) => {
-    const paths = (selection || []).map((a) => a.path).filter(Boolean);
-    if (paths.length === 0) return;
-    paths.forEach(addToQueue);
-    closeInfoModal();
-    navigateToTab();
-  });
+  PH.registerToolbarButton(
+    "ffmpeg-transcoder-selection",
+    "Transcode Selected",
+    "bi bi-collection-play",
+    (selection) => {
+      const paths = (selection || []).map((a) => a.path).filter(Boolean);
+      if (paths.length === 0) return;
+      paths.forEach(addToQueue);
+      closeInfoModal();
+      navigateToTab();
+    },
+  );
 
   PH.registerContextMenuItem("ffmpeg-transcoder-ctx", "Send to Transcoder", (asset) => {
     if (!asset || !asset.path) return;
@@ -57,5 +56,7 @@ if (!PH) {
     navigateToTab();
   });
 
-  console.log("ffmpeg-transcoder: registered tab, renderer, toolbar button, and context menu item.");
+  console.log(
+    "ffmpeg-transcoder: registered tab, renderer, toolbar button, and context menu item.",
+  );
 }

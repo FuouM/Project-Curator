@@ -74,19 +74,17 @@ export async function ensureHistorySchema(): Promise<void> {
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
   await dbExecute(
-    `CREATE INDEX IF NOT EXISTS idx_download_history_url ON download_history(normalized_url)`
+    `CREATE INDEX IF NOT EXISTS idx_download_history_url ON download_history(normalized_url)`,
   );
   await dbExecute(
-    `CREATE INDEX IF NOT EXISTS idx_download_history_completed ON download_history(completed_at DESC)`
+    `CREATE INDEX IF NOT EXISTS idx_download_history_completed ON download_history(completed_at DESC)`,
   );
   await dbExecute(
-    `CREATE UNIQUE INDEX IF NOT EXISTS idx_download_history_url_path ON download_history(normalized_url, file_path)`
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_download_history_url_path ON download_history(normalized_url, file_path)`,
   );
 }
 
-export async function recordDownload(
-  rec: Omit<HistoryRecord, "id" | "created_at">
-): Promise<void> {
+export async function recordDownload(rec: Omit<HistoryRecord, "id" | "created_at">): Promise<void> {
   await dbExecute(
     `INSERT OR IGNORE INTO download_history
       (url, normalized_url, filename, file_path, file_size, status, error_message, completed_at, package_name)
@@ -101,17 +99,14 @@ export async function recordDownload(
       rec.error_message,
       rec.completed_at || Math.floor(Date.now() / 1000),
       rec.package_name,
-    ]
+    ],
   );
 }
 
-export async function queryHistory(
-  limit = 200,
-  offset = 0
-): Promise<HistoryRecord[]> {
+export async function queryHistory(limit = 200, offset = 0): Promise<HistoryRecord[]> {
   const res = await dbQuery(
     `SELECT * FROM download_history ORDER BY completed_at DESC LIMIT ? OFFSET ?`,
-    [limit, offset]
+    [limit, offset],
   );
   return (res.rows as unknown as HistoryRecord[]) ?? [];
 }
@@ -121,7 +116,7 @@ export async function searchHistory(term: string, limit = 200): Promise<HistoryR
     `SELECT * FROM download_history
      WHERE filename LIKE ? OR status LIKE ? OR url LIKE ?
      ORDER BY completed_at DESC LIMIT ?`,
-    [`%${term}%`, `%${term}%`, `%${term}%`, limit]
+    [`%${term}%`, `%${term}%`, `%${term}%`, limit],
   );
   return (res.rows as unknown as HistoryRecord[]) ?? [];
 }
@@ -136,7 +131,7 @@ export async function findDuplicateUrls(urls: string[]): Promise<string[]> {
   const placeholders = normalized.map(() => "?").join(",");
   const res = await dbQuery(
     `SELECT normalized_url FROM download_history WHERE normalized_url IN (${placeholders})`,
-    normalized
+    normalized,
   );
   const seen = new Set(res.rows.map((r) => String(r.normalized_url)));
   return normalized.filter((n) => seen.has(n));

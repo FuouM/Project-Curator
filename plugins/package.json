@@ -16,10 +16,12 @@
     "watch:gif-maker": "node watch.js --plugin gif-maker",
     "watch:minipaint": "node watch.js --plugin minipaint",
     "watch:aria2-downloader": "node watch.js --plugin aria2-downloader",
-    "watch:dynasty-scans": "node watch.js --plugin dynasty-scans"
+    "watch:dynasty-scans": "node watch.js --plugin dynasty-scans",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx}\""
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
+    "prettier": "^3.9.6",
     "typescript": "^7.0.2"
   }
 }

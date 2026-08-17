@@ -5,7 +5,15 @@ import { renderImageInfo } from "./components/image-info-modal";
 import { logJS } from "./utils";
 import { getImageClickAction } from "./state";
 import { typedCall } from "./ipc";
-import { buildVerticalSpans, estimateLabelWidth, fitLabelInBox, getOcrTextSettings, isVerticalBox, placeLabelAvoidingOverlap, type PlacedLabel } from "./ocr-text";
+import {
+  buildVerticalSpans,
+  estimateLabelWidth,
+  fitLabelInBox,
+  getOcrTextSettings,
+  isVerticalBox,
+  placeLabelAvoidingOverlap,
+  type PlacedLabel,
+} from "./ocr-text";
 import { showErrorAlert } from "./alert";
 import {
   CharacterDetectionsResultSchema,
@@ -23,10 +31,7 @@ import type {
 } from "./gen/common_pb";
 import type { CharacterDetection, CharacterIdentity, OcrResult } from "./types";
 import { imageDetailsFromProto } from "./proto-adapters";
-import {
-  GetImageRequestSchema,
-  ImageResultSchema,
-} from "./gen/gallery_pb";
+import { GetImageRequestSchema, ImageResultSchema } from "./gen/gallery_pb";
 
 // --- Proto → legacy converters (these modules consume legacy snake_case shapes) ---
 
@@ -78,8 +83,16 @@ let ocrVisible = false;
 let infoPanelVisible = false;
 
 const IDENTITY_COLORS = [
-  "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6",
-  "#1abc9c", "#e67e22", "#34495e", "#e91e63", "#00bcd4",
+  "#e74c3c",
+  "#3498db",
+  "#2ecc71",
+  "#f39c12",
+  "#9b59b6",
+  "#1abc9c",
+  "#e67e22",
+  "#34495e",
+  "#e91e63",
+  "#00bcd4",
 ];
 
 function isVideoPath(p: string): boolean {
@@ -133,8 +146,16 @@ export function closeImageViewer() {
   const modal = document.getElementById("image-viewer-modal");
   const img = document.getElementById("image-viewer-img") as HTMLImageElement | null;
   const video = document.getElementById("image-viewer-video") as HTMLVideoElement | null;
-  if (img) { img.src = ""; img.style.display = ""; }
-  if (video) { video.pause(); video.removeAttribute("src"); video.load(); video.style.display = "none"; }
+  if (img) {
+    img.src = "";
+    img.style.display = "";
+  }
+  if (video) {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    video.style.display = "none";
+  }
   if (modal) modal.classList.remove("active");
   currentViewerPath = null;
   currentViewerImageId = null;
@@ -199,7 +220,12 @@ async function toggleInfoPanel() {
   if (!body) return;
 
   try {
-    const resp = await typedCall("GalleryService.GetImage", GetImageRequestSchema, { imageId: BigInt(currentViewerImageId) }, ImageResultSchema);
+    const resp = await typedCall(
+      "GalleryService.GetImage",
+      GetImageRequestSchema,
+      { imageId: BigInt(currentViewerImageId) },
+      ImageResultSchema,
+    );
     if (!resp.image) return;
     const details = imageDetailsFromProto(resp.image);
     renderImageInfo(details, body);
@@ -234,7 +260,12 @@ async function toggleOcr() {
 
   try {
     // 1. Get existing OCR detections
-    let resp = await typedCall("OcrService.GetOcrDetections", OcrImageIdRequestSchema, { imageId: BigInt(currentViewerImageId) }, OcrDetectionsResultSchema);
+    let resp = await typedCall(
+      "OcrService.GetOcrDetections",
+      OcrImageIdRequestSchema,
+      { imageId: BigInt(currentViewerImageId) },
+      OcrDetectionsResultSchema,
+    );
     let detections = resp.detections.map(ocrResultFromProto);
     let bubbleBoxes = resp.bubbleBoxes;
 
@@ -242,7 +273,12 @@ async function toggleOcr() {
     if (detections.length === 0) {
       const waitBtn = document.getElementById("image-viewer-toggle-ocr");
       if (waitBtn) waitBtn.textContent = "OCR Processing...";
-      resp = await typedCall("OcrService.RunOcr", OcrImageIdRequestSchema, { imageId: BigInt(currentViewerImageId) }, OcrDetectionsResultSchema);
+      resp = await typedCall(
+        "OcrService.RunOcr",
+        OcrImageIdRequestSchema,
+        { imageId: BigInt(currentViewerImageId) },
+        OcrDetectionsResultSchema,
+      );
       if (waitBtn) waitBtn.innerHTML = '<i class="bi bi-fonts"></i> OCR Text';
       detections = resp.detections.map(ocrResultFromProto);
       bubbleBoxes = resp.bubbleBoxes;
@@ -270,13 +306,20 @@ async function toggleOcr() {
     // Draw top-to-bottom so overlap resolution pushes text into unclaimed space
     const sortedDetections = [...detections].sort(
       (a: any, b: any) =>
-        (Math.min(a.y0, a.y1, a.y2, a.y3) - Math.min(b.y0, b.y1, b.y2, b.y3)) ||
-        (Math.min(a.x0, a.x1, a.x2, a.x3) - Math.min(b.x0, b.x1, b.x2, b.x3)),
+        Math.min(a.y0, a.y1, a.y2, a.y3) - Math.min(b.y0, b.y1, b.y2, b.y3) ||
+        Math.min(a.x0, a.x1, a.x2, a.x3) - Math.min(b.x0, b.x1, b.x2, b.x3),
     );
 
     // Collect per-detection polygon geometry so all boxes can be drawn first
     // and all text labels afterwards (keeping text on top of the boxes).
-    const boxGeom: { det: any; points: number[][]; minX: number; minY: number; maxX: number; maxY: number }[] = [];
+    const boxGeom: {
+      det: any;
+      points: number[][];
+      minX: number;
+      minY: number;
+      maxX: number;
+      maxY: number;
+    }[] = [];
     for (const det of sortedDetections) {
       const points = [
         [det.x0 * scaleX, det.y0 * scaleY],
@@ -297,7 +340,7 @@ async function toggleOcr() {
     // Pass 1: draw polygon boxes
     for (const { det, points } of boxGeom) {
       const polyPath = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-      const ptsAttr = points.map(pt => `${pt[0]},${pt[1]}`).join(" ");
+      const ptsAttr = points.map((pt) => `${pt[0]},${pt[1]}`).join(" ");
       polyPath.setAttribute("points", ptsAttr);
       if (det.is_from_bubble) {
         polyPath.setAttribute("fill", "rgba(155, 89, 182, 0.15)");
@@ -360,7 +403,7 @@ async function toggleOcr() {
         const chars = Array.from(det.text as string);
         const count = Math.max(chars.length, 1);
         const labelW = chars.length
-          ? Math.max(...chars.map(ch => estimateLabelWidth(ch as string, fs)))
+          ? Math.max(...chars.map((ch) => estimateLabelWidth(ch as string, fs)))
           : fs * 0.6;
         const labelH = fs * count;
         pos = placeLabelAvoidingOverlap(minX + 4, minY + 4, labelW, labelH, placedLabels, 3, {
@@ -416,7 +459,6 @@ async function toggleOcr() {
     ocrVisible = true;
     ocrOverlay.style.display = "block";
     updateOcrButton(true);
-
   } catch (e: any) {
     console.error("Failed to load OCR detections:", e);
   }
@@ -438,12 +480,22 @@ async function toggleDetections() {
 
   // Load detections
   try {
-    const resp = await typedCall("CharactersService.GetCharacterDetections", CharacterImageIdRequestSchema, { imageId: BigInt(currentViewerImageId) }, CharacterDetectionsResultSchema);
+    const resp = await typedCall(
+      "CharactersService.GetCharacterDetections",
+      CharacterImageIdRequestSchema,
+      { imageId: BigInt(currentViewerImageId) },
+      CharacterDetectionsResultSchema,
+    );
     const detections = resp.detections.map(storedDetectionFromProto);
     if (detections.length === 0) return;
 
     // Load identities for labels
-    const idResp = await typedCall("CharactersService.ListCharacterIdentities", null, null, CharacterIdentitiesListSchema);
+    const idResp = await typedCall(
+      "CharactersService.ListCharacterIdentities",
+      null,
+      null,
+      CharacterIdentitiesListSchema,
+    );
     const identities = idResp.identities.map(characterIdentityFromProto);
 
     // Wait for image to get natural dimensions
@@ -463,12 +515,14 @@ async function toggleDetections() {
     overlay.setAttribute("viewBox", `0 0 ${img.clientWidth} ${img.clientHeight}`);
 
     for (const det of detections) {
-      const color = det.identity_id !== null
-        ? IDENTITY_COLORS[(det.identity_id - 1) % IDENTITY_COLORS.length]
-        : "#888";
-      const identityName = det.identity_id !== null
-        ? (identities.find((i: any) => i.id === det.identity_id)?.name || `#${det.identity_id}`)
-        : "Unknown";
+      const color =
+        det.identity_id !== null
+          ? IDENTITY_COLORS[(det.identity_id - 1) % IDENTITY_COLORS.length]
+          : "#888";
+      const identityName =
+        det.identity_id !== null
+          ? identities.find((i: any) => i.id === det.identity_id)?.name || `#${det.identity_id}`
+          : "Unknown";
 
       const x = det.x0 * scaleX;
       const y = det.y0 * scaleY;
@@ -514,7 +568,13 @@ export function setupImageViewer() {
 
   document.getElementById("image-viewer-modal")?.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
-    if (!target.closest("button") && !target.closest(".image-viewer-close") && !target.closest("#image-viewer-info-panel") && target.tagName !== "IMG" && target.tagName !== "VIDEO") {
+    if (
+      !target.closest("button") &&
+      !target.closest(".image-viewer-close") &&
+      !target.closest("#image-viewer-info-panel") &&
+      target.tagName !== "IMG" &&
+      target.tagName !== "VIDEO"
+    ) {
       closeImageViewer();
     }
   });
@@ -558,7 +618,12 @@ export function setupImageViewer() {
     const btn = document.getElementById("image-viewer-rerun-ocr");
     try {
       if (btn) btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Running...';
-      const resp = await typedCall("OcrService.RunOcr", OcrImageIdRequestSchema, { imageId: BigInt(currentViewerImageId) }, OcrDetectionsResultSchema);
+      const resp = await typedCall(
+        "OcrService.RunOcr",
+        OcrImageIdRequestSchema,
+        { imageId: BigInt(currentViewerImageId) },
+        OcrDetectionsResultSchema,
+      );
       const detections = resp.detections.map(ocrResultFromProto);
       // Re-fetch from DB so the viewer shows stored data
       ocrVisible = false;
@@ -566,7 +631,10 @@ export function setupImageViewer() {
         toggleOcr();
       } else {
         const overlay = document.getElementById("image-viewer-ocr-overlay");
-        if (overlay) { overlay.innerHTML = ""; overlay.style.display = "none"; }
+        if (overlay) {
+          overlay.innerHTML = "";
+          overlay.style.display = "none";
+        }
         ocrVisible = false;
         updateOcrButton(false);
       }

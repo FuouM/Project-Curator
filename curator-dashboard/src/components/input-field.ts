@@ -1,4 +1,4 @@
-import { html, SafeHtml, ComponentMeta } from './_shared';
+import { html, SafeHtml, ComponentMeta } from "./_shared";
 
 export interface InputOptions {
   id?: string;
@@ -19,8 +19,16 @@ export function renderInputField(options?: InputOptions): SafeHtml {
     const wrapperClass = options?.value ? "input-wrapper has-value" : "input-wrapper";
     return html`
       <div class="${wrapperClass}" ${styleAttr}>
-        <input class="input-field has-clear" ${idAttr} ${placeholderAttr} ${valueAttr} style="width: 100%;" />
-        <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
+        <input
+          class="input-field has-clear"
+          ${idAttr}
+          ${placeholderAttr}
+          ${valueAttr}
+          style="width: 100%;"
+        />
+        <button type="button" class="input-clear-btn" tabindex="-1">
+          <i class="bi bi-x-lg"></i>
+        </button>
       </div>
     `;
   }
@@ -30,7 +38,8 @@ export function renderInputField(options?: InputOptions): SafeHtml {
 
 export const meta: ComponentMeta = {
   name: "Input Field",
-  description: "Text input fields with clean borders, focus outlines, and responsive inline clear triggers.",
+  description:
+    "Text input fields with clean borders, focus outlines, and responsive inline clear triggers.",
   variants: [
     {
       name: "Input Options",
@@ -49,7 +58,7 @@ export const meta: ComponentMeta = {
             ${renderInputField({ hasClear: true, value: "Clear me..." })}
           </div>
         </div>
-      `
-    }
-  ]
+      `,
+    },
+  ],
 };

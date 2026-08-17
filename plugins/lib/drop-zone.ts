@@ -38,7 +38,7 @@ const boundTabs = new Set<string>();
 export function setupDropZone(
   tabId: string,
   dropZoneIds: string | string[],
-  onFiles: (paths: string[], hitZoneId: string | null) => void
+  onFiles: (paths: string[], hitZoneId: string | null) => void,
 ): void {
   const api = window.__TAURI__;
   if (!api?.webview?.getCurrentWebview) return;

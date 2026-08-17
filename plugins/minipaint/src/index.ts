@@ -100,119 +100,125 @@ if (!PH) {
       "  </button>" +
       "</div>";
 
-    box
-      .querySelector<HTMLButtonElement>("#minipaint-send-asset")
-      ?.addEventListener("click", () => {
-        closeInfoModal();
-        navigateToTab(TAB_ID);
-        ensureEditor(asset.path);
-      });
+    box.querySelector<HTMLButtonElement>("#minipaint-send-asset")?.addEventListener("click", () => {
+      closeInfoModal();
+      navigateToTab(TAB_ID);
+      ensureEditor(asset.path);
+    });
 
     return box;
   });
 
-  PH.registerTab(TAB_ID, "Image Editor", "bi bi-palette", () => {
-    const rootEl = document.createElement("div");
-    rootEl.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;";
+  PH.registerTab(
+    TAB_ID,
+    "Image Editor",
+    "bi bi-palette",
+    () => {
+      const rootEl = document.createElement("div");
+      rootEl.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;";
 
-    // ── Settings row (always visible) ─────────────────────────────────────
-    const settingsBox = document.createElement("div");
-    settingsBox.className = "group-box";
-    settingsBox.style.cssText = "padding:8px;flex-shrink:0;";
+      // ── Settings row (always visible) ─────────────────────────────────────
+      const settingsBox = document.createElement("div");
+      settingsBox.className = "group-box";
+      settingsBox.style.cssText = "padding:8px;flex-shrink:0;";
 
-    const title = document.createElement("div");
-    title.className = "group-box-title";
-    title.innerHTML = '<i class="bi bi-gear"></i> miniPaint Settings';
+      const title = document.createElement("div");
+      title.className = "group-box-title";
+      title.innerHTML = '<i class="bi bi-gear"></i> miniPaint Settings';
 
-    const settingsRow = document.createElement("div");
-    settingsRow.style.cssText = "display:flex;align-items:center;gap:8px;";
+      const settingsRow = document.createElement("div");
+      settingsRow.style.cssText = "display:flex;align-items:center;gap:8px;";
 
-    const outputLabel = document.createElement("span");
-    outputLabel.style.cssText = "font-size:11px;color:#555;";
-    outputLabel.textContent = "Output Directory:";
+      const outputLabel = document.createElement("span");
+      outputLabel.style.cssText = "font-size:11px;color:#555;";
+      outputLabel.textContent = "Output Directory:";
 
-    const outputInput = document.createElement("input");
-    outputInput.type = "text";
-    outputInput.className = "win-input";
-    outputInput.value = state.outputDir || `${workspaceRoot}\\edited`;
-    outputInput.style.cssText = "flex:1;font-size:11px;";
-    outputInput.readOnly = true;
+      const outputInput = document.createElement("input");
+      outputInput.type = "text";
+      outputInput.className = "win-input";
+      outputInput.value = state.outputDir || `${workspaceRoot}\\edited`;
+      outputInput.style.cssText = "flex:1;font-size:11px;";
+      outputInput.readOnly = true;
 
-    const browseBtn = document.createElement("button");
-    browseBtn.type = "button";
-    browseBtn.className = "win-button";
-    browseBtn.style.cssText = "font-size:11px;";
-    browseBtn.innerHTML = '<i class="bi bi-folder2-open"></i> Browse';
-    browseBtn.addEventListener("click", () => {
-      browseOutputDir((dir) => { outputInput.value = dir; });
-    });
+      const browseBtn = document.createElement("button");
+      browseBtn.type = "button";
+      browseBtn.className = "win-button";
+      browseBtn.style.cssText = "font-size:11px;";
+      browseBtn.innerHTML = '<i class="bi bi-folder2-open"></i> Browse';
+      browseBtn.addEventListener("click", () => {
+        browseOutputDir((dir) => {
+          outputInput.value = dir;
+        });
+      });
 
-    // Load/Unload toggle button
-    toggleBtn = document.createElement("button");
-    toggleBtn.type = "button";
-    toggleBtn.className = "win-button";
-    toggleBtn.style.cssText = "font-size:11px;";
-    updateToggle();
-    toggleBtn.addEventListener("click", () => {
-      if (editorMounted) {
-        unloadEditor();
-      } else {
-        ensureEditor();
-        if (installerEl) {
-          installerEl.style.display = "none";
-          installerEl = null;
-        }
-      }
-    });
-
-    settingsRow.appendChild(toggleBtn);
-    settingsRow.appendChild(outputLabel);
-    settingsRow.appendChild(outputInput);
-    settingsRow.appendChild(browseBtn);
-
-    settingsBox.appendChild(title);
-    settingsBox.appendChild(settingsRow);
-
-    // ── Editor host ──────────────────────────────────────────────────────
-    editorHost = document.createElement("div");
-    editorHost.style.cssText =
-      "display:flex;flex-direction:column;width:100%;flex:1;min-height:0;";
-
-    // When the editor runtime is missing, the installer replaces the settings
-    // row. The installer lives in its own placeholder so a post-install retry
-    // never wipes the editor host.
-    const launcherHost = document.createElement("div");
-    launcherHost.style.cssText = "display:flex;flex-direction:column;width:100%;min-height:0;";
-
-    let installerEl: HTMLElement | null = null;
-
-    const onInstallComplete = () => {
-      launcherHost.appendChild(settingsBox);
-      ensureEditor();
-    };
-
-    const loadContent = () => {
-      launcherHost.innerHTML = "";
-      installerEl = null;
-      checkInstalled().then((installed) => {
-        if (installed) {
-          launcherHost.appendChild(settingsBox);
-          const shouldAutoload = PH.isAutoloadEnabled ? PH.isAutoloadEnabled(TAB_ID) : true;
-          if (shouldAutoload || editorMounted) {
-            ensureEditor();
-          } else {
-            unloadEditor();
-          }
+      // Load/Unload toggle button
+      toggleBtn = document.createElement("button");
+      toggleBtn.type = "button";
+      toggleBtn.className = "win-button";
+      toggleBtn.style.cssText = "font-size:11px;";
+      updateToggle();
+      toggleBtn.addEventListener("click", () => {
+        if (editorMounted) {
+          unloadEditor();
         } else {
-          installerEl = renderInstaller(onInstallComplete);
-          launcherHost.appendChild(installerEl);
+          ensureEditor();
+          if (installerEl) {
+            installerEl.style.display = "none";
+            installerEl = null;
+          }
         }
       });
-    };
 
-    loadContent();
-    rootEl.appendChild(launcherHost);
-    rootEl.appendChild(editorHost);
-    return rootEl;
-  }, true);
+      settingsRow.appendChild(toggleBtn);
+      settingsRow.appendChild(outputLabel);
+      settingsRow.appendChild(outputInput);
+      settingsRow.appendChild(browseBtn);
+
+      settingsBox.appendChild(title);
+      settingsBox.appendChild(settingsRow);
+
+      // ── Editor host ──────────────────────────────────────────────────────
+      editorHost = document.createElement("div");
+      editorHost.style.cssText =
+        "display:flex;flex-direction:column;width:100%;flex:1;min-height:0;";
+
+      // When the editor runtime is missing, the installer replaces the settings
+      // row. The installer lives in its own placeholder so a post-install retry
+      // never wipes the editor host.
+      const launcherHost = document.createElement("div");
+      launcherHost.style.cssText = "display:flex;flex-direction:column;width:100%;min-height:0;";
+
+      let installerEl: HTMLElement | null = null;
+
+      const onInstallComplete = () => {
+        launcherHost.appendChild(settingsBox);
+        ensureEditor();
+      };
+
+      const loadContent = () => {
+        launcherHost.innerHTML = "";
+        installerEl = null;
+        checkInstalled().then((installed) => {
+          if (installed) {
+            launcherHost.appendChild(settingsBox);
+            const shouldAutoload = PH.isAutoloadEnabled ? PH.isAutoloadEnabled(TAB_ID) : true;
+            if (shouldAutoload || editorMounted) {
+              ensureEditor();
+            } else {
+              unloadEditor();
+            }
+          } else {
+            installerEl = renderInstaller(onInstallComplete);
+            launcherHost.appendChild(installerEl);
+          }
+        });
+      };
+
+      loadContent();
+      rootEl.appendChild(launcherHost);
+      rootEl.appendChild(editorHost);
+      return rootEl;
+    },
+    true,
+  );
 }

@@ -71,4 +71,3 @@ export const state: GifMakerState = {
 const { pluginDir: pluginDirValue, workspaceRoot: workspaceRootValue } = getPluginDirs();
 export const workspaceRoot: string = workspaceRootValue;
 export const pluginDir: string = pluginDirValue;
-

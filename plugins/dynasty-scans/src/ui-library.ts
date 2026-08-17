@@ -20,7 +20,12 @@ import { createConfirmDeleteButton } from "./components/button";
 import { renderCoverImage } from "./components/cover";
 import { renderPager } from "./components/pager";
 
-function createLibraryPanel(titleHtml: string): { panel: HTMLElement; head: HTMLElement; body: HTMLElement; footer: HTMLElement } {
+function createLibraryPanel(titleHtml: string): {
+  panel: HTMLElement;
+  head: HTMLElement;
+  body: HTMLElement;
+  footer: HTMLElement;
+} {
   const panel = document.createElement("div");
   panel.className = "group-box ds-library-panel";
 
@@ -65,18 +70,27 @@ export function renderLibrary(container: HTMLElement, _route: Route): void {
   grid.className = "ds-library-grid";
   root.appendChild(grid);
 
-  const { panel: followedPanel, body: followedBody, footer: followedFooter } = createLibraryPanel(
-    '<i class="bi bi-bookmark-heart"></i> Followed Series'
-  );
+  const {
+    panel: followedPanel,
+    body: followedBody,
+    footer: followedFooter,
+  } = createLibraryPanel('<i class="bi bi-bookmark-heart"></i> Followed Series');
   grid.appendChild(followedPanel);
 
-  const { panel: bookmarksPanel, body: bookmarksBody, footer: bookmarksFooter } = createLibraryPanel(
-    '<i class="bi bi-bookmark"></i> Bookmarks'
-  );
+  const {
+    panel: bookmarksPanel,
+    body: bookmarksBody,
+    footer: bookmarksFooter,
+  } = createLibraryPanel('<i class="bi bi-bookmark"></i> Bookmarks');
   grid.appendChild(bookmarksPanel);
 
-  const { panel: historyPanel, head: historyHead, body: historyBody, footer: historyFooter } = createLibraryPanel(
-    '<span style="display:flex;align-items:center;gap:6px;"><i class="bi bi-clock-history"></i> Reading History</span>'
+  const {
+    panel: historyPanel,
+    head: historyHead,
+    body: historyBody,
+    footer: historyFooter,
+  } = createLibraryPanel(
+    '<span style="display:flex;align-items:center;gap:6px;"><i class="bi bi-clock-history"></i> Reading History</span>',
   );
 
   const clearHistoryBtn = createConfirmDeleteButton(
@@ -86,15 +100,24 @@ export function renderLibrary(container: HTMLElement, _route: Route): void {
       setBanner("All reading history cleared.");
       void loadHistoryPage(historyBody, historyFooter, 1);
     },
-    '<i class="bi bi-trash3"></i> Clear'
+    '<i class="bi bi-trash3"></i> Clear',
   );
-  clearHistoryBtn.style.cssText = "font-size:10px;padding:0 5px;height:18px;line-height:18px;margin-left:auto;";
-  historyHead.style.cssText = "display:flex;align-items:center;justify-content:space-between;width:calc(100% - 16px);right:8px;";
+  clearHistoryBtn.style.cssText =
+    "font-size:10px;padding:0 5px;height:18px;line-height:18px;margin-left:auto;";
+  historyHead.style.cssText =
+    "display:flex;align-items:center;justify-content:space-between;width:calc(100% - 16px);right:8px;";
   historyHead.appendChild(clearHistoryBtn);
 
   grid.appendChild(historyPanel);
 
-  void loadAll(followedBody, followedFooter, bookmarksBody, bookmarksFooter, historyBody, historyFooter);
+  void loadAll(
+    followedBody,
+    followedFooter,
+    bookmarksBody,
+    bookmarksFooter,
+    historyBody,
+    historyFooter,
+  );
 }
 
 async function loadAll(
@@ -103,7 +126,7 @@ async function loadAll(
   bookmarksBody: HTMLElement,
   bookmarksFooter: HTMLElement,
   historyBody: HTMLElement,
-  historyFooter: HTMLElement
+  historyFooter: HTMLElement,
 ): Promise<void> {
   try {
     await Promise.all([
@@ -117,7 +140,11 @@ async function loadAll(
   }
 }
 
-async function loadFollowedPage(body: HTMLElement, footer: HTMLElement, page: number): Promise<void> {
+async function loadFollowedPage(
+  body: HTMLElement,
+  footer: HTMLElement,
+  page: number,
+): Promise<void> {
   body.innerHTML = "";
   footer.innerHTML = "";
   footer.style.display = "none";
@@ -129,7 +156,14 @@ async function loadFollowedPage(body: HTMLElement, footer: HTMLElement, page: nu
 
   try {
     const res = await getFollowedSeriesPage(page, 10);
-    renderFollowed(body, footer, res.rows, res.totalPages, res.currentPage, (p) => void loadFollowedPage(body, footer, p));
+    renderFollowed(
+      body,
+      footer,
+      res.rows,
+      res.totalPages,
+      res.currentPage,
+      (p) => void loadFollowedPage(body, footer, p),
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     body.innerHTML = "";
@@ -146,14 +180,15 @@ function renderFollowed(
   rows: FollowedSeriesRow[],
   totalPages: number,
   currentPage: number,
-  onPage: (p: number) => void
+  onPage: (p: number) => void,
 ): void {
   body.innerHTML = "";
   footer.innerHTML = "";
   if (rows.length === 0) {
     footer.style.display = "none";
     const empty = document.createElement("div");
-    empty.style.cssText = "display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:8px 0;";
+    empty.style.cssText =
+      "display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:8px 0;";
     const emptyText = document.createElement("div");
     emptyText.className = "ds-muted";
     emptyText.textContent = "No followed series yet.";
@@ -173,7 +208,8 @@ function renderFollowed(
   for (const row of rows) {
     const card = document.createElement("div");
     card.className = "group-box";
-    card.style.cssText = "display:flex;gap:10px;align-items:center;cursor:pointer;margin-bottom:4px;";
+    card.style.cssText =
+      "display:flex;gap:10px;align-items:center;cursor:pointer;margin-bottom:4px;";
 
     const coverSlot = document.createElement("div");
     coverSlot.style.cssText = "flex-shrink:0;";
@@ -194,7 +230,8 @@ function renderFollowed(
     const info = document.createElement("div");
     info.style.cssText = "flex:1;min-width:0;";
     const name = document.createElement("div");
-    name.style.cssText = "font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    name.style.cssText =
+      "font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
     name.textContent = decodeEntities(row.name);
     const latest = document.createElement("div");
     latest.className = "ds-muted";
@@ -243,7 +280,11 @@ function renderFollowed(
   }
 }
 
-async function loadBookmarksPage(body: HTMLElement, footer: HTMLElement, page: number): Promise<void> {
+async function loadBookmarksPage(
+  body: HTMLElement,
+  footer: HTMLElement,
+  page: number,
+): Promise<void> {
   body.innerHTML = "";
   footer.innerHTML = "";
   footer.style.display = "none";
@@ -255,7 +296,14 @@ async function loadBookmarksPage(body: HTMLElement, footer: HTMLElement, page: n
 
   try {
     const res = await getBookmarksPage(page, 15);
-    renderBookmarks(body, footer, res.rows, res.totalPages, res.currentPage, (p) => void loadBookmarksPage(body, footer, p));
+    renderBookmarks(
+      body,
+      footer,
+      res.rows,
+      res.totalPages,
+      res.currentPage,
+      (p) => void loadBookmarksPage(body, footer, p),
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     body.innerHTML = "";
@@ -272,7 +320,7 @@ function renderBookmarks(
   rows: BookmarkRow[],
   totalPages: number,
   currentPage: number,
-  onPage: (p: number) => void
+  onPage: (p: number) => void,
 ): void {
   body.innerHTML = "";
   footer.innerHTML = "";
@@ -340,7 +388,11 @@ function renderBookmarks(
   }
 }
 
-async function loadHistoryPage(body: HTMLElement, footer: HTMLElement, page: number): Promise<void> {
+async function loadHistoryPage(
+  body: HTMLElement,
+  footer: HTMLElement,
+  page: number,
+): Promise<void> {
   body.innerHTML = "";
   footer.innerHTML = "";
   footer.style.display = "none";
@@ -352,7 +404,14 @@ async function loadHistoryPage(body: HTMLElement, footer: HTMLElement, page: num
 
   try {
     const res = await getHistoryPage(page, 15);
-    renderHistory(body, footer, res.rows, res.totalPages, res.currentPage, (p) => void loadHistoryPage(body, footer, p));
+    renderHistory(
+      body,
+      footer,
+      res.rows,
+      res.totalPages,
+      res.currentPage,
+      (p) => void loadHistoryPage(body, footer, p),
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     body.innerHTML = "";
@@ -369,7 +428,7 @@ function renderHistory(
   rows: HistoryRow[],
   totalPages: number,
   currentPage: number,
-  onPage: (p: number) => void
+  onPage: (p: number) => void,
 ): void {
   body.innerHTML = "";
   footer.innerHTML = "";

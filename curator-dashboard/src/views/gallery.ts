@@ -1,6 +1,22 @@
 import { typedCall } from "../ipc";
 import { SafeHtml, html } from "../components";
-import { isSelectMode, selectedImageIds, galleryInfiniteScroll, galleryZenMode, galleryFullImages, getGalleryInfiniteScroll, getGalleryZenMode, getGalleryPage, getFavoritesPage, getGalleryTotalCount, getFavoritesTotalCount, setGalleryPage, onGalleryRefresh, onFavoritesRefresh, onSelectionChange } from "../state";
+import {
+  isSelectMode,
+  selectedImageIds,
+  galleryInfiniteScroll,
+  galleryZenMode,
+  galleryFullImages,
+  getGalleryInfiniteScroll,
+  getGalleryZenMode,
+  getGalleryPage,
+  getFavoritesPage,
+  getGalleryTotalCount,
+  getFavoritesTotalCount,
+  setGalleryPage,
+  onGalleryRefresh,
+  onFavoritesRefresh,
+  onSelectionChange,
+} from "../state";
 import { getImagesPerPage, setGalleryTotalCount, setFavoritesTotalCount } from "../state";
 import { renderImages } from "../cards";
 import { imageDetailsFromProto } from "../proto-adapters";
@@ -47,8 +63,12 @@ async function rebuildGalleryAccumulated() {
     await refreshPaginatedImages(i, "gallery", {}, true);
   }
 }
-export function loadMoreGallery(page: number) { return refreshPaginatedImages(page, "gallery", {}, true); }
-export function refreshFavorites() { return refreshPaginatedImages(getFavoritesPage(), "favorites", { only_favorites: true }); }
+export function loadMoreGallery(page: number) {
+  return refreshPaginatedImages(page, "gallery", {}, true);
+}
+export function refreshFavorites() {
+  return refreshPaginatedImages(getFavoritesPage(), "favorites", { only_favorites: true });
+}
 
 /**
  * Refresh the gallery while preserving the accumulated infinite-scroll list and
@@ -68,7 +88,7 @@ export async function refreshGalleryPreserving() {
     "GalleryService.ListImages",
     ListImagesRequestSchema,
     { limit: perPage, offset: 0, onlyFavorites: false },
-    ListResultSchema
+    ListResultSchema,
   );
   setGalleryTotalCount(Number(probe.totalCount));
 
@@ -85,7 +105,7 @@ export async function refreshPaginatedImages(
   page: number,
   idPrefix: string,
   listOpts: { only_favorites?: boolean },
-  append = false
+  append = false,
 ) {
   if (isGalleryLoading) return;
   isGalleryLoading = true;
@@ -95,7 +115,7 @@ export async function refreshPaginatedImages(
       "GalleryService.ListImages",
       ListImagesRequestSchema,
       { limit: perPage, offset: page * perPage, onlyFavorites: listOpts.only_favorites },
-      ListResultSchema
+      ListResultSchema,
     );
     const { images, totalCount } = resp;
     const gridId = idPrefix + "-grid";
@@ -107,7 +127,9 @@ export async function refreshPaginatedImages(
       setGalleryTotalCount(Number(totalCount));
     }
 
-    const totalCountNum = listOpts.only_favorites ? getFavoritesTotalCount() : getGalleryTotalCount();
+    const totalCountNum = listOpts.only_favorites
+      ? getFavoritesTotalCount()
+      : getGalleryTotalCount();
     const totalPages = Math.max(1, Math.ceil(totalCountNum / perPage));
 
     const isInfinite = getGalleryInfiniteScroll();
@@ -123,7 +145,7 @@ export async function refreshPaginatedImages(
 
     const controls = document.getElementById(`${idPrefix}-pagination-controls`);
     if (controls) {
-      controls.style.display = (idPrefix === "gallery" && isInfinite) ? "none" : "flex";
+      controls.style.display = idPrefix === "gallery" && isInfinite ? "none" : "flex";
     }
 
     if (idPrefix === "gallery") {
@@ -159,33 +181,74 @@ export function renderGalleryHtml(): SafeHtml {
   return html`
     <div class="group-box">
       <div class="group-box-title">All Images</div>
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px;">
+      <div
+        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px;"
+      >
         <div style="display: flex; align-items: center; gap: 8px;">
           <button type="button" class="win-button" id="gallery-toggle-select-mode-btn">
             <i class="bi bi-check2-square"></i> Select Mode
           </button>
-          <span id="gallery-selected-count" style="font-size: 11px; color: var(--sys-text-subtle); display: none;">0 selected</span>
-          <button type="button" class="win-button" id="gallery-select-all-btn" style="display: none; font-size: 11px;">Select All</button>
-          <button type="button" class="win-button" id="gallery-clear-select-btn" style="display: none; font-size: 11px;">Clear</button>
+          <span
+            id="gallery-selected-count"
+            style="font-size: 11px; color: var(--sys-text-subtle); display: none;"
+            >0 selected</span
+          >
+          <button
+            type="button"
+            class="win-button"
+            id="gallery-select-all-btn"
+            style="display: none; font-size: 11px;"
+          >
+            Select All
+          </button>
+          <button
+            type="button"
+            class="win-button"
+            id="gallery-clear-select-btn"
+            style="display: none; font-size: 11px;"
+          >
+            Clear
+          </button>
           <div class="selection-toolbar-actions extensions-toolbar" style="display: none;"></div>
           <button type="button" class="win-button" id="gallery-lucky-btn">
-
             <i class="bi bi-shuffle"></i> I'm Feeling Lucky
           </button>
-          <button type="button" class="win-button ${galleryInfiniteScroll ? 'primary' : ''}" id="gallery-toggle-infinite-scroll-btn">
+          <button
+            type="button"
+            class="win-button ${galleryInfiniteScroll ? "primary" : ""}"
+            id="gallery-toggle-infinite-scroll-btn"
+          >
             <i class="bi bi-body-text"></i> Infinite Scroll
           </button>
-          <button type="button" class="win-button ${galleryZenMode ? 'primary' : ''}" id="gallery-toggle-zen-mode-btn">
+          <button
+            type="button"
+            class="win-button ${galleryZenMode ? "primary" : ""}"
+            id="gallery-toggle-zen-mode-btn"
+          >
             <i class="bi bi-fullscreen"></i> Zen Mode
           </button>
-          <button type="button" class="win-button ${galleryFullImages ? 'primary' : ''}" id="gallery-toggle-full-images-btn" title="Load full resolution images (non-video) smoothly after thumbnail">
+          <button
+            type="button"
+            class="win-button ${galleryFullImages ? "primary" : ""}"
+            id="gallery-toggle-full-images-btn"
+            title="Load full resolution images (non-video) smoothly after thumbnail"
+          >
             <i class="bi bi-aspect-ratio"></i> Full Images
           </button>
         </div>
-        <div id="gallery-header-right" style="display: ${galleryZenMode ? 'none' : 'flex'}; align-items: center; gap: 10px;">
-          <label style="font-size: 11px; color: #555555; display: flex; align-items: center; gap: 4px;">
+        <div
+          id="gallery-header-right"
+          style="display: ${galleryZenMode ? "none" : "flex"}; align-items: center; gap: 10px;"
+        >
+          <label
+            style="font-size: 11px; color: #555555; display: flex; align-items: center; gap: 4px;"
+          >
             Show:
-            <select class="input-field" id="gallery-per-page-select" style="width: 60px; height: 22px; font-size: 11px; padding: 1px 4px;">
+            <select
+              class="input-field"
+              id="gallery-per-page-select"
+              style="width: 60px; height: 22px; font-size: 11px; padding: 1px 4px;"
+            >
               <option value="12">12</option>
               <option value="24">24</option>
               <option value="48">48</option>
@@ -193,20 +256,50 @@ export function renderGalleryHtml(): SafeHtml {
             </select>
           </label>
           <span id="gallery-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
-          <span id="gallery-pagination-controls" style="display: ${galleryInfiniteScroll ? 'none' : 'flex'}; align-items: center; gap: 10px;">
-            <input type="number" id="gallery-page-jump" min="1" style="width: 50px; font-size: 11px; padding: 2px 4px;" placeholder="#" />
-            <button class="win-button" id="gallery-jump-btn" style="font-size: 11px; padding: 2px 6px;">Go</button>
-            <button class="win-button" id="gallery-prev-btn" disabled><i class="bi bi-caret-left-fill"></i> Prev</button>
-            <button class="win-button" id="gallery-next-btn">Next <i class="bi bi-caret-right-fill"></i></button>
+          <span
+            id="gallery-pagination-controls"
+            style="display: ${galleryInfiniteScroll ? "none" : "flex"}; align-items: center; gap: 10px;"
+          >
+            <input
+              type="number"
+              id="gallery-page-jump"
+              min="1"
+              style="width: 50px; font-size: 11px; padding: 2px 4px;"
+              placeholder="#"
+            />
+            <button
+              class="win-button"
+              id="gallery-jump-btn"
+              style="font-size: 11px; padding: 2px 6px;"
+            >
+              Go
+            </button>
+            <button class="win-button" id="gallery-prev-btn" disabled>
+              <i class="bi bi-caret-left-fill"></i> Prev
+            </button>
+            <button class="win-button" id="gallery-next-btn">
+              Next <i class="bi bi-caret-right-fill"></i>
+            </button>
           </span>
         </div>
       </div>
-      <div class="image-grid ${galleryZenMode ? 'zen-mode-active' : ''}" id="gallery-grid">
+      <div class="image-grid ${galleryZenMode ? "zen-mode-active" : ""}" id="gallery-grid">
         <!-- Dynamically populated -->
       </div>
-      <div id="gallery-sentinel" style="height: 2px; width: 100%; pointer-events: none; flex: 0 0 auto;"></div>
+      <div
+        id="gallery-sentinel"
+        style="height: 2px; width: 100%; pointer-events: none; flex: 0 0 auto;"
+      ></div>
     </div>
-    <button type="button" id="gallery-scroll-top-btn" class="scroll-top-btn" title="Scroll to top" style="display: none;"><i class="bi bi-arrow-up"></i></button>
+    <button
+      type="button"
+      id="gallery-scroll-top-btn"
+      class="scroll-top-btn"
+      title="Scroll to top"
+      style="display: none;"
+    >
+      <i class="bi bi-arrow-up"></i>
+    </button>
   `;
 }
 
@@ -214,10 +307,18 @@ export function renderFavoritesHtml(): SafeHtml {
   return html`
     <div class="group-box">
       <div class="group-box-title">Favorite Images</div>
-      <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 1rem; gap: 10px;">
-        <label style="font-size: 11px; color: #555555; display: flex; align-items: center; gap: 4px;">
+      <div
+        style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 1rem; gap: 10px;"
+      >
+        <label
+          style="font-size: 11px; color: #555555; display: flex; align-items: center; gap: 4px;"
+        >
           Show:
-          <select class="input-field" id="favorites-per-page-select" style="width: 60px; height: 22px; font-size: 11px; padding: 1px 4px;">
+          <select
+            class="input-field"
+            id="favorites-per-page-select"
+            style="width: 60px; height: 22px; font-size: 11px; padding: 1px 4px;"
+          >
             <option value="12">12</option>
             <option value="24">24</option>
             <option value="48">48</option>
@@ -225,10 +326,26 @@ export function renderFavoritesHtml(): SafeHtml {
           </select>
         </label>
         <span id="favorites-page-indicator" style="font-size: 11px; color: #555555;">Page 1</span>
-        <input type="number" id="favorites-page-jump" min="1" style="width: 50px; font-size: 11px; padding: 2px 4px;" placeholder="#" />
-        <button class="win-button" id="favorites-jump-btn" style="font-size: 11px; padding: 2px 6px;">Go</button>
-        <button class="win-button" id="favorites-prev-btn" disabled><i class="bi bi-caret-left-fill"></i> Prev</button>
-        <button class="win-button" id="favorites-next-btn">Next <i class="bi bi-caret-right-fill"></i></button>
+        <input
+          type="number"
+          id="favorites-page-jump"
+          min="1"
+          style="width: 50px; font-size: 11px; padding: 2px 4px;"
+          placeholder="#"
+        />
+        <button
+          class="win-button"
+          id="favorites-jump-btn"
+          style="font-size: 11px; padding: 2px 6px;"
+        >
+          Go
+        </button>
+        <button class="win-button" id="favorites-prev-btn" disabled>
+          <i class="bi bi-caret-left-fill"></i> Prev
+        </button>
+        <button class="win-button" id="favorites-next-btn">
+          Next <i class="bi bi-caret-right-fill"></i>
+        </button>
       </div>
       <div class="image-grid" id="favorites-grid">
         <!-- Dynamically populated -->
@@ -237,9 +354,17 @@ export function renderFavoritesHtml(): SafeHtml {
   `;
 }
 
-export function setupPaginationButtons(prevId: string, nextId: string, pageRef: { value: number }, refreshFn: () => Promise<void>) {
+export function setupPaginationButtons(
+  prevId: string,
+  nextId: string,
+  pageRef: { value: number },
+  refreshFn: () => Promise<void>,
+) {
   document.getElementById(prevId)?.addEventListener("click", () => {
-    if (pageRef.value > 0) { pageRef.value--; refreshFn(); }
+    if (pageRef.value > 0) {
+      pageRef.value--;
+      refreshFn();
+    }
   });
   document.getElementById(nextId)?.addEventListener("click", () => {
     pageRef.value++;
@@ -247,7 +372,12 @@ export function setupPaginationButtons(prevId: string, nextId: string, pageRef: 
   });
 }
 
-export function setupPageJump(jumpBtnId: string, jumpInputId: string, pageRef: { value: number }, refreshFn: () => Promise<void>) {
+export function setupPageJump(
+  jumpBtnId: string,
+  jumpInputId: string,
+  pageRef: { value: number },
+  refreshFn: () => Promise<void>,
+) {
   const jumpBtn = document.getElementById(jumpBtnId);
   const jumpInput = document.getElementById(jumpInputId) as HTMLInputElement | null;
   if (!jumpBtn || !jumpInput) return;
@@ -311,11 +441,13 @@ export function updateSelectionUI() {
   if (searchSelectAllBtn) searchSelectAllBtn.style.display = isSelectMode ? "inline-block" : "none";
 
   if (clearBtn) clearBtn.style.display = isSelectMode && count > 0 ? "inline-block" : "none";
-  if (searchClearBtn) searchClearBtn.style.display = isSelectMode && count > 0 ? "inline-block" : "none";
+  if (searchClearBtn)
+    searchClearBtn.style.display = isSelectMode && count > 0 ? "inline-block" : "none";
 
-  const extSlots = document.querySelectorAll<HTMLElement>("#extensions-toolbar, .extensions-toolbar");
+  const extSlots = document.querySelectorAll<HTMLElement>(
+    "#extensions-toolbar, .extensions-toolbar",
+  );
   extSlots.forEach((el) => {
     el.style.display = isSelectMode && count > 0 ? "inline-flex" : "none";
   });
 }
-

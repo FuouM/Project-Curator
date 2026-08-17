@@ -49,8 +49,6 @@ export const navigateToTab = (): void => _navigateToTab(TAB_ID);
 /** Close info modal — re-exported from lib for use in index.ts. */
 export { closeInfoModal };
 
-
-
 /** Re-render the queue list from the current state.queue array. */
 export function updateQueueList(): void {
   const list = el("converter-queue-list");
@@ -165,17 +163,13 @@ export function qualityVisibility(): void {
   if (!slider || !wrapper) return;
 
   const applies =
-    state.targetExt === "jpg" ||
-    state.targetExt === "jpeg" ||
-    state.targetExt === "webp";
+    state.targetExt === "jpg" || state.targetExt === "jpeg" || state.targetExt === "webp";
   wrapper.style.display = applies ? "" : "none";
   slider.disabled = !applies;
 
   if (note) {
     note.textContent =
-      state.targetExt === "webp"
-        ? "WebP output is lossless (quality not applied)."
-        : "";
+      state.targetExt === "webp" ? "WebP output is lossless (quality not applied)." : "";
   }
 }
 
@@ -271,7 +265,6 @@ export function renderTab(): HTMLElement {
     '<div class="group-box">' +
     '  <div class="group-box-title"><i class="bi bi-arrow-repeat"></i> Image Converter</div>' +
     '  <div style="display:flex;flex-direction:column;gap:12px;">' +
-
     // Output folder row
     '    <div class="form-group">' +
     '      <label for="converter-output-dir" style="min-width:110px;">Output folder:</label>' +
@@ -280,37 +273,34 @@ export function renderTab(): HTMLElement {
     '          placeholder="Where converted files should be written..." />' +
     '        <button type="button" class="input-clear-btn" tabindex="-1">' +
     '          <i class="bi bi-x-lg"></i>' +
-    '        </button>' +
-    '      </div>' +
+    "        </button>" +
+    "      </div>" +
     '      <button type="button" class="win-button" id="converter-browse-btn">' +
     '        <i class="bi bi-folder2-open"></i> Browse...' +
-    '      </button>' +
-    '    </div>' +
-
+    "      </button>" +
+    "    </div>" +
     // Format + quality row
     '    <div class="form-group">' +
     '      <label for="converter-format" style="min-width:110px;">Target format:</label>' +
     '      <select class="input-field" id="converter-format" style="width:160px;height:24px;">' +
     CONVERT_FORMATS.map((f) => `<option value="${f}">${f.toUpperCase()}</option>`).join("") +
-    '      </select>' +
+    "      </select>" +
     '      <div id="converter-quality-group" class="form-group" style="margin:0;flex:1;">' +
     '        <label for="converter-quality" style="min-width:70px;">' +
     '          Quality: <span id="converter-quality-value">90</span>' +
-    '        </label>' +
+    "        </label>" +
     '        <input type="range" id="converter-quality" min="1" max="100" value="90"' +
     '          style="flex:1;max-width:200px;" />' +
-    '      </div>' +
-    '    </div>' +
+    "      </div>" +
+    "    </div>" +
     '    <div id="converter-quality-note" style="font-size:10px;color:#777;margin-top:-6px;"></div>' +
-
     // Drop zone
     '    <div id="converter-drop-host">' +
     '      <div class="toolbox-drop-zone" id="converter-drop-zone" style="flex:none;height:130px;">' +
     '        <div class="toolbox-drop-icon"><i class="bi bi-images"></i></div>' +
-    '        <span>Drop image files here to queue them</span>' +
-    '      </div>' +
-    '    </div>' +
-
+    "        <span>Drop image files here to queue them</span>" +
+    "      </div>" +
+    "    </div>" +
     // Queue group box
     '    <div class="group-box" style="margin-top:8px;">' +
     '      <div class="group-box-title">Queue' +
@@ -319,35 +309,33 @@ export function renderTab(): HTMLElement {
     '        <button type="button" class="win-button" id="converter-clear-btn"' +
     '          style="font-size:10px;padding:1px 8px;margin-left:8px;">' +
     '          <i class="bi bi-trash3"></i> Clear' +
-    '        </button>' +
-    '      </div>' +
+    "        </button>" +
+    "      </div>" +
     '      <div id="converter-queue-empty"' +
     '        style="font-size:11px;color:#999;font-style:italic;padding:4px 0;">No files queued.</div>' +
     '      <div id="converter-queue-list"' +
     '        style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;"></div>' +
-    '    </div>' +
-
+    "    </div>" +
     // Run button + progress bar
     '    <div style="display:flex;align-items:center;gap:12px;">' +
     '      <button type="button" class="win-button primary" id="converter-run-btn"' +
     '        style="padding:4px 14px;">' +
     '        <i class="bi bi-arrow-repeat"></i> Convert' +
-    '      </button>' +
+    "      </button>" +
     '      <div class="progress-bar" style="flex:1;max-width:300px;">' +
     '        <div class="progress-fill" id="converter-progress-fill" style="width:0%;"></div>' +
-    '      </div>' +
+    "      </div>" +
     '      <span id="converter-progress-text" style="font-size:11px;color:#555;">0 / 0 (0%)</span>' +
-    '    </div>' +
-
+    "    </div>" +
     // Log box
     '    <div class="group-box" style="margin-top:8px;">' +
     '      <div class="group-box-title"><i class="bi bi-terminal"></i> Output Log</div>' +
-    "      <div id=\"converter-log\" style=\"height:140px;overflow-y:auto;background-color:#1e1e1e;" +
+    '      <div id="converter-log" style="height:140px;overflow-y:auto;background-color:#1e1e1e;' +
     "color:#cccccc;border:1px solid #7a7a7a;padding:8px;font-family:'Consolas',monospace;" +
     'font-size:11px;white-space:pre-wrap;"></div>' +
-    '    </div>' +
-    '  </div>' +
-    '</div>';
+    "    </div>" +
+    "  </div>" +
+    "</div>";
 
   // ── Event listeners ──────────────────────────────────────────────────────
 

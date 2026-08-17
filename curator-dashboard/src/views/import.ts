@@ -186,7 +186,9 @@ export function setupImport() {
 
   // Remove individual staged path delegation
   listEl?.addEventListener("click", (e) => {
-    const target = (e.target as HTMLElement).closest(".btn-remove-staged") as HTMLButtonElement | null;
+    const target = (e.target as HTMLElement).closest(
+      ".btn-remove-staged",
+    ) as HTMLButtonElement | null;
     if (target && target.dataset.index !== undefined) {
       const idx = parseInt(target.dataset.index, 10);
       if (!isNaN(idx) && idx >= 0 && idx < stagedPaths.length) {
@@ -220,7 +222,12 @@ export function setupImport() {
     cancelBtn.disabled = true;
     cancelBtn.innerHTML = `<i class="bi bi-hourglass-split"></i> Cancelling...`;
     try {
-      const resp = await typedCall("ImportService.CancelImport", null, null, CancelImportResultSchema);
+      const resp = await typedCall(
+        "ImportService.CancelImport",
+        null,
+        null,
+        CancelImportResultSchema,
+      );
       if (resp.success) {
         if (importMsg) setStatusMessage(importMsg, "Cancelling import operation...", "loading");
       }
@@ -244,12 +251,20 @@ export function setupImport() {
     }
 
     if (stagedPaths.length === 0) {
-      setStatusMessage(importMsg, "Please add at least one folder or file to the import queue.", "error");
+      setStatusMessage(
+        importMsg,
+        "Please add at least one folder or file to the import queue.",
+        "error",
+      );
       return;
     }
 
     const pathsToImport = [...stagedPaths];
-    setStatusMessage(importMsg, `Starting import scan for ${pathsToImport.length} path(s)...`, "loading");
+    setStatusMessage(
+      importMsg,
+      `Starting import scan for ${pathsToImport.length} path(s)...`,
+      "loading",
+    );
 
     const panel = document.getElementById("import-progress-panel");
     const title = document.getElementById("import-progress-title");
@@ -280,7 +295,7 @@ export function setupImport() {
         "ImportService.ImportImage",
         ImportImageRequestSchema,
         { paths: pathsToImport, path: pathsToImport[0] || "" },
-        ImportResultSchema
+        ImportResultSchema,
       );
       stopScanProgressPolling();
 
@@ -289,14 +304,14 @@ export function setupImport() {
         folderIds && folderIds.length > 0
           ? folderIds.map(Number)
           : folderId
-          ? [Number(folderId)]
-          : [];
+            ? [Number(folderId)]
+            : [];
 
       if (importedCount && targetFolderIds.length > 0) {
         setStatusMessage(
           importMsg,
           `Import completed! Queued ${importedCount} image(s) across ${targetFolderIds.length} folder(s) for indexing...`,
-          "loading"
+          "loading",
         );
         startImportProgressPolling(targetFolderIds, importedCount);
       } else {
@@ -333,7 +348,12 @@ export function setupImport() {
 
 async function checkActiveImportState() {
   try {
-    const prog = await typedCall("ImportService.GetImportProgress", null, null, ImportProgressSchema);
+    const prog = await typedCall(
+      "ImportService.GetImportProgress",
+      null,
+      null,
+      ImportProgressSchema,
+    );
     if (prog.running) {
       const panel = document.getElementById("import-progress-panel");
       const cancelBtn = document.getElementById("import-cancel-btn") as HTMLButtonElement | null;
@@ -361,7 +381,12 @@ function startScanProgressPolling() {
 
   scanProgressTimer = setInterval(async () => {
     try {
-      const prog = await typedCall("ImportService.GetImportProgress", null, null, ImportProgressSchema);
+      const prog = await typedCall(
+        "ImportService.GetImportProgress",
+        null,
+        null,
+        ImportProgressSchema,
+      );
       if (!prog.running && prog.phase === "idle") return;
 
       const phase = prog.phase;
@@ -426,26 +451,35 @@ function startImportProgressPolling(targetFolderIds: number[], expectedBatchCoun
   if (title) title.textContent = `Processing Vector Indexing (${expectedBatchCount} images)...`;
   bar.style.width = "0%";
   percent.textContent = "0%";
-  if (indexedCount) indexedCount.textContent = `Indexed Vectors: 0 / Total Images: ${expectedBatchCount}`;
+  if (indexedCount)
+    indexedCount.textContent = `Indexed Vectors: 0 / Total Images: ${expectedBatchCount}`;
   if (pendingCount) pendingCount.textContent = `Pending Jobs: ${expectedBatchCount}`;
 
   if (importProgressTimer) clearInterval(importProgressTimer);
 
   importProgressTimer = setInterval(async () => {
     try {
-      const foldersResp = await typedCall("ImportService.GetImportedFolders", null, null, ImportedFoldersResultSchema);
+      const foldersResp = await typedCall(
+        "ImportService.GetImportedFolders",
+        null,
+        null,
+        ImportedFoldersResultSchema,
+      );
       const statusResp = await typedCall("SystemService.GetStatus", null, null, StatusResultSchema);
 
-      const pendingWorkerJobs = Number(statusResp.pendingJobs) + Number(statusResp.preprocessingJobs);
+      const pendingWorkerJobs =
+        Number(statusResp.pendingJobs) + Number(statusResp.preprocessingJobs);
       const targetFolders = foldersResp.folders
         .map(folderDetailsFromProto)
         .filter((f) => targetFolderIds.includes(f.id));
 
       if (targetFolders.length > 0) {
-        const total = targetFolders.reduce((acc, f) => acc + f.image_count, 0) || expectedBatchCount;
+        const total =
+          targetFolders.reduce((acc, f) => acc + f.image_count, 0) || expectedBatchCount;
         const ready = targetFolders.reduce((acc, f) => acc + f.vector_ready, 0);
 
-        if (indexedCount) indexedCount.textContent = `Indexed Vectors: ${ready} / Total Images: ${total}`;
+        if (indexedCount)
+          indexedCount.textContent = `Indexed Vectors: ${ready} / Total Images: ${total}`;
         if (pendingCount) pendingCount.textContent = `Pending Jobs: ${pendingWorkerJobs}`;
 
         if (total > 0) {
@@ -461,7 +495,7 @@ function startImportProgressPolling(targetFolderIds: number[], expectedBatchCoun
               setStatusMessage(
                 statusMsg,
                 `Successfully imported and indexed all ${total} images across ${targetFolders.length} folder(s)!`,
-                "success"
+                "success",
               );
             if (dismissBtn) dismissBtn.style.display = "inline-flex";
             clearInterval(importProgressTimer);
@@ -482,52 +516,119 @@ function startImportProgressPolling(targetFolderIds: number[], expectedBatchCoun
 export function renderImportHtml(): SafeHtml {
   return html`
     <div class="group-box">
-      <div class="group-box-title"><i class="bi bi-box-arrow-in-down"></i> Import Images &amp; Folders</div>
+      <div class="group-box-title">
+        <i class="bi bi-box-arrow-in-down"></i> Import Images &amp; Folders
+      </div>
       <form id="import-form">
-        <div class="form-group" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+        <div
+          class="form-group"
+          style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;"
+        >
           <div class="input-wrapper" style="flex: 1; min-width: 250px;">
-            <input class="input-field has-clear" id="import-path-input" placeholder="Enter or paste folder/file path(s) (supports spaces &amp; multi-line)..." style="width: 100%;" />
-            <button type="button" class="input-clear-btn" tabindex="-1"><i class="bi bi-x-lg"></i></button>
+            <input
+              class="input-field has-clear"
+              id="import-path-input"
+              placeholder="Enter or paste folder/file path(s) (supports spaces &amp; multi-line)..."
+              style="width: 100%;"
+            />
+            <button type="button" class="input-clear-btn" tabindex="-1">
+              <i class="bi bi-x-lg"></i>
+            </button>
           </div>
-          <button type="button" class="win-button" id="add-path-btn"><i class="bi bi-plus-lg"></i> Add</button>
-          <button type="button" class="win-button" id="browse-file-btn"><i class="bi bi-file-earmark-image"></i> Files...</button>
-          <button type="button" class="win-button" id="browse-folder-btn"><i class="bi bi-folder-fill"></i> Folders...</button>
+          <button type="button" class="win-button" id="add-path-btn">
+            <i class="bi bi-plus-lg"></i> Add
+          </button>
+          <button type="button" class="win-button" id="browse-file-btn">
+            <i class="bi bi-file-earmark-image"></i> Files...
+          </button>
+          <button type="button" class="win-button" id="browse-folder-btn">
+            <i class="bi bi-folder-fill"></i> Folders...
+          </button>
         </div>
 
         <!-- Staged Import Queue -->
-        <div id="import-staged-container" style="display: none; margin-top: 12px; border: 1px solid var(--sys-border); border-radius: 4px; background: var(--sys-window-bg); overflow: hidden;">
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--sys-menu-bg); border-bottom: 1px solid var(--sys-border); font-size: 11px; font-weight: 600;">
-            <span id="import-staged-count" style="color: var(--sys-control-text);">0 items staged</span>
-            <button type="button" class="win-button danger" id="clear-staged-btn" style="padding: 1px 6px; height: 20px; font-size: 11px;">
+        <div
+          id="import-staged-container"
+          style="display: none; margin-top: 12px; border: 1px solid var(--sys-border); border-radius: 4px; background: var(--sys-window-bg); overflow: hidden;"
+        >
+          <div
+            style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--sys-menu-bg); border-bottom: 1px solid var(--sys-border); font-size: 11px; font-weight: 600;"
+          >
+            <span id="import-staged-count" style="color: var(--sys-control-text);"
+              >0 items staged</span
+            >
+            <button
+              type="button"
+              class="win-button danger"
+              id="clear-staged-btn"
+              style="padding: 1px 6px; height: 20px; font-size: 11px;"
+            >
               <i class="bi bi-trash"></i> Clear All
             </button>
           </div>
           <div id="import-staged-list" style="max-height: 220px; overflow-y: auto;"></div>
-          <div style="padding: 8px 10px; background: var(--sys-menu-bg); border-top: 1px solid var(--sys-border); display: flex; justify-content: flex-end;">
-            <button type="submit" class="win-button primary" id="start-import-btn" style="font-weight: 600; padding: 4px 14px; height: 26px;">
+          <div
+            style="padding: 8px 10px; background: var(--sys-menu-bg); border-top: 1px solid var(--sys-border); display: flex; justify-content: flex-end;"
+          >
+            <button
+              type="submit"
+              class="win-button primary"
+              id="start-import-btn"
+              style="font-weight: 600; padding: 4px 14px; height: 26px;"
+            >
               <i class="bi bi-download"></i> Start Import
             </button>
           </div>
         </div>
       </form>
 
-      <div id="import-progress-panel" style="display: none; margin-top: 16px; padding: 14px; background: var(--sys-menu-bg); border: 1px solid var(--sys-menu-border); border-radius: 6px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <span id="import-progress-title" style="font-weight: 600; font-size: 13px;">Processing Import...</span>
+      <div
+        id="import-progress-panel"
+        style="display: none; margin-top: 16px; padding: 14px; background: var(--sys-menu-bg); border: 1px solid var(--sys-menu-border); border-radius: 6px;"
+      >
+        <div
+          style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;"
+        >
+          <span id="import-progress-title" style="font-weight: 600; font-size: 13px;"
+            >Processing Import...</span
+          >
           <div style="display: flex; align-items: center; gap: 8px;">
-            <button type="button" class="win-button" id="import-cancel-btn" style="display: none; font-size: 11px; padding: 2px 8px; color: #a80000;" title="Cancel ongoing import">
+            <button
+              type="button"
+              class="win-button"
+              id="import-cancel-btn"
+              style="display: none; font-size: 11px; padding: 2px 8px; color: #a80000;"
+              title="Cancel ongoing import"
+            >
               <i class="bi bi-x-circle"></i> Cancel
             </button>
-            <button type="button" class="win-button" id="import-dismiss-btn" style="display: none; font-size: 11px; padding: 2px 8px;" title="Clear progress display">
+            <button
+              type="button"
+              class="win-button"
+              id="import-dismiss-btn"
+              style="display: none; font-size: 11px; padding: 2px 8px;"
+              title="Clear progress display"
+            >
               <i class="bi bi-x-lg"></i> Clear
             </button>
-            <span id="import-progress-percent" style="font-weight: 700; color: var(--sys-border-focus); font-size: 13px;">0%</span>
+            <span
+              id="import-progress-percent"
+              style="font-weight: 700; color: var(--sys-border-focus); font-size: 13px;"
+              >0%</span
+            >
           </div>
         </div>
-        <div style="width: 100%; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden; margin-bottom: 10px;">
-          <div id="import-progress-bar" style="width: 0%; height: 100%; background-color: var(--sys-primary, #0078d4); transition: width 0.3s ease;"></div>
+        <div
+          style="width: 100%; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden; margin-bottom: 10px;"
+        >
+          <div
+            id="import-progress-bar"
+            style="width: 0%; height: 100%; background-color: var(--sys-primary, #0078d4); transition: width 0.3s ease;"
+          ></div>
         </div>
-        <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--sys-text-subtle);">
+        <div
+          style="display: flex; justify-content: space-between; font-size: 11px; color: var(--sys-text-subtle);"
+        >
           <span id="import-indexed-count">Files: 0 / 0</span>
           <span id="import-pending-count">Pending Jobs: 0</span>
         </div>

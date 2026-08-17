@@ -1,13 +1,17 @@
-import { html, SafeHtml, ComponentMeta } from './_shared';
+import { html, SafeHtml, ComponentMeta } from "./_shared";
 
 export function renderPluginNavItemHtml(id: string, label: string, iconClass: string): SafeHtml {
   const viewKey = `extensions-${id}`;
-  return html`<li class="nav-item" data-view="${viewKey}"><span><i class="${iconClass}"></i></span> ${label}</li>`;
+  return html`<li class="nav-item" data-view="${viewKey}">
+    <span><i class="${iconClass}"></i></span> ${label}
+  </li>`;
 }
 
 export function renderSidebarHtml(activeView: string): SafeHtml {
   const navItem = (view: string, icon: string, label: string) =>
-    html`<li class="nav-item${view === activeView ? " active" : ""}" data-view="${view}"><span><i class="${icon}"></i></span> ${label}</li>`;
+    html`<li class="nav-item${view === activeView ? " active" : ""}" data-view="${view}">
+      <span><i class="${icon}"></i></span> ${label}
+    </li>`;
 
   return html`
     <aside class="sidebar">
@@ -29,7 +33,6 @@ export function renderSidebarHtml(activeView: string): SafeHtml {
             ${navItem("search", "bi bi-search", "General Search")}
             ${navItem("characters", "bi bi-bounding-box", "Character Identities")}
             ${navItem("filename-parser", "bi bi-regex", "Filename Parser")}
-
             ${navItem("toolbox", "bi bi-tools", "Image Toolbox")}
           </ul>
         </li>
@@ -57,15 +60,16 @@ export function renderSidebarHtml(activeView: string): SafeHtml {
 
 export const meta: ComponentMeta = {
   name: "Navigation Sidebar",
-  description: "WinForms TreeView-style sidebar navigation with chevron tree nodes, active indicators, and dynamic plugin child levels.",
+  description:
+    "WinForms TreeView-style sidebar navigation with chevron tree nodes, active indicators, and dynamic plugin child levels.",
   variants: [
     {
       name: "Sidebar Root & Tree Nodes",
-      render: () => renderSidebarHtml("dashboard")
+      render: () => renderSidebarHtml("dashboard"),
     },
     {
       name: "Active View State",
-      render: () => renderSidebarHtml("gallery")
+      render: () => renderSidebarHtml("gallery"),
     },
     {
       name: "Plugin Nav Item",
@@ -78,7 +82,7 @@ export const meta: ComponentMeta = {
             </ul>
           </li>
         </ul>
-      `
-    }
-  ]
+      `,
+    },
+  ],
 };

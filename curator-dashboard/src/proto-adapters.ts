@@ -55,7 +55,9 @@ export function parsedMetadataFromProto(p: PParsedMetadata): ParsedMetadata {
   };
 }
 
-export function characterIdentitySummaryFromProto(p: PCharacterIdentitySummary): CharacterIdentitySummary {
+export function characterIdentitySummaryFromProto(
+  p: PCharacterIdentitySummary,
+): CharacterIdentitySummary {
   return {
     id: n(p.id),
     name: p.name,
@@ -86,7 +88,11 @@ export function videoSummaryFromProto(p: PVideoSummary): VideoSummary {
 }
 
 /** NSFW probability derived from the per-class scores (never stored). */
-export function nsfwScore(m: { hentai_score?: number; porn_score?: number; sexy_score?: number }): number {
+export function nsfwScore(m: {
+  hentai_score?: number;
+  porn_score?: number;
+  sexy_score?: number;
+}): number {
   return (m.hentai_score ?? 0) + (m.porn_score ?? 0) + (m.sexy_score ?? 0);
 }
 
@@ -186,7 +192,6 @@ export function folderDetailsFromProto(p: PFolderDetails): FolderDetails {
     safety_pending: n(p.safetyPending),
   };
 }
-
 
 export function duplicateFolderInfoFromProto(p: PDuplicateFolderInfo): DuplicateFolderInfo {
   return {

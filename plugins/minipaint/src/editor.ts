@@ -33,7 +33,7 @@ async function onMessage(ev: MessageEvent): Promise<void> {
 
   if (d.type === "minipaint:console-error") {
     console.error(
-      `[minipaint iframe] ${d.message || "unknown error"}${d.detail ? "\n" + d.detail : ""}`
+      `[minipaint iframe] ${d.message || "unknown error"}${d.detail ? "\n" + d.detail : ""}`,
     );
     return;
   }
@@ -46,7 +46,7 @@ async function onMessage(ev: MessageEvent): Promise<void> {
     if (!(bytes instanceof ArrayBuffer)) {
       currentFrame?.contentWindow?.postMessage(
         { type: "minipaint:save-result", ok: false, error: "no buffer in save message" },
-        "*"
+        "*",
       );
       return;
     }
@@ -63,12 +63,12 @@ async function onMessage(ev: MessageEvent): Promise<void> {
       });
       currentFrame?.contentWindow?.postMessage(
         { type: "minipaint:save-result", ok: res.ok, path: res.path, error: res.error },
-        "*"
+        "*",
       );
     } catch (e) {
       currentFrame?.contentWindow?.postMessage(
         { type: "minipaint:save-result", ok: false, error: String(e) },
-        "*"
+        "*",
       );
     }
   }
@@ -104,7 +104,7 @@ export function mountEditor(
   pluginDir: string,
   workspaceRoot: string,
   host: HTMLElement,
-  initialPath?: string
+  initialPath?: string,
 ): () => void {
   editorWorkspaceRoot = workspaceRoot;
 
@@ -125,10 +125,10 @@ export function mountEditor(
         () => {
           iframe.contentWindow?.postMessage(
             { type: "minipaint:load-image", url: PH.convertFileSrc(initialPath) },
-            "*"
+            "*",
           );
         },
-        { once: true }
+        { once: true },
       );
     }
   }
@@ -148,7 +148,7 @@ export function loadAssetIntoEditor(path: string): void {
   if (!currentFrame || !path) return;
   currentFrame.contentWindow?.postMessage(
     { type: "minipaint:load-image", url: PH.convertFileSrc(path) },
-    "*"
+    "*",
   );
 }
 

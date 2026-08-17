@@ -38,23 +38,16 @@ interface PluginHostApi {
     label: string,
     iconClass: string,
     render: () => HTMLElement,
-    chromeLess?: boolean
+    chromeLess?: boolean,
   ): void;
-  registerMetadataRenderer(
-    id: string,
-    fn: (asset: AssetContext) => HTMLElement | null
-  ): void;
+  registerMetadataRenderer(id: string, fn: (asset: AssetContext) => HTMLElement | null): void;
   registerToolbarButton(
     id: string,
     label: string,
     iconClass: string,
-    fn: (selection: AssetContext[]) => void
+    fn: (selection: AssetContext[]) => void,
   ): void;
-  registerContextMenuItem(
-    id: string,
-    label: string,
-    fn: (asset: AssetContext) => void
-  ): void;
+  registerContextMenuItem(id: string, label: string, fn: (asset: AssetContext) => void): void;
 
   // IPC bridge
   // `method` is the Rust enum variant name (e.g. "GetImage", "PathExists").
@@ -64,14 +57,14 @@ interface PluginHostApi {
   // untyped catch-all.
   callService(
     method: "PluginDbExecute",
-    params: { db: string; sql: string; params?: unknown[] }
+    params: { db: string; sql: string; params?: unknown[] },
   ): Promise<{
     PluginDbExecuteResult?: { rows_affected?: number };
     Error?: { message: string };
   }>;
   callService(
     method: "PluginDbQuery",
-    params: { db: string; sql: string; params?: unknown[] }
+    params: { db: string; sql: string; params?: unknown[] },
   ): Promise<{
     PluginDbQueryResult?: { rows?: Record<string, unknown>[] };
     Error?: { message: string };
@@ -85,46 +78,46 @@ interface PluginHostApi {
       body?: string;
       content_type?: string;
       headers?: Record<string, string>;
-    }
+    },
   ): Promise<{
     HttpGetResult?: { status: number; body: string; etag?: string };
     Error?: { message: string };
   }>;
   callService(
     method: "HttpDownload",
-    params: { url: string; output_path: string; timeout_ms?: number }
+    params: { url: string; output_path: string; timeout_ms?: number },
   ): Promise<{
     HttpDownloadResult?: { written_to?: string; size_bytes?: number; absolute_path?: string };
     Error?: { message: string };
   }>;
   callService(
     method: "FileExists",
-    params: { path: string }
+    params: { path: string },
   ): Promise<{
     FileExistsResult?: { exists?: boolean; size_bytes?: number; absolute_path?: string };
     Error?: { message: string };
   }>;
   callService(
     method: "DirStat",
-    params: { path?: string }
+    params: { path?: string },
   ): Promise<{
     DirStatResult?: { total_bytes?: number; file_count?: number; absolute_path?: string };
     Error?: { message: string };
   }>;
   callService(
     method: "FileMove",
-    params: { src: string; dst: string }
+    params: { src: string; dst: string },
   ): Promise<{
     FileMoveResult?: { absolute_path?: string };
     Error?: { message: string };
   }>;
   callService(
     method: "FileDelete",
-    params: { path: string }
+    params: { path: string },
   ): Promise<{ Error?: { message: string } }>;
   callService(
     method: "PathExists",
-    params: { path: string }
+    params: { path: string },
   ): Promise<{
     PathExistsResult?: { exists?: boolean };
     Error?: { message: string };

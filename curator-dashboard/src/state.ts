@@ -29,21 +29,39 @@ export function setImagesPerPage(val: number) {
 
 // --- Log Tab State ---
 export let currentLogTab: "dashboard" | "service" = "dashboard";
-export function setCurrentLogTab(tab: "dashboard" | "service") { currentLogTab = tab; }
+export function setCurrentLogTab(tab: "dashboard" | "service") {
+  currentLogTab = tab;
+}
 
 // --- Gallery/Favorites Pagination ---
 export let galleryPage = 0;
 export let favoritesPage = 0;
 export let galleryTotalCount = 0;
 export let favoritesTotalCount = 0;
-export function setGalleryPage(v: number) { galleryPage = v; }
-export function setFavoritesPage(v: number) { favoritesPage = v; }
-export function setGalleryTotalCount(v: number) { galleryTotalCount = v; }
-export function setFavoritesTotalCount(v: number) { favoritesTotalCount = v; }
-export function getGalleryPage(): number { return galleryPage; }
-export function getFavoritesPage(): number { return favoritesPage; }
-export function getGalleryTotalCount(): number { return galleryTotalCount; }
-export function getFavoritesTotalCount(): number { return favoritesTotalCount; }
+export function setGalleryPage(v: number) {
+  galleryPage = v;
+}
+export function setFavoritesPage(v: number) {
+  favoritesPage = v;
+}
+export function setGalleryTotalCount(v: number) {
+  galleryTotalCount = v;
+}
+export function setFavoritesTotalCount(v: number) {
+  favoritesTotalCount = v;
+}
+export function getGalleryPage(): number {
+  return galleryPage;
+}
+export function getFavoritesPage(): number {
+  return favoritesPage;
+}
+export function getGalleryTotalCount(): number {
+  return galleryTotalCount;
+}
+export function getFavoritesTotalCount(): number {
+  return favoritesTotalCount;
+}
 
 // --- Infinite Scroll ---
 const INFINITE_SCROLL_KEY = "curator-gallery-infinite-scroll";
@@ -52,7 +70,9 @@ export function setGalleryInfiniteScroll(v: boolean) {
   galleryInfiniteScroll = v;
   localStorage.setItem(INFINITE_SCROLL_KEY, v.toString());
 }
-export function getGalleryInfiniteScroll(): boolean { return galleryInfiniteScroll; }
+export function getGalleryInfiniteScroll(): boolean {
+  return galleryInfiniteScroll;
+}
 
 // --- Zen Mode ---
 const ZEN_MODE_KEY = "curator-gallery-zen-mode";
@@ -64,7 +84,9 @@ export function setGalleryZenMode(v: boolean) {
   galleryZenMode = v;
   localStorage.setItem(ZEN_MODE_KEY, v.toString());
 }
-export function getGalleryZenMode(): boolean { return galleryZenMode; }
+export function getGalleryZenMode(): boolean {
+  return galleryZenMode;
+}
 
 // --- Full Images Load Toggle ---
 const FULL_IMAGES_KEY = "curator-gallery-full-images";
@@ -73,18 +95,24 @@ export function setGalleryFullImages(v: boolean) {
   galleryFullImages = v;
   localStorage.setItem(FULL_IMAGES_KEY, v.toString());
 }
-export function getGalleryFullImages(): boolean { return galleryFullImages; }
+export function getGalleryFullImages(): boolean {
+  return galleryFullImages;
+}
 export const setZenModeFullImages = setGalleryFullImages;
 export const getZenModeFullImages = getGalleryFullImages;
 
 // --- Selection State ---
 export let isSelectMode = false;
 export const selectedImageIds = new Set<number>();
-export function setIsSelectMode(v: boolean) { isSelectMode = v; }
+export function setIsSelectMode(v: boolean) {
+  isSelectMode = v;
+}
 
 // --- Lucky Highlight State ---
 export let luckyHighlightId: number | null = null;
-export function setLuckyHighlightId(id: number | null) { luckyHighlightId = id; }
+export function setLuckyHighlightId(id: number | null) {
+  luckyHighlightId = id;
+}
 
 // --- Tag Copy Formatting ---
 const TAG_COPY_REPLACE_UNDERSCORES_KEY = "curator-tag-copy-replace-underscores";
@@ -108,31 +136,54 @@ const galleryRefreshListeners: UIListener[] = [];
 const dashboardRefreshListeners: UIListener[] = [];
 const favoritesRefreshListeners: UIListener[] = [];
 
-export function onSelectionChange(cb: UIListener) { selectionListeners.push(cb); }
+export function onSelectionChange(cb: UIListener) {
+  selectionListeners.push(cb);
+}
 export function notifySelectionChange() {
   for (const cb of selectionListeners) {
-    try { cb(); } catch (e) { console.error("selection listener error:", e); }
+    try {
+      cb();
+    } catch (e) {
+      console.error("selection listener error:", e);
+    }
   }
 }
 
-export function onGalleryRefresh(cb: UIListener) { galleryRefreshListeners.push(cb); }
+export function onGalleryRefresh(cb: UIListener) {
+  galleryRefreshListeners.push(cb);
+}
 export function requestGalleryRefresh() {
   for (const cb of galleryRefreshListeners) {
-    try { cb(); } catch (e) { console.error("gallery refresh listener error:", e); }
+    try {
+      cb();
+    } catch (e) {
+      console.error("gallery refresh listener error:", e);
+    }
   }
 }
 
-export function onDashboardRefresh(cb: UIListener) { dashboardRefreshListeners.push(cb); }
+export function onDashboardRefresh(cb: UIListener) {
+  dashboardRefreshListeners.push(cb);
+}
 export function requestDashboardRefresh() {
   for (const cb of dashboardRefreshListeners) {
-    try { cb(); } catch (e) { console.error("dashboard refresh listener error:", e); }
+    try {
+      cb();
+    } catch (e) {
+      console.error("dashboard refresh listener error:", e);
+    }
   }
 }
 
-export function onFavoritesRefresh(cb: UIListener) { favoritesRefreshListeners.push(cb); }
+export function onFavoritesRefresh(cb: UIListener) {
+  favoritesRefreshListeners.push(cb);
+}
 export function requestFavoritesRefresh() {
   for (const cb of favoritesRefreshListeners) {
-    try { cb(); } catch (e) { console.error("favorites refresh listener error:", e); }
+    try {
+      cb();
+    } catch (e) {
+      console.error("favorites refresh listener error:", e);
+    }
   }
 }
-

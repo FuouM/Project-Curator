@@ -2,10 +2,50 @@ import { buildOcrLabelSvg, getOcrTextSettings } from "../../ocr-text";
 import type { OcrPreviewBox } from "../../ocr-text";
 
 const OCR_PREVIEW_BOXES: OcrPreviewBox[] = [
-  { pts: [[30, 30], [190, 30], [190, 70], [30, 70]], text: "Lorem ipsum dolor", color: "#3498db", fill: "rgba(52, 152, 219, 0.15)" },
-  { pts: [[100, 50], [300, 50], [300, 90], [100, 90]], text: "overlapping labels", color: "#9b59b6", fill: "rgba(155, 89, 182, 0.15)" },
-  { pts: [[40, 110], [260, 110], [260, 155], [40, 155]], text: "pushed below", color: "#3498db", fill: "rgba(52, 152, 219, 0.15)" },
-  { pts: [[410, 20], [450, 20], [450, 180], [410, 180]], text: "縦書き", color: "#9b59b6", fill: "rgba(155, 89, 182, 0.15)" },
+  {
+    pts: [
+      [30, 30],
+      [190, 30],
+      [190, 70],
+      [30, 70],
+    ],
+    text: "Lorem ipsum dolor",
+    color: "#3498db",
+    fill: "rgba(52, 152, 219, 0.15)",
+  },
+  {
+    pts: [
+      [100, 50],
+      [300, 50],
+      [300, 90],
+      [100, 90],
+    ],
+    text: "overlapping labels",
+    color: "#9b59b6",
+    fill: "rgba(155, 89, 182, 0.15)",
+  },
+  {
+    pts: [
+      [40, 110],
+      [260, 110],
+      [260, 155],
+      [40, 155],
+    ],
+    text: "pushed below",
+    color: "#3498db",
+    fill: "rgba(52, 152, 219, 0.15)",
+  },
+  {
+    pts: [
+      [410, 20],
+      [450, 20],
+      [450, 180],
+      [410, 180],
+    ],
+    text: "縦書き",
+    color: "#9b59b6",
+    fill: "rgba(155, 89, 182, 0.15)",
+  },
 ];
 
 export function renderOcrPreview() {
@@ -16,10 +56,18 @@ export function renderOcrPreview() {
 
 export function bindOcrPreviewControls() {
   const ocrFontSizeSelect = document.getElementById("settings-ocr-font-size") as HTMLSelectElement;
-  const ocrStrokeWidthSelect = document.getElementById("settings-ocr-stroke-width") as HTMLSelectElement;
-  const ocrFontFamilySelect = document.getElementById("settings-ocr-font-family") as HTMLSelectElement;
-  const ocrFitInBoxCheckbox = document.getElementById("settings-ocr-fit-in-box") as HTMLInputElement;
-  const ocrVerticalTextCheckbox = document.getElementById("settings-ocr-vertical-text") as HTMLInputElement;
+  const ocrStrokeWidthSelect = document.getElementById(
+    "settings-ocr-stroke-width",
+  ) as HTMLSelectElement;
+  const ocrFontFamilySelect = document.getElementById(
+    "settings-ocr-font-family",
+  ) as HTMLSelectElement;
+  const ocrFitInBoxCheckbox = document.getElementById(
+    "settings-ocr-fit-in-box",
+  ) as HTMLInputElement;
+  const ocrVerticalTextCheckbox = document.getElementById(
+    "settings-ocr-vertical-text",
+  ) as HTMLInputElement;
   const { fontSize, strokeWidth, fontFamily, fitInBox, verticalText } = getOcrTextSettings();
   if (ocrFontSizeSelect) ocrFontSizeSelect.value = fontSize.toString();
   if (ocrStrokeWidthSelect) ocrStrokeWidthSelect.value = strokeWidth.toString();
@@ -56,7 +104,10 @@ export function bindOcrPreviewControls() {
   }
   if (ocrVerticalTextCheckbox) {
     ocrVerticalTextCheckbox.addEventListener("change", () => {
-      localStorage.setItem("curator-ocr-vertical-text", ocrVerticalTextCheckbox.checked ? "1" : "0");
+      localStorage.setItem(
+        "curator-ocr-vertical-text",
+        ocrVerticalTextCheckbox.checked ? "1" : "0",
+      );
       renderOcrPreview();
     });
   }
@@ -65,7 +116,7 @@ export function bindOcrPreviewControls() {
 export function setupOcrDragListeners(previewContainer: HTMLElement) {
   let isDragging = false;
   let activeIndex = -1;
-  let activeAction: 'move' | 'resize' | null = null;
+  let activeAction: "move" | "resize" | null = null;
   let startX = 0;
   let startY = 0;
   let startPts: number[][] = [];
@@ -84,10 +135,10 @@ export function setupOcrDragListeners(previewContainer: HTMLElement) {
       e.preventDefault();
       isDragging = true;
       activeIndex = parseInt(indexAttr, 10);
-      activeAction = isHandle ? 'resize' : 'move';
+      activeAction = isHandle ? "resize" : "move";
       startX = e.clientX;
       startY = e.clientY;
-      startPts = OCR_PREVIEW_BOXES[activeIndex].pts.map(pt => [...pt]);
+      startPts = OCR_PREVIEW_BOXES[activeIndex].pts.map((pt) => [...pt]);
     }
   });
 
@@ -105,12 +156,12 @@ export function setupOcrDragListeners(previewContainer: HTMLElement) {
     const dy = (e.clientY - startY) * scaleY;
 
     const box = OCR_PREVIEW_BOXES[activeIndex];
-    const minX = Math.min(...startPts.map(pt => pt[0]));
-    const minY = Math.min(...startPts.map(pt => pt[1]));
-    const maxX = Math.max(...startPts.map(pt => pt[0]));
-    const maxY = Math.max(...startPts.map(pt => pt[1]));
+    const minX = Math.min(...startPts.map((pt) => pt[0]));
+    const minY = Math.min(...startPts.map((pt) => pt[1]));
+    const maxX = Math.max(...startPts.map((pt) => pt[0]));
+    const maxY = Math.max(...startPts.map((pt) => pt[1]));
 
-    if (activeAction === 'move') {
+    if (activeAction === "move") {
       const w = maxX - minX;
       const h = maxY - minY;
 
@@ -121,9 +172,9 @@ export function setupOcrDragListeners(previewContainer: HTMLElement) {
         [newMinX, newMinY],
         [newMinX + w, newMinY],
         [newMinX + w, newMinY + h],
-        [newMinX, newMinY + h]
+        [newMinX, newMinY + h],
       ];
-    } else if (activeAction === 'resize') {
+    } else if (activeAction === "resize") {
       const newMaxX = Math.max(minX + 20, Math.min(500, maxX + dx));
       const newMaxY = Math.max(minY + 20, Math.min(200, maxY + dy));
 
@@ -131,7 +182,7 @@ export function setupOcrDragListeners(previewContainer: HTMLElement) {
         [minX, minY],
         [newMaxX, minY],
         [newMaxX, newMaxY],
-        [minX, newMaxY]
+        [minX, newMaxY],
       ];
     }
 

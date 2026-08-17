@@ -37,7 +37,7 @@ export function openBBoxEditor(
   y0: number,
   x1: number,
   y1: number,
-  onSave?: () => void
+  onSave?: () => void,
 ) {
   currentDetId = detectionId;
   currentImageId = imageId;
@@ -157,8 +157,10 @@ function setupBBoxEvents() {
   const activeBox = document.getElementById("bbox-editor-box")!;
 
   // Inputs change handlers
-  const inputs = ["x0", "y0", "x1", "y1"].map(id => document.getElementById(`bbox-input-${id}`) as HTMLInputElement);
-  inputs.forEach(input => {
+  const inputs = ["x0", "y0", "x1", "y1"].map(
+    (id) => document.getElementById(`bbox-input-${id}`) as HTMLInputElement,
+  );
+  inputs.forEach((input) => {
     if (!input) return;
     input.oninput = () => {
       const val = parseInt(input.value) || 0;
@@ -296,24 +298,34 @@ function setupBBoxEvents() {
 
         if (currentDetId === null) {
           if (currentImageId === null) return;
-          await typedCall("CharactersService.AddDetection", AddDetectionRequestSchema, {
-            imageId: BigInt(currentImageId),
-            x0,
-            y0,
-            x1,
-            y1,
-          }, AddDetectionResultSchema);
+          await typedCall(
+            "CharactersService.AddDetection",
+            AddDetectionRequestSchema,
+            {
+              imageId: BigInt(currentImageId),
+              x0,
+              y0,
+              x1,
+              y1,
+            },
+            AddDetectionResultSchema,
+          );
           const cb = onSaveCallback;
           closeBBoxEditor();
           if (cb) cb();
         } else {
-          await typedCall("CharactersService.UpdateDetectionBoundingBox", UpdateDetectionBoundingBoxRequestSchema, {
-            detectionId: BigInt(currentDetId),
-            x0,
-            y0,
-            x1,
-            y1,
-          }, EmptySchema);
+          await typedCall(
+            "CharactersService.UpdateDetectionBoundingBox",
+            UpdateDetectionBoundingBoxRequestSchema,
+            {
+              detectionId: BigInt(currentDetId),
+              x0,
+              y0,
+              x1,
+              y1,
+            },
+            EmptySchema,
+          );
           const cb = onSaveCallback;
           closeBBoxEditor();
           if (cb) cb();

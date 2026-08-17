@@ -57,7 +57,10 @@ function columnResizeMouseMove(e: MouseEvent): void {
 
 function columnResizeMouseUp(): void {
   if (!columnResizeState) return;
-  localStorage.setItem(COL_WIDTH_KEY + columnResizeState.colKey, String(columnResizeState.liveWidth));
+  localStorage.setItem(
+    COL_WIDTH_KEY + columnResizeState.colKey,
+    String(columnResizeState.liveWidth),
+  );
   columnResizeState = null;
   document.body.style.cursor = "";
   document.body.style.userSelect = "";

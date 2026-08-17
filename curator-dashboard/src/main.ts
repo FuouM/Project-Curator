@@ -13,7 +13,14 @@ import { setupToolbox, renderToolboxHtml } from "./views/toolbox";
 import { typedCall } from "./ipc";
 import { imageDetailsFromProto } from "./proto-adapters";
 import { DashboardInitResultSchema, RandomImageResultSchema } from "./gen/system_pb";
-import { updateStatusIndicators, updateTaggerIndicators, applySettingsToUI, startStatusPolling, renderFeaturedDay, renderDashboardHtml } from "./views/dashboard";
+import {
+  updateStatusIndicators,
+  updateTaggerIndicators,
+  applySettingsToUI,
+  startStatusPolling,
+  renderFeaturedDay,
+  renderDashboardHtml,
+} from "./views/dashboard";
 import { renderGalleryHtml, renderFavoritesHtml } from "./views/gallery";
 import { renderTagstatsHtml } from "./views/tagstats";
 import { renderFoldersHtml } from "./views/folders";
@@ -26,7 +33,13 @@ import { renderBenchmarkHtml } from "./views/benchmark";
 import { renderSettingsHtml } from "./views/settings";
 import { renderComponentsHtml } from "./views/components-view";
 import { renderModelsHtml, setupModelsView } from "./views/models";
-import { renderImages, setupGridDelegation, setupGlobalContextMenu, setThumbLoadPaused, resumeThumbLoading } from "./cards";
+import {
+  renderImages,
+  setupGridDelegation,
+  setupGlobalContextMenu,
+  setThumbLoadPaused,
+  resumeThumbLoading,
+} from "./cards";
 import { setGalleryPage, getImagesPerPage, setLuckyHighlightId } from "./state";
 import { refreshGallery } from "./views/gallery";
 import { initPlugins } from "./plugin-host";
@@ -80,21 +93,32 @@ function setupWindowStateListener() {
               if (parsed.width) prevState = parsed;
             } catch (_) {}
           }
-          localStorage.setItem("curator-window-state", JSON.stringify({
-            ...prevState,
-            maximized: true
-          }));
+          localStorage.setItem(
+            "curator-window-state",
+            JSON.stringify({
+              ...prevState,
+              maximized: true,
+            }),
+          );
         } else {
           const outerSize = await appWindow.outerSize();
           const outerPosition = await appWindow.outerPosition();
-          if (outerSize.width > 200 && outerSize.height > 150 && outerPosition.x > -10000 && outerPosition.y > -10000) {
-            localStorage.setItem("curator-window-state", JSON.stringify({
-              width: outerSize.width,
-              height: outerSize.height,
-              x: outerPosition.x,
-              y: outerPosition.y,
-              maximized: false
-            }));
+          if (
+            outerSize.width > 200 &&
+            outerSize.height > 150 &&
+            outerPosition.x > -10000 &&
+            outerPosition.y > -10000
+          ) {
+            localStorage.setItem(
+              "curator-window-state",
+              JSON.stringify({
+                width: outerSize.width,
+                height: outerSize.height,
+                x: outerPosition.x,
+                y: outerPosition.y,
+                maximized: false,
+              }),
+            );
           }
         }
       } catch (err) {
@@ -114,8 +138,6 @@ function setupWindowStateListener() {
 }
 
 function init() {
-
-
   restoreWindowState();
 
   // Render all view templates dynamically into their shell elements
@@ -164,7 +186,6 @@ function init() {
   setupSettings();
   setupModelsView();
 
-
   // Setup event delegation on grids
   const galleryGrid = document.getElementById("gallery-grid");
   if (galleryGrid) setupGridDelegation(galleryGrid);
@@ -175,27 +196,39 @@ function init() {
   const dashboardGrid = document.getElementById("latest-imports-grid");
   if (dashboardGrid) setupGridDelegation(dashboardGrid);
 
-
   // Phase 1: Fast data (status + tagger + settings)
-  typedCall("SystemService.GetDashboardInit", null, null, DashboardInitResultSchema).then((d) => {
-    updateStatusIndicators({ image_count: Number(d.imageCount), vector_count: Number(d.vectorCount), pending_jobs: Number(d.pendingJobs), preprocessing_jobs: Number(d.preprocessingJobs), ram_usage_bytes: 0 });
-    updateTaggerIndicators({ loaded: d.taggerLoaded, model_path: d.taggerModelPath, total_tags: d.taggerTotalTags });
+  typedCall("SystemService.GetDashboardInit", null, null, DashboardInitResultSchema)
+    .then((d) => {
+      updateStatusIndicators({
+        image_count: Number(d.imageCount),
+        vector_count: Number(d.vectorCount),
+        pending_jobs: Number(d.pendingJobs),
+        preprocessing_jobs: Number(d.preprocessingJobs),
+        ram_usage_bytes: 0,
+      });
+      updateTaggerIndicators({
+        loaded: d.taggerLoaded,
+        model_path: d.taggerModelPath,
+        total_tags: d.taggerTotalTags,
+      });
 
-    applySettingsToUI({
-      clipDevice: d.clipDevice,
-      taggerDevice: d.taggerDevice,
-      taggerWdDevice: d.taggerWdDevice,
-      idleTimeoutSecs: d.idleTimeoutSecs,
-      embeddingModel: d.embeddingModel,
-      detectionDevice: d.detectionDevice,
-      detectionMetricsDevice: d.detectionMetricsDevice,
-      ocrDevice: d.ocrDevice,
-      preferredTagger: d.preferredTagger,
-    });
+      applySettingsToUI({
+        clipDevice: d.clipDevice,
+        taggerDevice: d.taggerDevice,
+        taggerWdDevice: d.taggerWdDevice,
+        idleTimeoutSecs: d.idleTimeoutSecs,
+        embeddingModel: d.embeddingModel,
+        detectionDevice: d.detectionDevice,
+        detectionMetricsDevice: d.detectionMetricsDevice,
+        ocrDevice: d.ocrDevice,
+        preferredTagger: d.preferredTagger,
+      });
 
-    if (d.featuredImages.length > 0) renderFeaturedDay(imageDetailsFromProto(d.featuredImages[0]));
-    renderImages(d.latestImages.map(imageDetailsFromProto), "latest-imports-grid", false, true);
-  }).catch(() => {});
+      if (d.featuredImages.length > 0)
+        renderFeaturedDay(imageDetailsFromProto(d.featuredImages[0]));
+      renderImages(d.latestImages.map(imageDetailsFromProto), "latest-imports-grid", false, true);
+    })
+    .catch(() => {});
 
   startStatusPolling();
   initFPSCounter();
@@ -230,7 +263,9 @@ function initFPSCounter() {
 async function waitForGalleryCard(imageId: number, timeoutMs: number): Promise<HTMLElement | null> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const card = document.querySelector(`#gallery-grid [data-image-id="${imageId}"]`) as HTMLElement | null;
+    const card = document.querySelector(
+      `#gallery-grid [data-image-id="${imageId}"]`,
+    ) as HTMLElement | null;
     if (card) return card;
     await new Promise((r) => setTimeout(r, 100));
   }
@@ -239,7 +274,12 @@ async function waitForGalleryCard(imageId: number, timeoutMs: number): Promise<H
 
 async function handleFeelingLucky() {
   try {
-    const resp = await typedCall("SystemService.GetRandomImage", null, null, RandomImageResultSchema);
+    const resp = await typedCall(
+      "SystemService.GetRandomImage",
+      null,
+      null,
+      RandomImageResultSchema,
+    );
     if (!resp.image) return;
 
     const image = imageDetailsFromProto(resp.image);

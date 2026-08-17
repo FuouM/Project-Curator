@@ -1,0 +1,5 @@
+node_modules
+dist
+curator-dashboard/src/gen
+package-lock.json
+*.md

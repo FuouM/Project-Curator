@@ -1,4 +1,4 @@
-import { html, SafeHtml, ComponentMeta } from './_shared';
+import { html, SafeHtml, ComponentMeta } from "./_shared";
 
 export interface ButtonOptions {
   icon?: string;
@@ -15,7 +15,9 @@ export function renderButton(text: string, options?: ButtonOptions): SafeHtml {
   const idAttr = options?.id ? `id="${options.id}"` : "";
   const iconHtml = options?.icon ? `<i class="${options.icon}"></i> ` : "";
 
-  return html`<button class="${className}" ${disabledAttr} ${styleAttr} ${idAttr}>${iconHtml}${text}</button>`;
+  return html`<button class="${className}" ${disabledAttr} ${styleAttr} ${idAttr}>
+    ${iconHtml}${text}
+  </button>`;
 }
 
 export const meta: ComponentMeta = {
@@ -32,7 +34,7 @@ export const meta: ComponentMeta = {
           ${renderButton("Disabled Button", { disabled: true })}
           ${renderButton("Button with Icon", { icon: "bi bi-play-fill" })}
         </div>
-      `
+      `,
     },
     {
       name: "Primary & Danger Actions",
@@ -43,7 +45,7 @@ export const meta: ComponentMeta = {
           ${renderButton("Danger Button", { className: "win-button danger" })}
           ${renderButton("Danger with Icon", { className: "win-button danger", icon: "bi bi-trash" })}
         </div>
-      `
-    }
-  ]
+      `,
+    },
+  ],
 };

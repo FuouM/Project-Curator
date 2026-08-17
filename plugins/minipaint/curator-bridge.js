@@ -57,25 +57,43 @@
     // The buffer MUST be attached to the message as a property AND listed in
     // the transfer list — listing it only in the transfer list detaches it on
     // the sender side while the receiver never receives a reference to it.
-    try { window.parent.postMessage(Object.assign({ type: type, buffer: bytes }, payload), "*", [bytes]); }
-    catch (e) { console.error("[curator-bridge] postMessage failed", e); }
+    try {
+      window.parent.postMessage(Object.assign({ type: type, buffer: bytes }, payload), "*", [
+        bytes,
+      ]);
+    } catch (e) {
+      console.error("[curator-bridge] postMessage failed", e);
+    }
   }
 
   function post(type, payload) {
-    try { window.parent.postMessage(Object.assign({ type: type }, payload), "*"); }
-    catch (e) { console.error("[curator-bridge] postMessage failed", e); }
+    try {
+      window.parent.postMessage(Object.assign({ type: type }, payload), "*");
+    } catch (e) {
+      console.error("[curator-bridge] postMessage failed", e);
+    }
   }
 
   function reportError(message, detail) {
-    try { window.parent.postMessage({ type: "minipaint:console-error", message: String(message), detail: detail ? String(detail) : "" }, "*"); }
-    catch (e) { /* host unreachable */ }
+    try {
+      window.parent.postMessage(
+        {
+          type: "minipaint:console-error",
+          message: String(message),
+          detail: detail ? String(detail) : "",
+        },
+        "*",
+      );
+    } catch (e) {
+      /* host unreachable */
+    }
   }
 
   // Forward every uncaught exception / rejection in the editor iframe to the
   // host so failures are visible in the dashboard instead of the hidden
   // iframe console.
   window.addEventListener("error", function (ev) {
-    var detail = ev.error && ev.error.stack ? ev.error.stack : (ev.filename + ":" + ev.lineno);
+    var detail = ev.error && ev.error.stack ? ev.error.stack : ev.filename + ":" + ev.lineno;
     reportError(ev.message || "Uncaught error", detail);
   });
   window.addEventListener("unhandledrejection", function (ev) {
@@ -84,12 +102,17 @@
   });
 
   function waitForGlobal(key, cb) {
-    if (window[key]) { cb(window[key]); return; }
+    if (window[key]) {
+      cb(window[key]);
+      return;
+    }
     var tries = 0;
     var iv = setInterval(function () {
       tries += 1;
-      if (window[key]) { clearInterval(iv); cb(window[key]); }
-      else if (tries > 200) {
+      if (window[key]) {
+        clearInterval(iv);
+        cb(window[key]);
+      } else if (tries > 200) {
         clearInterval(iv);
         reportError("[curator-bridge] " + key + " never appeared");
       }
@@ -97,16 +120,33 @@
   }
 
   function blobToBytes(blob, cb) {
-    blob.arrayBuffer().then(function (buf) { cb(buf); }, function (e) { reportError("blob.arrayBuffer failed", e); cb(null); });
+    blob.arrayBuffer().then(
+      function (buf) {
+        cb(buf);
+      },
+      function (e) {
+        reportError("blob.arrayBuffer failed", e);
+        cb(null);
+      },
+    );
   }
 
   function getGifEncoder(cb) {
-    if (window.GIF) { cb(window.GIF); return; }
+    if (window.GIF) {
+      cb(window.GIF);
+      return;
+    }
     var tries = 0;
     var iv = setInterval(function () {
       tries += 1;
-      if (window.GIF) { clearInterval(iv); cb(window.GIF); }
-      else if (tries > 100) { clearInterval(iv); reportError("GIF encoder (gif.js) failed to load"); cb(null); }
+      if (window.GIF) {
+        clearInterval(iv);
+        cb(window.GIF);
+      } else if (tries > 100) {
+        clearInterval(iv);
+        reportError("GIF encoder (gif.js) failed to load");
+        cb(null);
+      }
     }, 50);
   }
 
@@ -116,7 +156,9 @@
     if (window.GIF) return;
     var s = document.createElement("script");
     s.src = "./src/js/libs/gifjs/gif.js";
-    s.onerror = function () { reportError("failed to load gif.js from editor assets"); };
+    s.onerror = function () {
+      reportError("failed to load gif.js from editor assets");
+    };
     document.head.appendChild(s);
   })();
 
@@ -128,10 +170,19 @@
 
       if (type === "JSON") {
         var dataJson;
-        try { dataJson = this.export_as_json(); } catch (e) { reportError("export_as_json failed", e); dataJson = null; }
+        try {
+          dataJson = this.export_as_json();
+        } catch (e) {
+          reportError("export_as_json failed", e);
+          dataJson = null;
+        }
         if (dataJson != null) {
           var enc = new TextEncoder();
-          postRaw("minipaint:save", { format: "json", name: user_response.name }, enc.encode(dataJson).buffer);
+          postRaw(
+            "minipaint:save",
+            { format: "json", name: user_response.name },
+            enc.encode(dataJson).buffer,
+          );
         }
         return;
       }
@@ -145,10 +196,17 @@
         // internals that are pinned to v4.14.3. If any hook is missing/renamed,
         // refuse the export rather than silently producing wrong pixels.
         var Cfg = window.AppConfig;
-        if (!this.Base_layers || !this.Base_layers.convert_layers_to_canvas
-            || !this.Base_layers.convert_layer_to_canvas
-            || !this.fillCanvasBackground || !Cfg || typeof Cfg.WIDTH !== "number") {
-          post("minipaint:save-error", { message: "miniPaint internals changed; the Curator save bridge needs a re-audit." });
+        if (
+          !this.Base_layers ||
+          !this.Base_layers.convert_layers_to_canvas ||
+          !this.Base_layers.convert_layer_to_canvas ||
+          !this.fillCanvasBackground ||
+          !Cfg ||
+          typeof Cfg.WIDTH !== "number"
+        ) {
+          post("minipaint:save-error", {
+            message: "miniPaint internals changed; the Curator save bridge needs a re-audit.",
+          });
           return;
         }
 
@@ -173,13 +231,27 @@
         }
 
         var mime = type === "JPG" ? "image/jpeg" : "image/" + type.toLowerCase();
-        canvas.toBlob(function (blob) {
-          if (!blob) { post("minipaint:save-error", { message: "toBlob returned null" }); return; }
-          blobToBytes(blob, function (buf) {
-            if (!buf) { post("minipaint:save-error", { message: "blob.arrayBuffer failed" }); return; }
-            postRaw("minipaint:save", { format: type.toLowerCase(), name: user_response.name }, buf);
-          });
-        }, mime, quality);
+        canvas.toBlob(
+          function (blob) {
+            if (!blob) {
+              post("minipaint:save-error", { message: "toBlob returned null" });
+              return;
+            }
+            blobToBytes(blob, function (buf) {
+              if (!buf) {
+                post("minipaint:save-error", { message: "blob.arrayBuffer failed" });
+                return;
+              }
+              postRaw(
+                "minipaint:save",
+                { format: type.toLowerCase(), name: user_response.name },
+                buf,
+              );
+            });
+          },
+          mime,
+          quality,
+        );
         return;
       }
 
@@ -190,54 +262,75 @@
         // Upstream reads o.A.layers / o.A.layer where o.A IS the AppConfig
         // singleton (webpack module 3387) — NOT window.Layers (the Layers
         // class instance, which holds no .layers array of its own).
-        if (!CfgGif || typeof CfgGif.WIDTH !== "number" || !this.Base_layers
-            || !this.Base_layers.convert_layers_to_canvas || !this.fillCanvasBackground) {
-          post("minipaint:save-error", { message: "miniPaint internals changed; the GIF save bridge needs a re-audit." });
+        if (
+          !CfgGif ||
+          typeof CfgGif.WIDTH !== "number" ||
+          !this.Base_layers ||
+          !this.Base_layers.convert_layers_to_canvas ||
+          !this.fillCanvasBackground
+        ) {
+          post("minipaint:save-error", {
+            message: "miniPaint internals changed; the GIF save bridge needs a re-audit.",
+          });
           return;
         }
         var delay = parseInt(user_response.delay, 10);
         if (isNaN(delay) || delay < 0) delay = 400;
 
-        getGifEncoder(function (GifCtor) {
-          if (!GifCtor) { post("minipaint:save-error", { message: "GIF encoder failed to load" }); return; }
+        getGifEncoder(
+          function (GifCtor) {
+            if (!GifCtor) {
+              post("minipaint:save-error", { message: "GIF encoder failed to load" });
+              return;
+            }
 
-          var opts = {
-            workers: navigator.hardwareConcurrency || 4,
-            quality: 10,
-            repeat: 0,
-            width: CfgGif.WIDTH,
-            height: CfgGif.HEIGHT,
-            dither: "FloydSteinberg-serpentine",
-            workerScript: "./src/js/libs/gifjs/gif.worker.js"
-          };
-          if (CfgGif.TRANSPARENCY === true) opts.transparent = "rgba(0,0,0,0)";
+            var opts = {
+              workers: navigator.hardwareConcurrency || 4,
+              quality: 10,
+              repeat: 0,
+              width: CfgGif.WIDTH,
+              height: CfgGif.HEIGHT,
+              dither: "FloydSteinberg-serpentine",
+              workerScript: "./src/js/libs/gifjs/gif.worker.js",
+            };
+            if (CfgGif.TRANSPARENCY === true) opts.transparent = "rgba(0,0,0,0)";
 
-          var encoder = new GifCtor(opts);
-          var canvas = document.createElement("canvas");
-          var ctx = canvas.getContext("2d");
-          canvas.width = CfgGif.WIDTH;
-          canvas.height = CfgGif.HEIGHT;
-          if (this.disable_canvas_smooth) this.disable_canvas_smooth(ctx);
+            var encoder = new GifCtor(opts);
+            var canvas = document.createElement("canvas");
+            var ctx = canvas.getContext("2d");
+            canvas.width = CfgGif.WIDTH;
+            canvas.height = CfgGif.HEIGHT;
+            if (this.disable_canvas_smooth) this.disable_canvas_smooth(ctx);
 
-          var layers = CfgGif.layers || [];
-          for (var u = 0; u < layers.length; u++) {
-            if (!layers[u].visible) continue;
-            ctx.clearRect(0, 0, CfgGif.WIDTH, CfgGif.HEIGHT);
-            if (CfgGif.TRANSPARENCY !== true) this.fillCanvasBackground(ctx, "#ffffff");
-            this.Base_layers.convert_layers_to_canvas(ctx, layers[u].id, false);
-            encoder.addFrame(ctx, { copy: true, delay: delay });
-          }
-          if (layers.length === 0) { post("minipaint:save-error", { message: "no visible layers to encode as GIF" }); return; }
+            var layers = CfgGif.layers || [];
+            for (var u = 0; u < layers.length; u++) {
+              if (!layers[u].visible) continue;
+              ctx.clearRect(0, 0, CfgGif.WIDTH, CfgGif.HEIGHT);
+              if (CfgGif.TRANSPARENCY !== true) this.fillCanvasBackground(ctx, "#ffffff");
+              this.Base_layers.convert_layers_to_canvas(ctx, layers[u].id, false);
+              encoder.addFrame(ctx, { copy: true, delay: delay });
+            }
+            if (layers.length === 0) {
+              post("minipaint:save-error", { message: "no visible layers to encode as GIF" });
+              return;
+            }
 
-          encoder.render();
-          encoder.on("finished", function (blob) {
-            if (!blob) { post("minipaint:save-error", { message: "GIF encoder returned null" }); return; }
-            blobToBytes(blob, function (buf) {
-              if (!buf) { post("minipaint:save-error", { message: "GIF blob.arrayBuffer failed" }); return; }
-              postRaw("minipaint:save", { format: "gif", name: user_response.name }, buf);
+            encoder.render();
+            encoder.on("finished", function (blob) {
+              if (!blob) {
+                post("minipaint:save-error", { message: "GIF encoder returned null" });
+                return;
+              }
+              blobToBytes(blob, function (buf) {
+                if (!buf) {
+                  post("minipaint:save-error", { message: "GIF blob.arrayBuffer failed" });
+                  return;
+                }
+                postRaw("minipaint:save", { format: "gif", name: user_response.name }, buf);
+              });
             });
-          });
-        }.bind(this));
+          }.bind(this),
+        );
         return;
       }
 
@@ -258,7 +351,11 @@
     if (!d || typeof d !== "object") return;
     if (d.type === "minipaint:load-image" && d.url) {
       waitForGlobal("FileOpen", function (FileOpen) {
-        try { FileOpen.open_resource(d.url); } catch (e) { reportError("open_resource failed", e); }
+        try {
+          FileOpen.open_resource(d.url);
+        } catch (e) {
+          reportError("open_resource failed", e);
+        }
       });
     }
   });

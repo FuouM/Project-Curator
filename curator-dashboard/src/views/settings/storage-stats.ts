@@ -10,12 +10,19 @@ export async function initStorageStats() {
 
   if (!container) return;
 
-  container.innerHTML = '<div style="font-size:11px;color:#888;"><i class="bi bi-hourglass-split"></i> Loading storage stats...</div>';
+  container.innerHTML =
+    '<div style="font-size:11px;color:#888;"><i class="bi bi-hourglass-split"></i> Loading storage stats...</div>';
 
   try {
-    const resp = await typedCall("FoldersService.GetStorageStats", null, null, StorageStatsResultSchema);
+    const resp = await typedCall(
+      "FoldersService.GetStorageStats",
+      null,
+      null,
+      StorageStatsResultSchema,
+    );
     if (!resp.stats) {
-      container.innerHTML = '<div style="font-size:11px;color:#dc3545;">Failed to load storage statistics.</div>';
+      container.innerHTML =
+        '<div style="font-size:11px;color:#dc3545;">Failed to load storage statistics.</div>';
       return;
     }
 
@@ -39,11 +46,49 @@ export async function initStorageStats() {
 
     // Group stats by Category: Images, GIFs, Videos, Other
     // Initial rich visualization colors restored
-    const categoriesMap: Record<string, { size: number; count: number; color: string; textColor: string; borderColor: string; exts: string[] }> = {
-      "Images": { size: 0, count: 0, color: "#0078d7", textColor: "#ffffff", borderColor: "#005499", exts: [] },
-      "GIFs": { size: 0, count: 0, color: "#28a745", textColor: "#ffffff", borderColor: "#1e7e34", exts: [] },
-      "Videos": { size: 0, count: 0, color: "#e0a800", textColor: "#ffffff", borderColor: "#b38600", exts: [] },
-      "Other": { size: 0, count: 0, color: "#6c757d", textColor: "#ffffff", borderColor: "#545b62", exts: [] },
+    const categoriesMap: Record<
+      string,
+      {
+        size: number;
+        count: number;
+        color: string;
+        textColor: string;
+        borderColor: string;
+        exts: string[];
+      }
+    > = {
+      Images: {
+        size: 0,
+        count: 0,
+        color: "#0078d7",
+        textColor: "#ffffff",
+        borderColor: "#005499",
+        exts: [],
+      },
+      GIFs: {
+        size: 0,
+        count: 0,
+        color: "#28a745",
+        textColor: "#ffffff",
+        borderColor: "#1e7e34",
+        exts: [],
+      },
+      Videos: {
+        size: 0,
+        count: 0,
+        color: "#e0a800",
+        textColor: "#ffffff",
+        borderColor: "#b38600",
+        exts: [],
+      },
+      Other: {
+        size: 0,
+        count: 0,
+        color: "#6c757d",
+        textColor: "#ffffff",
+        borderColor: "#545b62",
+        exts: [],
+      },
     };
 
     for (const stat of stats) {
@@ -70,13 +115,13 @@ export async function initStorageStats() {
         percentage: totalBytes > 0 ? (data.size / totalBytes) * 100 : 0,
         exts: data.exts,
       }))
-      .filter(c => c.size > 0 || c.count > 0);
+      .filter((c) => c.size > 0 || c.count > 0);
 
     let activeTab: "bar" | "pie" | "tree" = "bar";
 
     const updateTabs = (selected: "bar" | "pie" | "tree") => {
       activeTab = selected;
-      [tabBar, tabPie, tabTree].forEach(t => t?.classList.remove("active"));
+      [tabBar, tabPie, tabTree].forEach((t) => t?.classList.remove("active"));
       if (selected === "bar") tabBar?.classList.add("active");
       if (selected === "pie") tabPie?.classList.add("active");
       if (selected === "tree") tabTree?.classList.add("active");
@@ -89,7 +134,8 @@ export async function initStorageStats() {
 
     const renderChart = () => {
       if (totalBytes === 0) {
-        container.innerHTML = '<div style="font-size:11px;color:#888;font-style:italic;">No media files indexed yet.</div>';
+        container.innerHTML =
+          '<div style="font-size:11px;color:#888;font-style:italic;">No media files indexed yet.</div>';
         return;
       }
 
@@ -106,7 +152,7 @@ export async function initStorageStats() {
       let barSegments = "";
       let legendRows = "";
 
-      categories.forEach(cat => {
+      categories.forEach((cat) => {
         if (cat.size === 0) return;
         const w = cat.percentage;
         barSegments += `
@@ -151,29 +197,29 @@ export async function initStorageStats() {
       let paths = "";
       let legendRows = "";
 
-      categories.forEach(cat => {
+      categories.forEach((cat) => {
         if (cat.size === 0) return;
-        
+
         const percentage = cat.percentage / 100;
         const angle = percentage * 360;
-        
-        const r = 70; 
-        const ir = 38; 
-        
+
+        const r = 70;
+        const ir = 38;
+
         const x1_out = 100 + r * Math.sin((accumulatedAngle * Math.PI) / 180);
         const y1_out = 100 - r * Math.cos((accumulatedAngle * Math.PI) / 180);
         const x1_in = 100 + ir * Math.sin((accumulatedAngle * Math.PI) / 180);
         const y1_in = 100 - ir * Math.cos((accumulatedAngle * Math.PI) / 180);
-        
+
         accumulatedAngle += angle;
-        
+
         const x2_out = 100 + r * Math.sin((accumulatedAngle * Math.PI) / 180);
         const y2_out = 100 - r * Math.cos((accumulatedAngle * Math.PI) / 180);
         const x2_in = 100 + ir * Math.sin((accumulatedAngle * Math.PI) / 180);
         const y2_in = 100 - ir * Math.cos((accumulatedAngle * Math.PI) / 180);
-        
+
         const largeArc = percentage > 0.5 ? 1 : 0;
-        
+
         const d = `
           M ${x1_out} ${y1_out}
           A ${r} ${r} 0 ${largeArc} 1 ${x2_out} ${y2_out}
@@ -181,7 +227,7 @@ export async function initStorageStats() {
           A ${ir} ${ir} 0 ${largeArc} 0 ${x1_in} ${y1_in}
           Z
         `;
-        
+
         paths += `<path d="${d}" fill="${cat.color}" stroke="${cat.borderColor}" stroke-width="1.5">
           <title>${cat.name}: ${formatBytes(cat.size)} (${cat.percentage.toFixed(1)}%)</title>
         </path>`;
@@ -229,8 +275,8 @@ export async function initStorageStats() {
       }
 
       const items: TreemapItem[] = categories
-        .filter(c => c.size > 0)
-        .map(c => ({
+        .filter((c) => c.size > 0)
+        .map((c) => ({
           name: c.name,
           size: c.size,
           color: c.color,
@@ -248,13 +294,16 @@ export async function initStorageStats() {
         w: number,
         h: number,
         itemList: TreemapItem[],
-        vertical: boolean
+        vertical: boolean,
       ) => {
         if (itemList.length === 0) return;
         if (itemList.length === 1) {
           const item = itemList[0];
-          const label = w > 60 && h > 30 ? `<text x="${x + 8}" y="${y + 18}" fill="${item.textColor}" font-size="10" font-weight="600" font-family="'Segoe UI', -apple-system, sans-serif">${item.name}</text>
-             <text x="${x + 8}" y="${y + 30}" fill="${item.textColor}" opacity="0.85" font-size="9" font-family="'Segoe UI', -apple-system, sans-serif">${formatBytes(item.size)}</text>` : "";
+          const label =
+            w > 60 && h > 30
+              ? `<text x="${x + 8}" y="${y + 18}" fill="${item.textColor}" font-size="10" font-weight="600" font-family="'Segoe UI', -apple-system, sans-serif">${item.name}</text>
+             <text x="${x + 8}" y="${y + 30}" fill="${item.textColor}" opacity="0.85" font-size="9" font-family="'Segoe UI', -apple-system, sans-serif">${formatBytes(item.size)}</text>`
+              : "";
           rectsHtml += `
             <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${item.color}" stroke="${item.borderColor}" stroke-width="1.5">
               <title>${item.name}: ${formatBytes(item.size)} (${item.percent.toFixed(1)}%)</title>
@@ -269,7 +318,10 @@ export async function initStorageStats() {
         let balanceIndex = 1;
         let runningSum = itemList[0].size;
         for (let i = 1; i < itemList.length - 1; i++) {
-          if (Math.abs(2 * (runningSum + itemList[i].size) - sumSize) < Math.abs(2 * runningSum - sumSize)) {
+          if (
+            Math.abs(2 * (runningSum + itemList[i].size) - sumSize) <
+            Math.abs(2 * runningSum - sumSize)
+          ) {
             runningSum += itemList[i].size;
             balanceIndex = i + 1;
           } else {
@@ -303,9 +355,9 @@ export async function initStorageStats() {
     };
 
     renderChart();
-
   } catch (err) {
     console.error("Failed to load storage stats:", err);
-    container.innerHTML = '<div style="font-size:11px;color:#dc3545;">Error loading storage statistics.</div>';
+    container.innerHTML =
+      '<div style="font-size:11px;color:#dc3545;">Error loading storage statistics.</div>';
   }
 }

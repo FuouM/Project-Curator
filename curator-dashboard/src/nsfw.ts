@@ -18,12 +18,14 @@ export function loadNsfwPrefs(): NsfwPrefs {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_NSFW_PREFS };
     const parsed = JSON.parse(raw) as Partial<NsfwPrefs>;
-    const action = parsed.action === "blur" || parsed.action === "pixelate" || parsed.action === "hide"
-      ? parsed.action
-      : "none";
-    const threshold = typeof parsed.threshold === "number"
-      ? Math.min(0.9, Math.max(0.1, parsed.threshold))
-      : DEFAULT_NSFW_PREFS.threshold;
+    const action =
+      parsed.action === "blur" || parsed.action === "pixelate" || parsed.action === "hide"
+        ? parsed.action
+        : "none";
+    const threshold =
+      typeof parsed.threshold === "number"
+        ? Math.min(0.9, Math.max(0.1, parsed.threshold))
+        : DEFAULT_NSFW_PREFS.threshold;
     return { action, threshold };
   } catch {
     return { ...DEFAULT_NSFW_PREFS };
@@ -40,7 +42,11 @@ export function isNsfwCard(scores: SafetyScores | undefined, threshold: number):
 }
 
 /** Decorate a gallery card element with the active NSFW effect or blackout toggles. */
-export function applyNsfwToCard(card: HTMLElement, scores: SafetyScores | undefined, prefs: NsfwPrefs): void {
+export function applyNsfwToCard(
+  card: HTMLElement,
+  scores: SafetyScores | undefined,
+  prefs: NsfwPrefs,
+): void {
   clearMediaFilter(card);
   card.classList.remove("nsfw-blackout");
 
@@ -59,7 +65,7 @@ export function refreshAllNsfw(): void {
   document.querySelectorAll<HTMLElement>(".image-card[data-nsfw]").forEach((card) => {
     let scores: SafetyScores | undefined;
     try {
-      scores = JSON.parse(card.dataset.nsfw || "null") as SafetyScores | null ?? undefined;
+      scores = (JSON.parse(card.dataset.nsfw || "null") as SafetyScores | null) ?? undefined;
     } catch {
       scores = undefined;
     }

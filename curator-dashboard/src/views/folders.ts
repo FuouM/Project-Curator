@@ -12,7 +12,15 @@ import {
   ClassifyFolderSafetyRequestSchema,
   ClassifyFolderSafetyResultSchema,
 } from "../gen/import_pb";
-import { UpdateFolderPathRequestSchema, UpdateFolderPathResultSchema, DeleteFolderRequestSchema, DeleteFolderResultSchema, DuplicateFoldersResultSchema, MergeFoldersRequestSchema, MergeFoldersResultSchema } from "../gen/folders_pb";
+import {
+  UpdateFolderPathRequestSchema,
+  UpdateFolderPathResultSchema,
+  DeleteFolderRequestSchema,
+  DeleteFolderResultSchema,
+  DuplicateFoldersResultSchema,
+  MergeFoldersRequestSchema,
+  MergeFoldersResultSchema,
+} from "../gen/folders_pb";
 import type { DuplicateFolderGroup as PDuplicateFolderGroup } from "../gen/common_pb";
 import type { DuplicateFolderGroup, FolderDetails } from "../types";
 
@@ -27,19 +35,27 @@ function duplicateFolderGroupFromProto(g: PDuplicateFolderGroup): DuplicateFolde
 
 function folderRowHtml(folder: FolderDetails): string {
   const totalVectors = folder.vector_ready + folder.vector_pending;
-  const vectorText = totalVectors > 0
-    ? `<span style="color: #2e7d32;">${folder.vector_ready}</span> / ${totalVectors}`
-    : '<span style="color: #999;">0</span>';
+  const vectorText =
+    totalVectors > 0
+      ? `<span style="color: #2e7d32;">${folder.vector_ready}</span> / ${totalVectors}`
+      : '<span style="color: #999;">0</span>';
 
   // Media with no vector row yet (not ready, not pending/preprocessing, and
   // excluding files missing from disk) still needs indexing.
   const totalMedia = folder.image_count + folder.video_count;
-  const needsIndexCount = Math.max(0,
-    totalMedia - folder.vector_ready - folder.vector_pending - folder.missing_image_count - folder.missing_video_count);
+  const needsIndexCount = Math.max(
+    0,
+    totalMedia -
+      folder.vector_ready -
+      folder.vector_pending -
+      folder.missing_image_count -
+      folder.missing_video_count,
+  );
 
-  const safetyText = totalMedia > 0
-    ? `<span style="color: #2e7d32;">${folder.safety_classified}</span> / ${totalMedia}`
-    : '<span style="color: #999;">0</span>';
+  const safetyText =
+    totalMedia > 0
+      ? `<span style="color: #2e7d32;">${folder.safety_classified}</span> / ${totalMedia}`
+      : '<span style="color: #999;">0</span>';
   const safetyPending = folder.safety_pending;
 
   const statusIcon = folder.is_missing
@@ -48,17 +64,17 @@ function folderRowHtml(folder: FolderDetails): string {
       ? `<i class="bi bi-exclamation-circle" style="color: #e8912d;" title="${folder.missing_image_count + folder.missing_video_count} missing file(s)"></i>`
       : '<i class="bi bi-check-circle" style="color: #2e7d32;" title="Folder exists"></i>';
 
-  let rowClass = folder.is_missing ? 'folders-row missing' : 'folders-row';
-  if (needsIndexCount > 0) rowClass += ' needs-index';
+  let rowClass = folder.is_missing ? "folders-row missing" : "folders-row";
+  if (needsIndexCount > 0) rowClass += " needs-index";
 
   let html = `<tr class="${rowClass}" data-folder-id="${folder.id}" data-folder-path="${escapeHtml(folder.path)}">
     <td style="text-align: center;">${statusIcon}</td>
     <td style="font-weight: 600;">${escapeHtml(folder.name)}</td>
     <td style="font-size: 11px; color: #555; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(folder.path)}">${maskPath(folder.path)}</td>
-    <td style="white-space: nowrap;"><div style="display: flex; justify-content: flex-end; align-items: center;">${folder.image_count}<i class="bi bi-image" style="color: #1a7f37; margin-left: 4px; font-size: 11px;" title="Image files"></i><span style="display: inline-block; width: 34px; text-align: left; font-size: 10px; color: #e8912d; margin-left: 4px;" title="${folder.missing_image_count} missing">${folder.missing_image_count > 0 ? `(-${folder.missing_image_count})` : ''}</span></div></td>
-    <td style="white-space: nowrap;"><div style="display: flex; justify-content: flex-end; align-items: center;">${folder.video_count}<i class="bi bi-film" style="color: #6a3fa0; margin-left: 4px; font-size: 11px;" title="Video files (mp4/webm)"></i><span style="display: inline-block; width: 34px; text-align: left; font-size: 10px; color: #e8912d; margin-left: 4px;" title="${folder.missing_video_count} missing">${folder.missing_video_count > 0 ? `(-${folder.missing_video_count})` : ''}</span></div></td>
-    <td style="text-align: right;">${vectorText}${needsIndexCount > 0 ? ` <span style="color: #e8912d; font-size: 10px; font-weight: 600;" title="Media without a vector">(+${needsIndexCount} unindexed)</span>` : ''}</td>
-    <td style="text-align: right;">${safetyText}${safetyPending > 0 ? ` <span style="color: #e8912d; font-size: 10px; font-weight: 600;" title="Media without safety classification">(+${safetyPending} unclassified)</span>` : ''}</td>
+    <td style="white-space: nowrap;"><div style="display: flex; justify-content: flex-end; align-items: center;">${folder.image_count}<i class="bi bi-image" style="color: #1a7f37; margin-left: 4px; font-size: 11px;" title="Image files"></i><span style="display: inline-block; width: 34px; text-align: left; font-size: 10px; color: #e8912d; margin-left: 4px;" title="${folder.missing_image_count} missing">${folder.missing_image_count > 0 ? `(-${folder.missing_image_count})` : ""}</span></div></td>
+    <td style="white-space: nowrap;"><div style="display: flex; justify-content: flex-end; align-items: center;">${folder.video_count}<i class="bi bi-film" style="color: #6a3fa0; margin-left: 4px; font-size: 11px;" title="Video files (mp4/webm)"></i><span style="display: inline-block; width: 34px; text-align: left; font-size: 10px; color: #e8912d; margin-left: 4px;" title="${folder.missing_video_count} missing">${folder.missing_video_count > 0 ? `(-${folder.missing_video_count})` : ""}</span></div></td>
+    <td style="text-align: right;">${vectorText}${needsIndexCount > 0 ? ` <span style="color: #e8912d; font-size: 10px; font-weight: 600;" title="Media without a vector">(+${needsIndexCount} unindexed)</span>` : ""}</td>
+    <td style="text-align: right;">${safetyText}${safetyPending > 0 ? ` <span style="color: #e8912d; font-size: 10px; font-weight: 600;" title="Media without safety classification">(+${safetyPending} unclassified)</span>` : ""}</td>
     <td style="font-size: 11px; color: #555;">${formatDate(folder.imported_at)}</td>
     <td style="text-align: center; white-space: nowrap;">`;
 
@@ -115,12 +131,18 @@ function bindFolderActions(container: HTMLElement) {
       btn.disabled = true;
       btn.innerHTML = `<i class="bi bi-arrow-repeat"></i> Scanning...`;
       try {
-        const resp = await typedCall("ImportService.RescanFolder", RescanFolderRequestSchema, { folderId: BigInt(folderId) }, RescanFolderResultSchema);
+        const resp = await typedCall(
+          "ImportService.RescanFolder",
+          RescanFolderRequestSchema,
+          { folderId: BigInt(folderId) },
+          RescanFolderResultSchema,
+        );
         const imported = Number(resp.imported);
         const found = Number(resp.found);
-        const msg = imported > 0
-          ? `Rescan imported ${imported} new media file(s) (${found} supported files found).`
-          : `Folder is up to date (${found} supported files found, nothing new).`;
+        const msg =
+          imported > 0
+            ? `Rescan imported ${imported} new media file(s) (${found} supported files found).`
+            : `Folder is up to date (${found} supported files found, nothing new).`;
         logJS(msg);
         refreshFolders();
       } catch (err: any) {
@@ -141,11 +163,17 @@ function bindFolderActions(container: HTMLElement) {
       btn.disabled = true;
       btn.innerHTML = `<i class="bi bi-cpu"></i> Queueing...`;
       try {
-        const resp = await typedCall("ImportService.IndexFolder", IndexFolderRequestSchema, { folderId: BigInt(folderId) }, IndexFolderResultSchema);
+        const resp = await typedCall(
+          "ImportService.IndexFolder",
+          IndexFolderRequestSchema,
+          { folderId: BigInt(folderId) },
+          IndexFolderResultSchema,
+        );
         const queued = Number(resp.queued);
-        const msg = queued > 0
-          ? `Queued ${queued} media file(s) for vector indexing.`
-          : "All media in this folder already has a vector.";
+        const msg =
+          queued > 0
+            ? `Queued ${queued} media file(s) for vector indexing.`
+            : "All media in this folder already has a vector.";
         logJS(msg);
         refreshFolders();
       } catch (err: any) {
@@ -170,12 +198,13 @@ function bindFolderActions(container: HTMLElement) {
           "ImportService.ClassifyFolderSafety",
           ClassifyFolderSafetyRequestSchema,
           { folderId: BigInt(folderId) },
-          ClassifyFolderSafetyResultSchema
+          ClassifyFolderSafetyResultSchema,
         );
         const processed = Number(resp.processed);
-        const msg = processed > 0
-          ? `Classified content safety for ${processed} media file(s) in this folder.`
-          : "All media in this folder is already classified.";
+        const msg =
+          processed > 0
+            ? `Classified content safety for ${processed} media file(s) in this folder.`
+            : "All media in this folder is already classified.";
         logJS(msg);
         refreshFolders();
       } catch (err: any) {
@@ -186,7 +215,6 @@ function bindFolderActions(container: HTMLElement) {
     });
   });
 
-
   container.querySelectorAll<HTMLElement>(".folders-update-btn").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
@@ -196,7 +224,12 @@ function bindFolderActions(container: HTMLElement) {
       try {
         const selected: string | null = await invoke("select_path", { isDirectory: true });
         if (selected) {
-          const updateResp = await typedCall("FoldersService.UpdateFolderPath", UpdateFolderPathRequestSchema, { id: BigInt(folderId), newPath: selected }, UpdateFolderPathResultSchema);
+          const updateResp = await typedCall(
+            "FoldersService.UpdateFolderPath",
+            UpdateFolderPathRequestSchema,
+            { id: BigInt(folderId), newPath: selected },
+            UpdateFolderPathResultSchema,
+          );
           if (updateResp.success) {
             logJS("Folder path updated successfully");
             refreshFolders();
@@ -217,7 +250,12 @@ function bindFolderActions(container: HTMLElement) {
       if (!confirm("Remove this folder record? Images will not be deleted.")) return;
 
       try {
-        const deleteResp = await typedCall("FoldersService.DeleteFolder", DeleteFolderRequestSchema, { id: BigInt(folderId) }, DeleteFolderResultSchema);
+        const deleteResp = await typedCall(
+          "FoldersService.DeleteFolder",
+          DeleteFolderRequestSchema,
+          { id: BigInt(folderId) },
+          DeleteFolderResultSchema,
+        );
         if (deleteResp.success) {
           logJS("Folder record removed");
           refreshFolders();
@@ -241,10 +279,16 @@ export async function refreshFolders() {
   }
 
   try {
-    const resp = await typedCall("ImportService.GetImportedFolders", null, null, ImportedFoldersResultSchema);
+    const resp = await typedCall(
+      "ImportService.GetImportedFolders",
+      null,
+      null,
+      ImportedFoldersResultSchema,
+    );
     const folders = resp.folders.map(folderDetailsFromProto);
     if (folders.length === 0) {
-      container.innerHTML = '<p style="color: #999; font-style: italic;">No folders imported yet. Use Import Images to add folders.</p>';
+      container.innerHTML =
+        '<p style="color: #999; font-style: italic;">No folders imported yet. Use Import Images to add folders.</p>';
       return;
     }
 
@@ -276,7 +320,9 @@ export async function refreshFolders() {
         </table>
         <div id="folders-reconcile-panel" style="display: none; margin-top: 12px;"></div>`;
 
-      document.getElementById("folders-reconcile-btn")?.addEventListener("click", handleReconcileClick);
+      document
+        .getElementById("folders-reconcile-btn")
+        ?.addEventListener("click", handleReconcileClick);
     } else {
       // In-place refresh: keep header and reconcile panel, only swap the rows.
       const tbody = existingTable!.querySelector<HTMLTableSectionElement>("tbody");
@@ -294,10 +340,16 @@ async function handleReconcileClick() {
   if (!panel) return;
 
   panel.style.display = "block";
-  panel.innerHTML = '<p style="color: #666; font-style: italic;">Scanning for duplicate folders...</p>';
+  panel.innerHTML =
+    '<p style="color: #666; font-style: italic;">Scanning for duplicate folders...</p>';
 
   try {
-    const resp = await typedCall("FoldersService.DetectDuplicateFolders", null, null, DuplicateFoldersResultSchema);
+    const resp = await typedCall(
+      "FoldersService.DetectDuplicateFolders",
+      null,
+      null,
+      DuplicateFoldersResultSchema,
+    );
     duplicateGroups = resp.groups.map(duplicateFolderGroupFromProto);
 
     if (duplicateGroups.length === 0) {
@@ -355,18 +407,23 @@ async function handleReconcileClick() {
         if (!keepId) return;
 
         const group = duplicateGroups[groupIdx];
-        const mergeIds = group.folders.filter(f => f.id !== keepId).map(f => f.id);
+        const mergeIds = group.folders.filter((f) => f.id !== keepId).map((f) => f.id);
 
         if (mergeIds.length === 0) return;
 
-        const keepFolder = group.folders.find(f => f.id === keepId);
+        const keepFolder = group.folders.find((f) => f.id === keepId);
         const msg = `Keep "${keepFolder?.name}" and merge ${mergeIds.length} other folder(s) into it?\n\nThe other folder records will be deleted. Images will be reassigned.`;
         if (!confirm(msg)) return;
 
         let moved = 0;
         for (const mergeId of mergeIds) {
           try {
-            const mergeResp = await typedCall("FoldersService.MergeFolders", MergeFoldersRequestSchema, { keepFolderId: BigInt(keepId), mergeFolderId: BigInt(mergeId) }, MergeFoldersResultSchema);
+            const mergeResp = await typedCall(
+              "FoldersService.MergeFolders",
+              MergeFoldersRequestSchema,
+              { keepFolderId: BigInt(keepId), mergeFolderId: BigInt(mergeId) },
+              MergeFoldersResultSchema,
+            );
             if (mergeResp.success) {
               moved += Number(mergeResp.imagesMoved);
             }

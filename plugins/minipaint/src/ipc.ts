@@ -11,7 +11,7 @@ const PH = window.PluginHost;
 
 export async function checkInstalled(): Promise<boolean> {
   const resp = await PH.callService("CheckPluginRuntimeInstalled", { plugin: "minipaint" });
-  return !!(resp?.CheckPluginRuntimeInstalledResult?.installed);
+  return !!resp?.CheckPluginRuntimeInstalledResult?.installed;
 }
 
 export async function startInstallation(): Promise<boolean> {
@@ -28,9 +28,7 @@ export interface MiniPaintProgress {
 
 export async function getProgress(): Promise<MiniPaintProgress> {
   const resp = await PH.callService("GetPluginRuntimeInstallProgress", { plugin: "minipaint" });
-  return (
-    resp?.GetPluginRuntimeInstallProgressResult ?? { status: "idle", percent: 0, logs: [] }
-  );
+  return resp?.GetPluginRuntimeInstallProgressResult ?? { status: "idle", percent: 0, logs: [] };
 }
 
 export interface SaveEditedImageParams {
@@ -40,7 +38,9 @@ export interface SaveEditedImageParams {
   bytes: ArrayBuffer;
 }
 
-export async function saveEditedImage(p: SaveEditedImageParams): Promise<{ ok: boolean; path?: string; error?: string }> {
+export async function saveEditedImage(
+  p: SaveEditedImageParams,
+): Promise<{ ok: boolean; path?: string; error?: string }> {
   // Raw-byte Tauri invoke: the Uint8Array is sent as the command's raw body
   // (no base64, no JSON of the bytes); metadata rides in request headers.
   // The saved path (a tiny string) is the only thing that comes back.
@@ -48,16 +48,12 @@ export async function saveEditedImage(p: SaveEditedImageParams): Promise<{ ok: b
   if (!tauriCore) {
     throw new Error("Tauri core API not available; cannot save edited image.");
   }
-  const path = await tauriCore.invoke(
-    "save_edited_image",
-    new Uint8Array(p.bytes),
-    {
-      headers: {
-        "x-filename": encodeURIComponent(p.name),
-        "x-format": p.format,
-        "x-out-dir": encodeURIComponent(p.outputDir),
-      },
+  const path = await tauriCore.invoke("save_edited_image", new Uint8Array(p.bytes), {
+    headers: {
+      "x-filename": encodeURIComponent(p.name),
+      "x-format": p.format,
+      "x-out-dir": encodeURIComponent(p.outputDir),
     },
-  );
+  });
   return { ok: true, path: path as string };
 }
