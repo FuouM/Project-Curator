@@ -8,6 +8,10 @@ type Attrs = {
   title?: string;
   id?: string;
   type?: string;
+  value?: string;
+  min?: string;
+  max?: string;
+  placeholder?: string;
 };
 
 export function el<K extends keyof HTMLElementTagNameMap>(
@@ -17,11 +21,15 @@ export function el<K extends keyof HTMLElementTagNameMap>(
 ): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   if (attrs) {
-    if (attrs.class) node.className = attrs.class;
-    if (attrs.style) node.style.cssText = attrs.style;
-    if (attrs.title) node.title = attrs.title;
-    if (attrs.id) node.id = attrs.id;
-    if (attrs.type) node.setAttribute("type", attrs.type);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null) continue;
+      if (k === "class") node.className = v;
+      else if (k === "style") node.style.cssText = v;
+      else if (k === "title") node.title = v;
+      else if (k === "id") node.id = v;
+      else if (k === "value" && "value" in node) (node as { value: string }).value = v;
+      else node.setAttribute(k, String(v));
+    }
   }
   for (const child of children) {
     if (child == null) continue;

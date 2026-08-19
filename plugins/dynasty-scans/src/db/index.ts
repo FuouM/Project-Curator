@@ -39,7 +39,20 @@ export {
   clearAllCachedPages,
   clearAllCachedCovers,
   clearAllCacheStorage,
+  getFullyCachedChapters,
+  getFullyCachedChapterPermalinks,
 } from "./cache.repo";
+export type { FullyCachedChapterRow } from "./cache.repo";
+export {
+  getBlacklistedTags,
+  addBlacklistedTag,
+  removeBlacklistedTag,
+  initBlacklistCache,
+  isItemBlacklisted,
+  getBlacklistMode,
+  setBlacklistMode,
+} from "./blacklist.repo";
+export type { BlacklistedTag, BlacklistCheckResult, BlacklistMode } from "./blacklist.repo";
 export type {
   CachedMetadata,
   FollowedSeriesRow,

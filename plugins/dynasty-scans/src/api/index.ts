@@ -1,16 +1,14 @@
 export {
   httpGetText,
-  httpGetJson,
   httpDownload,
   httpDownloadFull,
-  dirStat,
   fileResolve,
   fileExists,
   fileMove,
   fileDelete,
   cachedJson,
 } from "./client";
-export { fetchFeed, checkFeedOnline, fetchFeedWithRevalidation } from "./feed";
+export { checkFeedOnline, fetchFeedWithRevalidation } from "./feed";
 export { fetchDirectory, directoryGroups, suggest } from "./directory";
 export {
   fetchSeries,
@@ -24,12 +22,22 @@ export {
 } from "./series";
 export { fetchChapter } from "./chapter";
 export { openExternal, parseDynastyUrl, pageOutputPath } from "./navigation";
+export { searchDynasty, parseSearchHtml } from "./search";
+export {
+  recordNetworkTraffic,
+  recordCacheHit,
+  getSessionTraffic,
+  subscribeSessionTraffic,
+  formatBytes,
+} from "./traffic";
+export type { SessionTraffic } from "./traffic";
 export type {
   ChapterTag,
   ChapterPage,
   Chapter,
   SeriesTag,
   SeriesTaggings,
+  SeriesTaggable,
   Series,
   FeedChapter,
   Feed,
@@ -39,8 +47,12 @@ export type {
   DirectoryGroup,
   GetTextOptions,
   HttpResponseText,
-  DirStatResult,
   FeedRevalidationResult,
   RevalidateOnlineResult,
   ParsedDynastyUrl,
+  SearchClass,
+  SearchSort,
+  SearchParams,
+  SearchResultItem,
+  SearchResultPage,
 } from "../types/api";

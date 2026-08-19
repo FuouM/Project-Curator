@@ -51,6 +51,11 @@ const SCHEMA = [
     cached_at INTEGER NOT NULL,
     PRIMARY KEY (chapter_permalink, page_index)
   )`,
+  `CREATE TABLE IF NOT EXISTS tag_blacklist (
+    tag_name TEXT PRIMARY KEY,
+    tag_permalink TEXT,
+    created_at INTEGER NOT NULL
+  )`,
 ];
 
 let initDbPromise: Promise<void> | null = null;
@@ -70,6 +75,10 @@ export async function initDb(): Promise<void> {
       } catch {}
       try {
         await execute("DROP INDEX IF EXISTS idx_reading_history_chapter", []);
+      } catch {}
+      try {
+        const { initBlacklistCache } = await import("./blacklist.repo");
+        await initBlacklistCache();
       } catch {}
     })();
   }

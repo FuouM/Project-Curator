@@ -1,5 +1,6 @@
-import type { GetTextOptions, HttpResponseText, DirStatResult } from "../types/api";
+import type { GetTextOptions, HttpResponseText } from "../types/api";
 import { getCached, setCached } from "../db";
+import { recordNetworkTraffic, recordCacheHit } from "./traffic";
 
 const PH = window.PluginHost;
 
@@ -22,18 +23,13 @@ export async function httpGetText(
   }
   const resp = await PH.callService("HttpGet", params);
   if (resp?.Error) throw new Error(String(resp.Error.message));
-  return {
-    status: Number(resp?.HttpGetResult?.status ?? 0),
-    body: String(resp?.HttpGetResult?.body ?? ""),
-    etag: resp?.HttpGetResult?.etag ? String(resp.HttpGetResult.etag) : undefined,
-  };
-}
-
-/** Fetches and JSON-parses a service response; non-200 throws. */
-export async function httpGetJson<T>(url: string, opts: GetTextOptions = {}): Promise<T> {
-  const { status, body } = await httpGetText(url, opts);
-  if (status !== 200) throw new Error(`HTTP ${status} for ${url}`);
-  return JSON.parse(body) as T;
+  const status = Number(resp?.HttpGetResult?.status ?? 0);
+  const body = String(resp?.HttpGetResult?.body ?? "");
+  const etag = resp?.HttpGetResult?.etag ? String(resp.HttpGetResult.etag) : undefined;
+  if (status === 200 && body) {
+    recordNetworkTraffic(body.length);
+  }
+  return { status, body, etag };
 }
 
 /**
@@ -51,6 +47,8 @@ export async function httpDownload(
     timeout_ms: timeoutMs,
   });
   if (resp?.Error) throw new Error(String(resp.Error.message));
+  const sizeBytes = Number(resp?.HttpDownloadResult?.size_bytes ?? 0);
+  if (sizeBytes > 0) recordNetworkTraffic(sizeBytes);
   return String(resp?.HttpDownloadResult?.absolute_path ?? "");
 }
 
@@ -69,27 +67,12 @@ export async function httpDownloadFull(
     timeout_ms: timeoutMs,
   });
   if (resp?.Error) throw new Error(String(resp.Error.message));
+  const sizeBytes = Number(resp?.HttpDownloadResult?.size_bytes ?? 0);
+  if (sizeBytes > 0) recordNetworkTraffic(sizeBytes);
   return {
     absolutePath: String(resp?.HttpDownloadResult?.absolute_path ?? ""),
-    sizeBytes: Number(resp?.HttpDownloadResult?.size_bytes ?? 0),
+    sizeBytes,
   };
-}
-
-/**
- * Calculates recursive on-disk byte footprint and file count for a directory
- * in the plugin's data folder.
- */
-export async function dirStat(path = ""): Promise<DirStatResult> {
-  try {
-    const resp = await PH.callService("DirStat", { path });
-    if (resp?.DirStatResult) {
-      return {
-        totalBytes: Number(resp.DirStatResult.total_bytes ?? 0),
-        fileCount: Number(resp.DirStatResult.file_count ?? 0),
-      };
-    }
-  } catch {}
-  return { totalBytes: 0, fileCount: 0 };
 }
 
 /**
@@ -124,6 +107,7 @@ export async function fileDelete(path: string): Promise<void> {
 export async function cachedJson<T>(key: string, url: string, ttlMs?: number): Promise<T> {
   const cached = await getCached(key);
   if (cached && (ttlMs === undefined || Date.now() - cached.cached_at < ttlMs)) {
+    recordCacheHit(cached.json_payload.length);
     return JSON.parse(cached.json_payload) as T;
   }
   const { status, body, etag } = await httpGetText(url);

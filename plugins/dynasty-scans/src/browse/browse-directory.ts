@@ -1,6 +1,7 @@
 import { decodeEntities, navigate } from "../state";
 import { directoryGroups, fetchDirectory, openExternal } from "../api";
 import { renderPager } from "../components/pager";
+import { updateBrowseTopPager } from "./browse-controller";
 import type { DirectoryGroup } from "../types/api";
 
 export interface DirectoryReload {
@@ -18,21 +19,22 @@ export async function renderDirectory(
   const key = `${kind === "series" ? "dir:series" : "dir:tags"}:${page}`;
   const dir = await fetchDirectory(url, key);
   const groups: DirectoryGroup[] = directoryGroups(dir);
-  host.innerHTML = "";
 
   if (groups.length === 0) {
     const empty = document.createElement("div");
     empty.className = "ds-muted";
     empty.textContent = "No entries on this page.";
-    host.appendChild(empty);
+    host.replaceChildren(empty);
     return;
   }
+
+  const frag = document.createDocumentFragment();
 
   for (const group of groups) {
     const header = document.createElement("div");
     header.className = "ds-vol-header";
     header.textContent = group.letter;
-    host.appendChild(header);
+    frag.appendChild(header);
 
     const list = document.createElement("div");
     list.style.cssText = "display:flex;flex-direction:column;";
@@ -42,8 +44,7 @@ export async function renderDirectory(
       item.style.cssText =
         "display:flex;align-items:center;justify-content:space-between;padding:3px 6px;";
       const title = document.createElement("div");
-      title.className = "ds-item-title";
-      title.style.cssText = "flex:1;min-width:0;cursor:pointer;";
+      title.className = "ds-item-title ds-fill ds-clickable";
       title.textContent = decodeEntities(entry.name);
       item.appendChild(title);
 
@@ -78,10 +79,15 @@ export async function renderDirectory(
       }
       list.appendChild(item);
     }
-    host.appendChild(list);
+    frag.appendChild(list);
   }
 
-  host.appendChild(
+  const tabId = kind === "series" ? "series-dir" : "tags-dir";
+  updateBrowseTopPager(dir.total_pages, dir.current_page, (p) => void reload(host, kind, p), tabId);
+
+  frag.appendChild(
     renderPager(dir.total_pages, dir.current_page, (p) => void reload(host, kind, p)),
   );
+
+  host.replaceChildren(frag);
 }

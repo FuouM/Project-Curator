@@ -12,12 +12,12 @@ export const TAB_ID = "dynasty-scans" as const;
 export const SITE_ROOT = "https://dynasty-scans.com";
 export const DB_NAME = "dynasty_reader.db";
 
-/** Relative path prefix (service-side convention) under the plugin's data dir. */
+/** Relative path prefix (backend-side convention) under the portable data root. */
 export const PAGES_PREFIX = ".curator/plugin_data/dynasty-scans/pages";
-export const COVERS_PREFIX = ".curator/plugin_data/dynasty-scans/covers";
 
-export type { ViewName, ChapterRef, Route, SessionMangaTab } from "./types/routes";
-import type { Route } from "./types/routes";
+export const COVERS_PREFIX = ".curator/plugin_data/dynasty-scans/covers";
+import type { Route, ViewName, ChapterRef, SessionMangaTab } from "./types/routes";
+export type { Route, ViewName, ChapterRef, SessionMangaTab };
 
 export interface PluginState {
   route: Route;
@@ -25,7 +25,6 @@ export interface PluginState {
   lastMangaTab: SessionMangaTab | null;
   /** Cleanup hook installed by the active view (listeners, observers). */
   dispose: (() => void) | null;
-  isLoaded: boolean;
   dbInitialized: boolean;
 }
 
@@ -33,12 +32,10 @@ export const state: PluginState = {
   route: { view: "browse" },
   lastMangaTab: null,
   dispose: null,
-  isLoaded: true,
   dbInitialized: false,
 };
 
 export async function loadPluginView(customRoute?: Route): Promise<void> {
-  state.isLoaded = true;
   if (customRoute) {
     state.route = customRoute;
   }
@@ -69,19 +66,28 @@ export function registerRenderer(view: ViewName, fn: Renderer): void {
   renderers[view] = fn;
 }
 
+const persistentPanes = new Map<string, HTMLElement>();
+
+type RouteChangeHook = (view: ViewName) => void;
+const routeChangeHooks: RouteChangeHook[] = [];
+
+/**
+ * Registers a hook invoked on every top-level route change, before the new
+ * view renders. Views use this to reset their module-scope transient state when
+ * the user navigates away (e.g. the browse search/downloaded filter state).
+ */
+export function onRouteChange(fn: RouteChangeHook): void {
+  routeChangeHooks.push(fn);
+}
+
 /** Re-renders the current route into #ds-view. Also used for the first paint. */
 export function renderCurrent(): void {
-  state.dispose?.();
-  state.dispose = null;
   const view = document.getElementById("ds-view");
   if (!view) return;
-  view.innerHTML = "";
+
   clearBanner();
   clearActions();
   const r = state.route;
-  const renderer = renderers[r.view];
-  const cleanup = renderer ? renderer(view, r) : undefined;
-  if (typeof cleanup === "function") state.dispose = cleanup;
   setTitle(routeTitle(r));
 
   const libTab = document.getElementById("ds-tab-library");
@@ -96,6 +102,67 @@ export function renderCurrent(): void {
   }
 
   updateSessionMangaTabUI();
+
+  // Handle persistent views (Browse and Library) without tearing down DOM
+  if (r.view === "browse" || r.view === "library") {
+    state.dispose?.();
+    state.dispose = null;
+
+    // Remove any dynamic sub-view (reader / series / cache) from #ds-view
+    const dynamicNodes = Array.from(view.children).filter(
+      (el) => el.id !== "ds-pane-browse" && el.id !== "ds-pane-library"
+    );
+    for (const node of dynamicNodes) {
+      node.remove();
+    }
+
+    // Toggle persistent panes
+    for (const [vName, pane] of persistentPanes.entries()) {
+      pane.style.display = vName === r.view ? "flex" : "none";
+    }
+
+    let targetPane = persistentPanes.get(r.view);
+    if (!targetPane) {
+      targetPane = document.createElement("div");
+      targetPane.id = `ds-pane-${r.view}`;
+      targetPane.className = "ds-persistent-view-pane";
+      targetPane.style.display = "flex";
+      view.appendChild(targetPane);
+      persistentPanes.set(r.view, targetPane);
+
+      const renderer = renderers[r.view];
+      if (renderer) renderer(targetPane, r);
+    } else if (r.view === "library") {
+      // Refresh library database lists in-place
+      const renderer = renderers.library;
+      if (renderer) renderer(targetPane, r);
+    }
+    return;
+  }
+
+  // Dynamic non-persisted routes (reader, series, cache)
+  for (const pane of persistentPanes.values()) {
+    pane.style.display = "none";
+  }
+
+  state.dispose?.();
+  state.dispose = null;
+
+  // Remove any previous dynamic nodes
+  const dynamicNodes = Array.from(view.children).filter(
+    (el) => el.id !== "ds-pane-browse" && el.id !== "ds-pane-library"
+  );
+  for (const node of dynamicNodes) {
+    node.remove();
+  }
+
+  const dynamicContainer = document.createElement("div");
+  dynamicContainer.id = "ds-pane-dynamic";
+  view.appendChild(dynamicContainer);
+
+  const renderer = renderers[r.view];
+  const cleanup = renderer ? renderer(dynamicContainer, r) : undefined;
+  if (typeof cleanup === "function") state.dispose = cleanup;
 }
 
 /** Navigates to a new route and updates the ephemeral session manga tab if entering a manga/chapter. */
@@ -107,11 +174,8 @@ export function navigate(r: Route): void {
       route: { ...r },
     };
   }
-  if (!state.isLoaded) {
-    void loadPluginView(r);
-    return;
-  }
   state.route = r;
+  for (const hook of routeChangeHooks) hook(r.view);
   renderCurrent();
 }
 
@@ -140,7 +204,7 @@ export function updateSessionMangaTabUI(): void {
   const tab = document.createElement("button");
   tab.type = "button";
   const isActive = state.route.view === "reader" || state.route.view === "series";
-  tab.className = `win-button ds-nav-tab${isActive ? " active" : ""}`;
+  tab.className = `win-button ds-nav-tab ds-session-tab${isActive ? " active" : ""}`;
   tab.style.cssText =
     "display:inline-flex;align-items:center;gap:6px;max-width:220px;padding:2px 8px;font-size:11px;";
 
@@ -149,7 +213,7 @@ export function updateSessionMangaTabUI(): void {
   tab.appendChild(icon);
 
   const titleSpan = document.createElement("span");
-  titleSpan.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+  titleSpan.className = "ds-truncate";
   titleSpan.textContent = decodeEntities(state.lastMangaTab.title);
   tab.appendChild(titleSpan);
 
@@ -271,8 +335,41 @@ export { decodeEntities, esc } from "./utils/html";
 export { formatDate, formatDateTime } from "./utils/formatting";
 
 /**
+ * Stable category ordering for browse tag pills: Author, Scanlator, Pairing,
+ * Doujin, Series, Anthology, Issue, then everything else (General) last.
+ */
+const TAG_CATEGORY_ORDER = [
+  "author",
+  "scanlator",
+  "pairing",
+  "doujin",
+  "series",
+  "anthology",
+  "issue",
+  "general",
+];
+
+function tagCategoryRank(type: string): number {
+  const t = (type ?? "").toLowerCase();
+  const idx = TAG_CATEGORY_ORDER.indexOf(t);
+  return idx === -1 ? TAG_CATEGORY_ORDER.length : idx;
+}
+
+/** Sorts tags by browse category order (author first), stable within a category. */
+export function sortTagsByCategory<T extends { type: string }>(tags: T[]): T[] {
+  return tags
+    .map((t, i) => ({ t, i }))
+    .sort((a, b) => {
+      const rankDiff = tagCategoryRank(a.t.type) - tagCategoryRank(b.t.type);
+      if (rankDiff !== 0) return rankDiff;
+      return a.i - b.i;
+    })
+    .map((x) => x.t);
+}
+
+/**
  * Maps a Dynasty Scans tag type or name to a styled tag-pill class or inline style. */
-export function tagClass(type: string, name?: string): string {
+export function tagClass(type: string): string {
   const t = (type ?? "").toLowerCase();
   switch (t) {
     case "author":
@@ -343,22 +440,6 @@ export function tagStyle(type: string, name: string): string {
     return "background-color: #e6f4ea; border: 1px solid #ceead6; color: #0e6b38;";
   }
 
-  // Hash the general tag name to pick from a curated set of soft desktop tints
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash << 5) - hash + name.charCodeAt(i);
-    hash |= 0;
-  }
-  const PALETTES = [
-    { bg: "#fef3c7", border: "#fde68a", text: "#92400e" }, // amber
-    { bg: "#ede9fe", border: "#ddd6fe", text: "#5b21b6" }, // violet
-    { bg: "#fee2e2", border: "#fecaca", text: "#991b1b" }, // rose
-    { bg: "#e0f2fe", border: "#bae6fd", text: "#075985" }, // sky
-    { bg: "#dcfce7", border: "#bbf7d0", text: "#166534" }, // green
-    { bg: "#fae8ff", border: "#f5d0fe", text: "#86198f" }, // fuchsia
-    { bg: "#ffedd5", border: "#fed7aa", text: "#9a3412" }, // orange
-    { bg: "#f1f5f9", border: "#e2e8f0", text: "#334155" }, // slate
-  ];
-  const p = PALETTES[Math.abs(hash) % PALETTES.length];
-  return `background-color: ${p.bg}; border: 1px solid ${p.border}; color: ${p.text}; font-weight: 500;`;
+  // General tags get one fixed color so the type reads consistently across results.
+  return "background-color: #e7f0f7; border: 1px solid #cfe1ee; color: #33515f; font-weight: 500;";
 }

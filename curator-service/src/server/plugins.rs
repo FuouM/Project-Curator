@@ -56,10 +56,12 @@ async fn dispatch_plugin_command(
         "PluginDbExecute" => pc::db::execute(ctx, plugin_id, params).await,
         "PluginDbQuery" => pc::db::query(ctx, plugin_id, params).await,
         "FileExists" => pc::storage::file_exists(ctx, plugin_id, params).await,
+        "FileExistsBatch" => pc::storage::file_exists_batch(ctx, plugin_id, params).await,
         "FileRead" => pc::storage::file_read(ctx, plugin_id, params).await,
         "FileWrite" => pc::storage::file_write(ctx, plugin_id, params).await,
         "FileList" => pc::storage::file_list(ctx, plugin_id, params).await,
         "DirStat" => pc::storage::dir_stat(ctx, plugin_id, params).await,
+        "DirStatBatch" => pc::storage::dir_stat_batch(ctx, plugin_id, params).await,
         "FileMove" => pc::storage::file_move(ctx, plugin_id, params).await,
         "FileDelete" => pc::storage::file_delete(ctx, plugin_id, params).await,
         unknown => Err(Status::invalid_argument(format!(

@@ -6,9 +6,11 @@ import type { ReaderController } from "./reader-controller";
  * Every page is fetched exactly once via `HttpDownload` (written to
  * `.curator/plugin_data/dynasty-scans/pages/` and indexed in `cached_pages`),
  * then rendered from disk through `convertFileSrc`. A small concurrency cap
- * keeps the request rate polite.
+ * keeps the request rate polite while overlapping downloads for a 30-60 page
+ * chapter (the priority-sorted queue keeps order sensible).
  */
 export class ReaderQueue {
+  private static readonly MAX_CONCURRENT = 3;
   private readonly queue: number[] = [];
   private readonly inFlight = new Set<number>();
   private readonly retrying = new Set<number>();
@@ -59,7 +61,7 @@ export class ReaderQueue {
   }
 
   private pump(): void {
-    while (this.inFlight.size < 1 && this.queue.length > 0) {
+    while (this.inFlight.size < ReaderQueue.MAX_CONCURRENT && this.queue.length > 0) {
       const idx = this.queue.shift() as number;
       if (this.inFlight.has(idx)) continue;
       this.inFlight.add(idx);

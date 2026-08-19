@@ -22,6 +22,12 @@ export interface Route {
   chapterList?: ChapterRef[];
   /** Page index to jump to when opening the reader. */
   startPage?: number;
+  /** Active search query when opening browse with search tab. */
+  searchQuery?: string;
+  /** Class filter for search tab. */
+  searchClass?: string;
+  /** Initial included tag filter for search tab. */
+  withTag?: string;
 }
 
 export interface SessionMangaTab {

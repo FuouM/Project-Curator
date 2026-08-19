@@ -108,13 +108,19 @@
   border: 1px solid #feefc3;
 }
 .ds-etag-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-family: monospace;
   font-size: 10px;
   background: var(--sys-window-bg, #fff);
   border: 1px solid var(--sys-border-light, #ccc);
-  padding: 1px 5px;
+  padding: 2px 5px;
   border-radius: 2px;
   color: var(--sys-text-muted, #777);
+}
+.ds-etag-hash {
+  font-family: monospace;
 }
 .ds-status-refresh-btn {
   font-size: 10px;
@@ -126,7 +132,12 @@
 .ds-feed-status-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ds-feed-status-pager-wrap {
+  display: inline-flex;
+  align-items: center;
 }
 .ds-scroll-top-btn {
   font-size: 10px;
@@ -140,8 +151,8 @@
   color: var(--sys-window-text, #333);
 }
 .ds-spin {
-  animation: ds-spin-anim 0.8s linear infinite;
   display: inline-block;
+  animation: ds-spin-anim 0.8s linear infinite;
 }
 @keyframes ds-spin-anim {
   from { transform: rotate(0deg); }

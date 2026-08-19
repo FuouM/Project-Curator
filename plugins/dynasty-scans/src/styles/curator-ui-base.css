@@ -1,0 +1,434 @@
+/*
+ * curator-ui-base.css — hand-extracted subset of the Curator dashboard design
+ * system that the dynasty-scans plugin actually renders.
+ *
+ * Owned by this standalone app (stays inside dynasty-scans-reader/ when it
+ * moves to its own repo). When Curator's design system changes in a relevant
+ * way, a targeted manual port is made.
+ *
+ * Extracted from:
+ *   base.css        — :root vars, reset, scrollbars, .hidden, .skeleton-*
+ *   components.css  — .win-button (+ .primary), .input-field
+ *   layout.css      — .group-box, .group-box-title
+ *   tags.css        — .tag-pill taxonomy classes
+ */
+
+/* ------------------------------------------------------------------ */
+/* base.css                                                           */
+/* ------------------------------------------------------------------ */
+:root {
+  --sys-control-bg: #ececec;
+  --sys-control-text: #000000;
+  --sys-window-bg: #ffffff;
+  --sys-window-text: #000000;
+  --sys-border-light: #ffffff;
+  --sys-border-dark: #b0b0b0;
+  --sys-border-focus: #0078d7;
+  --sys-highlight-bg: #0078d7;
+  --sys-highlight-text: #ffffff;
+  --sys-button-bg: #f0f0f0;
+  --sys-button-border: #707070;
+  --sys-button-hover: #e5f1fb;
+  --sys-button-active: #cce4f7;
+  --sys-status-bg: #f3f3f3;
+  --sys-status-text: #333333;
+  --sys-menu-bg: #f9f9f9;
+  --sys-menu-border: #d0d0d0;
+  --sys-text-subtle: #555555;
+  --sys-primary: #0078d4;
+  --z-dropdown: 100;
+  --z-modal: 9999;
+  --z-viewer: 10000;
+  --z-tooltip: 99999;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Tahoma, Arial, sans-serif;
+  font-size: 12px;
+}
+
+body {
+  background-color: var(--sys-control-bg);
+  color: var(--sys-control-text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+::-webkit-scrollbar-track {
+  background: #f0f0f0;
+  border: 1px solid #dcdcdc;
+}
+::-webkit-scrollbar-thumb {
+  background: #cdcdcd;
+  border: 3px solid #f0f0f0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a6a6a6;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.skeleton,
+.skeleton-pulse {
+  background: linear-gradient(
+    90deg,
+    var(--sys-control-bg, #e0e0e0) 25%,
+    var(--sys-window-bg, #f0f0f0) 50%,
+    var(--sys-control-bg, #e0e0e0) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+.skeleton-pulse {
+  border-radius: 3px;
+}
+.skeleton-card {
+  background-color: var(--sys-control-bg);
+  border: 1px solid var(--sys-border-dark);
+}
+.skeleton-text {
+  border-radius: 2px;
+}
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* components.css — Bootstrap Icons uniform vertical alignment        */
+/* ------------------------------------------------------------------ */
+/* Bootstrap icon fonts carry internal font metrics that add phantom
+   space above each glyph, so raw <i class="bi"> render slightly high
+   in buttons and rows (vertical-align on ::before is ignored inside
+   flex containers). Making every icon its own centered flex box keeps
+   the glyph dead-center regardless of container; the -0.125em baseline
+   nudge (twbs/icons PR #701) aligns icons sitting inline with text. */
+.bi {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  /* vertical-align: -0.125em; */
+}
+
+/* ------------------------------------------------------------------ */
+/* components.css — .win-button (+ .primary), .input-field            */
+/* ------------------------------------------------------------------ */
+.win-button {
+  background-color: var(--sys-button-bg);
+  color: var(--sys-control-text);
+  border: 1px solid var(--sys-button-border);
+  padding: 4px 12px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  user-select: none;
+  line-height: 1;
+}
+.win-button i {
+  display: inline-block;
+  vertical-align: unset;
+}
+.win-button:hover {
+  background-color: var(--sys-button-hover);
+  border-color: #3b78d7;
+}
+.win-button:active {
+  background-color: var(--sys-button-active);
+  border-color: #005499;
+}
+.win-button:disabled {
+  background-color: #e1e1e1;
+  color: #838383;
+  border-color: #adadad;
+  cursor: not-allowed;
+}
+.win-button.primary {
+  background-color: var(--sys-highlight-bg);
+  color: var(--sys-highlight-text);
+  border-color: #005499;
+}
+.win-button.primary:hover {
+  background-color: #1a86d9;
+  border-color: #004578;
+}
+.win-button.primary:active {
+  background-color: #005499;
+  border-color: #003f7f;
+}
+
+.input-field {
+  background-color: var(--sys-window-bg);
+  color: var(--sys-window-text);
+  border: 1px solid #7a7a7a;
+  padding: 0 8px;
+  height: 24px;
+  line-height: 24px;
+  outline: none;
+  font-size: 12px;
+}
+.input-field:focus {
+  border-color: var(--sys-border-focus);
+}
+
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.input-field.has-clear {
+  padding-right: 22px;
+  min-width: 0;
+  flex: 1;
+  width: 100%;
+}
+.input-clear-btn {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+  font-size: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 2px;
+}
+.input-clear-btn:hover {
+  background-color: #d0d0d0;
+  color: #333;
+}
+.input-clear-btn:active {
+  background-color: #b0b0b0;
+}
+.input-wrapper.has-value .input-clear-btn {
+  display: inline-flex;
+}
+
+/* ------------------------------------------------------------------ */
+/* layout.css — .group-box / .group-box-title                         */
+/* ------------------------------------------------------------------ */
+.group-box {
+  border: 1px solid var(--sys-border-dark);
+  border-radius: 3px;
+  padding: 12px;
+  position: relative;
+  background-color: var(--sys-control-bg);
+  margin-top: 8px;
+}
+.group-box-title {
+  position: absolute;
+  top: -9px;
+  left: 10px;
+  background-color: var(--sys-control-bg);
+  padding: 0 6px;
+  font-weight: 600;
+  color: #333333;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.group-box-collapse-btn {
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  padding: 0 4px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  color: var(--sys-button-border, #707070);
+  font-size: 10px;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.group-box-collapse-btn:hover {
+  background-color: var(--sys-button-hover, #e5f1fb);
+  border-color: var(--sys-border-dark, #b0b0b0);
+  color: var(--sys-border-focus, #0078d7);
+}
+.group-box-collapse-btn:active {
+  background-color: var(--sys-button-active, #cce4f7);
+  border-color: var(--sys-border-focus, #0078d7);
+}
+.group-box-collapse-btn i {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+.group-box.collapsed .group-box-collapse-btn i {
+  transform: rotate(-90deg);
+}
+.group-box.collapsed .group-box-body {
+  display: none !important;
+}
+.group-box.collapsed {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.group-box-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ------------------------------------------------------------------ */
+/* tags.css — .tag-pill taxonomy classes                              */
+/* ------------------------------------------------------------------ */
+.tag-pill {
+  font-size: 11px;
+  padding: 1px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 2px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 220px;
+}
+.tag-pill.tag-user {
+  background-color: #fff3cd;
+  border: 1px solid #ffeeba;
+  color: #856404;
+  font-weight: 500;
+}
+.tag-pill.tag-character {
+  background-color: #d1ecf1;
+  border: 1px solid #bee5eb;
+  color: #0c5460;
+}
+.tag-pill.tag-copyright {
+  background-color: #ebdcf9;
+  border: 1px solid #dcbdf5;
+  color: #511c74;
+}
+.tag-pill.tag-meta {
+  background-color: #e2e3e5;
+  border: 1px solid #d6d8db;
+  color: #383d41;
+}
+.tag-pill.tag-artist {
+  background-color: #fff0e6;
+  border: 1px solid #ffd9c2;
+  color: #7c2d12;
+}
+.tag-pill.tag-rank-3 {
+  background-color: #e7f0f7;
+  border: 1px solid #cfe1ee;
+  color: #33515f;
+}
+
+/* ── Touhou Hakurei Yin-Yang Loading Screen ─────────────────────────────── */
+.ds-loading-screen {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 16px;
+  min-height: 120px;
+  width: 100%;
+  box-sizing: border-box;
+  gap: 8px;
+  user-select: none;
+}
+.ds-yinyang-spinner {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  animation: ds-yinyang-rotate 1.2s linear infinite;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+}
+@keyframes ds-yinyang-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ds-loading-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--sys-window-text, #333333);
+  letter-spacing: 0.2px;
+}
+
+/* ── Semantic utility classes ─────────────────────────────────────────────
+   Extraction targets for the inline-style sweep (§4.5): repeated static
+   styling recipes move out of JS and into these classes. Anything genuinely
+   dynamic (reader transforms, zoom var, drag panning) stays in JS. */
+.ds-flex-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ds-flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ds-fill {
+  flex: 1;
+  min-width: 0;
+}
+.ds-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-btn-sm {
+  font-size: 11px;
+  padding: 2px 7px;
+}
+.ds-muted-xs {
+  font-size: 10px;
+  color: #666;
+}
+.ds-hidden {
+  display: none !important;
+}
+.ds-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.ds-danger {
+  background-color: #d13438;
+  border-color: #a80000;
+  color: #ffffff;
+}
+.ds-clickable {
+  cursor: pointer;
+}

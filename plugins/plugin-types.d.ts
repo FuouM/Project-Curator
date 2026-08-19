@@ -225,10 +225,40 @@ interface PluginHostApi {
     Error?: { message: string };
   }>;
   callService(
+    method: "FileExistsBatch",
+    params: { paths: string[] },
+  ): Promise<{
+    FileExistsBatchResult?: {
+      items?: {
+        path: string;
+        exists?: boolean;
+        size_bytes?: number;
+        absolute_path?: string;
+        error?: string;
+      }[];
+    };
+    Error?: { message: string };
+  }>;
+  callService(
     method: "DirStat",
     params: { path?: string },
   ): Promise<{
     DirStatResult?: { total_bytes?: number; file_count?: number; absolute_path?: string };
+    Error?: { message: string };
+  }>;
+  callService(
+    method: "DirStatBatch",
+    params: { paths: string[] },
+  ): Promise<{
+    DirStatBatchResult?: {
+      items?: {
+        path: string;
+        total_bytes?: number;
+        file_count?: number;
+        absolute_path?: string;
+        error?: string;
+      }[];
+    };
     Error?: { message: string };
   }>;
   callService(

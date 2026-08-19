@@ -10,12 +10,8 @@
 
 import {
   TAB_ID,
-  back,
   navigate,
   registerRenderer,
-  renderCurrent,
-  setBanner,
-  state,
   loadPluginView,
 } from "./state";
 import { renderLibrary } from "./ui-library";
@@ -23,14 +19,16 @@ import { renderBrowse } from "./browse";
 import { renderSeries } from "./ui-series";
 import { renderReader } from "./reader/reader-controller";
 import { renderCache } from "./ui-cache";
+import { openSettingsModal, getSavedUiScale } from "./components/settings-modal";
 
 import indexCss from "./styles/index.css";
 import libraryCss from "./styles/library.css";
 import browseCss from "./styles/browse.css";
 import cacheCss from "./styles/cache.css";
 import readerCss from "./styles/reader.css";
+import curatorUiBaseCss from "./styles/curator-ui-base.css";
 
-const PLUGIN_STYLES = [indexCss, libraryCss, browseCss, cacheCss, readerCss];
+const PLUGIN_STYLES = [curatorUiBaseCss, indexCss, libraryCss, browseCss, cacheCss, readerCss];
 
 const PH = window.PluginHost;
 if (!PH) {
@@ -45,8 +43,6 @@ if (!PH) {
   injectStyles();
 
   PH.registerTab(TAB_ID, "Dynasty Scans", "bi bi-book", renderTab);
-
-  console.log("dynasty-scans: registered tab and renderers.");
 }
 
 function injectStyles(): void {
@@ -64,20 +60,27 @@ function injectStyles(): void {
 function renderTab(): HTMLElement {
   const container = document.createElement("div");
   container.id = "ds-root";
+  // Apply persisted UI scale now that #ds-root element exists
+  container.style.setProperty("zoom", String(getSavedUiScale()));
   container.innerHTML =
     '<div id="ds-topbar">' +
-    '  <div id="ds-nav-tabs" style="display:flex;align-items:center;gap:4px;">' +
-    '    <button type="button" class="win-button ds-nav-tab" id="ds-tab-browse">' +
-    '      <i class="bi bi-compass"></i> Browse &amp; Recent' +
-    "    </button>" +
-    '    <button type="button" class="win-button ds-nav-tab" id="ds-tab-library">' +
-    '      <i class="bi bi-collection"></i> Library' +
-    "    </button>" +
-    '    <div id="ds-session-tab-wrap" style="display:none;margin-left:4px;"></div>' +
+    '  <div class="ds-flex-row" id="ds-nav-tabs">' +
+    '    <div class="ds-segmented-switch" id="ds-view-switch">' +
+    '      <button type="button" class="ds-segmented-btn" id="ds-tab-browse" title="Browse &amp; Recent">' +
+    '        <i class="bi bi-compass"></i> Browse &amp; Recent' +
+    "      </button>" +
+    '      <button type="button" class="ds-segmented-btn" id="ds-tab-library" title="Library">' +
+    '        <i class="bi bi-collection"></i> Library' +
+    "      </button>" +
+    "    </div>" +
+    '    <div id="ds-session-tab-wrap" style="display:none;margin-left:2px;"></div>' +
     "  </div>" +
     '  <span id="ds-title" style="margin-left:8px;"></span>' +
     '  <div id="ds-banner"></div>' +
     '  <div id="ds-actions"></div>' +
+    '  <button type="button" class="win-button ds-btn-sm" id="ds-settings-btn" title="Settings (UI Scale &amp; Preferences)" style="margin-left:2px;">' +
+    '    <i class="bi bi-gear-fill"></i>' +
+    "  </button>" +
     "</div>" +
     '<div id="ds-view"></div>';
 
@@ -89,6 +92,11 @@ function renderTab(): HTMLElement {
   const browseBtn = container.querySelector<HTMLButtonElement>("#ds-tab-browse");
   browseBtn?.addEventListener("click", () => {
     navigate({ view: "browse" });
+  });
+
+  const settingsBtn = container.querySelector<HTMLButtonElement>("#ds-settings-btn");
+  settingsBtn?.addEventListener("click", () => {
+    openSettingsModal();
   });
 
   setTimeout(() => {

@@ -75,6 +75,15 @@ export class BrowseCovers {
     try {
       localStorage.setItem("ds_covers_enabled", v ? "true" : "false");
     } catch {}
+    if (!v) {
+      this.queue.length = 0;
+      this.queuedKeys.clear();
+      this.pendingDomUpdates.length = 0;
+      if (this.lazyObserver) {
+        this.lazyObserver.disconnect();
+        this.lazyObserver = null;
+      }
+    }
   }
 
   get currentHydrationHost(): HTMLElement | null {
@@ -83,28 +92,32 @@ export class BrowseCovers {
 
   /** Maps a feed chapter to its cover key + series metadata. */
   getItemCoverInfo(ch: FeedChapter): ItemCoverInfo {
+    // A chapter is part of an official series if ch.series is a non-empty string
+    const isOfficialSeries = Boolean(ch.series && ch.series.trim().length > 0);
+
     const seriesTag = (ch.tags ?? []).find((t) => {
       const type = (t.type ?? "").toLowerCase();
-      return (
-        type === "series" ||
-        type === "doujin" ||
-        type === "doujinshi" ||
-        type === "anthology" ||
-        type === "issue"
-      );
+      return type === "series" || type === "anthology" || type === "issue";
     });
-    const seriesPermalink =
-      seriesTag?.permalink ||
-      (ch.series
-        ? ch.series
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "_")
-            .replace(/^_+|_+$/g, "")
-        : "");
-    const seriesName = ch.series || seriesTag?.name || "";
-    const seriesType = seriesTag?.type || "series";
 
-    if (seriesPermalink) {
+    const doujinTag = (ch.tags ?? []).find((t) => {
+      const type = (t.type ?? "").toLowerCase();
+      return type === "doujin" || type === "doujinshi";
+    });
+
+    // 1. Official serialized series (e.g. Citrus +, Bloom Into You, The Blue Star on That Day)
+    if (isOfficialSeries) {
+      const seriesPermalink =
+        seriesTag?.permalink ||
+        (ch.series
+          ? ch.series
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "_")
+              .replace(/^_+|_+$/g, "")
+          : "");
+      const seriesName = ch.series || seriesTag?.name || "";
+      const seriesType = seriesTag?.type || "series";
+
       return {
         coverKey: `series:${seriesPermalink}`,
         chapterPermalink: ch.permalink,
@@ -115,12 +128,19 @@ export class BrowseCovers {
       };
     }
 
+    // 2. Doujins, fan works, and standalone oneshots (ch.series is null)
+    // The Doujin tag represents the franchise being parodied (e.g. Kamiina Botan, Touhou, BanG Dream),
+    // but the cover must be the chapter's own Page 1 cover art.
+    const franchisePermalink = doujinTag?.permalink || seriesTag?.permalink || "";
+    const franchiseName = doujinTag?.name || seriesTag?.name || "";
+    const franchiseType = doujinTag?.type || seriesTag?.type || "doujin";
+
     return {
       coverKey: `chapter:${ch.permalink}`,
       chapterPermalink: ch.permalink,
-      seriesPermalink: "",
-      seriesName: "",
-      seriesType: "",
+      seriesPermalink: franchisePermalink,
+      seriesName: franchiseName,
+      seriesType: franchiseType,
       isStandalone: true,
     };
   }
@@ -137,7 +157,7 @@ export class BrowseCovers {
     }
 
     // Attach scroll tracking to #ds-view on first ever feed render.
-    if (!this.scrollTrackingAttached) {
+    if (!this.scrollTrackingAttached && this.enabled) {
       this.scrollTrackingAttached = true;
       this.attachScrollTracking();
     }
@@ -145,6 +165,7 @@ export class BrowseCovers {
 
   /** Pre-loads locally cached covers from SQLite in a single batch query. */
   async preloadBatch(coverTargets: CoverTarget[]): Promise<void> {
+    if (!this.enabled) return;
     const uniqueCoverKeys = new Map<string, CoverTarget>();
     const keysToQuery: string[] = [];
 
@@ -181,6 +202,7 @@ export class BrowseCovers {
     // events for its full duration, so a 400ms idle timer would fire mid-flight,
     // flip isScrolling to false, and let the pump run while covers are still
     // flying past — causing scroll jank.
+    if (!this.enabled) return;
     if (this.scrollIdleTimer !== null) {
       window.clearTimeout(this.scrollIdleTimer);
       this.scrollIdleTimer = null;
@@ -201,6 +223,7 @@ export class BrowseCovers {
    * genuinely stable again.
    */
   resumeAfterScrollToTop(host: HTMLElement): void {
+    if (!this.enabled) return;
     // Force the paused state so re-observed covers only get queued, never
     // pumped immediately — even if the idle timer fired mid-animation (scroll
     // events on a long smooth scroll can be more than SCROLL_IDLE_MS apart).
@@ -367,8 +390,8 @@ export class BrowseCovers {
   }
 
   private pumpCoverHydration(): void {
-    // Hard gate — no IPC work while scrolling.
-    if (this.isScrolling || !this.hydrationHost || this.queue.length === 0) return;
+    // Hard gate — no IPC work if disabled or while scrolling.
+    if (!this.enabled || this.isScrolling || !this.hydrationHost || this.queue.length === 0) return;
 
     while (
       !this.isScrolling &&

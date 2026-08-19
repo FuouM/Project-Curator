@@ -13,8 +13,6 @@ import {
   setBanner,
 } from "./state";
 import {
-  CacheOverviewStats,
-  CachedSeriesGroup,
   clearAllCacheStorage,
   clearAllCachedPages,
   clearAllCachedCovers,
@@ -25,6 +23,7 @@ import {
 import { createConfirmDeleteButton } from "./components/button";
 import { renderFeedCover } from "./components/cover";
 import { browseCovers } from "./browse/browse-covers";
+import { renderLoading } from "./components/loading";
 
 export function renderCache(container: HTMLElement, _route: Route): void {
   container.innerHTML = "";
@@ -37,12 +36,7 @@ export function renderCache(container: HTMLElement, _route: Route): void {
 
   const loadView = async (): Promise<void> => {
     root.innerHTML = "";
-
-    const loading = document.createElement("div");
-    loading.className = "ds-muted";
-    loading.style.cssText = "padding:20px;text-align:center;";
-    loading.textContent = "Calculating storage footprint and cache records…";
-    root.appendChild(loading);
+    root.appendChild(renderLoading());
 
     try {
       const [stats, groups] = await Promise.all([getCacheOverviewStats(), getCachedSeriesGroups()]);
@@ -178,7 +172,7 @@ export function renderCache(container: HTMLElement, _route: Route): void {
         filterInput.style.cssText = "flex:1;min-width:200px;font-size:11px;padding:3px 6px;";
 
         const sortWrap = document.createElement("div");
-        sortWrap.style.cssText = "display:flex;align-items:center;gap:6px;";
+        sortWrap.className = "ds-flex-row";
 
         const sortLabel = document.createElement("span");
         sortLabel.className = "ds-item-meta";
@@ -287,7 +281,7 @@ export function renderCache(container: HTMLElement, _route: Route): void {
 
             // Info
             const info = document.createElement("div");
-            info.style.cssText = "flex:1;min-width:0;";
+            info.className = "ds-fill";
             const name = document.createElement("div");
             name.style.cssText = "font-size:12px;font-weight:600;cursor:pointer;";
             name.textContent = decodeEntities(item.seriesName);

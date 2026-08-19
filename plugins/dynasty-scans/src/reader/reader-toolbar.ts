@@ -1,5 +1,6 @@
 import type { ReaderController } from "./reader-controller";
-import type { ChapterRef, FitMode } from "../types/reader";
+import type { FitMode } from "../types/reader";
+import type { ChapterRef } from "../types/routes";
 
 /**
  * Builds the reader's sticky top navigation bar: chapter/page navigation
@@ -119,6 +120,63 @@ export class ReaderToolbar {
     themeBtn.style.cssText = "font-size:11px;padding:2px 8px;";
     themeBtn.title = "Toggle Light / Dark Theme (T)";
 
+    // Zoom In / Out buttons (rightmost)
+    const zoomOutBtn = document.createElement("button");
+    zoomOutBtn.type = "button";
+    zoomOutBtn.className = "win-button";
+    zoomOutBtn.style.cssText = "font-size:11px;padding:2px 7px;";
+    zoomOutBtn.title = "Zoom Out (Ctrl - / -)";
+    zoomOutBtn.innerHTML = '<i class="bi bi-dash-lg"></i>';
+
+    const zoomResetBtn = document.createElement("button");
+    zoomResetBtn.type = "button";
+    zoomResetBtn.className = "win-button";
+    zoomResetBtn.style.cssText = "font-size:11px;padding:2px 6px;min-width:44px;";
+    zoomResetBtn.title = "Reset Zoom (Ctrl 0)";
+    zoomResetBtn.textContent = "100%";
+
+    const zoomInBtn = document.createElement("button");
+    zoomInBtn.type = "button";
+    zoomInBtn.className = "win-button";
+    zoomInBtn.style.cssText = "font-size:11px;padding:2px 7px;";
+    zoomInBtn.title = "Zoom In (Ctrl + / +)";
+    zoomInBtn.innerHTML = '<i class="bi bi-plus-lg"></i>';
+
+    const updateZoomUI = (): void => {
+      const isFitActive = c.fitMode !== "original";
+      zoomResetBtn.textContent = `${Math.round(c.zoomScale * 100)}%`;
+      c.readerContainer.style.setProperty("--ds-zoom-scale", String(c.zoomScale));
+      zoomOutBtn.disabled = isFitActive || c.zoomScale <= 0.25;
+      zoomResetBtn.disabled = isFitActive;
+      zoomInBtn.disabled = isFitActive || c.zoomScale >= 3.0;
+
+      if (isFitActive) {
+        zoomOutBtn.title = "Zoom disabled when Fit mode is active (set to Original Size to zoom)";
+        zoomResetBtn.title = "Zoom disabled when Fit mode is active";
+        zoomInBtn.title = "Zoom disabled when Fit mode is active (set to Original Size to zoom)";
+      } else {
+        zoomOutBtn.title = "Zoom Out (Ctrl - / -)";
+        zoomResetBtn.title = "Reset Zoom (Ctrl 0)";
+        zoomInBtn.title = "Zoom In (Ctrl + / +)";
+      }
+    };
+
+    zoomOutBtn.addEventListener("click", () => {
+      if (c.fitMode !== "original") return;
+      c.zoomScale = Math.max(0.25, Math.round((c.zoomScale - 0.1) * 10) / 10);
+      updateZoomUI();
+    });
+    zoomResetBtn.addEventListener("click", () => {
+      if (c.fitMode !== "original") return;
+      c.zoomScale = 1.0;
+      updateZoomUI();
+    });
+    zoomInBtn.addEventListener("click", () => {
+      if (c.fitMode !== "original") return;
+      c.zoomScale = Math.min(3.0, Math.round((c.zoomScale + 0.1) * 10) / 10);
+      updateZoomUI();
+    });
+
     // Store DOM refs on the controller so progress/shortcut code can reach them
     c.prevChapterBtn = prevChapterBtn;
     c.nextChapterBtn = nextChapterBtn;
@@ -142,7 +200,12 @@ export class ReaderToolbar {
     nav.appendChild(fitSelect);
     nav.appendChild(themeBtn);
     nav.appendChild(fullscreenBtn);
+    nav.appendChild(zoomOutBtn);
+    nav.appendChild(zoomResetBtn);
+    nav.appendChild(zoomInBtn);
     c.readerContainer.appendChild(nav);
+
+    updateZoomUI();
 
     const gotoChapter = (ch: ChapterRef): void => c.gotoChapter(ch);
 
@@ -172,9 +235,14 @@ export class ReaderToolbar {
     });
 
     fitSelect.addEventListener("change", () => {
+      c.readerContainer.classList.remove("fit-width", "fit-height", "fit-original");
       c.fitMode = fitSelect.value as FitMode;
       localStorage.setItem("ds-reader-fit", c.fitMode);
-      c.readerContainer.className = `fit-${c.fitMode}`;
+      c.readerContainer.classList.add(`fit-${c.fitMode}`);
+      if (c.fitMode !== "original") {
+        c.zoomScale = 1.0;
+      }
+      updateZoomUI();
     });
 
     themeBtn.addEventListener("click", () => this.toggleTheme());

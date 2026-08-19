@@ -33,6 +33,10 @@ import { ReaderQueue } from "./reader-queue";
 import { ReaderViewport } from "./reader-viewport";
 import { ReaderToolbar } from "./reader-toolbar";
 import { ReaderShortcuts } from "./reader-shortcuts";
+import { renderLoading } from "../components/loading";
+import { isAutoCacheChapterEnabled, getPrefetchBuffer } from "./settings";
+
+export { isAutoCacheChapterEnabled, setAutoCacheChapterEnabled, getPrefetchBuffer, setPrefetchBuffer } from "./settings";
 
 /**
  * Coordinates one chapter-reading session: owns the shared DOM/state that the
@@ -51,6 +55,7 @@ export class ReaderController {
 
   isHorizontal = false;
   fitMode: FitMode = "width";
+  zoomScale = 1.0;
   scrollLock = false;
   currentIndex = 0;
   readerTheme: ReaderTheme = "light";
@@ -164,7 +169,7 @@ export class ReaderController {
     slot.appendChild(img);
   }
 
-  renderSlotState(slot: HTMLElement, kind: "spinner" | "offline" | "error", message: string): void {
+  renderSlotState(slot: HTMLElement, kind: "spinner" | "offline" | "error" | "idle", message: string): void {
     slot.innerHTML = "";
     const idx = Number(slot.dataset.index);
     const badge = document.createElement("div");
@@ -180,6 +185,8 @@ export class ReaderController {
         '<div class="ds-slot-pulse-wrap"><div class="ds-slot-pulse-bar"></div></div>';
     } else if (kind === "offline") {
       state.innerHTML = '<i class="bi bi-wifi-off" style="font-size:20px;"></i>';
+    } else if (kind === "idle") {
+      state.innerHTML = '<i class="bi bi-book" style="font-size:20px;color:var(--sys-text-muted,#888);"></i>';
     } else {
       state.innerHTML = '<i class="bi bi-exclamation-triangle" style="font-size:20px;"></i>';
     }
@@ -188,6 +195,8 @@ export class ReaderController {
       const pct =
         this.pages.length > 0 ? Math.round((this.cachedCount / this.pages.length) * 100) : 0;
       text.textContent = `Downloading page ${idx + 1} of ${this.pages.length} (${this.cachedCount}/${this.pages.length} cached · ${pct}%)`;
+    } else if (kind === "idle") {
+      text.textContent = `Page ${idx + 1} of ${this.pages.length} · Waiting to read…`;
     } else {
       text.textContent = message;
     }
@@ -232,6 +241,15 @@ export class ReaderController {
 
   // Queue access ------------------------------------------------------------
   enqueue(index: number, priority = false): void {
+    if (index >= 0 && index < this.pages.length) {
+      const slot = this.slots[index];
+      if (slot && !this.cachedMap.has(index) && !this.isPageFailed(index)) {
+        // If the slot is in idle state, transition it to the downloading spinner
+        if (slot.querySelector(".bi-book")) {
+          this.renderSlotState(slot, "spinner", "Downloading…");
+        }
+      }
+    }
     this.queue.enqueue(index, priority);
   }
 
@@ -274,7 +292,7 @@ export class ReaderController {
     }
   }
 
-  setPage(index: number, instant = false): void {
+  setPage(index: number, instant = false, scrollToBottom = false): void {
     if (index < 0 || index >= this.pages.length) return;
     this.currentIndex = index;
     this.atEnd = this.currentIndex >= this.pages.length - 1;
@@ -283,10 +301,20 @@ export class ReaderController {
     if (this.atEnd) void this.persistNow();
 
     this.enqueue(this.currentIndex);
-    this.enqueue(this.currentIndex + 1);
-    this.enqueue(this.currentIndex + 2);
+    if (isAutoCacheChapterEnabled()) {
+      this.enqueue(this.currentIndex + 1);
+      this.enqueue(this.currentIndex + 2);
+    } else {
+      const prefetchCount = getPrefetchBuffer();
+      for (let offset = 1; offset <= prefetchCount; offset++) {
+        const nextIdx = this.currentIndex + offset;
+        if (nextIdx < this.pages.length && !this.cachedMap.has(nextIdx)) {
+          this.enqueue(nextIdx);
+        }
+      }
+    }
 
-    this.viewportImpl.slideTo(index, instant);
+    this.viewportImpl.slideTo(index, instant, scrollToBottom);
   }
 
   /**
@@ -434,9 +462,9 @@ export class ReaderController {
     if (this.disposed) return;
 
     const seriesTag = (chapter.tags ?? []).find((t) => t.type === "Series");
-    this.seriesPermalink = route.seriesPermalink ?? seriesTag?.permalink ?? null;
-    this.seriesName = route.seriesName ?? seriesTag?.name ?? chapter.title;
-    this.chapterTitle = route.chapterTitle ?? chapter.title;
+    this.seriesPermalink = seriesTag?.permalink ?? route.seriesPermalink ?? null;
+    this.seriesName = seriesTag?.name ?? route.seriesName ?? chapter.title;
+    this.chapterTitle = chapter.title || route.chapterTitle || "Chapter";
     this.chapterList = route.chapterList ?? [];
     this.pages = chapter.pages ?? [];
     // Resolve the starting page: an explicit route `startPage` wins; otherwise
@@ -499,7 +527,7 @@ export class ReaderController {
     this.shortcutsImpl = new ReaderShortcuts(this);
 
     // Restore cached page paths from SQLite
-    let cachedRows;
+    let cachedRows: Awaited<ReturnType<typeof getCachedPages>> = [];
     try {
       cachedRows = await getCachedPages(this.permalink);
     } catch (err) {
@@ -516,6 +544,7 @@ export class ReaderController {
     this.cachedCount = this.cachedMap.size;
 
     // Build slots
+    const autoCacheAll = isAutoCacheChapterEnabled();
     for (let i = 0; i < this.pages.length; i++) {
       const slot = document.createElement("div");
       slot.className = "ds-slot";
@@ -525,9 +554,11 @@ export class ReaderController {
         this.renderSlotImg(slot, absPath, i + 1);
       } else if (!isOnline()) {
         this.renderSlotState(slot, "offline", "Offline — not downloaded");
-      } else {
+      } else if (autoCacheAll) {
         this.renderSlotState(slot, "spinner", "Queued for download…");
         this.enqueue(i);
+      } else {
+        this.renderSlotState(slot, "idle", "Waiting to read…");
       }
       this.strip.appendChild(slot);
       this.slots.push(slot);
@@ -535,8 +566,18 @@ export class ReaderController {
 
     // Trigger priority download for uncached start/nearby pages
     if (!this.cachedMap.has(this.currentIndex)) this.enqueue(this.currentIndex, true);
-    if (!this.cachedMap.has(this.currentIndex + 1)) this.enqueue(this.currentIndex + 1, true);
-    if (!this.cachedMap.has(this.currentIndex + 2)) this.enqueue(this.currentIndex + 2, true);
+    if (autoCacheAll) {
+      if (!this.cachedMap.has(this.currentIndex + 1)) this.enqueue(this.currentIndex + 1, true);
+      if (!this.cachedMap.has(this.currentIndex + 2)) this.enqueue(this.currentIndex + 2, true);
+    } else {
+      const prefetchCount = getPrefetchBuffer();
+      for (let offset = 1; offset <= prefetchCount; offset++) {
+        const nextIdx = this.currentIndex + offset;
+        if (nextIdx < this.pages.length && !this.cachedMap.has(nextIdx)) {
+          this.enqueue(nextIdx, true);
+        }
+      }
+    }
 
     // Hide the strip from the first paint: when resuming, the first page image
     // would otherwise flash before the restore jump below lands.
@@ -634,6 +675,28 @@ export class ReaderController {
       });
       host.appendChild(cacheBtn);
 
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "win-button";
+      copyBtn.title = "Copy chapter link to clipboard";
+      copyBtn.innerHTML = '<i class="bi bi-link-45deg"></i>';
+      copyBtn.addEventListener("click", async () => {
+        try {
+          const url = `https://dynasty-scans.com/chapters/${this.permalink}`;
+          await navigator.clipboard.writeText(url);
+          copyBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
+          this.setBanner("Copied chapter link to clipboard");
+          window.setTimeout(() => {
+            if (!copyBtn.isConnected) return;
+            copyBtn.innerHTML = '<i class="bi bi-link-45deg"></i>';
+          }, 2000);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.setBanner(`Copy failed: ${msg}`);
+        }
+      });
+      host.appendChild(copyBtn);
+
       const openBtn = document.createElement("button");
       openBtn.type = "button";
       openBtn.className = "win-button";
@@ -659,10 +722,7 @@ export class ReaderController {
     // Mirrors renderReader's bootstrap; the router keeps the original dispose.
     this.dispose();
     this.container.innerHTML = "";
-    const loading = document.createElement("div");
-    loading.className = "ds-muted";
-    loading.textContent = "Loading chapter…";
-    this.container.appendChild(loading);
+    this.container.appendChild(renderLoading());
     const fresh = new ReaderController(this.route, this.container);
     void fresh.init();
   }
@@ -681,10 +741,7 @@ export function renderReader(container: HTMLElement, route: Route): (() => void)
     return;
   }
 
-  const loading = document.createElement("div");
-  loading.className = "ds-muted";
-  loading.textContent = "Loading chapter…";
-  container.appendChild(loading);
+  container.appendChild(renderLoading());
 
   const ctrl = new ReaderController(route, container);
   void ctrl.init();

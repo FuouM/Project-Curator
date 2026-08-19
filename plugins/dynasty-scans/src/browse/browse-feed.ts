@@ -1,15 +1,27 @@
-import { decodeEntities, formatDateTime, navigate, setBanner } from "../state";
-import { checkFeedOnline, fetchFeedWithRevalidation, openExternal } from "../api";
+import { decodeEntities, formatDateTime, navigate, setBanner, sortTagsByCategory } from "../state";
+import {
+  checkFeedOnline,
+  fetchFeedWithRevalidation,
+  formatBytes,
+  getSessionTraffic,
+  openExternal,
+  subscribeSessionTraffic,
+} from "../api";
 import {
   addBookmark,
+  getBlacklistMode,
   getBookmarkPermalinks,
   getCached,
+  getFullyCachedChapterPermalinks,
   getHistoryPermalinks,
+  isItemBlacklisted,
   removeBookmark,
 } from "../db";
 import { renderTagPill } from "../components/tag-pill";
 import { renderPager } from "../components/pager";
+import { showBlacklistWarningModal } from "../components/trigger-warning";
 import { browseCovers } from "./browse-covers";
+import { updateBrowseTopPager } from "./browse-controller";
 import type { Feed, FeedChapter } from "../types/api";
 
 export const FEED_TAB_TO_URL: Record<string, string> = {
@@ -41,31 +53,36 @@ export async function renderFeed(
   const feedResult = await fetchFeedWithRevalidation(url, key);
   const feed = feedResult.data;
   const revalidatePromise = feedResult.revalidatePromise;
-  host.innerHTML = "";
 
   if (!feed.chapters || feed.chapters.length === 0) {
     const empty = document.createElement("div");
     empty.className = "ds-muted";
     empty.textContent = "No chapters on this page.";
-    host.appendChild(empty);
+    host.replaceChildren(empty);
     return;
   }
+
+  const frag = document.createDocumentFragment();
 
   browseCovers.beginPage(host);
 
   const permalinks = feed.chapters.map((c) => c.permalink);
   let readSet = new Set<string>();
   let bookmarkSet = new Set<string>();
+  let fullyCachedSet = new Set<string>();
   try {
-    const [h, b] = await Promise.all([
+    const [h, b, fc] = await Promise.all([
       getHistoryPermalinks(permalinks),
       getBookmarkPermalinks(permalinks),
+      getFullyCachedChapterPermalinks(),
     ]);
     readSet = h;
     bookmarkSet = b;
+    fullyCachedSet = fc;
   } catch {
     readSet = new Set();
     bookmarkSet = new Set();
+    fullyCachedSet = new Set();
   }
 
   // Pre-load locally cached covers from SQLite in a single batch query (only if covers are enabled)
@@ -76,12 +93,111 @@ export async function renderFeed(
 
   const currentTopPermalink = feed.chapters[0]?.permalink;
 
+  const blMode = getBlacklistMode();
+  const normalChapters: FeedChapter[] = [];
+  const blacklistedChapters: { ch: FeedChapter; matchedTags: string[] }[] = [];
+
   for (const ch of feed.chapters) {
-    host.appendChild(feedItem(ch, readSet.has(ch.permalink), bookmarkSet.has(ch.permalink)));
+    const check = isItemBlacklisted(ch.tags);
+    if (check.blacklisted) {
+      blacklistedChapters.push({ ch, matchedTags: check.matchedTags });
+    } else {
+      normalChapters.push(ch);
+    }
   }
 
-  host.appendChild(
-    renderPager(feed.total_pages, feed.current_page, (p) => void reload(host, tabId, p)),
+  if (blMode === "hide") {
+    if (blacklistedChapters.length > 0) {
+      const notice = document.createElement("div");
+      notice.className = "ds-row ds-blacklist-notice";
+      notice.style.cssText =
+        "background:#fdf3f4;border:1px solid #f5c2c7;color:#842029;border-radius:3px;padding:4px 10px;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;";
+
+      let showBlacklisted = false;
+      const blContainer = document.createElement("div");
+      blContainer.className = "ds-hidden";
+      blContainer.style.cssText = "display:flex;flex-direction:column;gap:4px;margin-bottom:8px;";
+
+      for (const { ch, matchedTags } of blacklistedChapters) {
+        blContainer.appendChild(
+          feedItem(
+            ch,
+            readSet.has(ch.permalink),
+            bookmarkSet.has(ch.permalink),
+            true,
+            matchedTags,
+            fullyCachedSet.has(ch.permalink),
+          ),
+        );
+      }
+
+      notice.innerHTML = `
+        <div class="ds-flex-row">
+          <i class="bi bi-shield-slash-fill" style="color:#dc3545;"></i>
+          <span><b>${blacklistedChapters.length}</b> chapter${blacklistedChapters.length === 1 ? "" : "s"} hidden by tag blacklist.</span>
+        </div>
+        <button type="button" class="win-button ds-btn-sm" style="font-size:10px;padding:2px 8px;">
+          <i class="bi bi-eye"></i> Show Blacklisted (${blacklistedChapters.length})
+        </button>
+      `;
+
+      const toggleBtn = notice.querySelector<HTMLButtonElement>("button")!;
+      toggleBtn.addEventListener("click", () => {
+        showBlacklisted = !showBlacklisted;
+        blContainer.classList.toggle("ds-hidden", !showBlacklisted);
+        toggleBtn.innerHTML = showBlacklisted
+          ? '<i class="bi bi-eye-slash"></i> Hide Blacklisted'
+          : `<i class="bi bi-eye"></i> Show Blacklisted (${blacklistedChapters.length})`;
+      });
+
+      frag.appendChild(notice);
+      frag.appendChild(blContainer);
+    }
+
+    if (normalChapters.length === 0 && blacklistedChapters.length > 0) {
+      const allFiltered = document.createElement("div");
+      allFiltered.className = "ds-muted";
+      allFiltered.style.cssText = "padding:12px 0;text-align:center;font-size:11px;";
+      allFiltered.textContent = "All chapters on this page were hidden by your tag blacklist.";
+      frag.appendChild(allFiltered);
+    }
+
+    for (const ch of normalChapters) {
+      frag.appendChild(
+        feedItem(
+          ch,
+          readSet.has(ch.permalink),
+          bookmarkSet.has(ch.permalink),
+          false,
+          [],
+          fullyCachedSet.has(ch.permalink),
+        ),
+      );
+    }
+  } else {
+    // "warn" mode: Render all items in natural chronological order with warning badges
+    for (const ch of feed.chapters) {
+      const check = isItemBlacklisted(ch.tags);
+      frag.appendChild(
+        feedItem(
+          ch,
+          readSet.has(ch.permalink),
+          bookmarkSet.has(ch.permalink),
+          check.blacklisted,
+          check.matchedTags,
+          fullyCachedSet.has(ch.permalink),
+        ),
+      );
+    }
+  }
+
+  updateBrowseTopPager(feed.total_pages, feed.current_page, (p) => void reload(host, tabId, p), tabId);
+
+  const bottomPager = renderPager(
+    feed.total_pages,
+    feed.current_page,
+    (p) => void reload(host, tabId, p),
+    { cssText: "margin:0;" },
   );
 
   let currentEtag = feedResult.etag;
@@ -97,6 +213,7 @@ export async function renderFeed(
         : "Fresh (Dynasty Scans)",
     etagStatus: currentEtag ? "Cached" : "None",
     isStale: feedResult.isStale,
+    pager: bottomPager,
     onCheckUpdates: async (btn) => {
       btn.disabled = true;
       const prevHtml = btn.innerHTML;
@@ -144,7 +261,7 @@ export async function renderFeed(
       }
     },
     onScrollTop: () => {
-      const dsView = document.getElementById("ds-view");
+      const dsView = document.getElementById("ds-pane-browse") || document.getElementById("ds-view");
       if (!dsView || dsView.scrollTop <= 0) return;
 
       // Disconnect observer + pause pumps during the animation so 20+ flying
@@ -183,7 +300,8 @@ export async function renderFeed(
       }, 200);
     },
   });
-  host.appendChild(statusFooter);
+  frag.appendChild(statusFooter);
+  host.replaceChildren(frag);
 
   // Background revalidation (stale-while-revalidate). The footer reports the
   // current page's own freshness, but the "new chapters available" banner is
@@ -257,7 +375,7 @@ export async function renderFeed(
  * fresh head differs from the last cached head. A deeper page revalidating
  * 200 simply means its contents shifted — never a new-chapters signal.
  */
-async function revalidateFeedHead(tabId: string): Promise<{
+export async function revalidateFeedHead(tabId: string): Promise<{
   hasNew: boolean;
   etag?: string;
   status: "unchanged" | "new-chapters" | "no-baseline" | "error";
@@ -303,11 +421,14 @@ function feedStatusFooter(info: {
   status: string;
   etagStatus?: string;
   isStale: boolean;
+  pager?: HTMLElement;
   onCheckUpdates: (btn: HTMLButtonElement) => Promise<void>;
   onScrollTop: () => void;
 }): HTMLElement {
   const footer = document.createElement("div");
   footer.className = "ds-feed-status-bar";
+  const initialTraffic = getSessionTraffic();
+
   footer.innerHTML = `
     <div class="ds-feed-status-left">
       <span class="ds-status-item ds-status-db" title="Timestamp when metadata was stored in local SQLite database">
@@ -320,12 +441,16 @@ function feedStatusFooter(info: {
         <i class="bi bi-shield-check"></i> ETag: <span class="ds-etag-status-label">${info.etagStatus || "Cached"}</span>
         ${
           info.etag
-            ? `<span class="ds-etag-tag" title="HTTP ETag: ${info.etag}"><i class="bi bi-hash"></i> ${info.etag.replace(/^"|"$/g, "").slice(0, 8)}</span>`
+            ? `<span class="ds-etag-tag" title="HTTP ETag: ${info.etag}"><i class="bi bi-hash"></i> <span class="ds-etag-hash">${info.etag.replace(/^"|"$/g, "").slice(0, 8)}</span></span>`
             : ""
         }
       </span>
+      <span class="ds-status-item ds-status-traffic" title="Online network bandwidth consumed in this session">
+        <i class="bi bi-arrow-down-up"></i> Traffic: <b class="ds-traffic-bytes">${formatBytes(initialTraffic.bytesDownloaded, "", 1)}</b> <span class="ds-traffic-counts ds-muted" style="font-size:10px;">(${initialTraffic.networkRequests} reqs)</span>
+      </span>
     </div>
     <div class="ds-feed-status-right">
+      <div class="ds-feed-status-pager-wrap"></div>
       <button type="button" class="win-button ds-status-refresh-btn" title="Force check for updates online without reloading page">
         <i class="bi bi-arrow-clockwise"></i> Check Updates
       </button>
@@ -334,6 +459,20 @@ function feedStatusFooter(info: {
       </button>
     </div>
   `;
+
+  const trafficBytesEl = footer.querySelector<HTMLElement>(".ds-traffic-bytes");
+  const trafficCountsEl = footer.querySelector<HTMLElement>(".ds-traffic-counts");
+  subscribeSessionTraffic((t) => {
+    if (!footer.isConnected && footer.parentElement === null) return;
+    if (trafficBytesEl) trafficBytesEl.textContent = formatBytes(t.bytesDownloaded, "", 1);
+    if (trafficCountsEl) {
+      trafficCountsEl.textContent = `(${t.networkRequests} reqs${t.cacheHits > 0 ? `, ${t.cacheHits} cached` : ""})`;
+    }
+  });
+
+  if (info.pager) {
+    footer.querySelector(".ds-feed-status-pager-wrap")?.appendChild(info.pager);
+  }
 
   const checkBtn = footer.querySelector<HTMLButtonElement>(".ds-status-refresh-btn");
   checkBtn?.addEventListener("click", () => {
@@ -383,12 +522,12 @@ function updateFeedStatusFooter(
     }
     if (etagEl) {
       etagEl.setAttribute("title", `HTTP ETag: ${info.etag}`);
-      etagEl.innerHTML = `<i class="bi bi-hash"></i> ${info.etag.replace(/^"|"$/g, "").slice(0, 8)}`;
+      etagEl.innerHTML = `<i class="bi bi-hash"></i> <span class="ds-etag-hash">${info.etag.replace(/^"|"$/g, "").slice(0, 8)}</span>`;
     }
   }
 }
 
-function showFeedUpdateBanner(host: HTMLElement, tabId: string, reload: FeedTabReload): void {
+export function showFeedUpdateBanner(host: HTMLElement, tabId: string, reload: FeedTabReload): void {
   if (host.querySelector(".ds-feed-update-banner")) return;
   const banner = document.createElement("div");
   banner.className = "ds-feed-update-banner";
@@ -406,10 +545,17 @@ function showFeedUpdateBanner(host: HTMLElement, tabId: string, reload: FeedTabR
   host.insertBefore(banner, host.firstChild);
 }
 
-function feedItem(ch: FeedChapter, isRead = false, isBookmarked = false): HTMLElement {
+function feedItem(
+  ch: FeedChapter,
+  isRead = false,
+  isBookmarked = false,
+  isBlacklisted = false,
+  matchedTags: string[] = [],
+  isFullyCached = false,
+): HTMLElement {
   const item = document.createElement("div");
   item.className = `ds-item ds-feed-item${isRead ? " ds-item-read" : ""}`;
-  item.style.cssText = "display:flex;align-items:center;gap:10px;padding:6px 8px;";
+  item.style.cssText = `display:flex;align-items:center;gap:10px;padding:6px 8px;${isBlacklisted ? "opacity:0.8;background:var(--sys-bg-active,#fcf8f8);" : ""}`;
 
   const coverInfo = browseCovers.getItemCoverInfo(ch);
 
@@ -422,25 +568,43 @@ function feedItem(ch: FeedChapter, isRead = false, isBookmarked = false): HTMLEl
   coverWrap.dataset.seriesPermalink = coverInfo.seriesPermalink;
   coverWrap.dataset.seriesType = coverInfo.seriesType || "";
 
+  const openChapter = () => {
+    navigate({
+      view: "reader",
+      chapterPermalink: ch.permalink,
+      chapterTitle: ch.title,
+    });
+  };
+
+  const openSeries = (permalink: string, name: string) => {
+    navigate({
+      view: "series",
+      seriesPermalink: permalink,
+      seriesName: name,
+    });
+  };
+
   if (!coverInfo.isStandalone) {
     coverWrap.title = `View series: ${decodeEntities(coverInfo.seriesName || coverInfo.seriesPermalink)}`;
     coverWrap.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      navigate({
-        view: "series",
-        seriesPermalink: coverInfo.seriesPermalink,
-        seriesName: coverInfo.seriesName || coverInfo.seriesPermalink,
-      });
+      if (isBlacklisted && matchedTags.length > 0) {
+        showBlacklistWarningModal(coverInfo.seriesName || ch.title, matchedTags, () =>
+          openSeries(coverInfo.seriesPermalink, coverInfo.seriesName || coverInfo.seriesPermalink),
+        );
+      } else {
+        openSeries(coverInfo.seriesPermalink, coverInfo.seriesName || coverInfo.seriesPermalink);
+      }
     });
   } else {
     coverWrap.title = `Read "${decodeEntities(ch.title)}"`;
     coverWrap.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      navigate({
-        view: "reader",
-        chapterPermalink: ch.permalink,
-        chapterTitle: ch.title,
-      });
+      if (isBlacklisted && matchedTags.length > 0) {
+        showBlacklistWarningModal(ch.title, matchedTags, openChapter);
+      } else {
+        openChapter();
+      }
     });
   }
 
@@ -453,16 +617,30 @@ function feedItem(ch: FeedChapter, isRead = false, isBookmarked = false): HTMLEl
   item.appendChild(coverWrap);
 
   const info = document.createElement("div");
-  info.style.cssText = "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;";
+  info.className = "ds-fill";
+  info.style.cssText = "display:flex;flex-direction:column;gap:4px;";
 
   const title = document.createElement("div");
   title.className = "ds-item-title";
-  title.style.cssText = "font-weight:600;";
-  title.textContent = decodeEntities(ch.title);
+  title.style.cssText = "font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;flex-wrap:wrap;";
+  title.innerHTML = `<span>${decodeEntities(ch.title)}</span>${
+    isFullyCached
+      ? '<i class="bi bi-cloud-check-fill ds-offline-icon" style="color:var(--sys-primary,#0078d4);font-size:11px;" title="Available Offline (Fully Cached)"></i>'
+      : ""
+  }`;
+  title.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (isBlacklisted && matchedTags.length > 0) {
+      showBlacklistWarningModal(ch.title, matchedTags, openChapter);
+    } else {
+      openChapter();
+    }
+  });
   info.appendChild(title);
 
   const metaRow = document.createElement("div");
-  metaRow.style.cssText = "display:flex;align-items:center;gap:6px;flex-wrap:wrap;";
+  metaRow.className = "ds-flex-row";
+  metaRow.style.cssText = "flex-wrap:wrap;";
 
   if (ch.series) {
     const seriesLink = document.createElement("span");
@@ -471,18 +649,30 @@ function feedItem(ch: FeedChapter, isRead = false, isBookmarked = false): HTMLEl
     seriesLink.title = `Go to series: ${decodeEntities(ch.series)}`;
     seriesLink.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      navigate({
-        view: "series",
-        seriesPermalink: coverInfo.seriesPermalink || ch.series,
-        seriesName: ch.series,
-      });
+      if (isBlacklisted && matchedTags.length > 0) {
+        showBlacklistWarningModal(ch.series, matchedTags, () =>
+          openSeries(coverInfo.seriesPermalink || ch.series, ch.series),
+        );
+      } else {
+        openSeries(coverInfo.seriesPermalink || ch.series, ch.series);
+      }
     });
     metaRow.appendChild(seriesLink);
   }
 
-  const tags = (ch.tags ?? []).filter((t) => (t.type ?? "").toLowerCase() !== "series").slice(0, 8);
+  const tags = sortTagsByCategory(
+    (ch.tags ?? []).filter((t) => (t.type ?? "").toLowerCase() !== "series"),
+  ).slice(0, 8);
   for (const t of tags) {
     metaRow.appendChild(renderTagPill(t));
+  }
+  if (isBlacklisted && matchedTags.length > 0) {
+    const blBadge = document.createElement("span");
+    blBadge.style.cssText =
+      "font-size:9px;background:#fde7e9;color:#a80000;padding:1px 5px;border-radius:2px;border:1px solid #e81123;display:inline-flex;align-items:center;gap:3px;font-weight:600;";
+    const labelPrefix = getBlacklistMode() === "warn" ? "Content Warning" : "Blacklisted";
+    blBadge.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> ${labelPrefix}: ${decodeEntities(matchedTags.join(", "))}`;
+    metaRow.appendChild(blBadge);
   }
   info.appendChild(metaRow);
 
@@ -544,12 +734,11 @@ function feedItem(ch: FeedChapter, isRead = false, isBookmarked = false): HTMLEl
   item.appendChild(extBtn);
 
   item.addEventListener("click", () => {
-    navigate({
-      view: "reader",
-      chapterPermalink: ch.permalink,
-      chapterTitle: ch.title,
-      seriesName: ch.series,
-    });
+    if (isBlacklisted && matchedTags.length > 0) {
+      showBlacklistWarningModal(ch.title, matchedTags, openChapter);
+    } else {
+      openChapter();
+    }
   });
   return item;
 }

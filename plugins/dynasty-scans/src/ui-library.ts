@@ -12,6 +12,7 @@ import {
   getFollowedSeriesPage,
   getBookmarksPage,
   getHistoryPage,
+  getFullyCachedChapterPermalinks,
   removeBookmark,
   removeHistory,
   clearHistory,
@@ -19,6 +20,7 @@ import {
 import { createConfirmDeleteButton } from "./components/button";
 import { renderCoverImage } from "./components/cover";
 import { renderPager } from "./components/pager";
+import { attachDelayedLoading } from "./components/loading";
 
 function createLibraryPanel(titleHtml: string): {
   panel: HTMLElement;
@@ -38,7 +40,7 @@ function createLibraryPanel(titleHtml: string): {
 
   const footer = document.createElement("div");
   footer.className = "ds-library-panel-footer";
-  footer.style.display = "none";
+  footer.classList.add("ds-hidden");
 
   panel.appendChild(head);
   panel.appendChild(body);
@@ -47,24 +49,30 @@ function createLibraryPanel(titleHtml: string): {
 }
 
 export function renderLibrary(container: HTMLElement, _route: Route): void {
+  // If library panels are already mounted, refresh rows and actions in-place without rebuilding grid
+  const existingGrid = container.querySelector<HTMLElement>(".ds-library-grid");
+  if (existingGrid) {
+    const bodies = container.querySelectorAll<HTMLElement>(".ds-library-panel-body");
+    const footers = container.querySelectorAll<HTMLElement>(".ds-library-panel-footer");
+    if (bodies.length >= 3 && footers.length >= 3) {
+      setupLibraryActions(
+        bodies[0],
+        footers[0],
+        bodies[1],
+        footers[1],
+        bodies[2],
+        footers[2],
+      );
+      void loadAll(bodies[0], footers[0], bodies[1], footers[1], bodies[2], footers[2]);
+      return;
+    }
+  }
+
   container.innerHTML = "";
 
   const root = document.createElement("div");
   root.id = "ds-library-container";
   container.appendChild(root);
-
-  setActions((host) => {
-    const cacheBtn = document.createElement("button");
-    cacheBtn.type = "button";
-    cacheBtn.className = "win-button";
-    cacheBtn.style.cssText = "font-size:11px;padding:2px 8px;";
-    cacheBtn.innerHTML = '<i class="bi bi-hdd-stack"></i> Cache Management';
-    cacheBtn.title = "View cache storage statistics and manage cached series/pages";
-    cacheBtn.addEventListener("click", () => {
-      navigate({ view: "cache" });
-    });
-    host.appendChild(cacheBtn);
-  });
 
   const grid = document.createElement("div");
   grid.className = "ds-library-grid";
@@ -90,7 +98,7 @@ export function renderLibrary(container: HTMLElement, _route: Route): void {
     body: historyBody,
     footer: historyFooter,
   } = createLibraryPanel(
-    '<span style="display:flex;align-items:center;gap:6px;"><i class="bi bi-clock-history"></i> Reading History</span>',
+    '<span class="ds-flex-row"><i class="bi bi-clock-history"></i> Reading History</span>',
   );
 
   const clearHistoryBtn = createConfirmDeleteButton(
@@ -110,6 +118,15 @@ export function renderLibrary(container: HTMLElement, _route: Route): void {
 
   grid.appendChild(historyPanel);
 
+  setupLibraryActions(
+    followedBody,
+    followedFooter,
+    bookmarksBody,
+    bookmarksFooter,
+    historyBody,
+    historyFooter,
+  );
+
   void loadAll(
     followedBody,
     followedFooter,
@@ -118,6 +135,59 @@ export function renderLibrary(container: HTMLElement, _route: Route): void {
     historyBody,
     historyFooter,
   );
+}
+
+function setupLibraryActions(
+  followedBody: HTMLElement,
+  followedFooter: HTMLElement,
+  bookmarksBody: HTMLElement,
+  bookmarksFooter: HTMLElement,
+  historyBody: HTMLElement,
+  historyFooter: HTMLElement,
+): void {
+  setActions((host) => {
+    const refreshBtn = document.createElement("button");
+    refreshBtn.type = "button";
+    refreshBtn.id = "ds-library-refresh-btn";
+    refreshBtn.className = "win-button ds-btn-sm";
+    refreshBtn.title = "Refresh library from local database";
+    refreshBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refresh Library';
+    refreshBtn.addEventListener("click", async () => {
+      refreshBtn.disabled = true;
+      const prevHtml = refreshBtn.innerHTML;
+      refreshBtn.innerHTML = '<i class="bi bi-arrow-clockwise ds-spin"></i> Refreshing...';
+      try {
+        await loadAll(
+          followedBody,
+          followedFooter,
+          bookmarksBody,
+          bookmarksFooter,
+          historyBody,
+          historyFooter,
+        );
+        refreshBtn.innerHTML = '<i class="bi bi-check2"></i> Updated';
+        setTimeout(() => {
+          refreshBtn.innerHTML = prevHtml;
+          refreshBtn.disabled = false;
+        }, 1200);
+      } catch {
+        refreshBtn.innerHTML = prevHtml;
+        refreshBtn.disabled = false;
+      }
+    });
+    host.appendChild(refreshBtn);
+
+    const cacheBtn = document.createElement("button");
+    cacheBtn.type = "button";
+    cacheBtn.className = "win-button";
+    cacheBtn.style.cssText = "font-size:11px;padding:2px 8px;";
+    cacheBtn.innerHTML = '<i class="bi bi-hdd-stack"></i> Cache Management';
+    cacheBtn.title = "View cache storage statistics and manage cached series/pages";
+    cacheBtn.addEventListener("click", () => {
+      navigate({ view: "cache" });
+    });
+    host.appendChild(cacheBtn);
+  });
 }
 
 async function loadAll(
@@ -145,17 +215,13 @@ async function loadFollowedPage(
   footer: HTMLElement,
   page: number,
 ): Promise<void> {
-  body.innerHTML = "";
   footer.innerHTML = "";
-  footer.style.display = "none";
-
-  const loading = document.createElement("div");
-  loading.className = "ds-muted";
-  loading.textContent = "Loading followed series…";
-  body.appendChild(loading);
+  footer.classList.add("ds-hidden");
+  const cancelLoading = attachDelayedLoading(body, 140);
 
   try {
     const res = await getFollowedSeriesPage(page, 10);
+    cancelLoading();
     renderFollowed(
       body,
       footer,
@@ -165,6 +231,7 @@ async function loadFollowedPage(
       (p) => void loadFollowedPage(body, footer, p),
     );
   } catch (err) {
+    cancelLoading();
     const msg = err instanceof Error ? err.message : String(err);
     body.innerHTML = "";
     const errEl = document.createElement("div");
@@ -182,10 +249,9 @@ function renderFollowed(
   currentPage: number,
   onPage: (p: number) => void,
 ): void {
-  body.innerHTML = "";
   footer.innerHTML = "";
   if (rows.length === 0) {
-    footer.style.display = "none";
+    footer.classList.add("ds-hidden");
     const empty = document.createElement("div");
     empty.style.cssText =
       "display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:8px 0;";
@@ -202,9 +268,12 @@ function renderFollowed(
     });
     empty.appendChild(emptyText);
     empty.appendChild(browseBtn);
-    body.appendChild(empty);
+    body.replaceChildren(empty);
     return;
   }
+
+  const frag = document.createDocumentFragment();
+
   for (const row of rows) {
     const card = document.createElement("div");
     card.className = "group-box";
@@ -216,9 +285,6 @@ function renderFollowed(
     coverSlot.appendChild(renderCoverImage(row.cover, row.name));
     card.appendChild(coverSlot);
 
-    // A cache clear deletes the cover file but leaves `followed_series.cover`
-    // pointing at the removed path. Verify on disk and re-download when stale,
-    // updating the DB so the next render shows the fresh thumbnail.
     void (async () => {
       const fresh = await refreshFollowedSeriesCover(row.permalink, row.cover);
       if (fresh && fresh !== row.cover) {
@@ -228,10 +294,10 @@ function renderFollowed(
     })();
 
     const info = document.createElement("div");
-    info.style.cssText = "flex:1;min-width:0;";
+    info.className = "ds-fill";
     const name = document.createElement("div");
-    name.style.cssText =
-      "font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    name.className = "ds-truncate";
+    name.style.cssText = "font-size:12px;font-weight:600;";
     name.textContent = decodeEntities(row.name);
     const latest = document.createElement("div");
     latest.className = "ds-muted";
@@ -269,14 +335,16 @@ function renderFollowed(
     card.appendChild(extBtn);
 
     card.appendChild(open);
-    body.appendChild(card);
+    frag.appendChild(card);
   }
 
+  body.replaceChildren(frag);
+
   if (totalPages > 1) {
-    footer.style.display = "block";
-    footer.appendChild(renderPager(totalPages, currentPage, onPage, { showLabels: true }));
+    footer.classList.remove("ds-hidden");
+    footer.appendChild(renderPager(totalPages, currentPage, onPage));
   } else {
-    footer.style.display = "none";
+    footer.classList.add("ds-hidden");
   }
 }
 
@@ -285,17 +353,16 @@ async function loadBookmarksPage(
   footer: HTMLElement,
   page: number,
 ): Promise<void> {
-  body.innerHTML = "";
   footer.innerHTML = "";
-  footer.style.display = "none";
-
-  const loading = document.createElement("div");
-  loading.className = "ds-muted";
-  loading.textContent = "Loading bookmarks…";
-  body.appendChild(loading);
+  footer.classList.add("ds-hidden");
+  const cancelLoading = attachDelayedLoading(body, 140);
 
   try {
-    const res = await getBookmarksPage(page, 15);
+    const [res, fullyCachedSet] = await Promise.all([
+      getBookmarksPage(page, 15),
+      getFullyCachedChapterPermalinks(),
+    ]);
+    cancelLoading();
     renderBookmarks(
       body,
       footer,
@@ -303,14 +370,13 @@ async function loadBookmarksPage(
       res.totalPages,
       res.currentPage,
       (p) => void loadBookmarksPage(body, footer, p),
+      fullyCachedSet,
     );
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    cancelLoading();
     body.innerHTML = "";
-    const errEl = document.createElement("div");
-    errEl.className = "ds-muted";
-    errEl.textContent = `Failed to load bookmarks: ${msg}`;
-    body.appendChild(errEl);
+    const msg = err instanceof Error ? err.message : String(err);
+    setBanner(`Failed to load bookmarks: ${msg}`);
   }
 }
 
@@ -321,27 +387,36 @@ function renderBookmarks(
   totalPages: number,
   currentPage: number,
   onPage: (p: number) => void,
+  fullyCachedSet: Set<string> = new Set(),
 ): void {
-  body.innerHTML = "";
   footer.innerHTML = "";
   if (rows.length === 0) {
-    footer.style.display = "none";
+    footer.classList.add("ds-hidden");
     const empty = document.createElement("div");
     empty.className = "ds-muted";
     empty.textContent = "No bookmarks yet.";
-    body.appendChild(empty);
+    body.replaceChildren(empty);
     return;
   }
+
+  const frag = document.createDocumentFragment();
+
   for (const row of rows) {
     const item = document.createElement("div");
-    item.className = "ds-item";
-    item.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px 6px;";
+    item.className = "ds-item ds-flex-row";
+    item.style.cssText = "padding:4px 6px;";
 
+    const isFullyCached = fullyCachedSet.has(row.chapter_permalink);
     const info = document.createElement("div");
-    info.style.cssText = "flex:1;min-width:0;cursor:pointer;";
+    info.className = "ds-fill ds-clickable";
     const title = document.createElement("div");
     title.className = "ds-item-title";
-    title.textContent = decodeEntities(row.chapter_title);
+    title.style.cssText = "display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;";
+    title.innerHTML = `<span>${decodeEntities(row.chapter_title)}</span>${
+      isFullyCached
+        ? '<i class="bi bi-cloud-check-fill ds-offline-icon" style="color:var(--sys-primary,#0078d4);font-size:11px;" title="Available Offline (Fully Cached)"></i>'
+        : ""
+    }`;
     const meta = document.createElement("div");
     meta.className = "ds-item-meta";
     meta.textContent = `${decodeEntities(row.series_name)} · page ${row.page_index + 1}`;
@@ -377,14 +452,16 @@ function renderBookmarks(
     item.appendChild(info);
     item.appendChild(extBtn);
     item.appendChild(removeBtn);
-    body.appendChild(item);
+    frag.appendChild(item);
   }
 
+  body.replaceChildren(frag);
+
   if (totalPages > 1) {
-    footer.style.display = "block";
-    footer.appendChild(renderPager(totalPages, currentPage, onPage, { showLabels: true }));
+    footer.classList.remove("ds-hidden");
+    footer.appendChild(renderPager(totalPages, currentPage, onPage));
   } else {
-    footer.style.display = "none";
+    footer.classList.add("ds-hidden");
   }
 }
 
@@ -393,17 +470,16 @@ async function loadHistoryPage(
   footer: HTMLElement,
   page: number,
 ): Promise<void> {
-  body.innerHTML = "";
   footer.innerHTML = "";
-  footer.style.display = "none";
-
-  const loading = document.createElement("div");
-  loading.className = "ds-muted";
-  loading.textContent = "Loading history…";
-  body.appendChild(loading);
+  footer.classList.add("ds-hidden");
+  const cancelLoading = attachDelayedLoading(body, 140);
 
   try {
-    const res = await getHistoryPage(page, 15);
+    const [res, fullyCachedSet] = await Promise.all([
+      getHistoryPage(page, 15),
+      getFullyCachedChapterPermalinks(),
+    ]);
+    cancelLoading();
     renderHistory(
       body,
       footer,
@@ -411,14 +487,13 @@ async function loadHistoryPage(
       res.totalPages,
       res.currentPage,
       (p) => void loadHistoryPage(body, footer, p),
+      fullyCachedSet,
     );
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    cancelLoading();
     body.innerHTML = "";
-    const errEl = document.createElement("div");
-    errEl.className = "ds-muted";
-    errEl.textContent = `Failed to load history: ${msg}`;
-    body.appendChild(errEl);
+    const msg = err instanceof Error ? err.message : String(err);
+    setBanner(`Failed to load history: ${msg}`);
   }
 }
 
@@ -429,27 +504,36 @@ function renderHistory(
   totalPages: number,
   currentPage: number,
   onPage: (p: number) => void,
+  fullyCachedSet: Set<string> = new Set(),
 ): void {
-  body.innerHTML = "";
   footer.innerHTML = "";
   if (rows.length === 0) {
-    footer.style.display = "none";
+    footer.classList.add("ds-hidden");
     const empty = document.createElement("div");
     empty.className = "ds-muted";
     empty.textContent = "Nothing read yet.";
-    body.appendChild(empty);
+    body.replaceChildren(empty);
     return;
   }
+
+  const frag = document.createDocumentFragment();
+
   for (const row of rows) {
     const item = document.createElement("div");
-    item.className = "ds-item";
-    item.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px 6px;";
+    item.className = "ds-item ds-flex-row";
+    item.style.cssText = "padding:4px 6px;";
 
+    const isFullyCached = fullyCachedSet.has(row.chapter_permalink);
     const info = document.createElement("div");
-    info.style.cssText = "flex:1;min-width:0;cursor:pointer;";
+    info.className = "ds-fill ds-clickable";
     const title = document.createElement("div");
     title.className = "ds-item-title";
-    title.textContent = decodeEntities(row.chapter_title);
+    title.style.cssText = "display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;";
+    title.innerHTML = `<span>${decodeEntities(row.chapter_title)}</span>${
+      isFullyCached
+        ? '<i class="bi bi-cloud-check-fill ds-offline-icon" style="color:var(--sys-primary,#0078d4);font-size:11px;" title="Available Offline (Fully Cached)"></i>'
+        : ""
+    }`;
     const meta = document.createElement("div");
     meta.className = "ds-item-meta";
     meta.textContent = `${decodeEntities(row.series_name)} · ${formatDate(Number(row.read_at))}`;
@@ -484,13 +568,15 @@ function renderHistory(
     item.appendChild(info);
     item.appendChild(extBtn);
     item.appendChild(removeBtn);
-    body.appendChild(item);
+    frag.appendChild(item);
   }
 
+  body.replaceChildren(frag);
+
   if (totalPages > 1) {
-    footer.style.display = "block";
-    footer.appendChild(renderPager(totalPages, currentPage, onPage, { showLabels: true }));
+    footer.classList.remove("ds-hidden");
+    footer.appendChild(renderPager(totalPages, currentPage, onPage));
   } else {
-    footer.style.display = "none";
+    footer.classList.add("ds-hidden");
   }
 }

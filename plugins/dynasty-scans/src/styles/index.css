@@ -15,6 +15,7 @@
   min-height: 0;
   height: 100%;
   overflow: hidden;
+  transform-origin: top left;
 }
 #ds-topbar {
   display: flex;
@@ -27,9 +28,53 @@
   z-index: 10;
 }
 .ds-nav-tab.active {
-  font-weight: bold;
   background: var(--sys-hover-bg, #e5e5e5);
   border-color: var(--sys-border-dark, #999);
+}
+.ds-session-tab {
+  font-weight: 500;
+  border-radius: 2px !important;
+}
+.ds-session-tab.active {
+  background: var(--sys-highlight-bg, #0078d7) !important;
+  color: var(--sys-highlight-text, #ffffff) !important;
+  border-color: #005499 !important;
+  font-weight: 500 !important;
+}
+.ds-segmented-switch {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--sys-button-border, #707070);
+  background: var(--sys-button-bg, #f0f0f0);
+  border-radius: 2px;
+  overflow: hidden;
+  height: 24px;
+}
+.ds-segmented-btn {
+  border: none !important;
+  background: transparent;
+  color: var(--sys-control-text, #000);
+  padding: 0 10px;
+  height: 100%;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  user-select: none;
+  border-radius: 0 !important;
+}
+.ds-segmented-btn:hover {
+  background: var(--sys-button-hover, #e5f1fb);
+}
+.ds-segmented-btn.active {
+  background: var(--sys-highlight-bg, #0078d7);
+  color: var(--sys-highlight-text, #ffffff) !important;
+}
+.ds-segmented-btn + .ds-segmented-btn {
+  border-left: 1px solid var(--sys-border-dark, #b0b0b0) !important;
 }
 #ds-title {
   font-size: 13px;
@@ -63,19 +108,45 @@
 #ds-view {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+#ds-pane-browse {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 8px;
   display: flex;
   flex-direction: column;
 }
-#ds-view:has(#ds-reader-container) {
+#ds-pane-library {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+#ds-pane-dynamic {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px;
+}
+#ds-pane-dynamic:has(#ds-reader-container) {
   padding: 0 !important;
   overflow: hidden !important;
-}
-#ds-view:has(#ds-library-container) {
-  overflow: hidden !important;
-  height: 100%;
+  height: 100% !important;
 }
 
 /* Generic content helpers */
@@ -91,15 +162,33 @@
 }
 .ds-subtabs {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ds-subtabs-left {
+  display: flex;
   gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ds-subtabs-right {
+  display: flex;
+  gap: 6px;
+  align-items: center;
   flex-wrap: wrap;
 }
 .ds-subtab {
   font-size: 11px;
   padding: 2px 8px;
+  font-weight: 500;
 }
 .ds-subtab.active {
-  font-weight: 600;
+  background: var(--sys-highlight-bg, #0078d7) !important;
+  color: var(--sys-highlight-text, #ffffff) !important;
+  border-color: #005499 !important;
+  font-weight: 500 !important;
 }
 .ds-tagline {
   display: flex;
@@ -244,5 +333,71 @@
 .ds-chapter-badge {
   font-size: 10px;
   color: #666;
+  flex-shrink: 0;
+}
+
+/* Modal Dialog System (Native Desktop Style) */
+.ds-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal, 99999);
+  padding: 20px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.ds-modal-window {
+  background: var(--sys-control-bg, #ececec);
+  border: 1px solid var(--sys-border-dark, #707070);
+  border-radius: 3px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 10px;
+  max-width: 92vw;
+  max-height: calc(100vh - 40px);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.ds-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--sys-border-dark, #b0b0b0);
+  padding-bottom: 6px;
+  flex-shrink: 0;
+}
+.ds-modal-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--sys-window-text, #000);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ds-modal-close {
+  font-size: 10px;
+  padding: 2px 6px;
+  min-width: 22px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ds-modal-body {
+  padding: 4px 2px 4px 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ds-modal-footer {
+  border-top: 1px solid var(--sys-border-light, #ffffff);
+  padding-top: 8px;
   flex-shrink: 0;
 }

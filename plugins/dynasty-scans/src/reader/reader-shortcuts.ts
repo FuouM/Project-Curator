@@ -5,7 +5,7 @@ import type { ReaderController } from "./reader-controller";
  * while the user is typing in an input/select.
  */
 export class ReaderShortcuts {
-  constructor(private readonly c: ReaderController) {
+  constructor(c: ReaderController) {
     const onKeyDown = (ev: KeyboardEvent): void => {
       // Ignore if user is typing in an input or textarea
       const tag = (ev.target as HTMLElement)?.tagName;

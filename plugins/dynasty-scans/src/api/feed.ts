@@ -1,14 +1,10 @@
 import { SITE_ROOT } from "../state";
 import { getCached, setCached, touchCached } from "../db";
-import { httpGetText, cachedJson } from "./client";
+import { httpGetText } from "./client";
+import { recordCacheHit } from "./traffic";
 import type { Feed, FeedRevalidationResult, RevalidateOnlineResult } from "../types/api";
 
 export const FEED_TTL_MS = 60 * 60 * 1000;
-
-/** Recent releases / recently added feeds, cached for one hour. */
-export function fetchFeed(urlPath: string, key: string): Promise<Feed> {
-  return cachedJson<Feed>(key, SITE_ROOT + urlPath, FEED_TTL_MS);
-}
 
 /**
  * Checks Dynasty Scans online using ETag If-None-Match.
@@ -59,6 +55,7 @@ export async function fetchFeedWithRevalidation(
     } catch {}
 
     if (parsed) {
+      recordCacheHit(cached.json_payload.length);
       if (!isStale) {
         return {
           data: parsed,

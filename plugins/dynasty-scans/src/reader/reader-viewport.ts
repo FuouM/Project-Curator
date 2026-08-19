@@ -1,4 +1,5 @@
 import type { ReaderController } from "./reader-controller";
+import { isAutoCacheChapterEnabled, getPrefetchBuffer } from "./settings";
 
 /**
  * Owns the reader's strip/paged layout engines: viewport + strip DOM, dynamic
@@ -39,20 +40,22 @@ export class ReaderViewport {
     window.setTimeout(updateViewportHeight, 0);
   }
 
-  /** Called once slots exist. Attaches scroll tracking, preloading, and wheel. */
-  wireAfterSlots(): void {
-    const c = this.c;
-    this.attachScrollTracking();
-    this.attachPreloader();
-    this.attachWheel();
-  }
-
   /** Jumps to a page: paged mode slides the strip; scroll mode scrolls into view.
    *  `instant` disables the smooth animation (used for the initial resume restore
    *  so the first page never flashes while scrolling from the top). */
-  slideTo(index: number, instant = false): void {
+  slideTo(index: number, instant = false, scrollToBottom = false): void {
     const c = this.c;
     if (c.isHorizontal) {
+      const targetSlot = c.slots[index];
+      if (targetSlot) {
+        if (scrollToBottom) {
+          // Jump to bottom of previous page so upward scrolling continues seamlessly
+          targetSlot.scrollTop = Math.max(0, targetSlot.scrollHeight - targetSlot.clientHeight);
+        } else {
+          targetSlot.scrollTop = 0;
+        }
+        targetSlot.scrollLeft = 0;
+      }
       if (!c.scrollLock) {
         // Force layout commit so transition:none takes effect before transform
         c.strip.style.transition = "none";
@@ -187,72 +190,265 @@ export class ReaderViewport {
     const c = this.c;
     const observer = new IntersectionObserver(
       (entries) => {
+        // In horizontal (paged) mode, slot loading is driven explicitly by setPage()
+        if (c.isHorizontal) return;
+
+        const autoCache = isAutoCacheChapterEnabled();
+        const prefetchCount = getPrefetchBuffer();
+
         for (const entry of entries) {
           if (entry.isIntersecting) {
             const idx = Number((entry.target as HTMLElement).dataset.index);
             c.enqueue(idx);
-            c.enqueue(idx + 1);
-            c.enqueue(idx + 2);
+            if (autoCache) {
+              c.enqueue(idx + 1);
+              c.enqueue(idx + 2);
+            } else {
+              for (let offset = 1; offset <= prefetchCount; offset++) {
+                if (idx + offset < c.pages.length) {
+                  c.enqueue(idx + offset);
+                }
+              }
+            }
           }
         }
       },
-      { root: c.viewport, rootMargin: "400px 0px", threshold: 0 },
+      { root: c.viewport, rootMargin: "0px 0px", threshold: 0.05 },
     );
     c.slots.forEach((s) => observer.observe(s));
     c.onDispose(() => observer.disconnect());
   }
 
+  /** Called once slots exist. Attaches scroll tracking, preloading, wheel, and drag panning. */
+  wireAfterSlots(): void {
+    this.attachScrollTracking();
+    this.attachPreloader();
+    this.attachWheel();
+    this.attachDragPanning();
+  }
+
+  private attachDragPanning(): void {
+    const c = this.c;
+    let isDown = false;
+    let startX = 0;
+    let startY = 0;
+    let scrollLeft = 0;
+    let scrollTop = 0;
+    let activeSlot: HTMLElement | null = null;
+    let isViewportPan = false;
+
+    const onMouseDown = (ev: MouseEvent): void => {
+      // Primary mouse button only
+      if (ev.button !== 0) return;
+      
+      // Do not initiate drag pan if clicking buttons, links, or inputs
+      if ((ev.target as HTMLElement)?.closest("button, a, input, select, textarea")) return;
+
+      if (c.isHorizontal) {
+        const target = (ev.target as HTMLElement)?.closest<HTMLElement>(".ds-slot");
+        if (!target) return;
+        if (target.scrollWidth <= target.clientWidth && target.scrollHeight <= target.clientHeight) {
+          return;
+        }
+
+        isDown = true;
+        isViewportPan = false;
+        activeSlot = target;
+        activeSlot.classList.add("ds-dragging");
+        startX = ev.pageX;
+        startY = ev.pageY;
+        scrollLeft = activeSlot.scrollLeft;
+        scrollTop = activeSlot.scrollTop;
+        ev.preventDefault();
+      } else {
+        // Vertical scroll mode
+        const vp = c.viewport;
+        if (!vp) return;
+        if (vp.scrollWidth <= vp.clientWidth && vp.scrollHeight <= vp.clientHeight) {
+          return;
+        }
+
+        isDown = true;
+        isViewportPan = true;
+        c.viewport.classList.add("ds-dragging");
+        startX = ev.pageX;
+        startY = ev.pageY;
+        scrollLeft = vp.scrollLeft;
+        scrollTop = vp.scrollTop;
+        ev.preventDefault();
+      }
+    };
+
+    const onMouseMove = (ev: MouseEvent): void => {
+      if (!isDown) return;
+      ev.preventDefault();
+      const dx = ev.pageX - startX;
+      const dy = ev.pageY - startY;
+
+      if (isViewportPan && c.viewport) {
+        c.viewport.scrollLeft = scrollLeft - dx;
+        c.viewport.scrollTop = scrollTop - dy;
+      } else if (activeSlot) {
+        activeSlot.scrollLeft = scrollLeft - dx;
+        activeSlot.scrollTop = scrollTop - dy;
+      }
+    };
+
+    const onMouseUp = (): void => {
+      if (!isDown) return;
+      isDown = false;
+      if (activeSlot) {
+        activeSlot.classList.remove("ds-dragging");
+        activeSlot = null;
+      }
+      if (isViewportPan && c.viewport) {
+        c.viewport.classList.remove("ds-dragging");
+        isViewportPan = false;
+      }
+    };
+
+    c.viewport.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+
+    c.onDispose(() => {
+      c.viewport.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    });
+  }
+
   private attachWheel(): void {
     const c = this.c;
+    let momentumDir: "next" | "prev" | null = null;
+    let momentumTimer: number | null = null;
+    let indicator: HTMLElement | null = null;
+
+    const showIndicator = (type: "next" | "prev"): void => {
+      if (!indicator) {
+        indicator = document.createElement("div");
+        indicator.className = "ds-snap-indicator";
+        c.viewport.appendChild(indicator);
+      }
+      indicator.className = `ds-snap-indicator ${type === "next" ? "bottom" : "top"} visible`;
+      indicator.innerHTML =
+        type === "next"
+          ? '<i class="bi bi-chevron-double-down"></i> Scroll again for Next Page'
+          : '<i class="bi bi-chevron-double-up"></i> Scroll again for Prev Page';
+    };
+
+    const hideIndicator = (): void => {
+      if (indicator) {
+        indicator.classList.remove("visible");
+      }
+      momentumDir = null;
+    };
+
     const onWheel = (ev: WheelEvent): void => {
-      // In Paged mode (isHorizontal), wheel scrolling always turns pages (natural page flipping)
-      // In Continuous Scroll mode, wheel scrolling turns pages when Scroll Lock is active
-      if (!c.scrollLock && !c.isHorizontal) return;
-      ev.preventDefault();
-      const now = Date.now();
-      if (now - this.wheelDebounce < 180) return; // debounce quick multi-notches
-      if (Math.abs(ev.deltaY) < 10 && Math.abs(ev.deltaX) < 10) return;
+      // Ignore if event target is an input / textarea / select
+      const targetTag = (ev.target as HTMLElement)?.tagName;
+      if (targetTag === "INPUT" || targetTag === "TEXTAREA" || targetTag === "SELECT") return;
 
-      this.wheelDebounce = now;
-      const delta = Math.abs(ev.deltaY) >= Math.abs(ev.deltaX) ? ev.deltaY : ev.deltaX;
+      if (c.isHorizontal) {
+        const slot = c.slots[c.currentIndex];
+        const hasScroll = slot && slot.scrollHeight > slot.clientHeight + 4;
 
-      if (!c.isHorizontal) {
-        // Vertical Scroll mode with Scroll Lock:
-        // Position-aware directional page flipping so it always advances in the scrolling direction
-        const vpRect = c.viewport.getBoundingClientRect();
-        if (delta > 0) {
-          // Scrolling down: advance to the next slot below the current top of the viewport
-          let targetIdx = c.currentIndex + 1;
-          for (let i = 0; i < c.slots.length; i++) {
-            const r = c.slots[i].getBoundingClientRect();
-            if (r.top > vpRect.top + 20) {
-              targetIdx = i;
-              break;
-            }
+        if (hasScroll) {
+          const maxScrollTop = slot.scrollHeight - slot.clientHeight;
+          const atTop = slot.scrollTop <= 2 && ev.deltaY < 0;
+          const atBottom = slot.scrollTop >= maxScrollTop - 2 && ev.deltaY > 0;
+
+          if (!atTop && !atBottom) {
+            // Scroll inside slot programmatically so browser never blocks wheel stream
+            ev.preventDefault();
+            slot.scrollTop = Math.max(0, Math.min(maxScrollTop, slot.scrollTop + ev.deltaY));
+            hideIndicator();
+            return;
           }
-          c.setPage(Math.min(c.pages.length - 1, targetIdx));
-        } else {
-          // Scrolling up: retreat to the slot above the current top of the viewport
-          let targetIdx = c.currentIndex - 1;
-          for (let i = c.slots.length - 1; i >= 0; i--) {
-            const r = c.slots[i].getBoundingClientRect();
-            if (r.top < vpRect.top - 20) {
-              targetIdx = i;
-              break;
-            }
+
+          ev.preventDefault();
+          const targetDir: "next" | "prev" = atBottom ? "next" : "prev";
+
+          // If at the first page (no previous) or last page (no next), do not show indicator
+          if (
+            (targetDir === "prev" && c.currentIndex <= 0) ||
+            (targetDir === "next" && c.currentIndex >= c.pages.length - 1)
+          ) {
+            hideIndicator();
+            return;
           }
-          c.setPage(Math.max(0, targetIdx));
+
+          // If at the boundary and not primed in this direction yet
+          if (momentumDir !== targetDir) {
+            momentumDir = targetDir;
+            showIndicator(targetDir);
+            if (momentumTimer !== null) clearTimeout(momentumTimer);
+            momentumTimer = window.setTimeout(hideIndicator, 1200);
+            return;
+          }
+
+          // Second deliberate scroll in the same direction: flip page
+          hideIndicator();
+          if (momentumTimer !== null) clearTimeout(momentumTimer);
+          if (targetDir === "next") {
+            c.setPage(c.currentIndex + 1, false, false);
+          } else {
+            c.setPage(c.currentIndex - 1, false, true);
+          }
+          return;
         }
-      } else {
-        // Paged mode (Horizontal)
+
+        // Standard paged mode without vertical overflow: flip page directly
+        hideIndicator();
+        ev.preventDefault();
+        const now = Date.now();
+        if (now - this.wheelDebounce < 180) return;
+        if (Math.abs(ev.deltaY) < 10 && Math.abs(ev.deltaX) < 10) return;
+        this.wheelDebounce = now;
+        const delta = Math.abs(ev.deltaY) >= Math.abs(ev.deltaX) ? ev.deltaY : ev.deltaX;
         if (delta > 0) {
           c.setPage(c.currentIndex + 1);
         } else {
           c.setPage(c.currentIndex - 1);
         }
+        return;
+      }
+
+      hideIndicator();
+
+      // In Continuous Scroll mode, wheel scrolling turns pages when Scroll Lock is active
+      if (!c.scrollLock) return;
+      ev.preventDefault();
+      const now = Date.now();
+      if (now - this.wheelDebounce < 180) return;
+      if (Math.abs(ev.deltaY) < 10 && Math.abs(ev.deltaX) < 10) return;
+      this.wheelDebounce = now;
+      const delta = Math.abs(ev.deltaY) >= Math.abs(ev.deltaX) ? ev.deltaY : ev.deltaX;
+
+      const vpRect = c.viewport.getBoundingClientRect();
+      if (delta > 0) {
+        let targetIdx = c.currentIndex + 1;
+        for (let i = 0; i < c.slots.length; i++) {
+          const r = c.slots[i].getBoundingClientRect();
+          if (r.top > vpRect.top + 20) {
+            targetIdx = i;
+            break;
+          }
+        }
+        c.setPage(Math.min(c.pages.length - 1, targetIdx));
+      } else {
+        let targetIdx = c.currentIndex - 1;
+        for (let i = c.slots.length - 1; i >= 0; i--) {
+          const r = c.slots[i].getBoundingClientRect();
+          if (r.top < vpRect.top - 20) {
+            targetIdx = i;
+            break;
+          }
+        }
+        c.setPage(Math.max(0, targetIdx));
       }
     };
-    c.viewport.addEventListener("wheel", onWheel, { passive: false });
-    c.onDispose(() => c.viewport.removeEventListener("wheel", onWheel));
+    window.addEventListener("wheel", onWheel, { passive: false });
+    c.onDispose(() => window.removeEventListener("wheel", onWheel));
   }
 }

@@ -10,6 +10,7 @@
     "build:minipaint": "node build.js --plugin minipaint",
     "build:aria2-downloader": "node build.js --plugin aria2-downloader",
     "build:dynasty-scans": "node build.js --plugin dynasty-scans",
+    "typecheck:dynasty-scans": "tsc --project dynasty-scans/tsconfig.json",
     "watch:image-converter": "node watch.js --plugin image-converter",
     "watch:ffmpeg-transcoder": "node watch.js --plugin ffmpeg-transcoder",
     "watch:image-compare": "node watch.js --plugin image-compare",

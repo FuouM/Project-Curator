@@ -60,10 +60,7 @@ export function createConfirmDeleteButton(
     if (!confirming) {
       originalHtml = btn.innerHTML;
       confirming = true;
-      btn.className = "win-button primary";
-      btn.style.color = "#ffffff";
-      btn.style.backgroundColor = "#d13438";
-      btn.style.borderColor = "#a80000";
+      btn.className = "win-button primary ds-danger";
       btn.innerHTML = '<i class="bi bi-check-lg"></i> Delete?';
       btn.title = "Click again to confirm deletion, or click outside to cancel";
       setTimeout(() => {

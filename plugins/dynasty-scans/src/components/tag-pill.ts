@@ -4,7 +4,6 @@
  */
 
 import { navigate, tagClass, tagStyle } from "../state";
-import { openExternal } from "../api";
 import { el } from "./dom";
 
 export interface TagPillData {
@@ -15,7 +14,7 @@ export interface TagPillData {
 
 export function renderTagPill(t: TagPillData, compact = true): HTMLElement {
   const pill = el("span", {
-    class: tagClass(t.type, t.name),
+    class: tagClass(t.type),
     style:
       tagStyle(t.type, t.name) +
       (compact
@@ -27,44 +26,20 @@ export function renderTagPill(t: TagPillData, compact = true): HTMLElement {
 
   pill.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    const type = (t.type ?? "").toLowerCase();
-    if (type === "series" || type === "anthology" || type === "issue") {
+    if (t.permalink) {
       navigate({
         view: "series",
-        seriesPermalink: t.permalink || t.name,
+        seriesPermalink: t.permalink,
         seriesName: t.name,
       });
       return;
     }
 
-    let url = "";
-    if (type === "author" || type === "artist") {
-      url = t.permalink
-        ? `https://dynasty-scans.com/authors/${t.permalink}`
-        : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`;
-    } else if (type === "scanlator" || type === "group") {
-      url = t.permalink
-        ? `https://dynasty-scans.com/scanlators/${t.permalink}`
-        : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`;
-    } else if (
-      type === "doujin" ||
-      type === "doujinshi" ||
-      type === "copyright" ||
-      type === "parody"
-    ) {
-      url = t.permalink
-        ? `https://dynasty-scans.com/doujins/${t.permalink}`
-        : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`;
-    } else if (type === "pairing") {
-      url = t.permalink
-        ? `https://dynasty-scans.com/pairings/${t.permalink}`
-        : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`;
-    } else {
-      url = t.permalink
-        ? `https://dynasty-scans.com/tags/${t.permalink}`
-        : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`;
-    }
-    void openExternal(url);
+    navigate({
+      view: "browse",
+      browseTab: "search",
+      searchQuery: t.name,
+    });
   });
 
   return pill;

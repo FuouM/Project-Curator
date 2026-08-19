@@ -9,11 +9,20 @@ export function fetchDirectory(urlPath: string, key: string): Promise<Directory>
 }
 
 /** Normalized, ordered letter → entries groups from a directory payload. */
-export function directoryGroups(d: Directory): DirectoryGroup[] {
-  return (d?.tags ?? []).map((obj) => {
-    const letter = Object.keys(obj)[0] ?? "?";
-    return { letter, entries: obj[letter] ?? [] };
-  });
+export function directoryGroups(d: Directory | any): DirectoryGroup[] {
+  if (!d) return [];
+  const rawList = d.tags ?? (Array.isArray(d) ? d : []);
+  if (!Array.isArray(rawList)) return [];
+  return rawList
+    .map((obj) => {
+      if (obj && typeof obj === "object") {
+        const letter = Object.keys(obj)[0] ?? "?";
+        const entries = Array.isArray(obj[letter]) ? obj[letter] : [];
+        return { letter, entries };
+      }
+      return { letter: "?", entries: [] };
+    })
+    .filter((g) => g.entries.length > 0);
 }
 
 /** Search typeahead suggestions. */

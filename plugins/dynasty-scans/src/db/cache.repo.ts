@@ -194,42 +194,65 @@ export async function getCachedSeriesGroups(): Promise<CachedSeriesGroup[]> {
     g.chapterPermalinks.push(cp);
   }
 
-  // Exact disk footprint resolution via DirStat and exact file path check
-  await Promise.all(
-    Array.from(groupMap.values()).map(async (g) => {
-      try {
-        const clean = g.seriesPermalink.replace(/[^a-zA-Z0-9_-]/g, "_");
-        const candidatePaths = g.isStandalone
-          ? [`pages/_singles/${clean}`, `pages/${clean}`]
-          : [`pages/${clean}`];
+  // Exact disk footprint resolution. Directory stats for every group's candidate
+  // paths are resolved in ONE `DirStatBatch` call instead of a per-group IPC
+  // burst; the same applies to the exact-file fallback via `FileExistsBatch`.
+  const dirProbe: { group: CachedSeriesGroup; candidates: string[] }[] = [];
+  for (const g of groupMap.values()) {
+    const clean = g.seriesPermalink.replace(/[^a-zA-Z0-9_-]/g, "_");
+    dirProbe.push({
+      group: g,
+      candidates: g.isStandalone
+        ? [`pages/_singles/${clean}`, `pages/${clean}`]
+        : [`pages/${clean}`],
+    });
+  }
 
-        let foundBytes = 0;
-        for (const p of candidatePaths) {
-          const resp = await PH.callService("DirStat", { path: p });
-          const bytes = Number(resp?.DirStatResult?.total_bytes ?? 0);
-          if (bytes > 0) {
-            foundBytes = bytes;
-            break;
-          }
-        }
+  const allDirPaths = [...new Set(dirProbe.flatMap((p) => p.candidates))];
+  const dirResp = await PH.callService("DirStatBatch", { paths: allDirPaths });
+  const dirBytesByPath = new Map<string, number>();
+  for (const item of dirResp?.DirStatBatchResult?.items ?? []) {
+    dirBytesByPath.set(item.path, Number(item.total_bytes ?? 0));
+  }
 
-        // If directory matching didn't yield bytes, check exact registered file paths
-        if (foundBytes === 0 && g.chapterPermalinks.length > 0) {
-          const placeholders = g.chapterPermalinks.map(() => "?").join(",");
-          const pathRows = await query<{ file_path: string }>(
-            `SELECT file_path FROM cached_pages WHERE chapter_permalink IN (${placeholders})`,
-            g.chapterPermalinks,
-          );
-          for (const row of pathRows) {
-            const resp = await PH.callService("FileExists", { path: row.file_path });
-            foundBytes += Number(resp?.FileExistsResult?.size_bytes ?? 0);
-          }
-        }
+  const fileProbe: { group: CachedSeriesGroup; filePaths: string[] }[] = [];
+  for (const p of dirProbe) {
+    let foundBytes = 0;
+    for (const c of p.candidates) {
+      const bytes = dirBytesByPath.get(c) ?? 0;
+      if (bytes > 0) {
+        foundBytes = bytes;
+        break;
+      }
+    }
+    if (foundBytes > 0) {
+      p.group.totalSizeBytes = foundBytes;
+      continue;
+    }
+    if (p.group.chapterPermalinks.length > 0) fileProbe.push({ group: p.group, filePaths: [] });
+  }
 
-        g.totalSizeBytes = foundBytes;
-      } catch {}
-    }),
-  );
+  if (fileProbe.length > 0) {
+    const filePathGroups = await Promise.all(
+      fileProbe.map(async (p) => {
+        const placeholders = p.group.chapterPermalinks.map(() => "?").join(",");
+        const pathRows = await query<{ file_path: string }>(
+          `SELECT file_path FROM cached_pages WHERE chapter_permalink IN (${placeholders})`,
+          p.group.chapterPermalinks,
+        );
+        return { group: p.group, filePaths: pathRows.map((r) => r.file_path) };
+      }),
+    );
+    const allFilePaths = [...new Set(filePathGroups.flatMap((f) => f.filePaths))];
+    const fileResp = await PH.callService("FileExistsBatch", { paths: allFilePaths });
+    const sizeByPath = new Map<string, number>();
+    for (const item of fileResp?.FileExistsBatchResult?.items ?? []) {
+      sizeByPath.set(item.path, Number(item.size_bytes ?? 0));
+    }
+    for (const f of filePathGroups) {
+      f.group.totalSizeBytes = f.filePaths.reduce((sum, fp) => sum + (sizeByPath.get(fp) ?? 0), 0);
+    }
+  }
 
   return Array.from(groupMap.values()).sort((a, b) => b.lastCachedAt - a.lastCachedAt);
 }
@@ -276,4 +299,196 @@ export async function clearAllCacheStorage(): Promise<void> {
   await clearAllCachedPages();
   await clearAllCachedCovers();
   await execute(`DELETE FROM cached_metadata`);
+}
+
+export interface FullyCachedChapterRow {
+  chapterPermalink: string;
+  chapterTitle: string;
+  seriesPermalink: string | null;
+  seriesName: string | null;
+  pageCount: number;
+  pageTotal: number;
+  totalSizeBytes: number;
+  lastCachedAt: number;
+  coverPath: string | null;
+  tags?: { type?: string; name?: string; permalink?: string }[];
+}
+
+export async function getFullyCachedChapters(): Promise<FullyCachedChapterRow[]> {
+  const chapterRows = await query<{
+    chapter_permalink: string;
+    page_count: number;
+    size_bytes: number;
+    last_cached: number;
+  }>(
+    `SELECT chapter_permalink, COUNT(*) as page_count, SUM(COALESCE(size_bytes, 0)) as size_bytes, MAX(cached_at) as last_cached
+     FROM cached_pages GROUP BY chapter_permalink`,
+  );
+
+  if (chapterRows.length === 0) return [];
+
+  const permalinks = chapterRows.map((r) => r.chapter_permalink);
+  const placeholders = permalinks.map(() => "?").join(",");
+
+  const [progRows, histRows, metaChapterRows, page0Rows] = await Promise.all([
+    query<{
+      chapter_permalink: string;
+      series_permalink: string;
+      series_name: string;
+      chapter_title: string;
+      page_total: number;
+    }>(
+      `SELECT chapter_permalink, series_permalink, series_name, chapter_title, page_total FROM reading_progress WHERE chapter_permalink IN (${placeholders})`,
+      permalinks,
+    ),
+    query<{
+      chapter_permalink: string;
+      series_permalink: string;
+      series_name: string;
+      chapter_title: string;
+    }>(
+      `SELECT chapter_permalink, series_permalink, series_name, chapter_title FROM reading_history WHERE chapter_permalink IN (${placeholders})`,
+      permalinks,
+    ),
+    query<{ cache_key: string; json_payload: string }>(
+      `SELECT cache_key, json_payload FROM cached_metadata WHERE data_type = 'chapter'`,
+    ),
+    query<{ chapter_permalink: string; file_path: string }>(
+      `SELECT chapter_permalink, file_path FROM cached_pages WHERE page_index = 0 AND chapter_permalink IN (${placeholders})`,
+      permalinks,
+    ),
+  ]);
+
+  // Key-filtered cover lookup: only fetch the cover rows this page set can
+  // actually use (series + chapter keys) instead of scanning every
+  // `data_type='cover'` row in a table that also stores full cached bodies.
+  const coverKeys = new Set<string>();
+  for (const r of [...progRows, ...histRows]) {
+    if (r.series_permalink) {
+      coverKeys.add(`cover:series:${r.series_permalink}`);
+      coverKeys.add(`cover:${r.series_permalink}`);
+    }
+  }
+  for (const cp of permalinks) {
+    coverKeys.add(`cover:chapter:${cp}`);
+    coverKeys.add(`cover:${cp}`);
+  }
+  const coverKeyList = [...coverKeys];
+  const metaCoverRows =
+    coverKeyList.length === 0
+      ? []
+      : await query<{ cache_key: string; json_payload: string }>(
+          `SELECT cache_key, json_payload FROM cached_metadata WHERE data_type = 'cover' AND cache_key IN (${coverKeyList
+            .map(() => "?")
+            .join(",")})`,
+          coverKeyList,
+        );
+
+  const coverMap = new Map<string, string>();
+  for (const m of metaCoverRows) {
+    coverMap.set(m.cache_key.replace(/^cover:/, ""), m.json_payload);
+  }
+
+  const page0Map = new Map<string, string>();
+  for (const p of page0Rows) {
+    page0Map.set(p.chapter_permalink, p.file_path);
+  }
+
+  const chapterMetaMap = new Map<
+    string,
+    {
+      title: string;
+      pagesCount: number;
+      seriesPermalink?: string;
+      seriesName?: string;
+      tags?: { type?: string; name?: string; permalink?: string }[];
+    }
+  >();
+  for (const m of metaChapterRows) {
+    try {
+      const pl = m.cache_key.replace(/^chapter:/, "");
+      const parsed = JSON.parse(m.json_payload);
+      const seriesTag = (parsed.tags ?? []).find((t: any) => (t.type ?? "").toLowerCase() === "series");
+      chapterMetaMap.set(pl, {
+        title: parsed.title || pl,
+        pagesCount: Array.isArray(parsed.pages) ? parsed.pages.length : 0,
+        seriesPermalink: seriesTag?.permalink,
+        seriesName: seriesTag?.name,
+        tags: parsed.tags,
+      });
+    } catch {}
+  }
+
+  const progMap = new Map<
+    string,
+    { seriesPermalink: string; seriesName: string; chapterTitle: string; pageTotal: number }
+  >();
+  for (const r of progRows) {
+    progMap.set(r.chapter_permalink, {
+      seriesPermalink: r.series_permalink,
+      seriesName: r.series_name,
+      chapterTitle: r.chapter_title,
+      pageTotal: Number(r.page_total || 0),
+    });
+  }
+
+  const histMap = new Map<
+    string,
+    { seriesPermalink: string; seriesName: string; chapterTitle: string }
+  >();
+  for (const r of histRows) {
+    histMap.set(r.chapter_permalink, {
+      seriesPermalink: r.series_permalink,
+      seriesName: r.series_name,
+      chapterTitle: r.chapter_title,
+    });
+  }
+
+  const result: FullyCachedChapterRow[] = [];
+
+  for (const row of chapterRows) {
+    const cp = row.chapter_permalink;
+    const pageCount = Number(row.page_count);
+    const meta = chapterMetaMap.get(cp);
+    const prog = progMap.get(cp);
+    const hist = histMap.get(cp);
+
+    const totalPages = meta?.pagesCount || prog?.pageTotal || 0;
+    const isFullyCached = totalPages > 0 ? pageCount >= totalPages : pageCount > 0;
+
+    if (isFullyCached) {
+      const seriesPermalink =
+        meta?.seriesPermalink || prog?.seriesPermalink || hist?.seriesPermalink || null;
+      const seriesName = meta?.seriesName || prog?.seriesName || hist?.seriesName || null;
+      const chapterTitle = meta?.title || prog?.chapterTitle || hist?.chapterTitle || cp;
+      const coverPath =
+        (seriesPermalink &&
+          (coverMap.get(`series:${seriesPermalink}`) || coverMap.get(seriesPermalink))) ||
+        coverMap.get(`chapter:${cp}`) ||
+        coverMap.get(cp) ||
+        page0Map.get(cp) ||
+        null;
+
+      result.push({
+        chapterPermalink: cp,
+        chapterTitle,
+        seriesPermalink,
+        seriesName,
+        pageCount,
+        pageTotal: totalPages || pageCount,
+        totalSizeBytes: Number(row.size_bytes),
+        lastCachedAt: Number(row.last_cached),
+        coverPath,
+        tags: meta?.tags,
+      });
+    }
+  }
+
+  result.sort((a, b) => b.lastCachedAt - a.lastCachedAt);
+  return result;
+}
+
+export async function getFullyCachedChapterPermalinks(): Promise<Set<string>> {
+  const chapters = await getFullyCachedChapters();
+  return new Set(chapters.map((c) => c.chapterPermalink));
 }

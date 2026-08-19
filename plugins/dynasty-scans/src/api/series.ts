@@ -6,7 +6,7 @@ import type { Series } from "../types/api";
 
 const PH = window.PluginHost;
 
-/** Series / anthology / doujin detail. `force` skips the cache (used by the Refresh button). */
+/** Series / anthology / doujin / author / tag detail. `force` skips the cache (used by the Refresh button). */
 export async function fetchSeries(
   permalink: string,
   force = false,
@@ -17,19 +17,31 @@ export async function fetchSeries(
     const cached = await getCached(key);
     if (cached) return JSON.parse(cached.json_payload) as Series;
   }
+
   const typeMap: Record<string, string> = {
-    series: `${SITE_ROOT}/series/${permalink}.json`,
-    anthology: `${SITE_ROOT}/anthologies/${permalink}.json`,
-    doujin: `${SITE_ROOT}/doujins/${permalink}.json`,
-    doujinshi: `${SITE_ROOT}/doujins/${permalink}.json`,
-    issue: `${SITE_ROOT}/issues/${permalink}.json`,
+    series: `${SITE_ROOT}/series/${encodeURIComponent(permalink)}.json`,
+    anthology: `${SITE_ROOT}/anthologies/${encodeURIComponent(permalink)}.json`,
+    doujin: `${SITE_ROOT}/doujins/${encodeURIComponent(permalink)}.json`,
+    doujinshi: `${SITE_ROOT}/doujins/${encodeURIComponent(permalink)}.json`,
+    issue: `${SITE_ROOT}/issues/${encodeURIComponent(permalink)}.json`,
+    author: `${SITE_ROOT}/authors/${encodeURIComponent(permalink)}.json`,
+    artist: `${SITE_ROOT}/authors/${encodeURIComponent(permalink)}.json`,
+    scanlator: `${SITE_ROOT}/scanlators/${encodeURIComponent(permalink)}.json`,
+    group: `${SITE_ROOT}/scanlators/${encodeURIComponent(permalink)}.json`,
+    pairing: `${SITE_ROOT}/pairings/${encodeURIComponent(permalink)}.json`,
+    tag: `${SITE_ROOT}/tags/${encodeURIComponent(permalink)}.json`,
+    general: `${SITE_ROOT}/tags/${encodeURIComponent(permalink)}.json`,
   };
 
   const defaultEndpoints = [
-    `${SITE_ROOT}/series/${permalink}.json`,
-    `${SITE_ROOT}/anthologies/${permalink}.json`,
-    `${SITE_ROOT}/doujins/${permalink}.json`,
-    `${SITE_ROOT}/issues/${permalink}.json`,
+    `${SITE_ROOT}/series/${encodeURIComponent(permalink)}.json`,
+    `${SITE_ROOT}/anthologies/${encodeURIComponent(permalink)}.json`,
+    `${SITE_ROOT}/doujins/${encodeURIComponent(permalink)}.json`,
+    `${SITE_ROOT}/issues/${encodeURIComponent(permalink)}.json`,
+    `${SITE_ROOT}/authors/${encodeURIComponent(permalink)}.json`,
+    `${SITE_ROOT}/tags/${encodeURIComponent(permalink)}.json`,
+    `${SITE_ROOT}/pairings/${encodeURIComponent(permalink)}.json`,
+    `${SITE_ROOT}/scanlators/${encodeURIComponent(permalink)}.json`,
   ];
 
   const preferredUrl = preferredType ? typeMap[preferredType.toLowerCase()] : undefined;
@@ -49,7 +61,8 @@ export async function fetchSeries(
       lastErr = e instanceof Error ? e : new Error(String(e));
     }
   }
-  throw lastErr ?? new Error(`Failed to load ${permalink}`);
+
+  throw lastErr ?? new Error(`Failed to load series for permalink "${permalink}"`);
 }
 
 /**
@@ -263,8 +276,8 @@ export async function getOrHydrateItemCover(
   const local = await getLocalCover(coverKey);
   if (local) return local;
 
-  // 1. If it has a series or doujin/anthology permalink, try fetching series cover
-  if (seriesOrGroupPermalink) {
+  // 1. If it has a series cover key and series permalink, try fetching series cover
+  if (coverKey.startsWith("series:") && seriesOrGroupPermalink) {
     const seriesCover = await getOrHydrateSeriesCover(seriesOrGroupPermalink, seriesType);
     if (seriesCover) {
       await setCached(`cover:${coverKey}`, "cover", seriesCover);

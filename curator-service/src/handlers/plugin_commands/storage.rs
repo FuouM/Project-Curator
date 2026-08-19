@@ -8,6 +8,12 @@
 //! `.curator/…`, NTFS tricks) is rejected. `PathExists` intentionally probes
 //! arbitrary workspace / `.curator` paths (used by `plugins/lib/ipc-utils.ts`
 //! for output-collision checks).
+//!
+//! `FileExistsBatch` / `DirStatBatch` resolve many paths in a single call so
+//! plugins stop issuing per-file/per-dir IPC bursts (e.g. dynasty-scans cache
+//! overview). Sandbox rejection is per-item — a single unsafe path yields an
+//! `error` on that item, never a whole-batch failure. Recursive walks run on
+//! the blocking pool via `spawn_blocking`.
 
 use std::io::Read;
 use std::sync::Arc;
@@ -84,6 +90,63 @@ pub async fn file_exists(
             "absolute_path": resolved.absolute().to_string_lossy().into_owned()
         }
     }))
+}
+
+/// Resolves many sandboxed paths in one IPC round-trip. Each path is resolved
+/// independently: sandbox rejections (absolute input, `..`, `.curator/…`) are
+/// captured as a per-item `error` string and never fail the whole batch.
+pub async fn file_exists_batch(
+    ctx: &Arc<ClientContext>,
+    plugin_id: &str,
+    params: &serde_json::Value,
+) -> Result<serde_json::Value, Status> {
+    let paths: Vec<String> = params["paths"]
+        .as_array()
+        .ok_or_else(|| Status::invalid_argument("missing paths"))?
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect();
+    let data_dir = Arc::clone(&ctx.data_dir);
+    let plugin_id = plugin_id.to_string();
+    let items = tokio::task::spawn_blocking(move || {
+        file_exists_batch_items(&data_dir, &plugin_id, &paths)
+    })
+    .await
+    .map_err(crate::server::internal_status)?;
+    Ok(serde_json::json!({ "FileExistsBatchResult": { "items": items } }))
+}
+
+/// Pure batch resolution for `FileExistsBatch` (testable without a full
+/// `ClientContext`).
+fn file_exists_batch_items(
+    data_dir: &std::path::Path,
+    plugin_id: &str,
+    paths: &[String],
+) -> Vec<serde_json::Value> {
+    paths
+        .iter()
+        .map(|raw| match SandboxedPath::resolve(data_dir, plugin_id, raw) {
+            Ok(resolved) => {
+                let meta = resolved.absolute().metadata().ok();
+                let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+                let exists = resolved.absolute().is_file() && size > 0;
+                serde_json::json!({
+                    "path": raw,
+                    "exists": exists,
+                    "size_bytes": size,
+                    "absolute_path": resolved.absolute().to_string_lossy().into_owned(),
+                    "error": ""
+                })
+            }
+            Err(e) => serde_json::json!({
+                "path": raw,
+                "exists": false,
+                "size_bytes": 0,
+                "absolute_path": "",
+                "error": e.to_string()
+            }),
+        })
+        .collect()
 }
 
 pub async fn file_read(
@@ -217,24 +280,74 @@ pub async fn dir_stat(
     let raw_path = params["path"].as_str().unwrap_or("");
     let resolved = resolve(ctx, plugin_id, raw_path)?;
     let path = resolved.absolute();
+    let (total_bytes, file_count) = stat_one(&path);
+    Ok(serde_json::json!({
+        "DirStatResult": {
+            "total_bytes": total_bytes,
+            "file_count": file_count,
+            "absolute_path": path.to_string_lossy().into_owned()
+        }
+    }))
+}
+
+/// Resolves many sandboxed paths in one IPC round-trip. Sandbox rejections
+/// (absolute input, `..`, `.curator/…`) are captured as a per-item `error`
+/// string and never fail the whole batch.
+pub async fn dir_stat_batch(
+    ctx: &Arc<ClientContext>,
+    plugin_id: &str,
+    params: &serde_json::Value,
+) -> Result<serde_json::Value, Status> {
+    let paths: Vec<String> = params["paths"]
+        .as_array()
+        .ok_or_else(|| Status::invalid_argument("missing paths"))?
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect();
+    let data_dir = Arc::clone(&ctx.data_dir);
+    let plugin_id = plugin_id.to_string();
+    let items = tokio::task::spawn_blocking(move || {
+        dir_stat_batch_items(&data_dir, &plugin_id, &paths)
+    })
+    .await
+    .map_err(crate::server::internal_status)?;
+    Ok(serde_json::json!({ "DirStatBatchResult": { "items": items } }))
+}
+
+/// Pure batch resolution for `DirStatBatch` (testable without a full
+/// `ClientContext`).
+fn dir_stat_batch_items(
+    data_dir: &std::path::Path,
+    plugin_id: &str,
+    paths: &[String],
+) -> Vec<serde_json::Value> {
+    paths
+        .iter()
+        .map(|raw| match SandboxedPath::resolve(data_dir, plugin_id, raw) {
+            Ok(resolved) => {
+                let (total_bytes, file_count) = stat_one(resolved.absolute());
+                serde_json::json!({
+                    "path": raw,
+                    "total_bytes": total_bytes,
+                    "file_count": file_count,
+                    "absolute_path": resolved.absolute().to_string_lossy().into_owned(),
+                    "error": ""
+                })
+            }
+            Err(e) => serde_json::json!({
+                "path": raw,
+                "total_bytes": 0,
+                "file_count": 0,
+                "absolute_path": "",
+                "error": e.to_string()
+            }),
+        })
+        .collect()
+}
+
+fn stat_one(path: &std::path::Path) -> (u64, u64) {
     let mut total_bytes: u64 = 0;
     let mut file_count: u64 = 0;
-    fn dir_size_recursive(path: &std::path::Path, total_bytes: &mut u64, file_count: &mut u64) {
-        if let Ok(entries) = std::fs::read_dir(path) {
-            for entry in entries.flatten() {
-                if let Ok(file_type) = entry.file_type() {
-                    if file_type.is_dir() {
-                        dir_size_recursive(&entry.path(), total_bytes, file_count);
-                    } else if file_type.is_file() {
-                        if let Ok(meta) = entry.metadata() {
-                            *total_bytes += meta.len();
-                            *file_count += 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
     if path.is_dir() {
         dir_size_recursive(path, &mut total_bytes, &mut file_count);
     } else if path.is_file() {
@@ -243,13 +356,24 @@ pub async fn dir_stat(
             file_count = 1;
         }
     }
-    Ok(serde_json::json!({
-        "DirStatResult": {
-            "total_bytes": total_bytes,
-            "file_count": file_count,
-            "absolute_path": path.to_string_lossy().into_owned()
+    (total_bytes, file_count)
+}
+
+fn dir_size_recursive(path: &std::path::Path, total_bytes: &mut u64, file_count: &mut u64) {
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_dir() {
+                    dir_size_recursive(&entry.path(), total_bytes, file_count);
+                } else if file_type.is_file() {
+                    if let Ok(meta) = entry.metadata() {
+                        *total_bytes += meta.len();
+                        *file_count += 1;
+                    }
+                }
+            }
         }
-    }))
+    }
 }
 
 pub async fn file_move(
@@ -308,5 +432,122 @@ pub async fn file_delete(
                 "Error": { "message": format!("file delete failed: {e}") }
             })),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup() -> (std::path::PathBuf, std::path::PathBuf) {
+        let unique = format!(
+            "curator_storage_test_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let plugin_root = root.join("plugin_data/dynasty-scans");
+        std::fs::create_dir_all(&plugin_root.join("pages/series_a")).expect("create pages");
+        std::fs::write(
+            plugin_root.join("pages/series_a/01.webp"),
+            vec![0u8; 512],
+        )
+        .expect("write page");
+        (root, plugin_root)
+    }
+
+    fn cleanup(root: &std::path::Path) {
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn file_exists_batch_happy_path_and_missing() {
+        let (root, plugin_root) = setup();
+        let paths = vec![
+            "pages/series_a/01.webp".to_string(),
+            "pages/series_a/missing.webp".to_string(),
+        ];
+        let items = file_exists_batch_items(&root, "dynasty-scans", &paths);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["path"], "pages/series_a/01.webp");
+        assert_eq!(items[0]["exists"], true);
+        assert_eq!(items[0]["size_bytes"], 512);
+        assert_eq!(items[0]["error"], "");
+        assert_eq!(items[1]["exists"], false);
+        assert_eq!(items[1]["error"], "");
+        assert!(items[1]["absolute_path"].as_str().unwrap().replace('\\', "/").contains("pages/series_a/missing.webp"));
+        cleanup(&root);
+        let _ = plugin_root;
+    }
+
+    #[test]
+    fn file_exists_batch_per_item_sandbox_rejection() {
+        let (root, plugin_root) = setup();
+        let paths = vec![
+            "pages/series_a/01.webp".to_string(),
+            "C:/Windows/System32/notepad.exe".to_string(),
+            "../escape.webp".to_string(),
+        ];
+        let items = file_exists_batch_items(&root, "dynasty-scans", &paths);
+        assert_eq!(items.len(), 3);
+        // Good path resolves normally.
+        assert_eq!(items[0]["exists"], true);
+        // Both bad paths are rejected per-item, not whole-batch.
+        assert_eq!(items[1]["exists"], false);
+        assert_ne!(items[1]["error"], "");
+        assert_eq!(items[2]["exists"], false);
+        assert_ne!(items[2]["error"], "");
+        cleanup(&root);
+        let _ = plugin_root;
+    }
+
+    #[test]
+    fn dir_stat_batch_recursive_walk_and_missing() {
+        let (root, plugin_root) = setup();
+        std::fs::write(
+            plugin_root.join("pages/series_a/02.webp"),
+            vec![0u8; 256],
+        )
+        .expect("write second page");
+        let paths = vec![
+            "pages/series_a".to_string(),
+            "pages/nope".to_string(),
+        ];
+        let items = dir_stat_batch_items(&root, "dynasty-scans", &paths);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["path"], "pages/series_a");
+        assert_eq!(items[0]["file_count"], 2);
+        assert_eq!(items[0]["total_bytes"], 768);
+        assert_eq!(items[0]["error"], "");
+        // Missing dir: zero stat, no error (frontend treats 0 as "not cached").
+        assert_eq!(items[1]["total_bytes"], 0);
+        assert_eq!(items[1]["file_count"], 0);
+        assert_eq!(items[1]["error"], "");
+        cleanup(&root);
+        let _ = plugin_root;
+    }
+
+    #[test]
+    fn dir_stat_batch_per_item_sandbox_rejection() {
+        let (root, plugin_root) = setup();
+        let paths = vec!["pages/series_a".to_string(), "..".to_string()];
+        let items = dir_stat_batch_items(&root, "dynasty-scans", &paths);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["file_count"], 1);
+        assert_ne!(items[1]["error"], "");
+        assert_eq!(items[1]["total_bytes"], 0);
+        cleanup(&root);
+        let _ = plugin_root;
+    }
+
+    #[test]
+    fn batch_empty_paths_returns_empty_items() {
+        let (root, _plugin_root) = setup();
+        let items = file_exists_batch_items(&root, "dynasty-scans", &[]);
+        assert!(items.is_empty());
+        cleanup(&root);
     }
 }

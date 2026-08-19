@@ -130,6 +130,9 @@
   });
 
   // dynasty-scans/src/utils/html.ts
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
   function decodeEntities(str) {
     if (!str) return "";
     let s = String(str);
@@ -177,6 +180,72 @@
     }
   });
 
+  // dynasty-scans/src/db/blacklist.repo.ts
+  var blacklist_repo_exports = {};
+  __export(blacklist_repo_exports, {
+    addBlacklistedTag: () => addBlacklistedTag,
+    getBlacklistMode: () => getBlacklistMode,
+    getBlacklistedTags: () => getBlacklistedTags,
+    initBlacklistCache: () => initBlacklistCache,
+    isItemBlacklisted: () => isItemBlacklisted,
+    removeBlacklistedTag: () => removeBlacklistedTag,
+    setBlacklistMode: () => setBlacklistMode
+  });
+  function getBlacklistMode() {
+    return localStorage.getItem("ds-blacklist-mode") || "hide";
+  }
+  function setBlacklistMode(mode) {
+    localStorage.setItem("ds-blacklist-mode", mode);
+  }
+  async function initBlacklistCache() {
+    let rows = await getBlacklistedTags();
+    cachedBlacklistNames = new Set(
+      rows.flatMap((r) => [
+        r.tag_name.toLowerCase().trim(),
+        ...r.tag_permalink ? [r.tag_permalink.toLowerCase().trim()] : []
+      ])
+    );
+  }
+  async function getBlacklistedTags() {
+    return query(
+      "SELECT tag_name, tag_permalink, created_at FROM tag_blacklist ORDER BY created_at DESC",
+      []
+    );
+  }
+  async function addBlacklistedTag(name, permalink) {
+    let trimmed = name.trim();
+    if (!trimmed) return;
+    let now = Date.now();
+    await execute(
+      "INSERT OR REPLACE INTO tag_blacklist (tag_name, tag_permalink, created_at) VALUES (?, ?, ?)",
+      [trimmed, permalink ? permalink.trim() : null, now]
+    ), cachedBlacklistNames.add(trimmed.toLowerCase()), permalink && cachedBlacklistNames.add(permalink.trim().toLowerCase());
+  }
+  async function removeBlacklistedTag(name) {
+    let trimmed = name.trim();
+    trimmed && (await execute("DELETE FROM tag_blacklist WHERE tag_name = ?", [trimmed]), cachedBlacklistNames.delete(trimmed.toLowerCase()), initBlacklistCache());
+  }
+  function isItemBlacklisted(tags) {
+    if (!tags || tags.length === 0 || cachedBlacklistNames.size === 0)
+      return { blacklisted: !1, matchedTags: [] };
+    let matched = [];
+    for (let t of tags) {
+      let nameLower = (t.name || "").toLowerCase().trim(), permLower = (t.permalink || "").toLowerCase().trim();
+      (nameLower && cachedBlacklistNames.has(nameLower) || permLower && cachedBlacklistNames.has(permLower)) && matched.push(t.name || t.permalink || "Unknown");
+    }
+    return {
+      blacklisted: matched.length > 0,
+      matchedTags: matched
+    };
+  }
+  var cachedBlacklistNames, init_blacklist_repo = __esm({
+    "dynasty-scans/src/db/blacklist.repo.ts"() {
+      "use strict";
+      init_client();
+      cachedBlacklistNames = /* @__PURE__ */ new Set();
+    }
+  });
+
   // dynasty-scans/src/db/schema.ts
   async function initDb() {
     return initDbPromise || (initDbPromise = (async () => {
@@ -192,6 +261,11 @@
       }
       try {
         await execute("DROP INDEX IF EXISTS idx_reading_history_chapter", []);
+      } catch (e) {
+      }
+      try {
+        let { initBlacklistCache: initBlacklistCache2 } = await Promise.resolve().then(() => (init_blacklist_repo(), blacklist_repo_exports));
+        await initBlacklistCache2();
       } catch (e) {
       }
     })()), initDbPromise;
@@ -250,6 +324,11 @@
     size_bytes INTEGER DEFAULT 0,
     cached_at INTEGER NOT NULL,
     PRIMARY KEY (chapter_permalink, page_index)
+  )`,
+        `CREATE TABLE IF NOT EXISTS tag_blacklist (
+    tag_name TEXT PRIMARY KEY,
+    tag_permalink TEXT,
+    created_at INTEGER NOT NULL
   )`
       ], initDbPromise = null;
     }
@@ -570,6 +649,7 @@
     };
   }
   async function getCachedSeriesGroups() {
+    var _a, _b, _c, _d, _e, _f, _g;
     let chapterRows = await query(
       `SELECT chapter_permalink, COUNT(*) as page_count, SUM(COALESCE(size_bytes, 0)) as size_bytes, MAX(cached_at) as last_cached
      FROM cached_pages GROUP BY chapter_permalink`
@@ -630,33 +710,52 @@
       let pageCount = Number(row.page_count), sizeBytes = Number(row.size_bytes);
       g.chapterCount += 1, g.pageCount += pageCount, g.totalSizeBytes += sizeBytes, g.lastCachedAt = Math.max(g.lastCachedAt, Number(row.last_cached)), g.chapterPermalinks.push(cp);
     }
-    return await Promise.all(
-      Array.from(groupMap.values()).map(async (g) => {
-        var _a, _b, _c, _d;
-        try {
-          let clean = g.seriesPermalink.replace(/[^a-zA-Z0-9_-]/g, "_"), candidatePaths = g.isStandalone ? [`pages/_singles/${clean}`, `pages/${clean}`] : [`pages/${clean}`], foundBytes = 0;
-          for (let p of candidatePaths) {
-            let resp = await PH5.callService("DirStat", { path: p }), bytes = Number((_b = (_a = resp == null ? void 0 : resp.DirStatResult) == null ? void 0 : _a.total_bytes) != null ? _b : 0);
-            if (bytes > 0) {
-              foundBytes = bytes;
-              break;
-            }
-          }
-          if (foundBytes === 0 && g.chapterPermalinks.length > 0) {
-            let placeholders2 = g.chapterPermalinks.map(() => "?").join(","), pathRows = await query(
-              `SELECT file_path FROM cached_pages WHERE chapter_permalink IN (${placeholders2})`,
-              g.chapterPermalinks
-            );
-            for (let row of pathRows) {
-              let resp = await PH5.callService("FileExists", { path: row.file_path });
-              foundBytes += Number((_d = (_c = resp == null ? void 0 : resp.FileExistsResult) == null ? void 0 : _c.size_bytes) != null ? _d : 0);
-            }
-          }
-          g.totalSizeBytes = foundBytes;
-        } catch (e) {
+    let dirProbe = [];
+    for (let g of groupMap.values()) {
+      let clean = g.seriesPermalink.replace(/[^a-zA-Z0-9_-]/g, "_");
+      dirProbe.push({
+        group: g,
+        candidates: g.isStandalone ? [`pages/_singles/${clean}`, `pages/${clean}`] : [`pages/${clean}`]
+      });
+    }
+    let allDirPaths = [...new Set(dirProbe.flatMap((p) => p.candidates))], dirResp = await PH5.callService("DirStatBatch", { paths: allDirPaths }), dirBytesByPath = /* @__PURE__ */ new Map();
+    for (let item of (_b = (_a = dirResp == null ? void 0 : dirResp.DirStatBatchResult) == null ? void 0 : _a.items) != null ? _b : [])
+      dirBytesByPath.set(item.path, Number((_c = item.total_bytes) != null ? _c : 0));
+    let fileProbe = [];
+    for (let p of dirProbe) {
+      let foundBytes = 0;
+      for (let c of p.candidates) {
+        let bytes = (_d = dirBytesByPath.get(c)) != null ? _d : 0;
+        if (bytes > 0) {
+          foundBytes = bytes;
+          break;
         }
-      })
-    ), Array.from(groupMap.values()).sort((a, b) => b.lastCachedAt - a.lastCachedAt);
+      }
+      if (foundBytes > 0) {
+        p.group.totalSizeBytes = foundBytes;
+        continue;
+      }
+      p.group.chapterPermalinks.length > 0 && fileProbe.push({ group: p.group, filePaths: [] });
+    }
+    if (fileProbe.length > 0) {
+      let filePathGroups = await Promise.all(
+        fileProbe.map(async (p) => {
+          let placeholders2 = p.group.chapterPermalinks.map(() => "?").join(","), pathRows = await query(
+            `SELECT file_path FROM cached_pages WHERE chapter_permalink IN (${placeholders2})`,
+            p.group.chapterPermalinks
+          );
+          return { group: p.group, filePaths: pathRows.map((r) => r.file_path) };
+        })
+      ), allFilePaths = [...new Set(filePathGroups.flatMap((f) => f.filePaths))], fileResp = await PH5.callService("FileExistsBatch", { paths: allFilePaths }), sizeByPath = /* @__PURE__ */ new Map();
+      for (let item of (_f = (_e = fileResp == null ? void 0 : fileResp.FileExistsBatchResult) == null ? void 0 : _e.items) != null ? _f : [])
+        sizeByPath.set(item.path, Number((_g = item.size_bytes) != null ? _g : 0));
+      for (let f of filePathGroups)
+        f.group.totalSizeBytes = f.filePaths.reduce((sum, fp) => {
+          var _a2;
+          return sum + ((_a2 = sizeByPath.get(fp)) != null ? _a2 : 0);
+        }, 0);
+    }
+    return Array.from(groupMap.values()).sort((a, b) => b.lastCachedAt - a.lastCachedAt);
   }
   async function deleteFiles(paths) {
     await Promise.all(
@@ -692,6 +791,99 @@
   async function clearAllCacheStorage() {
     await clearAllCachedPages(), await clearAllCachedCovers(), await execute("DELETE FROM cached_metadata");
   }
+  async function getFullyCachedChapters() {
+    var _a;
+    let chapterRows = await query(
+      `SELECT chapter_permalink, COUNT(*) as page_count, SUM(COALESCE(size_bytes, 0)) as size_bytes, MAX(cached_at) as last_cached
+     FROM cached_pages GROUP BY chapter_permalink`
+    );
+    if (chapterRows.length === 0) return [];
+    let permalinks = chapterRows.map((r) => r.chapter_permalink), placeholders = permalinks.map(() => "?").join(","), [progRows, histRows, metaChapterRows, page0Rows] = await Promise.all([
+      query(
+        `SELECT chapter_permalink, series_permalink, series_name, chapter_title, page_total FROM reading_progress WHERE chapter_permalink IN (${placeholders})`,
+        permalinks
+      ),
+      query(
+        `SELECT chapter_permalink, series_permalink, series_name, chapter_title FROM reading_history WHERE chapter_permalink IN (${placeholders})`,
+        permalinks
+      ),
+      query(
+        "SELECT cache_key, json_payload FROM cached_metadata WHERE data_type = 'chapter'"
+      ),
+      query(
+        `SELECT chapter_permalink, file_path FROM cached_pages WHERE page_index = 0 AND chapter_permalink IN (${placeholders})`,
+        permalinks
+      )
+    ]), coverKeys = /* @__PURE__ */ new Set();
+    for (let r of [...progRows, ...histRows])
+      r.series_permalink && (coverKeys.add(`cover:series:${r.series_permalink}`), coverKeys.add(`cover:${r.series_permalink}`));
+    for (let cp of permalinks)
+      coverKeys.add(`cover:chapter:${cp}`), coverKeys.add(`cover:${cp}`);
+    let coverKeyList = [...coverKeys], metaCoverRows = coverKeyList.length === 0 ? [] : await query(
+      `SELECT cache_key, json_payload FROM cached_metadata WHERE data_type = 'cover' AND cache_key IN (${coverKeyList.map(() => "?").join(",")})`,
+      coverKeyList
+    ), coverMap = /* @__PURE__ */ new Map();
+    for (let m of metaCoverRows)
+      coverMap.set(m.cache_key.replace(/^cover:/, ""), m.json_payload);
+    let page0Map = /* @__PURE__ */ new Map();
+    for (let p of page0Rows)
+      page0Map.set(p.chapter_permalink, p.file_path);
+    let chapterMetaMap = /* @__PURE__ */ new Map();
+    for (let m of metaChapterRows)
+      try {
+        let pl = m.cache_key.replace(/^chapter:/, ""), parsed = JSON.parse(m.json_payload), seriesTag = ((_a = parsed.tags) != null ? _a : []).find((t) => {
+          var _a2;
+          return ((_a2 = t.type) != null ? _a2 : "").toLowerCase() === "series";
+        });
+        chapterMetaMap.set(pl, {
+          title: parsed.title || pl,
+          pagesCount: Array.isArray(parsed.pages) ? parsed.pages.length : 0,
+          seriesPermalink: seriesTag == null ? void 0 : seriesTag.permalink,
+          seriesName: seriesTag == null ? void 0 : seriesTag.name,
+          tags: parsed.tags
+        });
+      } catch (e) {
+      }
+    let progMap = /* @__PURE__ */ new Map();
+    for (let r of progRows)
+      progMap.set(r.chapter_permalink, {
+        seriesPermalink: r.series_permalink,
+        seriesName: r.series_name,
+        chapterTitle: r.chapter_title,
+        pageTotal: Number(r.page_total || 0)
+      });
+    let histMap = /* @__PURE__ */ new Map();
+    for (let r of histRows)
+      histMap.set(r.chapter_permalink, {
+        seriesPermalink: r.series_permalink,
+        seriesName: r.series_name,
+        chapterTitle: r.chapter_title
+      });
+    let result = [];
+    for (let row of chapterRows) {
+      let cp = row.chapter_permalink, pageCount = Number(row.page_count), meta = chapterMetaMap.get(cp), prog = progMap.get(cp), hist = histMap.get(cp), totalPages = (meta == null ? void 0 : meta.pagesCount) || (prog == null ? void 0 : prog.pageTotal) || 0;
+      if (totalPages > 0 ? pageCount >= totalPages : pageCount > 0) {
+        let seriesPermalink = (meta == null ? void 0 : meta.seriesPermalink) || (prog == null ? void 0 : prog.seriesPermalink) || (hist == null ? void 0 : hist.seriesPermalink) || null, seriesName = (meta == null ? void 0 : meta.seriesName) || (prog == null ? void 0 : prog.seriesName) || (hist == null ? void 0 : hist.seriesName) || null, chapterTitle = (meta == null ? void 0 : meta.title) || (prog == null ? void 0 : prog.chapterTitle) || (hist == null ? void 0 : hist.chapterTitle) || cp, coverPath = seriesPermalink && (coverMap.get(`series:${seriesPermalink}`) || coverMap.get(seriesPermalink)) || coverMap.get(`chapter:${cp}`) || coverMap.get(cp) || page0Map.get(cp) || null;
+        result.push({
+          chapterPermalink: cp,
+          chapterTitle,
+          seriesPermalink,
+          seriesName,
+          pageCount,
+          pageTotal: totalPages || pageCount,
+          totalSizeBytes: Number(row.size_bytes),
+          lastCachedAt: Number(row.last_cached),
+          coverPath,
+          tags: meta == null ? void 0 : meta.tags
+        });
+      }
+    }
+    return result.sort((a, b) => b.lastCachedAt - a.lastCachedAt), result;
+  }
+  async function getFullyCachedChapterPermalinks() {
+    let chapters = await getFullyCachedChapters();
+    return new Set(chapters.map((c) => c.chapterPermalink));
+  }
   var PH5, init_cache_repo = __esm({
     "dynasty-scans/src/db/cache.repo.ts"() {
       "use strict";
@@ -703,6 +895,7 @@
   // dynasty-scans/src/db/index.ts
   var db_exports = {};
   __export(db_exports, {
+    addBlacklistedTag: () => addBlacklistedTag,
     addBookmark: () => addBookmark,
     addHistory: () => addHistory,
     clearAllCacheStorage: () => clearAllCacheStorage,
@@ -715,6 +908,8 @@
     execute: () => execute,
     followSeries: () => followSeries,
     getBatchCached: () => getBatchCached,
+    getBlacklistMode: () => getBlacklistMode,
+    getBlacklistedTags: () => getBlacklistedTags,
     getBookmark: () => getBookmark,
     getBookmarkCount: () => getBookmarkCount,
     getBookmarkPermalinks: () => getBookmarkPermalinks,
@@ -729,16 +924,22 @@
     getFollowedSeriesCount: () => getFollowedSeriesCount,
     getFollowedSeriesPage: () => getFollowedSeriesPage,
     getFollowedSeriesRow: () => getFollowedSeriesRow,
+    getFullyCachedChapterPermalinks: () => getFullyCachedChapterPermalinks,
+    getFullyCachedChapters: () => getFullyCachedChapters,
     getHistory: () => getHistory,
     getHistoryCount: () => getHistoryCount,
     getHistoryPage: () => getHistoryPage,
     getHistoryPermalinks: () => getHistoryPermalinks,
     getProgressForSeries: () => getProgressForSeries,
     getReadingProgress: () => getReadingProgress,
+    initBlacklistCache: () => initBlacklistCache,
     initDb: () => initDb,
+    isItemBlacklisted: () => isItemBlacklisted,
     query: () => query,
+    removeBlacklistedTag: () => removeBlacklistedTag,
     removeBookmark: () => removeBookmark,
     removeHistory: () => removeHistory,
+    setBlacklistMode: () => setBlacklistMode,
     setCached: () => setCached,
     setCachedPage: () => setCachedPage,
     setReadingProgress: () => setReadingProgress,
@@ -754,12 +955,13 @@
       init_metadata_repo();
       init_library_repo();
       init_cache_repo();
+      init_blacklist_repo();
     }
   });
 
   // dynasty-scans/src/state.ts
   async function loadPluginView(customRoute) {
-    if (state.isLoaded = !0, customRoute && (state.route = customRoute), !state.dbInitialized)
+    if (customRoute && (state.route = customRoute), !state.dbInitialized)
       try {
         let { initDb: initDb2 } = await Promise.resolve().then(() => (init_db2(), db_exports));
         await initDb2(), state.dbInitialized = !0;
@@ -772,16 +974,51 @@
   function registerRenderer(view, fn) {
     renderers[view] = fn;
   }
+  function onRouteChange(fn) {
+    routeChangeHooks.push(fn);
+  }
   function renderCurrent() {
-    var _a;
-    (_a = state.dispose) == null || _a.call(state), state.dispose = null;
+    var _a, _b;
     let view = document.getElementById("ds-view");
     if (!view) return;
-    view.innerHTML = "", clearBanner(), clearActions();
-    let r = state.route, renderer = renderers[r.view], cleanup = renderer ? renderer(view, r) : void 0;
-    typeof cleanup == "function" && (state.dispose = cleanup), setTitle(routeTitle(r));
+    clearBanner(), clearActions();
+    let r = state.route;
+    setTitle(routeTitle(r));
     let libTab = document.getElementById("ds-tab-library"), browseTab = document.getElementById("ds-tab-browse");
-    libTab && (r.view === "library" ? libTab.classList.add("active") : libTab.classList.remove("active")), browseTab && (r.view === "browse" ? browseTab.classList.add("active") : browseTab.classList.remove("active")), updateSessionMangaTabUI();
+    if (libTab && (r.view === "library" ? libTab.classList.add("active") : libTab.classList.remove("active")), browseTab && (r.view === "browse" ? browseTab.classList.add("active") : browseTab.classList.remove("active")), updateSessionMangaTabUI(), r.view === "browse" || r.view === "library") {
+      (_a = state.dispose) == null || _a.call(state), state.dispose = null;
+      let dynamicNodes2 = Array.from(view.children).filter(
+        (el2) => el2.id !== "ds-pane-browse" && el2.id !== "ds-pane-library"
+      );
+      for (let node of dynamicNodes2)
+        node.remove();
+      for (let [vName, pane] of persistentPanes.entries())
+        pane.style.display = vName === r.view ? "flex" : "none";
+      let targetPane = persistentPanes.get(r.view);
+      if (targetPane) {
+        if (r.view === "library") {
+          let renderer2 = renderers.library;
+          renderer2 && renderer2(targetPane, r);
+        }
+      } else {
+        targetPane = document.createElement("div"), targetPane.id = `ds-pane-${r.view}`, targetPane.className = "ds-persistent-view-pane", targetPane.style.display = "flex", view.appendChild(targetPane), persistentPanes.set(r.view, targetPane);
+        let renderer2 = renderers[r.view];
+        renderer2 && renderer2(targetPane, r);
+      }
+      return;
+    }
+    for (let pane of persistentPanes.values())
+      pane.style.display = "none";
+    (_b = state.dispose) == null || _b.call(state), state.dispose = null;
+    let dynamicNodes = Array.from(view.children).filter(
+      (el2) => el2.id !== "ds-pane-browse" && el2.id !== "ds-pane-library"
+    );
+    for (let node of dynamicNodes)
+      node.remove();
+    let dynamicContainer = document.createElement("div");
+    dynamicContainer.id = "ds-pane-dynamic", view.appendChild(dynamicContainer);
+    let renderer = renderers[r.view], cleanup = renderer ? renderer(dynamicContainer, r) : void 0;
+    typeof cleanup == "function" && (state.dispose = cleanup);
   }
   function navigate(r) {
     if (r.view === "reader" || r.view === "series") {
@@ -791,11 +1028,9 @@
         route: __spreadValues({}, r)
       };
     }
-    if (!state.isLoaded) {
-      loadPluginView(r);
-      return;
-    }
-    state.route = r, renderCurrent();
+    state.route = r;
+    for (let hook of routeChangeHooks) hook(r.view);
+    renderCurrent();
   }
   function closeSessionMangaTab() {
     state.lastMangaTab = null, updateSessionMangaTabUI(), (state.route.view === "reader" || state.route.view === "series") && navigate({ view: "browse" });
@@ -811,11 +1046,11 @@
     let tab = document.createElement("button");
     tab.type = "button";
     let isActive = state.route.view === "reader" || state.route.view === "series";
-    tab.className = `win-button ds-nav-tab${isActive ? " active" : ""}`, tab.style.cssText = "display:inline-flex;align-items:center;gap:6px;max-width:220px;padding:2px 8px;font-size:11px;";
+    tab.className = `win-button ds-nav-tab ds-session-tab${isActive ? " active" : ""}`, tab.style.cssText = "display:inline-flex;align-items:center;gap:6px;max-width:220px;padding:2px 8px;font-size:11px;";
     let icon2 = document.createElement("i");
     icon2.className = "bi bi-book-half", tab.appendChild(icon2);
     let titleSpan = document.createElement("span");
-    titleSpan.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;", titleSpan.textContent = decodeEntities(state.lastMangaTab.title), tab.appendChild(titleSpan);
+    titleSpan.className = "ds-truncate", titleSpan.textContent = decodeEntities(state.lastMangaTab.title), tab.appendChild(titleSpan);
     let closeBtn = document.createElement("i");
     closeBtn.className = "bi bi-x", closeBtn.title = "Close tab", closeBtn.style.cssText = "cursor:pointer;font-size:13px;opacity:0.75;padding:0 2px;", closeBtn.addEventListener("mouseover", () => {
       closeBtn.style.opacity = "1";
@@ -875,7 +1110,17 @@
   function absUrl(u) {
     return /^https?:\/\//i.test(u) ? u : SITE_ROOT + u;
   }
-  function tagClass(type, name) {
+  function tagCategoryRank(type) {
+    let t = (type != null ? type : "").toLowerCase(), idx = TAG_CATEGORY_ORDER.indexOf(t);
+    return idx === -1 ? TAG_CATEGORY_ORDER.length : idx;
+  }
+  function sortTagsByCategory(tags) {
+    return tags.map((t, i) => ({ t, i })).sort((a, b) => {
+      let rankDiff = tagCategoryRank(a.t.type) - tagCategoryRank(b.t.type);
+      return rankDiff !== 0 ? rankDiff : a.i - b.i;
+    }).map((x) => x.t);
+  }
+  function tagClass(type) {
     switch ((type != null ? type : "").toLowerCase()) {
       case "author":
       case "artist":
@@ -905,42 +1150,9 @@
   }
   function tagStyle(type, name) {
     let t = (type != null ? type : "").toLowerCase(), n = (name != null ? name : "").toLowerCase();
-    if (t === "author" || t === "artist")
-      return "background-color: #fff0e6; border: 1px solid #ffd9c2; color: #7c2d12;";
-    if (t === "pairing")
-      return "background-color: #fce7f3; border: 1px solid #fbcfe8; color: #9d174d;";
-    if (t === "character")
-      return "background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460;";
-    if (t === "series" || t === "anthology" || t === "issue" || t === "doujin" || t === "doujinshi" || t === "copyright" || t === "parody")
-      return "background-color: #ebdcf9; border: 1px solid #dcbdf5; color: #511c74;";
-    if (t === "scanlator" || t === "group" || t === "meta")
-      return "background-color: #e2e3e5; border: 1px solid #d6d8db; color: #383d41;";
-    if (t === "status" || n === "oneshot" || n === "one-shot" || n === "anthology" || n === "completed" || n === "ongoing" || n === "licensed" || n === "hiatus" || n === "discontinued")
-      return "background-color: #e6f4ea; border: 1px solid #ceead6; color: #0e6b38;";
-    let hash = 0;
-    for (let i = 0; i < name.length; i++)
-      hash = (hash << 5) - hash + name.charCodeAt(i), hash |= 0;
-    let PALETTES = [
-      { bg: "#fef3c7", border: "#fde68a", text: "#92400e" },
-      // amber
-      { bg: "#ede9fe", border: "#ddd6fe", text: "#5b21b6" },
-      // violet
-      { bg: "#fee2e2", border: "#fecaca", text: "#991b1b" },
-      // rose
-      { bg: "#e0f2fe", border: "#bae6fd", text: "#075985" },
-      // sky
-      { bg: "#dcfce7", border: "#bbf7d0", text: "#166534" },
-      // green
-      { bg: "#fae8ff", border: "#f5d0fe", text: "#86198f" },
-      // fuchsia
-      { bg: "#ffedd5", border: "#fed7aa", text: "#9a3412" },
-      // orange
-      { bg: "#f1f5f9", border: "#e2e8f0", text: "#334155" }
-      // slate
-    ], p = PALETTES[Math.abs(hash) % PALETTES.length];
-    return `background-color: ${p.bg}; border: 1px solid ${p.border}; color: ${p.text}; font-weight: 500;`;
+    return t === "author" || t === "artist" ? "background-color: #fff0e6; border: 1px solid #ffd9c2; color: #7c2d12;" : t === "pairing" ? "background-color: #fce7f3; border: 1px solid #fbcfe8; color: #9d174d;" : t === "character" ? "background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460;" : t === "series" || t === "anthology" || t === "issue" || t === "doujin" || t === "doujinshi" || t === "copyright" || t === "parody" ? "background-color: #ebdcf9; border: 1px solid #dcbdf5; color: #511c74;" : t === "scanlator" || t === "group" || t === "meta" ? "background-color: #e2e3e5; border: 1px solid #d6d8db; color: #383d41;" : t === "status" || n === "oneshot" || n === "one-shot" || n === "anthology" || n === "completed" || n === "ongoing" || n === "licensed" || n === "hiatus" || n === "discontinued" ? "background-color: #e6f4ea; border: 1px solid #ceead6; color: #0e6b38;" : "background-color: #e7f0f7; border: 1px solid #cfe1ee; color: #33515f; font-weight: 500;";
   }
-  var TAB_ID, SITE_ROOT, DB_NAME, PAGES_PREFIX, COVERS_PREFIX, state, renderers, bannerTimer, init_state = __esm({
+  var TAB_ID, SITE_ROOT, DB_NAME, PAGES_PREFIX, COVERS_PREFIX, state, renderers, persistentPanes, routeChangeHooks, bannerTimer, TAG_CATEGORY_ORDER, init_state = __esm({
     "dynasty-scans/src/state.ts"() {
       "use strict";
       init_lib();
@@ -951,11 +1163,21 @@
         route: { view: "browse" },
         lastMangaTab: null,
         dispose: null,
-        isLoaded: !0,
         dbInitialized: !1
       };
       renderers = {};
+      persistentPanes = /* @__PURE__ */ new Map(), routeChangeHooks = [];
       bannerTimer = null;
+      TAG_CATEGORY_ORDER = [
+        "author",
+        "scanlator",
+        "pairing",
+        "doujin",
+        "series",
+        "anthology",
+        "issue",
+        "general"
+      ];
     }
   });
 
@@ -967,6 +1189,39 @@
 
   // dynasty-scans/src/api/client.ts
   init_db2();
+
+  // dynasty-scans/src/api/traffic.ts
+  init_format();
+  var trafficState = {
+    bytesDownloaded: 0,
+    networkRequests: 0,
+    cacheHits: 0,
+    bytesSaved: 0
+  }, listeners = /* @__PURE__ */ new Set();
+  function notify() {
+    for (let listener of listeners)
+      try {
+        listener(__spreadValues({}, trafficState));
+      } catch (err) {
+        console.warn("[ds-traffic] listener error:", err);
+      }
+  }
+  function recordNetworkTraffic(bytes) {
+    trafficState.bytesDownloaded += Math.max(0, bytes), trafficState.networkRequests += 1, notify();
+  }
+  function recordCacheHit(savedBytes = 0) {
+    trafficState.cacheHits += 1, trafficState.bytesSaved += Math.max(0, savedBytes), notify();
+  }
+  function getSessionTraffic() {
+    return __spreadValues({}, trafficState);
+  }
+  function subscribeSessionTraffic(listener) {
+    return listeners.add(listener), listener(__spreadValues({}, trafficState)), () => {
+      listeners.delete(listener);
+    };
+  }
+
+  // dynasty-scans/src/api/client.ts
   var PH6 = window.PluginHost;
   async function httpGetText(url, opts = {}) {
     var _a, _b, _c, _d, _e, _f, _g, _h;
@@ -977,21 +1232,19 @@
     opts.method === "POST" && (params.method = "POST", params.body = (_b = opts.body) != null ? _b : "", params.content_type = (_c = opts.contentType) != null ? _c : "application/x-www-form-urlencoded"), opts.headers && (params.headers = opts.headers);
     let resp = await PH6.callService("HttpGet", params);
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
-    return {
-      status: Number((_e = (_d = resp == null ? void 0 : resp.HttpGetResult) == null ? void 0 : _d.status) != null ? _e : 0),
-      body: String((_g = (_f = resp == null ? void 0 : resp.HttpGetResult) == null ? void 0 : _f.body) != null ? _g : ""),
-      etag: (_h = resp == null ? void 0 : resp.HttpGetResult) != null && _h.etag ? String(resp.HttpGetResult.etag) : void 0
-    };
+    let status = Number((_e = (_d = resp == null ? void 0 : resp.HttpGetResult) == null ? void 0 : _d.status) != null ? _e : 0), body = String((_g = (_f = resp == null ? void 0 : resp.HttpGetResult) == null ? void 0 : _f.body) != null ? _g : ""), etag = (_h = resp == null ? void 0 : resp.HttpGetResult) != null && _h.etag ? String(resp.HttpGetResult.etag) : void 0;
+    return status === 200 && body && recordNetworkTraffic(body.length), { status, body, etag };
   }
   async function httpDownload2(url, outputPath, timeoutMs = 3e4) {
-    var _a, _b;
+    var _a, _b, _c, _d;
     let resp = await PH6.callService("HttpDownload", {
       url,
       output_path: outputPath,
       timeout_ms: timeoutMs
     });
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
-    return String((_b = (_a = resp == null ? void 0 : resp.HttpDownloadResult) == null ? void 0 : _a.absolute_path) != null ? _b : "");
+    let sizeBytes = Number((_b = (_a = resp == null ? void 0 : resp.HttpDownloadResult) == null ? void 0 : _a.size_bytes) != null ? _b : 0);
+    return sizeBytes > 0 && recordNetworkTraffic(sizeBytes), String((_d = (_c = resp == null ? void 0 : resp.HttpDownloadResult) == null ? void 0 : _c.absolute_path) != null ? _d : "");
   }
   async function httpDownloadFull2(url, outputPath, timeoutMs = 3e4) {
     var _a, _b, _c, _d;
@@ -1001,9 +1254,10 @@
       timeout_ms: timeoutMs
     });
     if (resp != null && resp.Error) throw new Error(String(resp.Error.message));
-    return {
-      absolutePath: String((_b = (_a = resp == null ? void 0 : resp.HttpDownloadResult) == null ? void 0 : _a.absolute_path) != null ? _b : ""),
-      sizeBytes: Number((_d = (_c = resp == null ? void 0 : resp.HttpDownloadResult) == null ? void 0 : _c.size_bytes) != null ? _d : 0)
+    let sizeBytes = Number((_b = (_a = resp == null ? void 0 : resp.HttpDownloadResult) == null ? void 0 : _a.size_bytes) != null ? _b : 0);
+    return sizeBytes > 0 && recordNetworkTraffic(sizeBytes), {
+      absolutePath: String((_d = (_c = resp == null ? void 0 : resp.HttpDownloadResult) == null ? void 0 : _c.absolute_path) != null ? _d : ""),
+      sizeBytes
     };
   }
   async function fileResolve2(path) {
@@ -1027,7 +1281,7 @@
   async function cachedJson(key, url, ttlMs) {
     let cached = await getCached(key);
     if (cached && (ttlMs === void 0 || Date.now() - cached.cached_at < ttlMs))
-      return JSON.parse(cached.json_payload);
+      return recordCacheHit(cached.json_payload.length), JSON.parse(cached.json_payload);
     let { status, body, etag } = await httpGetText(url);
     if (status !== 200) throw new Error(`HTTP ${status} for ${url}`);
     return await setCached(key, key.split(":")[0], body, etag), JSON.parse(body);
@@ -1058,7 +1312,7 @@
       } catch (e) {
       }
       if (parsed) {
-        if (!isStale)
+        if (recordCacheHit(cached.json_payload.length), !isStale)
           return {
             data: parsed,
             isStale: !1,
@@ -1105,11 +1359,16 @@
   }
   function directoryGroups(d) {
     var _a;
-    return ((_a = d == null ? void 0 : d.tags) != null ? _a : []).map((obj) => {
-      var _a2, _b;
-      let letter = (_a2 = Object.keys(obj)[0]) != null ? _a2 : "?";
-      return { letter, entries: (_b = obj[letter]) != null ? _b : [] };
-    });
+    if (!d) return [];
+    let rawList = (_a = d.tags) != null ? _a : Array.isArray(d) ? d : [];
+    return Array.isArray(rawList) ? rawList.map((obj) => {
+      var _a2;
+      if (obj && typeof obj == "object") {
+        let letter = (_a2 = Object.keys(obj)[0]) != null ? _a2 : "?", entries = Array.isArray(obj[letter]) ? obj[letter] : [];
+        return { letter, entries };
+      }
+      return { letter: "?", entries: [] };
+    }).filter((g) => g.entries.length > 0) : [];
   }
   async function suggest(query2) {
     let { status, body } = await httpGetText(`${SITE_ROOT}/tags/suggest`, {
@@ -1139,16 +1398,27 @@
       if (cached) return JSON.parse(cached.json_payload);
     }
     let typeMap = {
-      series: `${SITE_ROOT}/series/${permalink}.json`,
-      anthology: `${SITE_ROOT}/anthologies/${permalink}.json`,
-      doujin: `${SITE_ROOT}/doujins/${permalink}.json`,
-      doujinshi: `${SITE_ROOT}/doujins/${permalink}.json`,
-      issue: `${SITE_ROOT}/issues/${permalink}.json`
+      series: `${SITE_ROOT}/series/${encodeURIComponent(permalink)}.json`,
+      anthology: `${SITE_ROOT}/anthologies/${encodeURIComponent(permalink)}.json`,
+      doujin: `${SITE_ROOT}/doujins/${encodeURIComponent(permalink)}.json`,
+      doujinshi: `${SITE_ROOT}/doujins/${encodeURIComponent(permalink)}.json`,
+      issue: `${SITE_ROOT}/issues/${encodeURIComponent(permalink)}.json`,
+      author: `${SITE_ROOT}/authors/${encodeURIComponent(permalink)}.json`,
+      artist: `${SITE_ROOT}/authors/${encodeURIComponent(permalink)}.json`,
+      scanlator: `${SITE_ROOT}/scanlators/${encodeURIComponent(permalink)}.json`,
+      group: `${SITE_ROOT}/scanlators/${encodeURIComponent(permalink)}.json`,
+      pairing: `${SITE_ROOT}/pairings/${encodeURIComponent(permalink)}.json`,
+      tag: `${SITE_ROOT}/tags/${encodeURIComponent(permalink)}.json`,
+      general: `${SITE_ROOT}/tags/${encodeURIComponent(permalink)}.json`
     }, defaultEndpoints = [
-      `${SITE_ROOT}/series/${permalink}.json`,
-      `${SITE_ROOT}/anthologies/${permalink}.json`,
-      `${SITE_ROOT}/doujins/${permalink}.json`,
-      `${SITE_ROOT}/issues/${permalink}.json`
+      `${SITE_ROOT}/series/${encodeURIComponent(permalink)}.json`,
+      `${SITE_ROOT}/anthologies/${encodeURIComponent(permalink)}.json`,
+      `${SITE_ROOT}/doujins/${encodeURIComponent(permalink)}.json`,
+      `${SITE_ROOT}/issues/${encodeURIComponent(permalink)}.json`,
+      `${SITE_ROOT}/authors/${encodeURIComponent(permalink)}.json`,
+      `${SITE_ROOT}/tags/${encodeURIComponent(permalink)}.json`,
+      `${SITE_ROOT}/pairings/${encodeURIComponent(permalink)}.json`,
+      `${SITE_ROOT}/scanlators/${encodeURIComponent(permalink)}.json`
     ], preferredUrl = preferredType ? typeMap[preferredType.toLowerCase()] : void 0, endpoints = preferredUrl ? [preferredUrl, ...defaultEndpoints.filter((u) => u !== preferredUrl)] : defaultEndpoints, lastErr = null;
     for (let url of endpoints)
       try {
@@ -1158,7 +1428,7 @@
       } catch (e) {
         lastErr = e instanceof Error ? e : new Error(String(e));
       }
-    throw lastErr != null ? lastErr : new Error(`Failed to load ${permalink}`);
+    throw lastErr != null ? lastErr : new Error(`Failed to load series for permalink "${permalink}"`);
   }
   async function getSeriesCover(permalink, coverUrl) {
     var _a;
@@ -1274,7 +1544,7 @@
     if (!coverKey) return null;
     let local = await getLocalCover(coverKey);
     if (local) return local;
-    if (seriesOrGroupPermalink) {
+    if (coverKey.startsWith("series:") && seriesOrGroupPermalink) {
       let seriesCover = await getOrHydrateSeriesCover(seriesOrGroupPermalink, seriesType);
       if (seriesCover)
         return await setCached(`cover:${coverKey}`, "cover", seriesCover), seriesCover;
@@ -1315,6 +1585,152 @@
     return `${PAGES_PREFIX}/${cleanSeries}/${cleanChapter}/page_${pad}.${ext}`;
   }
 
+  // dynasty-scans/src/api/search.ts
+  init_state();
+  async function searchDynasty(params) {
+    var _a, _b;
+    let queryParts = [];
+    if (params.q && params.q.trim() && queryParts.push(`q=${encodeURIComponent(params.q.trim())}`), params.classes && params.classes.length > 0)
+      for (let c of params.classes)
+        c && queryParts.push(`classes%5B%5D=${encodeURIComponent(c)}`);
+    if (params.withTags && params.withTags.length > 0)
+      for (let t of params.withTags) {
+        let trimmed = t.trim();
+        trimmed && queryParts.push(`with%5B%5D=${encodeURIComponent(trimmed)}`);
+      }
+    if (params.withoutTags && params.withoutTags.length > 0)
+      for (let t of params.withoutTags) {
+        let trimmed = t.trim();
+        trimmed && queryParts.push(`without%5B%5D=${encodeURIComponent(trimmed)}`);
+      }
+    params.sort && queryParts.push(`sort=${encodeURIComponent(params.sort)}`), params.page && params.page > 1 && queryParts.push(`page=${params.page}`);
+    let qs = queryParts.length > 0 ? `?${queryParts.join("&")}` : "", url = `${SITE_ROOT}/search${qs}`, { status, body } = await httpGetText(url);
+    if (status !== 200)
+      throw new Error(`Dynasty search returned HTTP ${status}`);
+    return parseSearchHtml(body, (_a = params.q) != null ? _a : "", (_b = params.page) != null ? _b : 1);
+  }
+  function parseSearchHtml(html, query2, requestedPage = 1) {
+    var _a;
+    let doc = new DOMParser().parseFromString(html, "text/html"), items = [];
+    doc.querySelectorAll("dl.chapter-list > dd").forEach((dd) => {
+      var _a2, _b, _c;
+      let mainLink = dd.querySelector("a.name, a:first-child");
+      if (!mainLink) return;
+      let href = mainLink.getAttribute("href") || "", { kind, permalink } = parseDynastyHref(href), title = decodeEntities(((_a2 = mainLink.textContent) == null ? void 0 : _a2.trim()) || permalink), author, authorLink = dd.querySelector('a[href^="/authors/"]');
+      if (authorLink && authorLink !== mainLink) {
+        let aHref = authorLink.getAttribute("href") || "", aMatch = /\/authors\/([^/?#]+)/.exec(aHref);
+        aMatch && (author = {
+          name: decodeEntities(((_b = authorLink.textContent) == null ? void 0 : _b.trim()) || aMatch[1]),
+          permalink: aMatch[1]
+        });
+      }
+      let doujin, doujinLink = dd.querySelector(
+        'small.doujin_tags a[href^="/doujins/"], small a[href^="/doujins/"]'
+      );
+      if (doujinLink && doujinLink !== mainLink) {
+        let dHref = doujinLink.getAttribute("href") || "", dMatch = /\/doujins\/([^/?#]+)/.exec(dHref);
+        dMatch && (doujin = {
+          name: decodeEntities(((_c = doujinLink.textContent) == null ? void 0 : _c.trim()) || dMatch[1]),
+          permalink: dMatch[1]
+        });
+      }
+      let releasedOn;
+      dd.querySelectorAll("small").forEach((s) => {
+        var _a3;
+        let txt = ((_a3 = s.textContent) == null ? void 0 : _a3.trim()) || "";
+        txt.startsWith("released ") && (releasedOn = txt.replace(/^released\s+/, ""));
+      });
+      let tags = [];
+      dd.querySelectorAll(
+        "span.tags a.label, span.tags a, a.label"
+      ).forEach((tl) => {
+        var _a3;
+        if (tl === mainLink || tl === authorLink || tl === doujinLink) return;
+        let tHref = tl.getAttribute("href") || "", parsedTag = parseDynastyHref(tHref), tagName = decodeEntities(((_a3 = tl.textContent) == null ? void 0 : _a3.trim()) || parsedTag.permalink);
+        tagName && parsedTag.permalink && tags.push({
+          type: tagKindToType(parsedTag.kind),
+          name: tagName,
+          permalink: parsedTag.permalink
+        });
+      }), items.push({
+        kind,
+        title,
+        permalink,
+        author,
+        doujin,
+        releasedOn,
+        tags
+      });
+    });
+    let currentPage = requestedPage, totalPages = 1, pagination = doc.querySelector(".pagination");
+    if (pagination) {
+      let activeEl = pagination.querySelector("li.active, .active");
+      if (activeEl) {
+        let activeText = parseInt(((_a = activeEl.textContent) == null ? void 0 : _a.trim()) || "1", 10);
+        Number.isNaN(activeText) || (currentPage = activeText);
+      }
+      pagination.querySelectorAll("a, span").forEach((el2) => {
+        var _a2;
+        let pageNum = parseInt(((_a2 = el2.textContent) == null ? void 0 : _a2.trim()) || "", 10);
+        !Number.isNaN(pageNum) && pageNum > totalPages && (totalPages = pageNum);
+      });
+    }
+    return {
+      items,
+      currentPage,
+      totalPages: Math.max(currentPage, totalPages),
+      query: query2
+    };
+  }
+  function parseDynastyHref(href) {
+    let match = /^\/([a-zA-Z0-9_-]+)\/([^/?#]+)/.exec(href);
+    if (!match)
+      return { kind: "chapter", permalink: href.replace(/^\//, "") };
+    let prefix = match[1].toLowerCase(), permalink = match[2];
+    switch (prefix) {
+      case "series":
+        return { kind: "series", permalink };
+      case "chapters":
+        return { kind: "chapter", permalink };
+      case "anthologies":
+        return { kind: "anthology", permalink };
+      case "doujins":
+        return { kind: "doujin", permalink };
+      case "issues":
+        return { kind: "issue", permalink };
+      case "authors":
+        return { kind: "author", permalink };
+      case "scanlators":
+        return { kind: "scanlator", permalink };
+      case "pairings":
+        return { kind: "pairing", permalink };
+      case "tags":
+      default:
+        return { kind: "tag", permalink };
+    }
+  }
+  function tagKindToType(kind) {
+    switch (kind) {
+      case "author":
+        return "Author";
+      case "scanlator":
+        return "Scanlator";
+      case "pairing":
+        return "Pairing";
+      case "doujin":
+        return "Doujin";
+      case "series":
+        return "Series";
+      case "anthology":
+        return "Anthology";
+      case "issue":
+        return "Issue";
+      case "tag":
+      default:
+        return "General";
+    }
+  }
+
   // dynasty-scans/src/ui-library.ts
   init_db2();
 
@@ -1324,7 +1740,9 @@
   // dynasty-scans/src/components/dom.ts
   function el(tag, attrs, ...children) {
     let node = document.createElement(tag);
-    attrs && (attrs.class && (node.className = attrs.class), attrs.style && (node.style.cssText = attrs.style), attrs.title && (node.title = attrs.title), attrs.id && (node.id = attrs.id), attrs.type && node.setAttribute("type", attrs.type));
+    if (attrs)
+      for (let [k, v] of Object.entries(attrs))
+        v != null && (k === "class" ? node.className = v : k === "style" ? node.style.cssText = v : k === "title" ? node.title = v : k === "id" ? node.id = v : k === "value" && "value" in node ? node.value = v : node.setAttribute(k, String(v)));
     for (let child of children)
       child != null && node.appendChild(typeof child == "string" ? document.createTextNode(child) : child);
     return node;
@@ -1349,7 +1767,7 @@
     };
     return btn.addEventListener("click", async (ev) => {
       if (ev.stopPropagation(), !confirming) {
-        originalHtml = btn.innerHTML, confirming = !0, btn.className = "win-button primary", btn.style.color = "#ffffff", btn.style.backgroundColor = "#d13438", btn.style.borderColor = "#a80000", btn.innerHTML = '<i class="bi bi-check-lg"></i> Delete?', btn.title = "Click again to confirm deletion, or click outside to cancel", setTimeout(() => {
+        originalHtml = btn.innerHTML, confirming = !0, btn.className = "win-button primary ds-danger", btn.innerHTML = '<i class="bi bi-check-lg"></i> Delete?', btn.title = "Click again to confirm deletion, or click outside to cancel", setTimeout(() => {
           document.addEventListener("click", onDocClick);
         }, 0);
         return;
@@ -1396,29 +1814,119 @@
 
   // dynasty-scans/src/components/pager.ts
   function renderPager(totalPages, currentPage, onPage, opts = {}) {
-    var _a, _b;
-    let showLabels = (_a = opts.showLabels) != null ? _a : !1, row = el("div", {
-      class: "ds-row",
-      style: (_b = opts.cssText) != null ? _b : showLabels ? "align-items:center;justify-content:space-between;" : "margin-top:8px;"
-    }), prev = el("button", {
+    var _a;
+    let row = el("div", {
+      class: "ds-row ds-pager-widget",
+      style: (_a = opts.cssText) != null ? _a : "align-items:center;justify-content:flex-end;gap:4px;margin-top:8px;flex-wrap:wrap;"
+    }), first = el("button", {
       type: "button",
-      class: "win-button",
-      style: "font-size:10px;padding:1px 8px;",
-      title: opts.ariaLabel ? `${opts.ariaLabel} \u2014 previous page` : "Previous page"
+      class: "win-button ds-btn-sm",
+      style: "font-size:10px;padding:1px 6px;",
+      title: "First page (Page 1)"
     });
-    prev.innerHTML = showLabels ? '<i class="bi bi-chevron-left"></i> Prev' : '<i class="bi bi-chevron-left"></i>', prev.disabled = currentPage <= 1, prev.addEventListener("click", () => onPage(currentPage - 1));
-    let label = el("span", {
+    first.innerHTML = '<i class="bi bi-chevron-double-left"></i>', first.disabled = currentPage <= 1, first.addEventListener("click", () => {
+      currentPage > 1 && onPage(1);
+    });
+    let prev = el("button", {
+      type: "button",
+      class: "win-button ds-btn-sm",
+      style: "font-size:10px;padding:1px 6px;",
+      title: "Previous page"
+    });
+    prev.innerHTML = '<i class="bi bi-chevron-left"></i>', prev.disabled = currentPage <= 1, prev.addEventListener("click", () => {
+      currentPage > 1 && onPage(currentPage - 1);
+    });
+    let jumpWrap = el("div", {
+      class: "ds-row",
+      style: "align-items:center;gap:3px;margin:0 2px;"
+    }), pageLabelBefore = el("span", {
       class: "ds-progress-text",
       style: "font-size:11px;color:var(--sys-text-muted, #666);"
     });
-    label.textContent = `Page ${currentPage} of ${totalPages}`;
+    pageLabelBefore.textContent = "Page";
+    let pageInput = el("input", {
+      type: "number",
+      min: "1",
+      max: String(Math.max(1, totalPages)),
+      value: String(currentPage),
+      class: "input-field",
+      style: "width:42px;height:20px;text-align:center;font-size:11px;padding:1px 2px;",
+      title: "Enter page number and press Enter"
+    }), pageLabelAfter = el("span", {
+      class: "ds-progress-text",
+      style: "font-size:11px;color:var(--sys-text-muted, #666);"
+    });
+    pageLabelAfter.textContent = `of ${totalPages}`;
+    let goBtn = el("button", {
+      type: "button",
+      class: "win-button ds-btn-sm",
+      style: "font-size:10px;padding:1px 5px;",
+      title: "Jump to page"
+    });
+    goBtn.textContent = "Go";
+    let doJump = () => {
+      let target = parseInt(pageInput.value, 10);
+      if (!isNaN(target)) {
+        let clamped = Math.max(1, Math.min(totalPages, target));
+        clamped !== currentPage && onPage(clamped);
+      }
+    };
+    goBtn.addEventListener("click", doJump), pageInput.addEventListener("keydown", (ev) => {
+      ev.key === "Enter" && (ev.preventDefault(), doJump());
+    }), jumpWrap.appendChild(pageLabelBefore), jumpWrap.appendChild(pageInput), jumpWrap.appendChild(pageLabelAfter), jumpWrap.appendChild(goBtn);
     let next = el("button", {
       type: "button",
-      class: "win-button",
-      style: "font-size:10px;padding:1px 8px;",
-      title: opts.ariaLabel ? `${opts.ariaLabel} \u2014 next page` : "Next page"
+      class: "win-button ds-btn-sm",
+      style: "font-size:10px;padding:1px 6px;",
+      title: "Next page"
     });
-    return next.innerHTML = showLabels ? 'Next <i class="bi bi-chevron-right"></i>' : '<i class="bi bi-chevron-right"></i>', next.disabled = currentPage >= totalPages, next.addEventListener("click", () => onPage(currentPage + 1)), row.appendChild(prev), row.appendChild(label), row.appendChild(next), row;
+    next.innerHTML = '<i class="bi bi-chevron-right"></i>', next.disabled = currentPage >= totalPages, next.addEventListener("click", () => {
+      currentPage < totalPages && onPage(currentPage + 1);
+    });
+    let last = el("button", {
+      type: "button",
+      class: "win-button ds-btn-sm",
+      style: "font-size:10px;padding:1px 6px;",
+      title: `Last page (Page ${totalPages})`
+    });
+    return last.innerHTML = '<i class="bi bi-chevron-double-right"></i>', last.disabled = currentPage >= totalPages, last.addEventListener("click", () => {
+      currentPage < totalPages && onPage(totalPages);
+    }), row.appendChild(first), row.appendChild(prev), row.appendChild(jumpWrap), row.appendChild(next), row.appendChild(last), row;
+  }
+
+  // dynasty-scans/src/components/loading.ts
+  var PRAYING_MESSAGES = [
+    "Girls are now praying",
+    "The maidens are praying",
+    "The girls are praying",
+    "Girls do their best now and are preparing",
+    "Please watch warmly until it is ready"
+  ];
+  function getRandomLoadingMessage() {
+    let idx = Math.floor(Math.random() * PRAYING_MESSAGES.length);
+    return PRAYING_MESSAGES[idx];
+  }
+  function renderLoading(customMessage) {
+    let container = document.createElement("div");
+    container.className = "ds-loading-screen";
+    let msg = customMessage != null ? customMessage : getRandomLoadingMessage();
+    return container.innerHTML = `
+    <svg class="ds-yinyang-spinner" viewBox="0 0 100 100" width="18" height="18" aria-hidden="true">
+      <circle cx="50" cy="50" r="46" fill="#ffffff" stroke="#c62828" stroke-width="4" />
+      <path d="M 50 4 A 46 46 0 0 1 50 96 A 23 23 0 0 1 50 50 A 23 23 0 0 0 50 4 Z" fill="#e53935" />
+      <circle cx="50" cy="27" r="7.5" fill="#e53935" />
+      <circle cx="50" cy="73" r="7.5" fill="#ffffff" />
+    </svg>
+    <span class="ds-loading-text">${msg}\u2026</span>
+  `, container;
+  }
+  function attachDelayedLoading(container, delayMs = 140, customMessage) {
+    let timer = window.setTimeout(() => {
+      timer = null, container.innerHTML = "", container.appendChild(renderLoading(customMessage));
+    }, delayMs);
+    return () => {
+      timer !== null && (clearTimeout(timer), timer = null);
+    };
   }
 
   // dynasty-scans/src/ui-library.ts
@@ -1430,17 +1938,26 @@
     let body = document.createElement("div");
     body.className = "ds-library-panel-body";
     let footer = document.createElement("div");
-    return footer.className = "ds-library-panel-footer", footer.style.display = "none", panel.appendChild(head), panel.appendChild(body), panel.appendChild(footer), { panel, head, body, footer };
+    return footer.className = "ds-library-panel-footer", footer.classList.add("ds-hidden"), panel.appendChild(head), panel.appendChild(body), panel.appendChild(footer), { panel, head, body, footer };
   }
   function renderLibrary(container, _route) {
+    if (container.querySelector(".ds-library-grid")) {
+      let bodies = container.querySelectorAll(".ds-library-panel-body"), footers = container.querySelectorAll(".ds-library-panel-footer");
+      if (bodies.length >= 3 && footers.length >= 3) {
+        setupLibraryActions(
+          bodies[0],
+          footers[0],
+          bodies[1],
+          footers[1],
+          bodies[2],
+          footers[2]
+        ), loadAll(bodies[0], footers[0], bodies[1], footers[1], bodies[2], footers[2]);
+        return;
+      }
+    }
     container.innerHTML = "";
     let root = document.createElement("div");
-    root.id = "ds-library-container", container.appendChild(root), setActions((host) => {
-      let cacheBtn = document.createElement("button");
-      cacheBtn.type = "button", cacheBtn.className = "win-button", cacheBtn.style.cssText = "font-size:11px;padding:2px 8px;", cacheBtn.innerHTML = '<i class="bi bi-hdd-stack"></i> Cache Management', cacheBtn.title = "View cache storage statistics and manage cached series/pages", cacheBtn.addEventListener("click", () => {
-        navigate({ view: "cache" });
-      }), host.appendChild(cacheBtn);
-    });
+    root.id = "ds-library-container", container.appendChild(root);
     let grid = document.createElement("div");
     grid.className = "ds-library-grid", root.appendChild(grid);
     let {
@@ -1461,7 +1978,7 @@
       body: historyBody,
       footer: historyFooter
     } = createLibraryPanel(
-      '<span style="display:flex;align-items:center;gap:6px;"><i class="bi bi-clock-history"></i> Reading History</span>'
+      '<span class="ds-flex-row"><i class="bi bi-clock-history"></i> Reading History</span>'
     ), clearHistoryBtn = createConfirmDeleteButton(
       "Clear all reading history",
       async () => {
@@ -1469,7 +1986,14 @@
       },
       '<i class="bi bi-trash3"></i> Clear'
     );
-    clearHistoryBtn.style.cssText = "font-size:10px;padding:0 5px;height:18px;line-height:18px;margin-left:auto;", historyHead.style.cssText = "display:flex;align-items:center;justify-content:space-between;width:calc(100% - 16px);right:8px;", historyHead.appendChild(clearHistoryBtn), grid.appendChild(historyPanel), loadAll(
+    clearHistoryBtn.style.cssText = "font-size:10px;padding:0 5px;height:18px;line-height:18px;margin-left:auto;", historyHead.style.cssText = "display:flex;align-items:center;justify-content:space-between;width:calc(100% - 16px);right:8px;", historyHead.appendChild(clearHistoryBtn), grid.appendChild(historyPanel), setupLibraryActions(
+      followedBody,
+      followedFooter,
+      bookmarksBody,
+      bookmarksFooter,
+      historyBody,
+      historyFooter
+    ), loadAll(
       followedBody,
       followedFooter,
       bookmarksBody,
@@ -1477,6 +2001,34 @@
       historyBody,
       historyFooter
     );
+  }
+  function setupLibraryActions(followedBody, followedFooter, bookmarksBody, bookmarksFooter, historyBody, historyFooter) {
+    setActions((host) => {
+      let refreshBtn = document.createElement("button");
+      refreshBtn.type = "button", refreshBtn.id = "ds-library-refresh-btn", refreshBtn.className = "win-button ds-btn-sm", refreshBtn.title = "Refresh library from local database", refreshBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refresh Library', refreshBtn.addEventListener("click", async () => {
+        refreshBtn.disabled = !0;
+        let prevHtml = refreshBtn.innerHTML;
+        refreshBtn.innerHTML = '<i class="bi bi-arrow-clockwise ds-spin"></i> Refreshing...';
+        try {
+          await loadAll(
+            followedBody,
+            followedFooter,
+            bookmarksBody,
+            bookmarksFooter,
+            historyBody,
+            historyFooter
+          ), refreshBtn.innerHTML = '<i class="bi bi-check2"></i> Updated', setTimeout(() => {
+            refreshBtn.innerHTML = prevHtml, refreshBtn.disabled = !1;
+          }, 1200);
+        } catch (e) {
+          refreshBtn.innerHTML = prevHtml, refreshBtn.disabled = !1;
+        }
+      }), host.appendChild(refreshBtn);
+      let cacheBtn = document.createElement("button");
+      cacheBtn.type = "button", cacheBtn.className = "win-button", cacheBtn.style.cssText = "font-size:11px;padding:2px 8px;", cacheBtn.innerHTML = '<i class="bi bi-hdd-stack"></i> Cache Management', cacheBtn.title = "View cache storage statistics and manage cached series/pages", cacheBtn.addEventListener("click", () => {
+        navigate({ view: "cache" });
+      }), host.appendChild(cacheBtn);
+    });
   }
   async function loadAll(followedBody, followedFooter, bookmarksBody, bookmarksFooter, historyBody, historyFooter) {
     try {
@@ -1491,12 +2043,11 @@
     }
   }
   async function loadFollowedPage(body, footer, page) {
-    body.innerHTML = "", footer.innerHTML = "", footer.style.display = "none";
-    let loading = document.createElement("div");
-    loading.className = "ds-muted", loading.textContent = "Loading followed series\u2026", body.appendChild(loading);
+    footer.innerHTML = "", footer.classList.add("ds-hidden");
+    let cancelLoading = attachDelayedLoading(body, 140);
     try {
       let res = await getFollowedSeriesPage(page, 10);
-      renderFollowed(
+      cancelLoading(), renderFollowed(
         body,
         footer,
         res.rows,
@@ -1505,6 +2056,7 @@
         (p) => void loadFollowedPage(body, footer, p)
       );
     } catch (err) {
+      cancelLoading();
       let msg = err instanceof Error ? err.message : String(err);
       body.innerHTML = "";
       let errEl = document.createElement("div");
@@ -1512,8 +2064,8 @@
     }
   }
   function renderFollowed(body, footer, rows, totalPages, currentPage, onPage) {
-    if (body.innerHTML = "", footer.innerHTML = "", rows.length === 0) {
-      footer.style.display = "none";
+    if (footer.innerHTML = "", rows.length === 0) {
+      footer.classList.add("ds-hidden");
       let empty = document.createElement("div");
       empty.style.cssText = "display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:8px 0;";
       let emptyText = document.createElement("div");
@@ -1521,9 +2073,10 @@
       let browseBtn = document.createElement("button");
       browseBtn.type = "button", browseBtn.className = "win-button", browseBtn.style.cssText = "font-size:11px;", browseBtn.innerHTML = '<i class="bi bi-compass"></i> Browse Series', browseBtn.addEventListener("click", () => {
         navigate({ view: "browse", browseTab: "series-dir" });
-      }), empty.appendChild(emptyText), empty.appendChild(browseBtn), body.appendChild(empty);
+      }), empty.appendChild(emptyText), empty.appendChild(browseBtn), body.replaceChildren(empty);
       return;
     }
+    let frag = document.createDocumentFragment();
     for (let row of rows) {
       let card = document.createElement("div");
       card.className = "group-box", card.style.cssText = "display:flex;gap:10px;align-items:center;cursor:pointer;margin-bottom:4px;";
@@ -1533,9 +2086,9 @@
         fresh && fresh !== row.cover && (coverSlot.innerHTML = "", coverSlot.appendChild(renderCoverImage(fresh, row.name)));
       })();
       let info = document.createElement("div");
-      info.style.cssText = "flex:1;min-width:0;";
+      info.className = "ds-fill";
       let name = document.createElement("div");
-      name.style.cssText = "font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;", name.textContent = decodeEntities(row.name);
+      name.className = "ds-truncate", name.style.cssText = "font-size:12px;font-weight:600;", name.textContent = decodeEntities(row.name);
       let latest = document.createElement("div");
       latest.className = "ds-muted", latest.textContent = row.latest_chapter_title ? `Latest: ${decodeEntities(row.latest_chapter_title)}` : "No chapters read yet", info.appendChild(name), info.appendChild(latest);
       let open = document.createElement("button");
@@ -1547,45 +2100,48 @@
       let extBtn = document.createElement("button");
       extBtn.type = "button", extBtn.className = "win-button", extBtn.style.cssText = "font-size:11px;padding:2px 6px;", extBtn.title = "Open series on Dynasty Scans in browser", extBtn.innerHTML = '<i class="bi bi-box-arrow-up-right"></i>', extBtn.addEventListener("click", (ev) => {
         ev.stopPropagation(), openExternal(`https://dynasty-scans.com/series/${row.permalink}`);
-      }), card.appendChild(extBtn), card.appendChild(open), body.appendChild(card);
+      }), card.appendChild(extBtn), card.appendChild(open), frag.appendChild(card);
     }
-    totalPages > 1 ? (footer.style.display = "block", footer.appendChild(renderPager(totalPages, currentPage, onPage, { showLabels: !0 }))) : footer.style.display = "none";
+    body.replaceChildren(frag), totalPages > 1 ? (footer.classList.remove("ds-hidden"), footer.appendChild(renderPager(totalPages, currentPage, onPage))) : footer.classList.add("ds-hidden");
   }
   async function loadBookmarksPage(body, footer, page) {
-    body.innerHTML = "", footer.innerHTML = "", footer.style.display = "none";
-    let loading = document.createElement("div");
-    loading.className = "ds-muted", loading.textContent = "Loading bookmarks\u2026", body.appendChild(loading);
+    footer.innerHTML = "", footer.classList.add("ds-hidden");
+    let cancelLoading = attachDelayedLoading(body, 140);
     try {
-      let res = await getBookmarksPage(page, 15);
-      renderBookmarks(
+      let [res, fullyCachedSet] = await Promise.all([
+        getBookmarksPage(page, 15),
+        getFullyCachedChapterPermalinks()
+      ]);
+      cancelLoading(), renderBookmarks(
         body,
         footer,
         res.rows,
         res.totalPages,
         res.currentPage,
-        (p) => void loadBookmarksPage(body, footer, p)
+        (p) => void loadBookmarksPage(body, footer, p),
+        fullyCachedSet
       );
     } catch (err) {
+      cancelLoading(), body.innerHTML = "";
       let msg = err instanceof Error ? err.message : String(err);
-      body.innerHTML = "";
-      let errEl = document.createElement("div");
-      errEl.className = "ds-muted", errEl.textContent = `Failed to load bookmarks: ${msg}`, body.appendChild(errEl);
+      setBanner(`Failed to load bookmarks: ${msg}`);
     }
   }
-  function renderBookmarks(body, footer, rows, totalPages, currentPage, onPage) {
-    if (body.innerHTML = "", footer.innerHTML = "", rows.length === 0) {
-      footer.style.display = "none";
+  function renderBookmarks(body, footer, rows, totalPages, currentPage, onPage, fullyCachedSet = /* @__PURE__ */ new Set()) {
+    if (footer.innerHTML = "", rows.length === 0) {
+      footer.classList.add("ds-hidden");
       let empty = document.createElement("div");
-      empty.className = "ds-muted", empty.textContent = "No bookmarks yet.", body.appendChild(empty);
+      empty.className = "ds-muted", empty.textContent = "No bookmarks yet.", body.replaceChildren(empty);
       return;
     }
+    let frag = document.createDocumentFragment();
     for (let row of rows) {
       let item = document.createElement("div");
-      item.className = "ds-item", item.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px 6px;";
-      let info = document.createElement("div");
-      info.style.cssText = "flex:1;min-width:0;cursor:pointer;";
+      item.className = "ds-item ds-flex-row", item.style.cssText = "padding:4px 6px;";
+      let isFullyCached = fullyCachedSet.has(row.chapter_permalink), info = document.createElement("div");
+      info.className = "ds-fill ds-clickable";
       let title = document.createElement("div");
-      title.className = "ds-item-title", title.textContent = decodeEntities(row.chapter_title);
+      title.className = "ds-item-title", title.style.cssText = "display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;", title.innerHTML = `<span>${decodeEntities(row.chapter_title)}</span>${isFullyCached ? '<i class="bi bi-cloud-check-fill ds-offline-icon" style="color:var(--sys-primary,#0078d4);font-size:11px;" title="Available Offline (Fully Cached)"></i>' : ""}`;
       let meta = document.createElement("div");
       meta.className = "ds-item-meta", meta.textContent = `${decodeEntities(row.series_name)} \xB7 page ${row.page_index + 1}`, info.appendChild(title), info.appendChild(meta), info.addEventListener("click", () => {
         navigate({
@@ -1604,45 +2160,48 @@
       let removeBtn = createConfirmDeleteButton("Remove bookmark", async () => {
         await removeBookmark(row.chapter_permalink), loadBookmarksPage(body, footer, currentPage);
       });
-      item.appendChild(info), item.appendChild(extBtn), item.appendChild(removeBtn), body.appendChild(item);
+      item.appendChild(info), item.appendChild(extBtn), item.appendChild(removeBtn), frag.appendChild(item);
     }
-    totalPages > 1 ? (footer.style.display = "block", footer.appendChild(renderPager(totalPages, currentPage, onPage, { showLabels: !0 }))) : footer.style.display = "none";
+    body.replaceChildren(frag), totalPages > 1 ? (footer.classList.remove("ds-hidden"), footer.appendChild(renderPager(totalPages, currentPage, onPage))) : footer.classList.add("ds-hidden");
   }
   async function loadHistoryPage(body, footer, page) {
-    body.innerHTML = "", footer.innerHTML = "", footer.style.display = "none";
-    let loading = document.createElement("div");
-    loading.className = "ds-muted", loading.textContent = "Loading history\u2026", body.appendChild(loading);
+    footer.innerHTML = "", footer.classList.add("ds-hidden");
+    let cancelLoading = attachDelayedLoading(body, 140);
     try {
-      let res = await getHistoryPage(page, 15);
-      renderHistory(
+      let [res, fullyCachedSet] = await Promise.all([
+        getHistoryPage(page, 15),
+        getFullyCachedChapterPermalinks()
+      ]);
+      cancelLoading(), renderHistory(
         body,
         footer,
         res.rows,
         res.totalPages,
         res.currentPage,
-        (p) => void loadHistoryPage(body, footer, p)
+        (p) => void loadHistoryPage(body, footer, p),
+        fullyCachedSet
       );
     } catch (err) {
+      cancelLoading(), body.innerHTML = "";
       let msg = err instanceof Error ? err.message : String(err);
-      body.innerHTML = "";
-      let errEl = document.createElement("div");
-      errEl.className = "ds-muted", errEl.textContent = `Failed to load history: ${msg}`, body.appendChild(errEl);
+      setBanner(`Failed to load history: ${msg}`);
     }
   }
-  function renderHistory(body, footer, rows, totalPages, currentPage, onPage) {
-    if (body.innerHTML = "", footer.innerHTML = "", rows.length === 0) {
-      footer.style.display = "none";
+  function renderHistory(body, footer, rows, totalPages, currentPage, onPage, fullyCachedSet = /* @__PURE__ */ new Set()) {
+    if (footer.innerHTML = "", rows.length === 0) {
+      footer.classList.add("ds-hidden");
       let empty = document.createElement("div");
-      empty.className = "ds-muted", empty.textContent = "Nothing read yet.", body.appendChild(empty);
+      empty.className = "ds-muted", empty.textContent = "Nothing read yet.", body.replaceChildren(empty);
       return;
     }
+    let frag = document.createDocumentFragment();
     for (let row of rows) {
       let item = document.createElement("div");
-      item.className = "ds-item", item.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px 6px;";
-      let info = document.createElement("div");
-      info.style.cssText = "flex:1;min-width:0;cursor:pointer;";
+      item.className = "ds-item ds-flex-row", item.style.cssText = "padding:4px 6px;";
+      let isFullyCached = fullyCachedSet.has(row.chapter_permalink), info = document.createElement("div");
+      info.className = "ds-fill ds-clickable";
       let title = document.createElement("div");
-      title.className = "ds-item-title", title.textContent = decodeEntities(row.chapter_title);
+      title.className = "ds-item-title", title.style.cssText = "display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;", title.innerHTML = `<span>${decodeEntities(row.chapter_title)}</span>${isFullyCached ? '<i class="bi bi-cloud-check-fill ds-offline-icon" style="color:var(--sys-primary,#0078d4);font-size:11px;" title="Available Offline (Fully Cached)"></i>' : ""}`;
       let meta = document.createElement("div");
       meta.className = "ds-item-meta", meta.textContent = `${decodeEntities(row.series_name)} \xB7 ${formatDate(Number(row.read_at))}`, info.appendChild(title), info.appendChild(meta), info.addEventListener("click", () => {
         navigate({
@@ -1660,10 +2219,49 @@
       let removeBtn = createConfirmDeleteButton("Remove from history", async () => {
         await removeHistory(row.id), loadHistoryPage(body, footer, currentPage);
       });
-      item.appendChild(info), item.appendChild(extBtn), item.appendChild(removeBtn), body.appendChild(item);
+      item.appendChild(info), item.appendChild(extBtn), item.appendChild(removeBtn), frag.appendChild(item);
     }
-    totalPages > 1 ? (footer.style.display = "block", footer.appendChild(renderPager(totalPages, currentPage, onPage, { showLabels: !0 }))) : footer.style.display = "none";
+    body.replaceChildren(frag), totalPages > 1 ? (footer.classList.remove("ds-hidden"), footer.appendChild(renderPager(totalPages, currentPage, onPage))) : footer.classList.add("ds-hidden");
   }
+
+  // dynasty-scans/src/browse/browse-controller.ts
+  init_state();
+
+  // dynasty-scans/src/browse/browse-feed.ts
+  init_state();
+  init_db2();
+
+  // dynasty-scans/src/components/tag-pill.ts
+  init_state();
+  function renderTagPill(t, compact = !0) {
+    let pill = el("span", {
+      class: tagClass(t.type),
+      style: tagStyle(t.type, t.name) + (compact ? "font-size:10px;padding:1px 6px;border-radius:2px;" : "font-size:10px;padding:2px 6px;border-radius:2px;"),
+      title: `${t.type}: ${t.name} (click to open)`
+    });
+    return pill.textContent = t.name, pill.addEventListener("click", (ev) => {
+      if (ev.stopPropagation(), t.permalink) {
+        navigate({
+          view: "series",
+          seriesPermalink: t.permalink,
+          seriesName: t.name
+        });
+        return;
+      }
+      navigate({
+        view: "browse",
+        browseTab: "search",
+        searchQuery: t.name
+      });
+    }), pill;
+  }
+
+  // dynasty-scans/src/components/trigger-warning.ts
+  init_state();
+
+  // dynasty-scans/src/components/settings-modal.ts
+  init_state();
+  init_db2();
 
   // dynasty-scans/src/browse/browse-covers.ts
   init_db2();
@@ -1705,40 +2303,51 @@
         localStorage.setItem("ds_covers_enabled", v ? "true" : "false");
       } catch (e) {
       }
+      v || (this.queue.length = 0, this.queuedKeys.clear(), this.pendingDomUpdates.length = 0, this.lazyObserver && (this.lazyObserver.disconnect(), this.lazyObserver = null));
     }
     get currentHydrationHost() {
       return this.hydrationHost;
     }
     /** Maps a feed chapter to its cover key + series metadata. */
     getItemCoverInfo(ch) {
-      var _a;
-      let seriesTag = ((_a = ch.tags) != null ? _a : []).find((t) => {
+      var _a, _b;
+      let isOfficialSeries = !!(ch.series && ch.series.trim().length > 0), seriesTag = ((_a = ch.tags) != null ? _a : []).find((t) => {
         var _a2;
         let type = ((_a2 = t.type) != null ? _a2 : "").toLowerCase();
-        return type === "series" || type === "doujin" || type === "doujinshi" || type === "anthology" || type === "issue";
-      }), seriesPermalink = (seriesTag == null ? void 0 : seriesTag.permalink) || (ch.series ? ch.series.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") : ""), seriesName = ch.series || (seriesTag == null ? void 0 : seriesTag.name) || "", seriesType = (seriesTag == null ? void 0 : seriesTag.type) || "series";
-      return seriesPermalink ? {
-        coverKey: `series:${seriesPermalink}`,
-        chapterPermalink: ch.permalink,
-        seriesPermalink,
-        seriesName,
-        seriesType,
-        isStandalone: !1
-      } : {
+        return type === "series" || type === "anthology" || type === "issue";
+      }), doujinTag = ((_b = ch.tags) != null ? _b : []).find((t) => {
+        var _a2;
+        let type = ((_a2 = t.type) != null ? _a2 : "").toLowerCase();
+        return type === "doujin" || type === "doujinshi";
+      });
+      if (isOfficialSeries) {
+        let seriesPermalink = (seriesTag == null ? void 0 : seriesTag.permalink) || (ch.series ? ch.series.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") : ""), seriesName = ch.series || (seriesTag == null ? void 0 : seriesTag.name) || "", seriesType = (seriesTag == null ? void 0 : seriesTag.type) || "series";
+        return {
+          coverKey: `series:${seriesPermalink}`,
+          chapterPermalink: ch.permalink,
+          seriesPermalink,
+          seriesName,
+          seriesType,
+          isStandalone: !1
+        };
+      }
+      let franchisePermalink = (doujinTag == null ? void 0 : doujinTag.permalink) || (seriesTag == null ? void 0 : seriesTag.permalink) || "", franchiseName = (doujinTag == null ? void 0 : doujinTag.name) || (seriesTag == null ? void 0 : seriesTag.name) || "", franchiseType = (doujinTag == null ? void 0 : doujinTag.type) || (seriesTag == null ? void 0 : seriesTag.type) || "doujin";
+      return {
         coverKey: `chapter:${ch.permalink}`,
         chapterPermalink: ch.permalink,
-        seriesPermalink: "",
-        seriesName: "",
-        seriesType: "",
+        seriesPermalink: franchisePermalink,
+        seriesName: franchiseName,
+        seriesType: franchiseType,
         isStandalone: !0
       };
     }
     /** Resets per-page hydration state and attaches scroll tracking once. */
     beginPage(host) {
-      this.hydrationHost = host, this.queue.length = 0, this.queuedKeys.clear(), this.pendingDomUpdates.length = 0, this.lazyObserver && (this.lazyObserver.disconnect(), this.lazyObserver = null), this.scrollTrackingAttached || (this.scrollTrackingAttached = !0, this.attachScrollTracking());
+      this.hydrationHost = host, this.queue.length = 0, this.queuedKeys.clear(), this.pendingDomUpdates.length = 0, this.lazyObserver && (this.lazyObserver.disconnect(), this.lazyObserver = null), !this.scrollTrackingAttached && this.enabled && (this.scrollTrackingAttached = !0, this.attachScrollTracking());
     }
     /** Pre-loads locally cached covers from SQLite in a single batch query. */
     async preloadBatch(coverTargets) {
+      if (!this.enabled) return;
       let uniqueCoverKeys = /* @__PURE__ */ new Map(), keysToQuery = [];
       for (let ct of coverTargets)
         uniqueCoverKeys.has(ct.coverKey) || (uniqueCoverKeys.set(ct.coverKey, ct), this.memoryCache.has(ct.coverKey) || keysToQuery.push(`cover:${ct.coverKey}`));
@@ -1758,7 +2367,7 @@
     }
     /** Pauses hydration pumps during the scroll-to-top animation. */
     scrollToTop() {
-      this.scrollIdleTimer !== null && (window.clearTimeout(this.scrollIdleTimer), this.scrollIdleTimer = null), this.isScrolling = !0;
+      this.enabled && (this.scrollIdleTimer !== null && (window.clearTimeout(this.scrollIdleTimer), this.scrollIdleTimer = null), this.isScrolling = !0);
     }
     /**
      * Re-arms cover observation after a scroll-to-top has fully settled, then
@@ -1766,9 +2375,9 @@
      * genuinely stable again.
      */
     resumeAfterScrollToTop(host) {
-      this.isScrolling = !0, this.reobserveUnloadedCovers(host), this.scrollIdleTimer !== null && window.clearTimeout(this.scrollIdleTimer), this.scrollIdleTimer = window.setTimeout(() => {
+      this.enabled && (this.isScrolling = !0, this.reobserveUnloadedCovers(host), this.scrollIdleTimer !== null && window.clearTimeout(this.scrollIdleTimer), this.scrollIdleTimer = window.setTimeout(() => {
         this.isScrolling = !1, this.scrollIdleTimer = null, this.flushPendingDomUpdates(), this.pumpCoverHydration();
-      }, SCROLL_IDLE_MS);
+      }, SCROLL_IDLE_MS));
     }
     /** Re-observes wraps that never got an image (e.g. after scroll-to-top). */
     reobserveUnloadedCovers(host) {
@@ -1859,7 +2468,7 @@
       )), this.lazyObserver;
     }
     pumpCoverHydration() {
-      if (!(this.isScrolling || !this.hydrationHost || this.queue.length === 0))
+      if (!(!this.enabled || this.isScrolling || !this.hydrationHost || this.queue.length === 0))
         for (; !this.isScrolling && this.activeWorkers < this.MAX_CONCURRENCY && this.queue.length > 0; ) {
           let target = this.queue.shift();
           if (!target) break;
@@ -1888,33 +2497,271 @@
     }
   }, browseCovers = new BrowseCovers();
 
-  // dynasty-scans/src/browse/browse-feed.ts
-  init_state();
-  init_db2();
+  // dynasty-scans/src/reader/settings.ts
+  function isAutoCacheChapterEnabled() {
+    let val = localStorage.getItem("ds-auto-cache-chapter");
+    return val === null || val === "1" || val === "true";
+  }
+  function setAutoCacheChapterEnabled(enabled) {
+    localStorage.setItem("ds-auto-cache-chapter", enabled ? "1" : "0");
+  }
+  function getPrefetchBuffer() {
+    let val = localStorage.getItem("ds-reader-prefetch");
+    if (val === null) return 0;
+    let num = parseInt(val, 10);
+    return isNaN(num) ? 0 : Math.max(0, Math.min(10, num));
+  }
+  function setPrefetchBuffer(count) {
+    let clamped = Math.max(0, Math.min(10, count));
+    localStorage.setItem("ds-reader-prefetch", String(clamped));
+  }
 
-  // dynasty-scans/src/components/tag-pill.ts
-  init_state();
-  function renderTagPill(t, compact = !0) {
-    let pill = el("span", {
-      class: tagClass(t.type, t.name),
-      style: tagStyle(t.type, t.name) + (compact ? "font-size:10px;padding:1px 6px;border-radius:2px;" : "font-size:10px;padding:2px 6px;border-radius:2px;"),
-      title: `${t.type}: ${t.name} (click to open)`
+  // dynasty-scans/src/components/input-field.ts
+  function setupInputClearButtons(root = document) {
+    root.querySelectorAll(".input-field.has-clear").forEach((input) => {
+      let wrapper = input.closest(".input-wrapper");
+      if (!wrapper) return;
+      let clearBtn = wrapper.querySelector(".input-clear-btn");
+      if (!clearBtn) return;
+      function updateClearVisibility() {
+        input.value.length > 0 ? wrapper.classList.add("has-value") : wrapper.classList.remove("has-value");
+      }
+      input.addEventListener("input", updateClearVisibility), input.addEventListener("change", updateClearVisibility), updateClearVisibility(), clearBtn.addEventListener("click", () => {
+        input.value = "", updateClearVisibility(), input.focus(), input.dispatchEvent(new Event("input", { bubbles: !0 }));
+      });
     });
-    return pill.textContent = t.name, pill.addEventListener("click", (ev) => {
-      var _a;
-      ev.stopPropagation();
-      let type = ((_a = t.type) != null ? _a : "").toLowerCase();
-      if (type === "series" || type === "anthology" || type === "issue") {
-        navigate({
-          view: "series",
-          seriesPermalink: t.permalink || t.name,
-          seriesName: t.name
-        });
+  }
+
+  // dynasty-scans/src/components/settings-modal.ts
+  var STORAGE_KEY_UI_SCALE = "ds-ui-scale", SCALE_PRESETS = [0.75, 0.85, 1, 1.15, 1.25, 1.5];
+  function getSavedUiScale() {
+    let saved = localStorage.getItem(STORAGE_KEY_UI_SCALE);
+    if (saved) {
+      let val = parseFloat(saved);
+      if (!isNaN(val) && val >= 0.5 && val <= 2.5)
+        return val;
+    }
+    return 1;
+  }
+  function applyUiScale(scale) {
+    let clamped = Math.max(0.5, Math.min(2.5, Math.round(scale * 100) / 100));
+    localStorage.setItem(STORAGE_KEY_UI_SCALE, String(clamped));
+    let root = document.getElementById("ds-root");
+    root && root.style.setProperty("zoom", String(clamped));
+  }
+  function openSettingsModal() {
+    var _a, _b;
+    if (document.getElementById("ds-settings-modal-backdrop")) return;
+    let backdrop = document.createElement("div");
+    backdrop.id = "ds-settings-modal-backdrop", backdrop.className = "ds-modal-backdrop";
+    let modal = document.createElement("div");
+    modal.className = "ds-modal-window", modal.style.cssText = "width: 440px;";
+    let currentScale = getSavedUiScale(), applyModalZoom = (s) => {
+      modal.style.setProperty("zoom", String(s)), modal.style.maxHeight = `calc((100vh - 40px) / ${s})`, modal.style.maxWidth = `calc((100vw - 40px) / ${s})`;
+    };
+    applyModalZoom(currentScale), modal.innerHTML = '<div class="ds-modal-header">  <span class="ds-modal-title"><i class="bi bi-gear-fill"></i> Application Settings</span>  <button type="button" class="win-button ds-modal-close" title="Close (Esc)">    <i class="bi bi-x-lg"></i>  </button></div><div class="ds-modal-body" style="display:flex;flex-direction:column;gap:12px;">  <div class="group-box" style="margin-top:4px;">    <div class="group-box-title"><i class="bi bi-aspect-ratio"></i> Display &amp; Scaling</div>    <div style="display:flex;flex-direction:column;gap:8px;">      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">        <label for="ds-settings-scale-select" style="font-size:12px;color:#333;">UI Scale Factor:</label>        <div style="display:flex;align-items:center;gap:4px;">          <button type="button" class="win-button ds-btn-sm" id="ds-settings-scale-dec" title="Decrease Scale (-10%)">            <i class="bi bi-dash-lg"></i>          </button>          <select id="ds-settings-scale-select" class="input-field" style="width:115px;height:24px;font-size:11px;">' + SCALE_PRESETS.map(
+      (s) => `<option value="${s}" ${Math.abs(s - currentScale) < 0.01 ? "selected" : ""}>${Math.round(s * 100)}%${s === 1 ? " (Default)" : ""}</option>`
+    ).join("") + '          </select>          <button type="button" class="win-button ds-btn-sm" id="ds-settings-scale-inc" title="Increase Scale (+10%)">            <i class="bi bi-plus-lg"></i>          </button>          <button type="button" class="win-button ds-btn-sm" id="ds-settings-scale-reset" title="Reset to 100%">            100%          </button>        </div>      </div>      <div class="ds-muted" style="font-size:11px;color:#666;">        Scales all application typography, panels, buttons, and navigation controls.      </div>      <div style="display:flex;align-items:center;justify-content:space-between;padding-top:6px;border-top:1px solid #eaeaea;gap:8px;">        <div>          <div style="font-size:12px;color:#333;font-weight:600;">Feed Cover Thumbnails:</div>          <div class="ds-muted" style="font-size:11px;color:#666;">Load and display cover thumbnails in browse feeds.</div>        </div>        <button type="button" class="win-button" id="ds-settings-covers-toggle" style="font-size:11px;padding:2px 10px;min-width:90px;"></button>      </div>    </div>  </div>  <div class="group-box">    <div class="group-box-title"><i class="bi bi-shield-slash"></i> Tag Blacklist</div>    <div style="display:flex;flex-direction:column;gap:8px;">      <div class="ds-muted" style="font-size:11px;color:#666;">        Hide or show trigger warnings for releases and chapters matching these tags.      </div>      <div style="display:flex;align-items:center;gap:12px;padding:2px 0;background:var(--sys-bg-active,#f8f9fa);border:1px solid var(--sys-border-light,#e2e2e2);border-radius:3px;padding:4px 8px;">        <span style="font-size:11px;font-weight:600;color:var(--sys-window-text,#333);">Mode:</span>        <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">          <input type="radio" name="ds-bl-mode" value="hide" id="ds-bl-mode-hide" />          <span>Hide releases</span>        </label>        <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">          <input type="radio" name="ds-bl-mode" value="warn" id="ds-bl-mode-warn" />          <span>Trigger warning on click</span>        </label>      </div>      <div style="display:flex;gap:6px;position:relative;">        <div class="input-wrapper" style="flex:1;">          <input type="text" id="ds-settings-blacklist-input" class="input-field has-clear"            placeholder="Search or enter tag to blacklist (e.g. NSFW, Het)..." style="width:100%;box-sizing:border-box;font-size:11px;height:24px;" />          <button type="button" class="input-clear-btn" tabindex="-1" title="Clear">            <i class="bi bi-x-lg"></i>          </button>          <div id="ds-settings-blacklist-suggest" class="ds-typeahead" style="display:none;max-height:160px;"></div>        </div>        <button type="button" class="win-button" id="ds-settings-blacklist-add" style="font-size:11px;padding:2px 10px;">          <i class="bi bi-plus-lg"></i> Add        </button>      </div>      <div id="ds-settings-blacklist-chips" style="display:flex;flex-wrap:wrap;gap:4px;min-height:22px;max-height:120px;overflow-y:auto;padding:2px 0;">        <span class="ds-muted" style="font-size:10px;">Loading blacklist\u2026</span>      </div>    </div>  </div>  <div class="group-box">    <div class="group-box-title"><i class="bi bi-book-half"></i> Reading &amp; Cache</div>    <div style="display:flex;flex-direction:column;gap:8px;">      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">        <div>          <div style="font-size:12px;color:var(--sys-window-text,#222);font-weight:600;">Auto-Cache Entire Chapter</div>          <div class="ds-muted" style="font-size:11px;color:#666;">            When ON, pre-downloads all pages in a chapter. When OFF, only caches pages as you read them.          </div>        </div>        <button type="button" class="win-button" id="ds-settings-autocache-toggle" style="font-size:11px;padding:2px 10px;min-width:70px;"></button>      </div>      <div style="display:flex;align-items:center;justify-content:space-between;padding-top:6px;border-top:1px solid var(--sys-border-light,#eaeaea);gap:8px;">        <div>          <div style="font-size:12px;color:var(--sys-window-text,#222);font-weight:600;">Page Prefetch Buffer:</div>          <div class="ds-muted" style="font-size:11px;color:#666;">            Number of upcoming pages to preload ahead when auto-cache is off (default: 0).          </div>        </div>        <div style="display:flex;align-items:center;gap:4px;">          <button type="button" class="win-button ds-btn-sm" id="ds-settings-prefetch-dec" style="padding:2px 8px;font-size:11px;">\u2212</button>          <span id="ds-settings-prefetch-val" style="font-size:11px;font-weight:600;min-width:54px;text-align:center;">0 (off)</span>          <button type="button" class="win-button ds-btn-sm" id="ds-settings-prefetch-inc" style="padding:2px 8px;font-size:11px;">+</button>        </div>      </div>    </div>  </div>  <div class="group-box">    <div class="group-box-title"><i class="bi bi-hdd-stack"></i> Storage &amp; Cache</div>    <div style="display:flex;align-items:center;justify-content:space-between;padding:2px 0;">      <span style="font-size:12px;color:#333;">Manage disk footprint &amp; scans:</span>      <button type="button" class="win-button" id="ds-settings-goto-cache">        <i class="bi bi-box-arrow-in-right"></i> Open Cache Manager      </button>    </div>  </div>  <div class="group-box">    <div class="group-box-title"><i class="bi bi-info-circle"></i> About DynastyReader</div>    <div style="display:flex;align-items:center;gap:12px;padding:4px 0;">      <i class="bi bi-book" style="font-size:34px;color:var(--sys-highlight-bg,#0078d7);flex-shrink:0;"></i>      <div class="ds-fill">        <div style="font-size:12px;font-weight:600;color:var(--sys-window-text,#222);display:flex;align-items:center;gap:6px;">          DynastyReader <span class="ds-etag-tag" style="font-size:10px;font-weight:normal;padding:1px 6px;">v0.1.0</span>        </div>        <div class="ds-muted" style="font-size:11px;margin-top:2px;">          Local-first desktop reader &amp; offline manga catalog for Dynasty Scans.        </div>      </div>      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">        <button type="button" class="win-button" id="ds-about-check-update" title="Check for DynastyReader updates" style="font-size:11px;padding:2px 8px;justify-content:center;">          <i class="bi bi-arrow-repeat"></i> Check Updates        </button>        <button type="button" class="win-button" id="ds-about-open-github" title="Open DynastyReader GitHub repository" style="font-size:11px;padding:2px 8px;justify-content:center;">          <i class="bi bi-github"></i> GitHub        </button>        <button type="button" class="win-button" id="ds-about-open-site" title="Open Dynasty Scans website in browser" style="font-size:11px;padding:2px 8px;justify-content:center;">          <i class="bi bi-box-arrow-up-right"></i> dynasty-scans.com        </button>      </div>    </div>  </div></div><div class="ds-modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding-top:4px;">  <button type="button" class="win-button primary ds-modal-done" style="min-width:70px;">Done</button></div>', backdrop.appendChild(modal), setupInputClearButtons(modal), document.body.appendChild(backdrop);
+    let close = () => {
+      window.removeEventListener("keydown", onKeyDown), backdrop.remove();
+    }, onKeyDown = (ev) => {
+      ev.key === "Escape" && (ev.preventDefault(), close());
+    };
+    window.addEventListener("keydown", onKeyDown), backdrop.addEventListener("click", (ev) => {
+      ev.target === backdrop && close();
+    }), (_a = modal.querySelector(".ds-modal-close")) == null || _a.addEventListener("click", close), (_b = modal.querySelector(".ds-modal-done")) == null || _b.addEventListener("click", close);
+    let scaleSelect = modal.querySelector("#ds-settings-scale-select"), scaleDecBtn = modal.querySelector("#ds-settings-scale-dec"), scaleIncBtn = modal.querySelector("#ds-settings-scale-inc"), scaleResetBtn = modal.querySelector("#ds-settings-scale-reset"), syncScaleUI = (scale) => {
+      if (applyUiScale(scale), applyModalZoom(scale), scaleSelect) {
+        let matched = !1;
+        for (let i = 0; i < scaleSelect.options.length; i++)
+          if (Math.abs(parseFloat(scaleSelect.options[i].value) - scale) < 0.01) {
+            scaleSelect.selectedIndex = i, matched = !0;
+            break;
+          }
+        if (!matched) {
+          let customOpt = scaleSelect.querySelector("option.custom-scale");
+          customOpt || (customOpt = document.createElement("option"), customOpt.className = "custom-scale", scaleSelect.appendChild(customOpt)), customOpt.value = String(scale), customOpt.textContent = `${Math.round(scale * 100)}% (Custom)`, scaleSelect.value = String(scale);
+        }
+      }
+    };
+    scaleSelect == null || scaleSelect.addEventListener("change", () => {
+      let val = parseFloat(scaleSelect.value);
+      isNaN(val) || applyUiScale(val);
+    }), scaleDecBtn == null || scaleDecBtn.addEventListener("click", () => {
+      let current = getSavedUiScale(), next = Math.max(0.5, Math.round((current - 0.1) * 10) / 10);
+      syncScaleUI(next);
+    }), scaleIncBtn == null || scaleIncBtn.addEventListener("click", () => {
+      let current = getSavedUiScale(), next = Math.min(2, Math.round((current + 0.1) * 10) / 10);
+      syncScaleUI(next);
+    }), scaleResetBtn == null || scaleResetBtn.addEventListener("click", () => {
+      syncScaleUI(1);
+    });
+    let coversToggleBtn = modal.querySelector("#ds-settings-covers-toggle"), updateCoversToggleUI = () => {
+      coversToggleBtn && (coversToggleBtn.innerHTML = browseCovers.coversEnabled ? '<i class="bi bi-image"></i> Covers: ON' : '<i class="bi bi-image-slash"></i> Covers: OFF', coversToggleBtn.className = `win-button${browseCovers.coversEnabled ? " primary" : ""}`);
+    };
+    updateCoversToggleUI(), coversToggleBtn == null || coversToggleBtn.addEventListener("click", () => {
+      browseCovers.setCoversEnabled(!browseCovers.coversEnabled), updateCoversToggleUI(), renderCurrent();
+    });
+    let autoCacheToggleBtn = modal.querySelector("#ds-settings-autocache-toggle"), updateAutoCacheToggleUI = () => {
+      if (!autoCacheToggleBtn) return;
+      let enabled = isAutoCacheChapterEnabled();
+      autoCacheToggleBtn.innerHTML = enabled ? '<i class="bi bi-cloud-arrow-down-fill"></i> ON' : '<i class="bi bi-cloud-slash"></i> OFF', autoCacheToggleBtn.className = `win-button${enabled ? " primary" : ""}`, autoCacheToggleBtn.title = enabled ? "Pre-downloads full chapters in background (click to cache only as you read)" : "Only caches pages as you read (click to auto-download full chapters)";
+    };
+    updateAutoCacheToggleUI(), autoCacheToggleBtn == null || autoCacheToggleBtn.addEventListener("click", () => {
+      setAutoCacheChapterEnabled(!isAutoCacheChapterEnabled()), updateAutoCacheToggleUI();
+    });
+    let prefetchValSpan = modal.querySelector("#ds-settings-prefetch-val"), prefetchDecBtn = modal.querySelector("#ds-settings-prefetch-dec"), prefetchIncBtn = modal.querySelector("#ds-settings-prefetch-inc"), syncPrefetchUI = (val) => {
+      setPrefetchBuffer(val), prefetchValSpan && (prefetchValSpan.textContent = val === 0 ? "0 (off)" : `${val} page${val === 1 ? "" : "s"}`);
+    };
+    syncPrefetchUI(getPrefetchBuffer()), prefetchDecBtn == null || prefetchDecBtn.addEventListener("click", () => {
+      let cur = getPrefetchBuffer();
+      syncPrefetchUI(Math.max(0, cur - 1));
+    }), prefetchIncBtn == null || prefetchIncBtn.addEventListener("click", () => {
+      let cur = getPrefetchBuffer();
+      syncPrefetchUI(Math.min(10, cur + 1));
+    });
+    let cacheBtn = modal.querySelector("#ds-settings-goto-cache");
+    cacheBtn == null || cacheBtn.addEventListener("click", () => {
+      close(), navigate({ view: "cache" });
+    });
+    let aboutUpdateBtn = modal.querySelector("#ds-about-check-update");
+    aboutUpdateBtn == null || aboutUpdateBtn.addEventListener("click", () => {
+      aboutUpdateBtn && (aboutUpdateBtn.disabled = !0, aboutUpdateBtn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> Checking...', window.setTimeout(() => {
+        aboutUpdateBtn.isConnected && (aboutUpdateBtn.innerHTML = '<i class="bi bi-check-circle"></i> Up to Date (v0.1.0)', window.setTimeout(() => {
+          aboutUpdateBtn.isConnected && (aboutUpdateBtn.disabled = !1, aboutUpdateBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Check Updates');
+        }, 2500));
+      }, 800));
+    });
+    let aboutGithubBtn = modal.querySelector("#ds-about-open-github");
+    aboutGithubBtn == null || aboutGithubBtn.addEventListener("click", () => {
+      openExternal("https://github.com/FuouM/DynastyReader");
+    });
+    let aboutSiteBtn = modal.querySelector("#ds-about-open-site");
+    aboutSiteBtn == null || aboutSiteBtn.addEventListener("click", () => {
+      openExternal("https://dynasty-scans.com");
+    });
+    let blModeHideRadio = modal.querySelector("#ds-bl-mode-hide"), blModeWarnRadio = modal.querySelector("#ds-bl-mode-warn");
+    getBlacklistMode() === "warn" ? blModeWarnRadio && (blModeWarnRadio.checked = !0) : blModeHideRadio && (blModeHideRadio.checked = !0), blModeHideRadio == null || blModeHideRadio.addEventListener("change", () => {
+      blModeHideRadio.checked && (setBlacklistMode("hide"), renderCurrent());
+    }), blModeWarnRadio == null || blModeWarnRadio.addEventListener("change", () => {
+      blModeWarnRadio.checked && (setBlacklistMode("warn"), renderCurrent());
+    });
+    let blInput = modal.querySelector("#ds-settings-blacklist-input"), blSuggest = modal.querySelector("#ds-settings-blacklist-suggest"), blAddBtn = modal.querySelector("#ds-settings-blacklist-add"), blChips = modal.querySelector("#ds-settings-blacklist-chips"), renderBlacklistChips = async () => {
+      var _a2;
+      if (!blChips) return;
+      blChips.innerHTML = "";
+      let list;
+      try {
+        list = await getBlacklistedTags();
+      } catch (err) {
+        console.error("dynasty-scans: failed to load tag blacklist:", err), blChips.innerHTML = '<span class="ds-muted" style="font-size:10px;color:#a80000;padding:2px 0;">Could not load blacklist. Check the application log.</span>';
         return;
       }
-      let url = "";
-      type === "author" || type === "artist" ? url = t.permalink ? `https://dynasty-scans.com/authors/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : type === "scanlator" || type === "group" ? url = t.permalink ? `https://dynasty-scans.com/scanlators/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : type === "doujin" || type === "doujinshi" || type === "copyright" || type === "parody" ? url = t.permalink ? `https://dynasty-scans.com/doujins/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : type === "pairing" ? url = t.permalink ? `https://dynasty-scans.com/pairings/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}` : url = t.permalink ? `https://dynasty-scans.com/tags/${t.permalink}` : `https://dynasty-scans.com/search?q=${encodeURIComponent(t.name)}`, openExternal(url);
-    }), pill;
+      if (list.length === 0) {
+        blChips.innerHTML = '<span class="ds-muted" style="font-size:10px;padding:2px 0;">No tags blacklisted.</span>';
+        return;
+      }
+      for (let item of list) {
+        let chip = document.createElement("span");
+        chip.className = "ds-row", chip.style.cssText = "background:#fde7e9;color:#a80000;border:1px solid #e81123;border-radius:3px;padding:1px 6px;font-size:10px;align-items:center;gap:4px;", chip.innerHTML = `<span>${decodeEntities(item.tag_name)}</span><i class="bi bi-x" style="cursor:pointer;font-size:13px;" title="Remove from blacklist"></i>`, (_a2 = chip.querySelector(".bi-x")) == null || _a2.addEventListener("click", async () => {
+          await removeBlacklistedTag(item.tag_name), renderBlacklistChips(), renderCurrent();
+        }), blChips.appendChild(chip);
+      }
+    };
+    renderBlacklistChips();
+    let addTag = async (name, permalink) => {
+      let trimmed = name.trim();
+      trimmed && (await addBlacklistedTag(trimmed, permalink), blInput && (blInput.value = ""), blSuggest && (blSuggest.style.display = "none"), renderBlacklistChips(), renderCurrent());
+    };
+    if (blAddBtn == null || blAddBtn.addEventListener("click", () => {
+      blInput != null && blInput.value && addTag(blInput.value);
+    }), blInput == null || blInput.addEventListener("keydown", (ev) => {
+      ev.key === "Enter" && blInput.value && addTag(blInput.value);
+    }), blInput && blSuggest) {
+      let timer;
+      blInput.addEventListener("input", () => {
+        window.clearTimeout(timer);
+        let val = blInput.value.trim();
+        if (!val) {
+          blSuggest.style.display = "none";
+          return;
+        }
+        timer = window.setTimeout(async () => {
+          try {
+            let suggestions = await suggest(val);
+            if (blSuggest.innerHTML = "", suggestions.length === 0) {
+              blSuggest.style.display = "none";
+              return;
+            }
+            for (let s of suggestions.slice(0, 6)) {
+              let item = document.createElement("div");
+              item.className = "ds-typeahead-item", item.innerHTML = `<span style="flex:1;">${decodeEntities(s.name)}</span><span class="ds-typeahead-type">${s.type}</span>`, item.addEventListener("mousedown", () => {
+                addTag(s.name);
+              }), blSuggest.appendChild(item);
+            }
+            blSuggest.style.display = "block";
+          } catch (e) {
+            blSuggest.style.display = "none";
+          }
+        }, 200);
+      }), blInput.addEventListener("blur", () => {
+        window.setTimeout(() => {
+          blSuggest.style.display = "none";
+        }, 150);
+      });
+    }
+  }
+
+  // dynasty-scans/src/components/trigger-warning.ts
+  function showBlacklistWarningModal(title, matchedTags, onProceed) {
+    var _a, _b, _c;
+    let backdrop = document.createElement("div");
+    backdrop.className = "ds-modal-backdrop";
+    let scale = getSavedUiScale(), modal = document.createElement("div");
+    modal.className = "ds-modal-window", modal.style.cssText = `width:380px;zoom:${scale};max-height:calc((100vh - 40px) / ${scale});max-width:calc((100vw - 40px) / ${scale});`;
+    let tagsListHtml = matchedTags.map(
+      (t) => `<span class="tag-pill" style="background:#fdf3f4;border:1px solid #f5c2c7;color:#842029;font-weight:600;font-size:11px;padding:2px 7px;"><i class="bi bi-shield-slash-fill"></i> ${decodeEntities(t)}</span>`
+    ).join("");
+    modal.innerHTML = `
+    <div class="ds-modal-header">
+      <span class="ds-modal-title" style="color:#d9534f;">
+        <i class="bi bi-exclamation-triangle-fill"></i> Content Warning
+      </span>
+      <button type="button" class="win-button ds-modal-close" id="ds-tw-close" title="Close">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="ds-modal-body" style="display:flex;flex-direction:column;gap:8px;">
+      <div style="font-size:12px;font-weight:600;color:var(--sys-window-text,#111);word-break:break-word;">
+        ${decodeEntities(title)}
+      </div>
+      <div style="font-size:11px;color:var(--sys-text-muted,#555);line-height:1.4;">
+        This release contains content tagged with tags on your blacklist:
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;max-height:90px;overflow-y:auto;padding:2px 0;">
+        ${tagsListHtml}
+      </div>
+      <div class="ds-muted" style="font-size:11px;color:#777;margin-top:2px;">
+        Do you still want to proceed and open this release?
+      </div>
+    </div>
+    <div class="ds-modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding-top:8px;border-top:1px solid var(--sys-border-light,#ccc);flex-shrink:0;">
+      <button type="button" class="win-button" id="ds-tw-cancel" style="min-width:70px;">Cancel</button>
+      <button type="button" class="win-button primary" id="ds-tw-proceed" style="min-width:85px;background:#dc3545;border-color:#b02a37;color:#fff;">
+        <i class="bi bi-box-arrow-in-right"></i> Proceed
+      </button>
+    </div>
+  `, backdrop.appendChild(modal), document.body.appendChild(backdrop);
+    let close = () => {
+      window.removeEventListener("keydown", onKeyDown), backdrop.remove();
+    }, onKeyDown = (ev) => {
+      ev.key === "Escape" && (ev.preventDefault(), close());
+    };
+    window.addEventListener("keydown", onKeyDown), (_a = modal.querySelector("#ds-tw-close")) == null || _a.addEventListener("click", close), (_b = modal.querySelector("#ds-tw-cancel")) == null || _b.addEventListener("click", close), (_c = modal.querySelector("#ds-tw-proceed")) == null || _c.addEventListener("click", () => {
+      close(), onProceed();
+    }), backdrop.addEventListener("click", (ev) => {
+      ev.target === backdrop && close();
+    });
   }
 
   // dynasty-scans/src/browse/browse-feed.ts
@@ -1928,38 +2775,106 @@
   async function renderFeed(host, tabId, page, reload) {
     var _a;
     let url = `${FEED_TAB_TO_URL[tabId]}?page=${page}`, key = `${FEED_TAB_TO_KEY[tabId]}:${page}`, feedResult = await fetchFeedWithRevalidation(url, key), feed = feedResult.data, revalidatePromise = feedResult.revalidatePromise;
-    if (host.innerHTML = "", !feed.chapters || feed.chapters.length === 0) {
+    if (!feed.chapters || feed.chapters.length === 0) {
       let empty = document.createElement("div");
-      empty.className = "ds-muted", empty.textContent = "No chapters on this page.", host.appendChild(empty);
+      empty.className = "ds-muted", empty.textContent = "No chapters on this page.", host.replaceChildren(empty);
       return;
     }
+    let frag = document.createDocumentFragment();
     browseCovers.beginPage(host);
-    let permalinks = feed.chapters.map((c) => c.permalink), readSet = /* @__PURE__ */ new Set(), bookmarkSet = /* @__PURE__ */ new Set();
+    let permalinks = feed.chapters.map((c) => c.permalink), readSet = /* @__PURE__ */ new Set(), bookmarkSet = /* @__PURE__ */ new Set(), fullyCachedSet = /* @__PURE__ */ new Set();
     try {
-      let [h, b] = await Promise.all([
+      let [h, b, fc] = await Promise.all([
         getHistoryPermalinks(permalinks),
-        getBookmarkPermalinks(permalinks)
+        getBookmarkPermalinks(permalinks),
+        getFullyCachedChapterPermalinks()
       ]);
-      readSet = h, bookmarkSet = b;
+      readSet = h, bookmarkSet = b, fullyCachedSet = fc;
     } catch (e) {
-      readSet = /* @__PURE__ */ new Set(), bookmarkSet = /* @__PURE__ */ new Set();
+      readSet = /* @__PURE__ */ new Set(), bookmarkSet = /* @__PURE__ */ new Set(), fullyCachedSet = /* @__PURE__ */ new Set();
     }
     if (browseCovers.coversEnabled) {
       let coverTargets = feed.chapters.map((c) => browseCovers.getItemCoverInfo(c));
       await browseCovers.preloadBatch(coverTargets);
     }
-    let currentTopPermalink = (_a = feed.chapters[0]) == null ? void 0 : _a.permalink;
-    for (let ch of feed.chapters)
-      host.appendChild(feedItem(ch, readSet.has(ch.permalink), bookmarkSet.has(ch.permalink)));
-    host.appendChild(
-      renderPager(feed.total_pages, feed.current_page, (p) => void reload(host, tabId, p))
-    );
-    let currentEtag = feedResult.etag, statusFooter = feedStatusFooter({
+    let currentTopPermalink = (_a = feed.chapters[0]) == null ? void 0 : _a.permalink, blMode = getBlacklistMode(), normalChapters = [], blacklistedChapters = [];
+    for (let ch of feed.chapters) {
+      let check = isItemBlacklisted(ch.tags);
+      check.blacklisted ? blacklistedChapters.push({ ch, matchedTags: check.matchedTags }) : normalChapters.push(ch);
+    }
+    if (blMode === "hide") {
+      if (blacklistedChapters.length > 0) {
+        let notice = document.createElement("div");
+        notice.className = "ds-row ds-blacklist-notice", notice.style.cssText = "background:#fdf3f4;border:1px solid #f5c2c7;color:#842029;border-radius:3px;padding:4px 10px;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;";
+        let showBlacklisted = !1, blContainer = document.createElement("div");
+        blContainer.className = "ds-hidden", blContainer.style.cssText = "display:flex;flex-direction:column;gap:4px;margin-bottom:8px;";
+        for (let { ch, matchedTags } of blacklistedChapters)
+          blContainer.appendChild(
+            feedItem(
+              ch,
+              readSet.has(ch.permalink),
+              bookmarkSet.has(ch.permalink),
+              !0,
+              matchedTags,
+              fullyCachedSet.has(ch.permalink)
+            )
+          );
+        notice.innerHTML = `
+        <div class="ds-flex-row">
+          <i class="bi bi-shield-slash-fill" style="color:#dc3545;"></i>
+          <span><b>${blacklistedChapters.length}</b> chapter${blacklistedChapters.length === 1 ? "" : "s"} hidden by tag blacklist.</span>
+        </div>
+        <button type="button" class="win-button ds-btn-sm" style="font-size:10px;padding:2px 8px;">
+          <i class="bi bi-eye"></i> Show Blacklisted (${blacklistedChapters.length})
+        </button>
+      `;
+        let toggleBtn = notice.querySelector("button");
+        toggleBtn.addEventListener("click", () => {
+          showBlacklisted = !showBlacklisted, blContainer.classList.toggle("ds-hidden", !showBlacklisted), toggleBtn.innerHTML = showBlacklisted ? '<i class="bi bi-eye-slash"></i> Hide Blacklisted' : `<i class="bi bi-eye"></i> Show Blacklisted (${blacklistedChapters.length})`;
+        }), frag.appendChild(notice), frag.appendChild(blContainer);
+      }
+      if (normalChapters.length === 0 && blacklistedChapters.length > 0) {
+        let allFiltered = document.createElement("div");
+        allFiltered.className = "ds-muted", allFiltered.style.cssText = "padding:12px 0;text-align:center;font-size:11px;", allFiltered.textContent = "All chapters on this page were hidden by your tag blacklist.", frag.appendChild(allFiltered);
+      }
+      for (let ch of normalChapters)
+        frag.appendChild(
+          feedItem(
+            ch,
+            readSet.has(ch.permalink),
+            bookmarkSet.has(ch.permalink),
+            !1,
+            [],
+            fullyCachedSet.has(ch.permalink)
+          )
+        );
+    } else
+      for (let ch of feed.chapters) {
+        let check = isItemBlacklisted(ch.tags);
+        frag.appendChild(
+          feedItem(
+            ch,
+            readSet.has(ch.permalink),
+            bookmarkSet.has(ch.permalink),
+            check.blacklisted,
+            check.matchedTags,
+            fullyCachedSet.has(ch.permalink)
+          )
+        );
+      }
+    updateBrowseTopPager(feed.total_pages, feed.current_page, (p) => void reload(host, tabId, p), tabId);
+    let bottomPager = renderPager(
+      feed.total_pages,
+      feed.current_page,
+      (p) => void reload(host, tabId, p),
+      { cssText: "margin:0;" }
+    ), currentEtag = feedResult.etag, statusFooter = feedStatusFooter({
       cachedAt: feedResult.cachedAt,
       etag: currentEtag,
       status: feedResult.source === "sqlite" ? feedResult.isStale ? "Stale (Revalidating...)" : "SQLite (Cached)" : "Fresh (Dynasty Scans)",
       etagStatus: currentEtag ? "Cached" : "None",
       isStale: feedResult.isStale,
+      pager: bottomPager,
       onCheckUpdates: async (btn) => {
         btn.disabled = !0;
         let prevHtml = btn.innerHTML;
@@ -1988,7 +2903,7 @@
         }
       },
       onScrollTop: () => {
-        let dsView = document.getElementById("ds-view");
+        let dsView = document.getElementById("ds-pane-browse") || document.getElementById("ds-view");
         if (!dsView || dsView.scrollTop <= 0) return;
         browseCovers.scrollToTop(), dsView.scrollTo({ top: 0, behavior: "smooth" });
         let settled = !1, topTimer = null, settle = () => {
@@ -2001,7 +2916,7 @@
         }, 200);
       }
     });
-    host.appendChild(statusFooter), page === 1 && revalidatePromise ? revalidatePromise.then((reval) => {
+    frag.appendChild(statusFooter), host.replaceChildren(frag), page === 1 && revalidatePromise ? revalidatePromise.then((reval) => {
       var _a2, _b;
       if (host === browseCovers.currentHydrationHost)
         if (reval) {
@@ -2067,8 +2982,11 @@
     }
   }
   function feedStatusFooter(info) {
+    var _a;
     let footer = document.createElement("div");
-    footer.className = "ds-feed-status-bar", footer.innerHTML = `
+    footer.className = "ds-feed-status-bar";
+    let initialTraffic = getSessionTraffic();
+    footer.innerHTML = `
     <div class="ds-feed-status-left">
       <span class="ds-status-item ds-status-db" title="Timestamp when metadata was stored in local SQLite database">
         <i class="bi bi-database"></i> DB Cache: <b>${formatDateTime(info.cachedAt)}</b>
@@ -2078,10 +2996,14 @@
       </span>
       <span class="ds-status-item ds-status-etag-wrap" title="HTTP ETag conditional caching status">
         <i class="bi bi-shield-check"></i> ETag: <span class="ds-etag-status-label">${info.etagStatus || "Cached"}</span>
-        ${info.etag ? `<span class="ds-etag-tag" title="HTTP ETag: ${info.etag}"><i class="bi bi-hash"></i> ${info.etag.replace(/^"|"$/g, "").slice(0, 8)}</span>` : ""}
+        ${info.etag ? `<span class="ds-etag-tag" title="HTTP ETag: ${info.etag}"><i class="bi bi-hash"></i> <span class="ds-etag-hash">${info.etag.replace(/^"|"$/g, "").slice(0, 8)}</span></span>` : ""}
+      </span>
+      <span class="ds-status-item ds-status-traffic" title="Online network bandwidth consumed in this session">
+        <i class="bi bi-arrow-down-up"></i> Traffic: <b class="ds-traffic-bytes">${formatBytes(initialTraffic.bytesDownloaded, "", 1)}</b> <span class="ds-traffic-counts ds-muted" style="font-size:10px;">(${initialTraffic.networkRequests} reqs)</span>
       </span>
     </div>
     <div class="ds-feed-status-right">
+      <div class="ds-feed-status-pager-wrap"></div>
       <button type="button" class="win-button ds-status-refresh-btn" title="Force check for updates online without reloading page">
         <i class="bi bi-arrow-clockwise"></i> Check Updates
       </button>
@@ -2090,6 +3012,10 @@
       </button>
     </div>
   `;
+    let trafficBytesEl = footer.querySelector(".ds-traffic-bytes"), trafficCountsEl = footer.querySelector(".ds-traffic-counts");
+    subscribeSessionTraffic((t) => {
+      !footer.isConnected && footer.parentElement === null || (trafficBytesEl && (trafficBytesEl.textContent = formatBytes(t.bytesDownloaded, "", 1)), trafficCountsEl && (trafficCountsEl.textContent = `(${t.networkRequests} reqs${t.cacheHits > 0 ? `, ${t.cacheHits} cached` : ""})`));
+    }), info.pager && ((_a = footer.querySelector(".ds-feed-status-pager-wrap")) == null || _a.appendChild(info.pager));
     let checkBtn = footer.querySelector(".ds-status-refresh-btn");
     checkBtn == null || checkBtn.addEventListener("click", () => {
       info.onCheckUpdates(checkBtn);
@@ -2111,7 +3037,7 @@
         let etagWrap = footer.querySelector(".ds-status-etag-wrap");
         etagWrap && (etagEl = document.createElement("span"), etagEl.className = "ds-etag-tag", etagWrap.appendChild(etagEl));
       }
-      etagEl && (etagEl.setAttribute("title", `HTTP ETag: ${info.etag}`), etagEl.innerHTML = `<i class="bi bi-hash"></i> ${info.etag.replace(/^"|"$/g, "").slice(0, 8)}`);
+      etagEl && (etagEl.setAttribute("title", `HTTP ETag: ${info.etag}`), etagEl.innerHTML = `<i class="bi bi-hash"></i> <span class="ds-etag-hash">${info.etag.replace(/^"|"$/g, "").slice(0, 8)}</span>`);
     }
   }
   function showFeedUpdateBanner(host, tabId, reload) {
@@ -2127,47 +3053,67 @@
       reload(host, tabId, 1);
     }), host.insertBefore(banner, host.firstChild);
   }
-  function feedItem(ch, isRead = !1, isBookmarked = !1) {
+  function feedItem(ch, isRead = !1, isBookmarked = !1, isBlacklisted = !1, matchedTags = [], isFullyCached = !1) {
     var _a;
     let item = document.createElement("div");
-    item.className = `ds-item ds-feed-item${isRead ? " ds-item-read" : ""}`, item.style.cssText = "display:flex;align-items:center;gap:10px;padding:6px 8px;";
+    item.className = `ds-item ds-feed-item${isRead ? " ds-item-read" : ""}`, item.style.cssText = `display:flex;align-items:center;gap:10px;padding:6px 8px;${isBlacklisted ? "opacity:0.8;background:var(--sys-bg-active,#fcf8f8);" : ""}`;
     let coverInfo = browseCovers.getItemCoverInfo(ch), coverWrap = document.createElement("div");
-    coverWrap.className = "ds-feed-cover-wrap", coverWrap.style.cssText = "flex-shrink:0;cursor:pointer;", coverWrap.dataset.feedCover = coverInfo.coverKey, coverWrap.dataset.chapterPermalink = coverInfo.chapterPermalink, coverWrap.dataset.seriesPermalink = coverInfo.seriesPermalink, coverWrap.dataset.seriesType = coverInfo.seriesType || "", coverInfo.isStandalone ? (coverWrap.title = `Read "${decodeEntities(ch.title)}"`, coverWrap.addEventListener("click", (ev) => {
-      ev.stopPropagation(), navigate({
+    coverWrap.className = "ds-feed-cover-wrap", coverWrap.style.cssText = "flex-shrink:0;cursor:pointer;", coverWrap.dataset.feedCover = coverInfo.coverKey, coverWrap.dataset.chapterPermalink = coverInfo.chapterPermalink, coverWrap.dataset.seriesPermalink = coverInfo.seriesPermalink, coverWrap.dataset.seriesType = coverInfo.seriesType || "";
+    let openChapter = () => {
+      navigate({
         view: "reader",
         chapterPermalink: ch.permalink,
         chapterTitle: ch.title
       });
-    })) : (coverWrap.title = `View series: ${decodeEntities(coverInfo.seriesName || coverInfo.seriesPermalink)}`, coverWrap.addEventListener("click", (ev) => {
-      ev.stopPropagation(), navigate({
+    }, openSeries = (permalink, name) => {
+      navigate({
         view: "series",
-        seriesPermalink: coverInfo.seriesPermalink,
-        seriesName: coverInfo.seriesName || coverInfo.seriesPermalink
+        seriesPermalink: permalink,
+        seriesName: name
       });
+    };
+    coverInfo.isStandalone ? (coverWrap.title = `Read "${decodeEntities(ch.title)}"`, coverWrap.addEventListener("click", (ev) => {
+      ev.stopPropagation(), isBlacklisted && matchedTags.length > 0 ? showBlacklistWarningModal(ch.title, matchedTags, openChapter) : openChapter();
+    })) : (coverWrap.title = `View series: ${decodeEntities(coverInfo.seriesName || coverInfo.seriesPermalink)}`, coverWrap.addEventListener("click", (ev) => {
+      ev.stopPropagation(), isBlacklisted && matchedTags.length > 0 ? showBlacklistWarningModal(
+        coverInfo.seriesName || ch.title,
+        matchedTags,
+        () => openSeries(coverInfo.seriesPermalink, coverInfo.seriesName || coverInfo.seriesPermalink)
+      ) : openSeries(coverInfo.seriesPermalink, coverInfo.seriesName || coverInfo.seriesPermalink);
     }));
     let ph = document.createElement("div");
     ph.className = "ds-feed-cover-placeholder", ph.innerHTML = '<i class="bi bi-book"></i>', coverWrap.appendChild(ph), browseCovers.observe(coverWrap), item.appendChild(coverWrap);
     let info = document.createElement("div");
-    info.style.cssText = "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;";
+    info.className = "ds-fill", info.style.cssText = "display:flex;flex-direction:column;gap:4px;";
     let title = document.createElement("div");
-    title.className = "ds-item-title", title.style.cssText = "font-weight:600;", title.textContent = decodeEntities(ch.title), info.appendChild(title);
+    title.className = "ds-item-title", title.style.cssText = "font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;flex-wrap:wrap;", title.innerHTML = `<span>${decodeEntities(ch.title)}</span>${isFullyCached ? '<i class="bi bi-cloud-check-fill ds-offline-icon" style="color:var(--sys-primary,#0078d4);font-size:11px;" title="Available Offline (Fully Cached)"></i>' : ""}`, title.addEventListener("click", (ev) => {
+      ev.stopPropagation(), isBlacklisted && matchedTags.length > 0 ? showBlacklistWarningModal(ch.title, matchedTags, openChapter) : openChapter();
+    }), info.appendChild(title);
     let metaRow2 = document.createElement("div");
-    if (metaRow2.style.cssText = "display:flex;align-items:center;gap:6px;flex-wrap:wrap;", ch.series) {
+    if (metaRow2.className = "ds-flex-row", metaRow2.style.cssText = "flex-wrap:wrap;", ch.series) {
       let seriesLink = document.createElement("span");
       seriesLink.className = "ds-series-link", seriesLink.textContent = decodeEntities(ch.series), seriesLink.title = `Go to series: ${decodeEntities(ch.series)}`, seriesLink.addEventListener("click", (ev) => {
-        ev.stopPropagation(), navigate({
-          view: "series",
-          seriesPermalink: coverInfo.seriesPermalink || ch.series,
-          seriesName: ch.series
-        });
+        ev.stopPropagation(), isBlacklisted && matchedTags.length > 0 ? showBlacklistWarningModal(
+          ch.series,
+          matchedTags,
+          () => openSeries(coverInfo.seriesPermalink || ch.series, ch.series)
+        ) : openSeries(coverInfo.seriesPermalink || ch.series, ch.series);
       }), metaRow2.appendChild(seriesLink);
     }
-    let tags = ((_a = ch.tags) != null ? _a : []).filter((t) => {
-      var _a2;
-      return ((_a2 = t.type) != null ? _a2 : "").toLowerCase() !== "series";
-    }).slice(0, 8);
+    let tags = sortTagsByCategory(
+      ((_a = ch.tags) != null ? _a : []).filter((t) => {
+        var _a2;
+        return ((_a2 = t.type) != null ? _a2 : "").toLowerCase() !== "series";
+      })
+    ).slice(0, 8);
     for (let t of tags)
       metaRow2.appendChild(renderTagPill(t));
+    if (isBlacklisted && matchedTags.length > 0) {
+      let blBadge = document.createElement("span");
+      blBadge.style.cssText = "font-size:9px;background:#fde7e9;color:#a80000;padding:1px 5px;border-radius:2px;border:1px solid #e81123;display:inline-flex;align-items:center;gap:3px;font-weight:600;";
+      let labelPrefix = getBlacklistMode() === "warn" ? "Content Warning" : "Blacklisted";
+      blBadge.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> ${labelPrefix}: ${decodeEntities(matchedTags.join(", "))}`, metaRow2.appendChild(blBadge);
+    }
     info.appendChild(metaRow2);
     let bookmarked = isBookmarked, bookmarkBtn = document.createElement("button");
     bookmarkBtn.type = "button", bookmarkBtn.className = `win-button${bookmarked ? " primary" : ""}`, bookmarkBtn.style.cssText = "font-size:11px;padding:2px 8px;flex-shrink:0;", bookmarkBtn.title = bookmarked ? "Remove from Read Later" : "Save for Read Later", bookmarkBtn.innerHTML = bookmarked ? '<i class="bi bi-bookmark-fill"></i> Saved' : '<i class="bi bi-bookmark-plus"></i> Read Later', bookmarkBtn.addEventListener("click", async (ev) => {
@@ -2191,12 +3137,7 @@
     return extBtn.type = "button", extBtn.className = "win-button", extBtn.style.cssText = "font-size:11px;padding:2px 6px;flex-shrink:0;", extBtn.title = `Open "${decodeEntities(ch.title)}" on Dynasty Scans in browser`, extBtn.innerHTML = '<i class="bi bi-box-arrow-up-right"></i>', extBtn.addEventListener("click", (ev) => {
       ev.stopPropagation(), openExternal(`https://dynasty-scans.com/chapters/${ch.permalink}`);
     }), item.appendChild(info), item.appendChild(bookmarkBtn), item.appendChild(extBtn), item.addEventListener("click", () => {
-      navigate({
-        view: "reader",
-        chapterPermalink: ch.permalink,
-        chapterTitle: ch.title,
-        seriesName: ch.series
-      });
+      isBlacklisted && matchedTags.length > 0 ? showBlacklistWarningModal(ch.title, matchedTags, openChapter) : openChapter();
     }), item;
   }
 
@@ -2204,21 +3145,22 @@
   init_state();
   async function renderDirectory(host, kind, page, reload) {
     let url = kind === "series" ? `/series.json?page=${page}` : `/tags.json?page=${page}`, key = `${kind === "series" ? "dir:series" : "dir:tags"}:${page}`, dir = await fetchDirectory(url, key), groups = directoryGroups(dir);
-    if (host.innerHTML = "", groups.length === 0) {
+    if (groups.length === 0) {
       let empty = document.createElement("div");
-      empty.className = "ds-muted", empty.textContent = "No entries on this page.", host.appendChild(empty);
+      empty.className = "ds-muted", empty.textContent = "No entries on this page.", host.replaceChildren(empty);
       return;
     }
+    let frag = document.createDocumentFragment();
     for (let group of groups) {
       let header = document.createElement("div");
-      header.className = "ds-vol-header", header.textContent = group.letter, host.appendChild(header);
+      header.className = "ds-vol-header", header.textContent = group.letter, frag.appendChild(header);
       let list = document.createElement("div");
       list.style.cssText = "display:flex;flex-direction:column;";
       for (let entry of group.entries) {
         let item = document.createElement("div");
         item.className = "ds-item", item.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:3px 6px;";
         let title = document.createElement("div");
-        title.className = "ds-item-title", title.style.cssText = "flex:1;min-width:0;cursor:pointer;", title.textContent = decodeEntities(entry.name), item.appendChild(title);
+        title.className = "ds-item-title ds-fill ds-clickable", title.textContent = decodeEntities(entry.name), item.appendChild(title);
         let extBtn = document.createElement("button");
         extBtn.type = "button", extBtn.className = "win-button", extBtn.style.cssText = "font-size:10px;padding:1px 5px;flex-shrink:0;", extBtn.title = kind === "series" ? "Open series in browser" : "Search tag in browser", extBtn.innerHTML = '<i class="bi bi-box-arrow-up-right"></i>', extBtn.addEventListener("click", (ev) => {
           ev.stopPropagation(), kind === "series" ? openExternal(`https://dynasty-scans.com/series/${entry.permalink}`) : openExternal(`https://dynasty-scans.com/search?q=${encodeURIComponent(entry.name)}`);
@@ -2232,46 +3174,513 @@
           openExternal(`https://dynasty-scans.com/search?q=${encodeURIComponent(entry.name)}`);
         }), list.appendChild(item);
       }
-      host.appendChild(list);
+      frag.appendChild(list);
     }
-    host.appendChild(
+    let tabId = kind === "series" ? "series-dir" : "tags-dir";
+    updateBrowseTopPager(dir.total_pages, dir.current_page, (p) => void reload(host, kind, p), tabId), frag.appendChild(
       renderPager(dir.total_pages, dir.current_page, (p) => void reload(host, kind, p))
-    );
+    ), host.replaceChildren(frag);
   }
 
   // dynasty-scans/src/browse/browse-search.ts
   init_state();
-  async function loadSuggestions(q, host) {
+  init_html();
+  init_db2();
+  var ALL_CLASSES = [
+    { id: "Series", label: "Series" },
+    { id: "Chapter", label: "Chapter" },
+    { id: "Anthology", label: "Anthology" },
+    { id: "Doujin", label: "Doujin" },
+    { id: "Issue", label: "Issue" },
+    { id: "Author", label: "Author" },
+    { id: "Scanlator", label: "Scanlator" },
+    { id: "General", label: "Tag" },
+    { id: "Pairing", label: "Pairing" }
+  ], searchState = {
+    q: "",
+    classes: /* @__PURE__ */ new Set(),
+    withTags: [],
+    withoutTags: [],
+    sort: "",
+    page: 1,
+    lastResults: null,
+    isLoading: !1
+  };
+  function resetSearchState() {
+    searchState.q = "", searchState.classes.clear(), searchState.withTags = [], searchState.withoutTags = [], searchState.sort = "", searchState.page = 1, searchState.lastResults = null, searchState.isLoading = !1;
+  }
+  onRouteChange((view) => {
+    view !== "browse" && resetSearchState();
+  });
+  async function renderSearchTab(host, page = 1, onNavigateTab, routeSearch) {
+    (routeSearch == null ? void 0 : routeSearch.searchQuery) !== void 0 && (searchState.q = routeSearch.searchQuery), routeSearch != null && routeSearch.withTag && !searchState.withTags.includes(routeSearch.withTag) && searchState.withTags.push(routeSearch.withTag), (routeSearch == null ? void 0 : routeSearch.searchClass) !== void 0 && (searchState.classes.clear(), routeSearch.searchClass && searchState.classes.add(routeSearch.searchClass)), searchState.page = page;
+    let controlBox = document.createElement("div");
+    controlBox.className = "group-box", controlBox.style.cssText = "margin-bottom:8px;padding:8px;", controlBox.innerHTML = `
+    <div class="group-box-title"><i class="bi bi-search"></i> In-App Search &amp; Filter</div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <!-- Query Row -->
+      <div class="ds-row" style="gap:6px;">
+        <div class="ds-search-wrap" style="flex:1;position:relative;">
+          <div class="input-wrapper">
+            <input type="text" class="input-field has-clear" id="ds-tab-search-input"
+              placeholder="Search keywords (e.g. Bloom Into You, Nakatani, romance)..."
+              value="${esc(searchState.q)}" style="width:100%;" />
+            <button type="button" class="input-clear-btn" tabindex="-1" title="Clear">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+          <div class="ds-typeahead ds-hidden" id="ds-tab-search-suggest"></div>
+        </div>
+        <button type="button" class="win-button" id="ds-tab-search-submit" style="font-weight:600;">
+          <i class="bi bi-search"></i> Search
+        </button>
+        <button type="button" class="win-button" id="ds-tab-search-reset" title="Reset all search filters">
+          <i class="bi bi-x-circle"></i> Clear
+        </button>
+      </div>
+
+      <!-- Class Filters Row -->
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <div style="font-size:11px;font-weight:600;color:var(--sys-text-secondary,#555);">
+          Category Filter:
+        </div>
+        <div id="ds-search-classes-row" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;"></div>
+      </div>
+
+      <!-- Advanced Tag & Sort Row -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:8px;align-items:start;">
+        <!-- With Tags -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div style="font-size:11px;font-weight:600;color:var(--sys-text-secondary,#555);">
+            <i class="bi bi-plus-circle"></i> With Tags:
+          </div>
+          <div style="position:relative;">
+            <input type="text" class="input-field" id="ds-search-with-input"
+              placeholder="Add included tag..." style="width:100%;box-sizing:border-box;font-size:11px;" />
+            <div class="ds-typeahead ds-hidden" id="ds-search-with-suggest"></div>
+          </div>
+          <div id="ds-search-with-chips" style="display:flex;flex-wrap:wrap;gap:3px;min-height:18px;"></div>
+        </div>
+
+        <!-- Without Tags -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div style="font-size:11px;font-weight:600;color:var(--sys-text-secondary,#555);">
+            <i class="bi bi-dash-circle"></i> Without Tags (Exclude):
+          </div>
+          <div style="position:relative;">
+            <input type="text" class="input-field" id="ds-search-without-input"
+              placeholder="Add excluded tag..." style="width:100%;box-sizing:border-box;font-size:11px;" />
+            <div class="ds-typeahead ds-hidden" id="ds-search-without-suggest"></div>
+          </div>
+          <div id="ds-search-without-chips" style="display:flex;flex-wrap:wrap;gap:3px;min-height:18px;"></div>
+        </div>
+
+        <!-- Sort -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div style="font-size:11px;font-weight:600;color:var(--sys-text-secondary,#555);">
+            <i class="bi bi-sort-down"></i> Sort Order:
+          </div>
+          <select class="input-field" id="ds-search-sort" style="font-size:11px;padding:3px 6px;">
+            <option value="" ${searchState.sort === "" ? "selected" : ""}>Best Match</option>
+            <option value="name" ${searchState.sort === "name" ? "selected" : ""}>Alphabetical</option>
+            <option value="created_at" ${searchState.sort === "created_at" ? "selected" : ""}>Date Added</option>
+            <option value="released_on" ${searchState.sort === "released_on" ? "selected" : ""}>Release Date</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  `;
+    let frag = document.createDocumentFragment();
+    frag.appendChild(controlBox), setupInputClearButtons(controlBox);
+    let resultsContainer = document.createElement("div");
+    resultsContainer.id = "ds-search-results-area", resultsContainer.style.cssText = "display:flex;flex-direction:column;gap:6px;", frag.appendChild(resultsContainer), host.replaceChildren(frag);
+    let classesRow = controlBox.querySelector("#ds-search-classes-row"), renderClassButtons = () => {
+      classesRow.innerHTML = "";
+      let allActive = searchState.classes.size === 0, allBtn = document.createElement("button");
+      allBtn.type = "button", allBtn.className = `win-button ds-btn-sm${allActive ? " active" : ""}`, allBtn.style.cssText = "font-size:10px;padding:1px 6px;", allBtn.textContent = "All Categories", allBtn.addEventListener("click", () => {
+        searchState.classes.clear(), renderClassButtons(), executeSearch(resultsContainer, 1, onNavigateTab);
+      }), classesRow.appendChild(allBtn);
+      for (let c of ALL_CLASSES) {
+        let active = searchState.classes.has(c.id), btn = document.createElement("button");
+        btn.type = "button", btn.className = `win-button ds-btn-sm${active ? " active" : ""}`, btn.style.cssText = "font-size:10px;padding:1px 6px;", btn.textContent = c.label, btn.addEventListener("click", () => {
+          searchState.classes.has(c.id) ? searchState.classes.delete(c.id) : searchState.classes.add(c.id), renderClassButtons(), executeSearch(resultsContainer, 1, onNavigateTab);
+        }), classesRow.appendChild(btn);
+      }
+    };
+    renderClassButtons();
+    let withChipsEl = controlBox.querySelector("#ds-search-with-chips"), withoutChipsEl = controlBox.querySelector("#ds-search-without-chips"), renderTagChips = () => {
+      var _a, _b;
+      withChipsEl.innerHTML = "";
+      for (let t of searchState.withTags) {
+        let chip = document.createElement("span");
+        chip.className = "ds-row", chip.style.cssText = "background:var(--sys-bg-active,#e8f0fe);color:var(--sys-primary,#0078d4);border:1px solid var(--sys-primary,#0078d4);border-radius:3px;padding:1px 5px;font-size:10px;align-items:center;gap:4px;", chip.innerHTML = `<span>+ ${decodeEntities(t)}</span><i class="bi bi-x" style="cursor:pointer;font-size:12px;"></i>`, (_a = chip.querySelector(".bi-x")) == null || _a.addEventListener("click", () => {
+          searchState.withTags = searchState.withTags.filter((x) => x !== t), renderTagChips(), executeSearch(resultsContainer, 1, onNavigateTab);
+        }), withChipsEl.appendChild(chip);
+      }
+      withoutChipsEl.innerHTML = "";
+      for (let t of searchState.withoutTags) {
+        let chip = document.createElement("span");
+        chip.className = "ds-row", chip.style.cssText = "background:#fde7e9;color:#a80000;border:1px solid #e81123;border-radius:3px;padding:1px 5px;font-size:10px;align-items:center;gap:4px;", chip.innerHTML = `<span>- ${decodeEntities(t)}</span><i class="bi bi-x" style="cursor:pointer;font-size:12px;"></i>`, (_b = chip.querySelector(".bi-x")) == null || _b.addEventListener("click", () => {
+          searchState.withoutTags = searchState.withoutTags.filter((x) => x !== t), renderTagChips(), executeSearch(resultsContainer, 1, onNavigateTab);
+        }), withoutChipsEl.appendChild(chip);
+      }
+    };
+    renderTagChips();
+    let setupTagAutocomplete = (inputEl, suggestEl2, onAdd) => {
+      if (!inputEl || !suggestEl2) return;
+      let timer;
+      inputEl.addEventListener("input", () => {
+        window.clearTimeout(timer);
+        let val = inputEl.value.trim();
+        if (!val) {
+          suggestEl2.classList.add("ds-hidden");
+          return;
+        }
+        timer = window.setTimeout(async () => {
+          try {
+            let suggestions = await suggest(val);
+            if (suggestEl2.innerHTML = "", suggestions.length === 0) {
+              suggestEl2.classList.add("ds-hidden");
+              return;
+            }
+            for (let s of suggestions.slice(0, 6)) {
+              let item = document.createElement("div");
+              item.className = "ds-typeahead-item", item.innerHTML = `<span style="flex:1;">${decodeEntities(s.name)}</span><span class="ds-typeahead-type">${s.type}</span>`, item.addEventListener("mousedown", () => {
+                onAdd(s.name), inputEl.value = "", suggestEl2.classList.add("ds-hidden");
+              }), suggestEl2.appendChild(item);
+            }
+            suggestEl2.classList.remove("ds-hidden");
+          } catch (e) {
+            suggestEl2.classList.add("ds-hidden");
+          }
+        }, 200);
+      }), inputEl.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          let val = inputEl.value.trim();
+          val && (onAdd(val), inputEl.value = "", suggestEl2.classList.add("ds-hidden"));
+        }
+      }), inputEl.addEventListener("blur", () => {
+        window.setTimeout(() => {
+          suggestEl2.classList.add("ds-hidden");
+        }, 150);
+      });
+    };
+    setupTagAutocomplete(
+      controlBox.querySelector("#ds-search-with-input"),
+      controlBox.querySelector("#ds-search-with-suggest"),
+      (tag) => {
+        searchState.withTags.includes(tag) || (searchState.withTags.push(tag), renderTagChips(), executeSearch(resultsContainer, 1, onNavigateTab));
+      }
+    ), setupTagAutocomplete(
+      controlBox.querySelector("#ds-search-without-input"),
+      controlBox.querySelector("#ds-search-without-suggest"),
+      (tag) => {
+        searchState.withoutTags.includes(tag) || (searchState.withoutTags.push(tag), renderTagChips(), executeSearch(resultsContainer, 1, onNavigateTab));
+      }
+    );
+    let sortSelect = controlBox.querySelector("#ds-search-sort");
+    sortSelect == null || sortSelect.addEventListener("change", () => {
+      var _a;
+      searchState.sort = (_a = sortSelect.value) != null ? _a : "", executeSearch(resultsContainer, 1, onNavigateTab);
+    });
+    let queryInput = controlBox.querySelector("#ds-tab-search-input"), submitBtn = controlBox.querySelector("#ds-tab-search-submit"), resetBtn = controlBox.querySelector("#ds-tab-search-reset"), suggestEl = controlBox.querySelector("#ds-tab-search-suggest"), runTabSearch = () => {
+      var _a;
+      searchState.q = (_a = queryInput == null ? void 0 : queryInput.value.trim()) != null ? _a : "", executeSearch(resultsContainer, 1, onNavigateTab);
+    };
+    if (submitBtn == null || submitBtn.addEventListener("click", runTabSearch), queryInput == null || queryInput.addEventListener("keydown", (ev) => {
+      ev.key === "Enter" && runTabSearch();
+    }), resetBtn == null || resetBtn.addEventListener("click", () => {
+      searchState.q = "", searchState.classes.clear(), searchState.withTags = [], searchState.withoutTags = [], searchState.sort = "", queryInput && (queryInput.value = ""), renderClassButtons(), renderTagChips(), sortSelect && (sortSelect.value = ""), executeSearch(resultsContainer, 1, onNavigateTab);
+    }), queryInput && suggestEl) {
+      let debounceTimer;
+      queryInput.addEventListener("input", () => {
+        window.clearTimeout(debounceTimer);
+        let q = queryInput.value.trim();
+        if (!q) {
+          suggestEl.classList.add("ds-hidden");
+          return;
+        }
+        debounceTimer = window.setTimeout(async () => {
+          try {
+            let suggestions = await suggest(q);
+            if (suggestEl.innerHTML = "", suggestions.length === 0) {
+              suggestEl.classList.add("ds-hidden");
+              return;
+            }
+            for (let s of suggestions.slice(0, 8)) {
+              let item = document.createElement("div");
+              item.className = "ds-typeahead-item", item.innerHTML = `<span style="flex:1;">${decodeEntities(s.name)}</span><span class="ds-typeahead-type">${s.type}</span>`, item.addEventListener("mousedown", () => {
+                searchState.q = s.name, queryInput.value = s.name, suggestEl.classList.add("ds-hidden"), executeSearch(resultsContainer, 1, onNavigateTab);
+              }), suggestEl.appendChild(item);
+            }
+            suggestEl.classList.remove("ds-hidden");
+          } catch (e) {
+            suggestEl.classList.add("ds-hidden");
+          }
+        }, 250);
+      }), queryInput.addEventListener("blur", () => {
+        window.setTimeout(() => {
+          suggestEl.classList.add("ds-hidden");
+        }, 150);
+      });
+    }
+    executeSearch(resultsContainer, searchState.page, onNavigateTab);
+  }
+  async function executeSearch(container, page, onNavigateTab) {
+    scrollBrowseToTop(), searchState.page = page, searchState.isLoading = !0, container.innerHTML = "", container.appendChild(renderLoading());
+    let params = {
+      q: searchState.q,
+      classes: searchState.classes.size > 0 ? Array.from(searchState.classes) : void 0,
+      withTags: searchState.withTags.length > 0 ? searchState.withTags : void 0,
+      withoutTags: searchState.withoutTags.length > 0 ? searchState.withoutTags : void 0,
+      sort: searchState.sort || void 0,
+      page: searchState.page
+    }, pageData;
+    try {
+      pageData = await searchDynasty(params), searchState.lastResults = pageData;
+    } catch (err) {
+      container.innerHTML = "";
+      let msg = err instanceof Error ? err.message : String(err);
+      setBanner(`Search failed: ${msg}`);
+      let errBox = document.createElement("div");
+      errBox.className = "ds-row", errBox.style.cssText = "padding:12px;gap:8px;align-items:center;", errBox.innerHTML = `<span class="ds-muted">Search request failed: ${esc(msg)}</span>`;
+      let retry = document.createElement("button");
+      retry.type = "button", retry.className = "win-button", retry.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Retry', retry.addEventListener("click", () => void executeSearch(container, page, onNavigateTab)), errBox.appendChild(retry), container.appendChild(errBox);
+      return;
+    } finally {
+      searchState.isLoading = !1;
+    }
+    container.innerHTML = "", await renderSearchResultsList(container, pageData, onNavigateTab);
+  }
+  async function renderSearchResultsList(container, data, onNavigateTab) {
+    let header = document.createElement("div");
+    header.className = "ds-row", header.style.cssText = "justify-content:space-between;align-items:center;padding:4px 2px;border-bottom:1px solid var(--sys-border-light,#ddd);margin-bottom:6px;";
+    let countInfo = document.createElement("div");
+    countInfo.style.cssText = "font-size:12px;font-weight:600;";
+    let queryLabel = data.query ? ` for "${esc(data.query)}"` : "";
+    if (countInfo.innerHTML = `<i class="bi bi-list-stars"></i> Search Results${queryLabel} <span class="ds-muted" style="font-weight:normal;font-size:11px;">(${data.items.length} items on page ${data.currentPage} of ${data.totalPages})</span>`, header.appendChild(countInfo), container.appendChild(header), data.items.length === 0) {
+      let empty = document.createElement("div");
+      empty.className = "ds-muted", empty.style.cssText = "padding:24px;text-align:center;", empty.innerHTML = `
+      <div style="font-size:14px;margin-bottom:4px;"><i class="bi bi-search"></i> No matching results found</div>
+      <div style="font-size:11px;">Try adjusting keywords, clearing category filters, or removing excluded tags.</div>
+    `, container.appendChild(empty);
+      return;
+    }
+    let fullyCachedSet = /* @__PURE__ */ new Set();
+    try {
+      fullyCachedSet = await getFullyCachedChapterPermalinks();
+    } catch (e) {
+    }
+    let blMode = getBlacklistMode(), normalItems = [], blacklistedItems = [];
+    for (let item of data.items) {
+      let check = isItemBlacklisted(item.tags);
+      check.blacklisted ? blacklistedItems.push({ item, matchedTags: check.matchedTags }) : normalItems.push(item);
+    }
+    let list = document.createElement("div");
+    if (list.style.cssText = "display:flex;flex-direction:column;gap:6px;", blMode === "hide") {
+      if (blacklistedItems.length > 0) {
+        let notice = document.createElement("div");
+        notice.className = "ds-row ds-blacklist-notice", notice.style.cssText = "background:#fdf3f4;border:1px solid #f5c2c7;color:#842029;border-radius:3px;padding:4px 10px;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:11px;";
+        let showBlacklisted = !1, blList = document.createElement("div");
+        blList.className = "ds-hidden", blList.style.cssText = "display:flex;flex-direction:column;gap:6px;margin-bottom:8px;";
+        for (let { item, matchedTags } of blacklistedItems)
+          blList.appendChild(
+            renderSearchResultRow(item, !0, matchedTags, fullyCachedSet.has(item.permalink))
+          );
+        notice.innerHTML = `
+        <div class="ds-flex-row">
+          <i class="bi bi-shield-slash-fill" style="color:#dc3545;"></i>
+          <span><b>${blacklistedItems.length}</b> result${blacklistedItems.length === 1 ? "" : "s"} hidden by tag blacklist.</span>
+        </div>
+        <button type="button" class="win-button ds-btn-sm" style="font-size:10px;padding:2px 8px;">
+          <i class="bi bi-eye"></i> Show Blacklisted (${blacklistedItems.length})
+        </button>
+      `;
+        let toggleBtn = notice.querySelector("button");
+        toggleBtn.addEventListener("click", () => {
+          showBlacklisted = !showBlacklisted, blList.classList.toggle("ds-hidden", !showBlacklisted), toggleBtn.innerHTML = showBlacklisted ? '<i class="bi bi-eye-slash"></i> Hide Blacklisted' : `<i class="bi bi-eye"></i> Show Blacklisted (${blacklistedItems.length})`;
+        }), container.appendChild(notice), container.appendChild(blList);
+      }
+      if (normalItems.length === 0 && blacklistedItems.length > 0) {
+        let allFiltered = document.createElement("div");
+        allFiltered.className = "ds-muted", allFiltered.style.cssText = "padding:12px 0;text-align:center;font-size:11px;", allFiltered.textContent = "All results on this page were hidden by your tag blacklist.", container.appendChild(allFiltered);
+      }
+      for (let item of normalItems)
+        list.appendChild(
+          renderSearchResultRow(item, !1, [], fullyCachedSet.has(item.permalink))
+        );
+    } else
+      for (let item of data.items) {
+        let check = isItemBlacklisted(item.tags);
+        list.appendChild(
+          renderSearchResultRow(
+            item,
+            check.blacklisted,
+            check.matchedTags,
+            fullyCachedSet.has(item.permalink)
+          )
+        );
+      }
+    container.appendChild(list), updateBrowseTopPager(
+      data.totalPages,
+      data.currentPage,
+      (p) => void executeSearch(container, p, onNavigateTab),
+      "search"
+    ), data.totalPages > 1 && container.appendChild(
+      renderPager(
+        data.totalPages,
+        data.currentPage,
+        (p) => void executeSearch(container, p, onNavigateTab),
+        { cssText: "margin-top:12px;justify-content:flex-end;" }
+      )
+    );
+  }
+  function renderSearchResultRow(item, isBlacklisted = !1, matchedTags = [], isFullyCached = !1) {
+    let row = document.createElement("div");
+    row.className = "ds-row", row.style.cssText = `background:var(--sys-bg-active,#fff);border:1px solid var(--sys-border-light,#ddd);border-radius:3px;padding:6px 10px;align-items:flex-start;gap:8px;transition:background 0.1s ease;${isBlacklisted ? "opacity:0.8;background:var(--sys-bg-active,#fcf8f8);" : ""}`;
+    let icon2 = document.createElement("div");
+    icon2.style.cssText = "font-size:16px;margin-top:2px;min-width:20px;text-align:center;", icon2.innerHTML = getKindIcon(item.kind), row.appendChild(icon2);
+    let body = document.createElement("div");
+    body.className = "ds-fill", body.style.cssText = "display:flex;flex-direction:column;gap:3px;";
+    let titleRow = document.createElement("div");
+    titleRow.className = "ds-flex-row", titleRow.style.cssText = "flex-wrap:wrap;";
+    let titleLink = document.createElement("a");
+    titleLink.className = "ds-search-title-link", titleLink.style.cssText = "font-size:12px;font-weight:600;color:var(--sys-text-primary,#000);text-decoration:none;cursor:pointer;display:inline-flex;align-items:center;gap:4px;", titleLink.innerHTML = `<span>${esc(item.title)}</span>${isFullyCached ? '<i class="bi bi-cloud-check-fill ds-offline-icon" style="color:var(--sys-primary,#0078d4);font-size:11px;" title="Available Offline (Fully Cached)"></i>' : ""}`, titleLink.title = `Open ${item.title}`;
+    let kindBadge = document.createElement("span");
+    if (kindBadge.className = "ds-muted", kindBadge.style.cssText = "font-size:10px;background:var(--sys-bg-hover,#eaeaea);padding:1px 5px;border-radius:2px;text-transform:capitalize;", kindBadge.textContent = item.kind, titleRow.appendChild(titleLink), titleRow.appendChild(kindBadge), isBlacklisted && matchedTags.length > 0) {
+      let blBadge = document.createElement("span");
+      blBadge.style.cssText = "font-size:9px;background:#fde7e9;color:#a80000;padding:1px 5px;border-radius:2px;border:1px solid #e81123;display:inline-flex;align-items:center;gap:3px;font-weight:600;";
+      let labelPrefix = getBlacklistMode() === "warn" ? "Content Warning" : "Blacklisted";
+      blBadge.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> ${labelPrefix}: ${decodeEntities(matchedTags.join(", "))}`, titleRow.appendChild(blBadge);
+    }
+    body.appendChild(titleRow);
+    let subParts = [];
+    if (item.author) {
+      let authorSpan = document.createElement("span");
+      authorSpan.className = "ds-muted", authorSpan.style.cssText = "font-size:11px;", authorSpan.innerHTML = `by <a style="color:var(--sys-primary,#0078d4);cursor:pointer;text-decoration:underline;">${decodeEntities(item.author.name)}</a>`;
+      let authorLink = authorSpan.querySelector("a");
+      authorLink == null || authorLink.addEventListener("click", (ev) => {
+        ev.stopPropagation(), navigate({
+          view: "series",
+          seriesPermalink: item.author.permalink,
+          seriesName: item.author.name
+        });
+      }), subParts.push(authorSpan);
+    }
+    if (item.doujin) {
+      let doujinSpan = document.createElement("span");
+      doujinSpan.className = "ds-muted", doujinSpan.style.cssText = "font-size:11px;", doujinSpan.innerHTML = `<a style="color:var(--sys-primary,#0078d4);cursor:pointer;text-decoration:underline;">${decodeEntities(item.doujin.name)}</a>`;
+      let doujinLink = doujinSpan.querySelector("a");
+      doujinLink == null || doujinLink.addEventListener("click", (ev) => {
+        ev.stopPropagation(), navigate({
+          view: "series",
+          seriesPermalink: item.doujin.permalink,
+          seriesName: item.doujin.name
+        });
+      }), subParts.push(doujinSpan);
+    }
+    if (item.releasedOn) {
+      let dateSpan = document.createElement("span");
+      dateSpan.className = "ds-muted", dateSpan.style.cssText = "font-size:11px;", dateSpan.textContent = `released ${item.releasedOn}`, subParts.push(dateSpan);
+    }
+    if (subParts.length > 0) {
+      let subRow = document.createElement("div");
+      subRow.className = "ds-row", subRow.style.cssText = "gap:8px;align-items:center;flex-wrap:wrap;";
+      for (let p of subParts) subRow.appendChild(p);
+      body.appendChild(subRow);
+    }
+    if (item.tags.length > 0) {
+      let tagsWrap = document.createElement("div");
+      tagsWrap.style.cssText = "display:flex;flex-wrap:wrap;gap:3px;margin-top:2px;";
+      for (let t of sortTagsByCategory(item.tags))
+        tagsWrap.appendChild(renderTagPill(t, !0));
+      body.appendChild(tagsWrap);
+    }
+    row.appendChild(body);
+    let actionBtn = document.createElement("button");
+    actionBtn.type = "button", actionBtn.className = "win-button ds-btn-sm", actionBtn.style.cssText = "align-self:center;white-space:nowrap;";
+    let onOpenItem = () => {
+      let doNavigate = () => {
+        item.kind === "chapter" ? navigate({
+          view: "reader",
+          chapterPermalink: item.permalink,
+          chapterTitle: item.title
+        }) : navigate({
+          view: "series",
+          seriesPermalink: item.permalink,
+          seriesName: item.title
+        });
+      };
+      isBlacklisted && matchedTags.length > 0 ? showBlacklistWarningModal(item.title, matchedTags, doNavigate) : doNavigate();
+    };
+    return item.kind === "chapter" ? actionBtn.innerHTML = '<i class="bi bi-book"></i> Read' : item.kind === "series" || item.kind === "anthology" || item.kind === "doujin" || item.kind === "issue" ? actionBtn.innerHTML = '<i class="bi bi-folder2-open"></i> Open' : actionBtn.innerHTML = '<i class="bi bi-arrow-right-circle"></i> View', actionBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation(), onOpenItem();
+    }), titleLink.addEventListener("click", (ev) => {
+      ev.preventDefault(), onOpenItem();
+    }), row.appendChild(actionBtn), row;
+  }
+  function getKindIcon(kind) {
+    switch (kind) {
+      case "chapter":
+        return '<i class="bi bi-file-earmark-text" style="color:var(--sys-primary,#0078d4);"></i>';
+      case "series":
+        return '<i class="bi bi-collection-play" style="color:#d83b01;"></i>';
+      case "anthology":
+        return '<i class="bi bi-journal-album" style="color:#107c41;"></i>';
+      case "doujin":
+        return '<i class="bi bi-book" style="color:#8764b8;"></i>';
+      case "issue":
+        return '<i class="bi bi-newspaper" style="color:#b146c2;"></i>';
+      case "author":
+        return '<i class="bi bi-person" style="color:#008272;"></i>';
+      case "scanlator":
+        return '<i class="bi bi-people" style="color:#5c2d91;"></i>';
+      case "pairing":
+        return '<i class="bi bi-heart" style="color:#e3008c;"></i>';
+      case "tag":
+      default:
+        return '<i class="bi bi-tag" style="color:#69797e;"></i>';
+    }
+  }
+  async function loadSuggestions(q, host, onSelect) {
     let results;
     try {
       results = await suggest(q);
     } catch (err) {
-      host.style.display = "none";
+      host.classList.add("ds-hidden");
       let msg = err instanceof Error ? err.message : String(err);
       setBanner(`Search suggestions failed: ${msg}`);
       return;
     }
     if (host.innerHTML = "", results.length === 0) {
-      host.style.display = "none";
+      host.classList.add("ds-hidden");
       return;
     }
     for (let r of results.slice(0, 8)) {
       let item = document.createElement("div");
       item.className = "ds-typeahead-item";
       let name = document.createElement("span");
-      name.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;", name.textContent = decodeEntities(r.name);
+      name.className = "ds-fill ds-truncate", name.textContent = decodeEntities(r.name);
       let type = document.createElement("span");
       type.className = "ds-typeahead-type", type.textContent = r.type, item.appendChild(name), item.appendChild(type), item.addEventListener("mousedown", () => {
-        openExternal(`https://dynasty-scans.com/search?q=${encodeURIComponent(r.name)}`);
+        onSelect ? onSelect(r) : navigate({
+          view: "browse",
+          browseTab: "search",
+          searchQuery: r.name
+        });
       }), host.appendChild(item);
     }
-    host.style.display = "block";
+    host.classList.remove("ds-hidden");
   }
-  function wireSearchPanel(panel) {
+  function wireSearchPanel(panel, onSearch) {
     let input = panel.querySelector("#ds-search-input"), suggestEl = panel.querySelector("#ds-search-suggest"), searchBtn = panel.querySelector("#ds-search-btn"), debounceTimer, runSearch = () => {
       var _a;
       let q = ((_a = input == null ? void 0 : input.value) != null ? _a : "").trim();
-      q && openExternal(`https://dynasty-scans.com/search?q=${encodeURIComponent(q)}`);
+      q && (onSearch ? onSearch(q) : navigate({
+        view: "browse",
+        browseTab: "search",
+        searchQuery: q
+      }));
     };
     searchBtn == null || searchBtn.addEventListener("click", runSearch), input == null || input.addEventListener("keydown", (ev) => {
       ev.key === "Enter" && runSearch();
@@ -2281,7 +3690,7 @@
       let q = ((_a = input.value) != null ? _a : "").trim();
       if (suggestEl) {
         if (!q) {
-          suggestEl.style.display = "none";
+          suggestEl.classList.add("ds-hidden");
           return;
         }
         debounceTimer = window.setTimeout(() => {
@@ -2290,10 +3699,19 @@
       }
     }), input == null || input.addEventListener("blur", () => {
       window.setTimeout(() => {
-        suggestEl && (suggestEl.style.display = "none");
+        suggestEl && suggestEl.classList.add("ds-hidden");
       }, 150);
     });
-    let urlInput = panel.querySelector("#ds-url-input"), urlBtn = panel.querySelector("#ds-url-btn"), openByUrl = () => {
+    let urlInput = panel.querySelector("#ds-url-input"), urlBtn = panel.querySelector("#ds-url-btn"), pasteBtn = panel.querySelector("#ds-url-paste-btn");
+    pasteBtn == null || pasteBtn.addEventListener("click", async () => {
+      try {
+        let text = await navigator.clipboard.readText() || "";
+        text && urlInput && (urlInput.value = text.trim(), urlInput.dispatchEvent(new Event("input", { bubbles: !0 })), urlInput.focus());
+      } catch (err) {
+        console.warn("[ds-browse] clipboard read failed:", err);
+      }
+    });
+    let openByUrl = () => {
       var _a;
       let raw = ((_a = urlInput == null ? void 0 : urlInput.value) != null ? _a : "").trim();
       if (!raw) {
@@ -2318,54 +3736,271 @@
     });
   }
 
+  // dynasty-scans/src/browse/browse-downloaded.ts
+  init_state();
+  init_db2();
+  var PAGE_SIZE = 25, PH10 = window.PluginHost, downloadedSearchQuery = "", cachedChaptersList = [];
+  function resetDownloadedState() {
+    downloadedSearchQuery = "", cachedChaptersList = [];
+  }
+  onRouteChange((view) => {
+    view !== "browse" && resetDownloadedState();
+  });
+  async function renderDownloadedChapters(host, page, reload) {
+    if (cachedChaptersList = await getFullyCachedChapters(), host.querySelector("#ds-downloaded-container")) {
+      updateDownloadedView(host, page, reload);
+      return;
+    }
+    host.innerHTML = "";
+    let container = document.createElement("div");
+    container.id = "ds-downloaded-container", container.style.cssText = "display:flex;flex-direction:column;";
+    let header = document.createElement("div");
+    header.className = "ds-row ds-downloaded-header", header.style.cssText = "justify-content:space-between;align-items:center;padding:4px 8px;margin-bottom:8px;background:var(--sys-control-bg,#f4f4f4);border:1px solid var(--sys-border-light,#ddd);border-radius:3px;gap:8px;flex-wrap:wrap;";
+    let statsSpan = document.createElement("div");
+    statsSpan.className = "ds-downloaded-stats", statsSpan.style.cssText = "font-size:11px;color:var(--sys-window-text,#333);display:flex;align-items:center;gap:6px;", header.appendChild(statsSpan);
+    let filterWrap = document.createElement("div");
+    filterWrap.className = "input-wrapper", filterWrap.style.cssText = "width:220px;max-width:100%;", filterWrap.innerHTML = `
+    <input type="text" class="input-field has-clear" placeholder="Filter downloaded chapters..." value="${downloadedSearchQuery}" style="width:100%;box-sizing:border-box;font-size:11px;height:22px;" />
+    <button type="button" class="input-clear-btn" tabindex="-1" title="Clear"><i class="bi bi-x-lg"></i></button>
+  `;
+    let filterInput = filterWrap.querySelector("input");
+    filterInput.addEventListener("input", () => {
+      downloadedSearchQuery = filterInput.value, updateDownloadedView(host, 1, reload);
+    }), setupInputClearButtons(filterWrap), header.appendChild(filterWrap), container.appendChild(header);
+    let list = document.createElement("div");
+    list.id = "ds-downloaded-list", container.appendChild(list);
+    let pagerWrap = document.createElement("div");
+    pagerWrap.id = "ds-downloaded-pager", container.appendChild(pagerWrap), host.appendChild(container), updateDownloadedView(host, page, reload);
+  }
+  function updateDownloadedView(host, page, reload) {
+    scrollBrowseToTop();
+    let statsSpan = host.querySelector(".ds-downloaded-stats"), list = host.querySelector("#ds-downloaded-list"), pagerWrap = host.querySelector("#ds-downloaded-pager");
+    if (!list || !pagerWrap) return;
+    let totalBytes = cachedChaptersList.reduce((acc, c) => acc + c.totalSizeBytes, 0);
+    statsSpan && (statsSpan.innerHTML = `
+      <i class="bi bi-cloud-check-fill" style="color:var(--sys-primary,#0078d4);font-size:13px;"></i>
+      <span><b>${cachedChaptersList.length}</b> fully downloaded chapter${cachedChaptersList.length === 1 ? "" : "s"} (${formatBytes(totalBytes)} offline)</span>
+    `);
+    let queryLower = downloadedSearchQuery.trim().toLowerCase(), filtered = queryLower ? cachedChaptersList.filter(
+      (c) => c.chapterTitle.toLowerCase().includes(queryLower) || c.seriesName && c.seriesName.toLowerCase().includes(queryLower) || c.chapterPermalink.toLowerCase().includes(queryLower)
+    ) : cachedChaptersList, totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)), currentPage = Math.min(page, totalPages), start = (currentPage - 1) * PAGE_SIZE, pageItems = filtered.slice(start, start + PAGE_SIZE);
+    if (updateBrowseTopPager(
+      totalPages,
+      currentPage,
+      (p) => updateDownloadedView(host, p, reload),
+      "downloaded"
+    ), list.innerHTML = "", pagerWrap.innerHTML = "", pageItems.length === 0) {
+      let empty = document.createElement("div");
+      empty.className = "ds-muted", empty.style.cssText = "padding:24px;text-align:center;font-size:12px;", downloadedSearchQuery ? empty.textContent = `No downloaded chapters matched "${downloadedSearchQuery}".` : empty.innerHTML = `
+        <div style="font-size:24px;margin-bottom:8px;"><i class="bi bi-cloud-arrow-down"></i></div>
+        <div>No fully downloaded chapters found yet.</div>
+        <div style="font-size:11px;margin-top:4px;color:#888;">
+          Enable <b>Auto-Cache</b> in Settings or click <b>Cache Chapter</b> while reading to save chapters for offline reading.
+        </div>
+      `, list.appendChild(empty);
+      return;
+    }
+    let feedList = document.createElement("div");
+    feedList.className = "ds-feed-list", feedList.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+    for (let ch of pageItems)
+      feedList.appendChild(renderDownloadedChapterRow(ch));
+    if (list.appendChild(feedList), totalPages > 1) {
+      let pager = renderPager(
+        totalPages,
+        currentPage,
+        (p) => updateDownloadedView(host, p, reload)
+      );
+      pagerWrap.appendChild(pager);
+    }
+  }
+  function renderDownloadedChapterRow(ch) {
+    let item = document.createElement("div");
+    item.className = "ds-item ds-feed-item", item.style.cssText = "display:flex;align-items:center;gap:10px;padding:6px 8px;cursor:pointer;";
+    let coverWrap = document.createElement("div");
+    if (coverWrap.className = "ds-feed-cover-wrap", coverWrap.style.cssText = "flex-shrink:0;width:38px;height:52px;background:#e2e2e2;border:1px solid #ccc;border-radius:2px;overflow:hidden;display:flex;align-items:center;justify-content:center;", ch.coverPath) {
+      let img = document.createElement("img");
+      img.src = PH10.convertFileSrc(ch.coverPath), img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;", img.loading = "lazy", img.onerror = () => {
+        coverWrap.innerHTML = '<i class="bi bi-book" style="color:#888;font-size:16px;"></i>';
+      }, coverWrap.appendChild(img);
+    } else
+      coverWrap.innerHTML = '<i class="bi bi-book" style="color:#888;font-size:16px;"></i>';
+    item.appendChild(coverWrap);
+    let info = document.createElement("div");
+    info.className = "ds-fill", info.style.cssText = "display:flex;flex-direction:column;gap:4px;";
+    let titleRow = document.createElement("div");
+    titleRow.className = "ds-flex-row", titleRow.style.cssText = "flex-wrap:wrap;";
+    let title = document.createElement("span");
+    title.className = "ds-item-title", title.style.cssText = "font-weight:600;font-size:12px;color:var(--sys-window-text,#111);", title.textContent = decodeEntities(ch.chapterTitle), titleRow.appendChild(title);
+    let offlineIcon = document.createElement("span");
+    offlineIcon.innerHTML = '<i class="bi bi-cloud-check-fill ds-offline-icon" style="color:var(--sys-primary,#0078d4);font-size:11px;" title="Available Offline (Fully Cached)"></i>', titleRow.appendChild(offlineIcon), info.appendChild(titleRow);
+    let metaRow2 = document.createElement("div");
+    if (metaRow2.className = "ds-flex-row", metaRow2.style.cssText = "flex-wrap:wrap;font-size:11px;", ch.seriesName && ch.seriesPermalink) {
+      let seriesLink = document.createElement("span");
+      seriesLink.className = "ds-series-link", seriesLink.textContent = decodeEntities(ch.seriesName), seriesLink.title = `Go to series: ${decodeEntities(ch.seriesName)}`, seriesLink.addEventListener("click", (ev) => {
+        ev.stopPropagation(), navigate({
+          view: "series",
+          seriesPermalink: ch.seriesPermalink,
+          seriesName: ch.seriesName
+        });
+      }), metaRow2.appendChild(seriesLink);
+    }
+    let badgePages = document.createElement("span");
+    if (badgePages.className = "ds-muted", badgePages.textContent = `\u2713 ${ch.pageCount} pages`, metaRow2.appendChild(badgePages), ch.totalSizeBytes > 0) {
+      let badgeSize = document.createElement("span");
+      badgeSize.className = "ds-muted", badgeSize.textContent = `\xB7 ${formatBytes(ch.totalSizeBytes)}`, metaRow2.appendChild(badgeSize);
+    }
+    if (ch.lastCachedAt > 0) {
+      let badgeDate = document.createElement("span");
+      badgeDate.className = "ds-muted", badgeDate.textContent = `\xB7 ${formatDate(ch.lastCachedAt)}`, metaRow2.appendChild(badgeDate);
+    }
+    info.appendChild(metaRow2), item.appendChild(info);
+    let readBtn = document.createElement("button");
+    readBtn.type = "button", readBtn.className = "win-button ds-btn-sm", readBtn.style.cssText = "font-size:11px;padding:2px 10px;flex-shrink:0;", readBtn.innerHTML = '<i class="bi bi-book"></i> Read', readBtn.title = `Read "${decodeEntities(ch.chapterTitle)}"`;
+    let openChapter = () => {
+      var _a, _b;
+      navigate({
+        view: "reader",
+        seriesPermalink: (_a = ch.seriesPermalink) != null ? _a : void 0,
+        seriesName: (_b = ch.seriesName) != null ? _b : void 0,
+        chapterPermalink: ch.chapterPermalink,
+        chapterTitle: ch.chapterTitle
+      });
+    };
+    return readBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation(), openChapter();
+    }), item.addEventListener("click", openChapter), item.appendChild(readBtn), item;
+  }
+
   // dynasty-scans/src/browse/browse-controller.ts
-  var TABS = [
+  var currentBrowseSeq = 0, TABS = [
     { id: "releases", label: "Recent Releases" },
     { id: "added", label: "Recently Added" },
+    { id: "downloaded", label: "Downloaded" },
     { id: "series-dir", label: "Series Directory" },
-    { id: "tags-dir", label: "Tags" }
-  ];
+    { id: "tags-dir", label: "Tags" },
+    { id: "search", label: "Search" }
+  ], topPagerMap = /* @__PURE__ */ new Map();
+  function updateBrowseTopPager(totalPages, currentPage, onPage, tabId) {
+    tabId && topPagerMap.set(tabId, { totalPages, currentPage, onPage });
+    let topPager = document.getElementById("ds-browse-top-pager");
+    if (!topPager || (topPager.innerHTML = "", totalPages <= 1)) return;
+    let pager = renderPager(totalPages, currentPage, onPage, {
+      cssText: "align-items:center;margin:0;"
+    });
+    topPager.appendChild(pager);
+  }
+  function scrollBrowseToTop() {
+    let dsBrowse = document.getElementById("ds-pane-browse") || document.getElementById("ds-view");
+    dsBrowse && (dsBrowse.scrollTop = 0);
+  }
   async function renderTabContent(host, tabId, page) {
-    host.innerHTML = "";
-    let loading = document.createElement("div");
-    loading.className = "ds-muted", loading.textContent = "Loading\u2026", host.appendChild(loading);
+    scrollBrowseToTop();
+    let seq = ++currentBrowseSeq, cancelLoading = attachDelayedLoading(host, 140);
     try {
-      tabId === "releases" || tabId === "added" ? await renderFeed(host, tabId, page, renderTabContent) : tabId === "series-dir" ? await renderDirectory(host, "series", page, renderTabContent) : await renderDirectory(host, "tags", page, renderTabContent);
+      if (tabId === "releases" || tabId === "added")
+        await renderFeed(host, tabId, page, renderTabContent);
+      else if (tabId === "downloaded")
+        await renderDownloadedChapters(host, page, renderTabContent);
+      else if (tabId === "series" || tabId === "series-dir")
+        await renderDirectory(host, "series", page, (h, _k, p) => renderTabContent(h, "series-dir", p));
+      else if (tabId === "tags" || tabId === "tags-dir")
+        await renderDirectory(host, "tags", page, (h, _k, p) => renderTabContent(h, "tags-dir", p));
+      else if (tabId === "search") {
+        let routeSearch = {
+          searchQuery: state.route.searchQuery,
+          withTag: state.route.withTag,
+          searchClass: state.route.searchClass
+        };
+        delete state.route.searchQuery, delete state.route.withTag, delete state.route.searchClass, await renderSearchTab(host, page, renderTabContent, routeSearch);
+      }
+      if (cancelLoading(), seq !== currentBrowseSeq) return;
+      scrollBrowseToTop();
     } catch (err) {
-      host.innerHTML = "";
-      let msg = err instanceof Error ? err.message : String(err), retry = document.createElement("button");
-      retry.type = "button", retry.className = "win-button", retry.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Retry', retry.addEventListener("click", () => void renderTabContent(host, tabId, page)), host.appendChild(retry);
+      if (cancelLoading(), seq !== currentBrowseSeq) return;
+      console.error("[ds-browse] renderTabContent failed:", err), host.innerHTML = "";
+      let errorBox = document.createElement("div");
+      errorBox.style.cssText = "display:flex;flex-direction:column;gap:6px;padding:8px;", errorBox.innerHTML = `<span class="ds-muted">Failed to load content: ${err instanceof Error ? err.message : String(err)}</span>`;
+      let retry = document.createElement("button");
+      retry.type = "button", retry.className = "win-button", retry.style.cssText = "width:86px;justify-content:center;", retry.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Retry', retry.addEventListener("click", () => void renderTabContent(host, tabId, page)), errorBox.appendChild(retry), host.appendChild(errorBox);
     }
   }
   function renderBrowse(container, route) {
-    var _a;
+    var _a, _b;
     container.innerHTML = "";
     let searchBox = document.createElement("div");
-    searchBox.className = "group-box", searchBox.style.cssText = "margin-bottom:8px;", searchBox.innerHTML = '<div class="group-box-title"><i class="bi bi-search"></i> Search &amp; Go</div><div style="display:flex;flex-direction:column;gap:6px;">  <div class="ds-row">    <div class="ds-search-wrap" style="flex:1;">      <input type="text" class="input-field" id="ds-search-input"        placeholder="Search dynasty-scans (opens in your browser)..." style="width:100%;" />      <div class="ds-typeahead" id="ds-search-suggest" style="display:none;"></div>    </div>    <button type="button" class="win-button" id="ds-search-btn">      <i class="bi bi-box-arrow-up-right"></i> Search    </button>  </div>  <div class="ds-row">    <input type="text" class="input-field" id="ds-url-input" style="flex:1;"      placeholder="Paste a dynasty-scans.com series or chapter URL..." />    <button type="button" class="win-button" id="ds-url-btn">      <i class="bi bi-link-45deg"></i> Open Locally    </button>  </div>  <div class="ds-muted" style="margin-top:2px;">    Accepted: https://dynasty-scans.com/series/&lt;permalink&gt; or /chapters/&lt;permalink&gt; (or the .json form).  </div></div>', container.appendChild(searchBox), wireSearchPanel(searchBox);
+    searchBox.className = "group-box", searchBox.style.cssText = "margin-bottom:8px;", localStorage.getItem("ds-search-go-collapsed") === "true" && searchBox.classList.add("collapsed"), searchBox.innerHTML = '<div class="group-box-title">  <i class="bi bi-search"></i> Search &amp; Go  <button type="button" class="group-box-collapse-btn" title="Toggle collapse">    <i class="bi bi-chevron-down"></i>  </button></div><div class="group-box-body">  <div class="ds-row">    <div class="ds-search-wrap" style="flex:1;">      <div class="input-wrapper">        <input type="text" class="input-field has-clear" id="ds-search-input"          placeholder="Search dynasty-scans in-app (series, chapters, authors, tags)..." style="width:100%;" />        <button type="button" class="input-clear-btn" tabindex="-1" title="Clear">          <i class="bi bi-x-lg"></i>        </button>      </div>      <div class="ds-typeahead ds-hidden" id="ds-search-suggest"></div>    </div>    <button type="button" class="win-button" id="ds-search-btn" style="width:86px;justify-content:center;flex-shrink:0;"><i class="bi bi-search"></i><span>Search</span></button>  </div>  <div class="ds-row">    <div class="input-wrapper" style="flex:1;">      <input type="text" class="input-field has-clear" id="ds-url-input"        placeholder="Paste a dynasty-scans.com series or chapter URL..." style="width:100%;" />      <button type="button" class="input-clear-btn" tabindex="-1" title="Clear">        <i class="bi bi-x-lg"></i>      </button>    </div>    <button type="button" class="win-button" id="ds-url-paste-btn" title="Paste URL from clipboard"><i class="bi bi-clipboard"></i><span>Paste</span></button>    <button type="button" class="win-button" id="ds-url-btn" style="width:86px;justify-content:center;flex-shrink:0;"><i class="bi bi-box-arrow-in-right"></i><span>Open</span></button>  </div>  <div class="ds-muted" style="margin-top:2px;">    Accepted: https://dynasty-scans.com/series/&lt;permalink&gt; or /chapters/&lt;permalink&gt; (or the .json form).  </div></div>', container.appendChild(searchBox), setupInputClearButtons(searchBox);
+    let toggleSearchGo = (ev) => {
+      ev.stopPropagation();
+      let isNowCollapsed = searchBox.classList.toggle("collapsed");
+      localStorage.setItem("ds-search-go-collapsed", String(isNowCollapsed));
+    };
+    (_a = searchBox.querySelector(".group-box-title")) == null || _a.addEventListener("click", toggleSearchGo);
     let tabsRow = document.createElement("div");
-    tabsRow.className = "ds-subtabs", container.appendChild(tabsRow);
+    tabsRow.className = "ds-subtabs";
+    let tabsLeft = document.createElement("div");
+    tabsLeft.className = "ds-subtabs-left", tabsRow.appendChild(tabsLeft);
+    let tabsRight = document.createElement("div");
+    tabsRight.className = "ds-subtabs-right", tabsRow.appendChild(tabsRight), container.appendChild(tabsRow);
+    let topPagerContainer = document.createElement("div");
+    topPagerContainer.id = "ds-browse-top-pager", topPagerContainer.style.cssText = "display:flex;align-items:center;", tabsRight.appendChild(topPagerContainer);
     let content = document.createElement("div");
     content.id = "ds-browse-content", content.style.cssText = "margin-top:8px;", container.appendChild(content);
-    let currentTab = (_a = route.browseTab) != null ? _a : "releases";
+    let panes = /* @__PURE__ */ new Map();
+    for (let tab of TABS) {
+      let pane = document.createElement("div");
+      pane.id = `ds-browse-tab-${tab.id}`, pane.className = "ds-browse-tab-pane", pane.classList.add("ds-hidden"), content.appendChild(pane), panes.set(tab.id, pane);
+    }
+    let loadedPanes = /* @__PURE__ */ new Set(), paneLoadedAt = /* @__PURE__ */ new Map(), switchTab = (tabId, forceReload = !1) => {
+      var _a2;
+      route.browseTab = tabId;
+      for (let b of Array.from(tabsLeft.querySelectorAll(".ds-subtab")))
+        b.dataset.tabId === tabId ? b.classList.add("active") : b.classList.remove("active");
+      for (let [id, pane] of panes.entries())
+        pane.classList.toggle("ds-hidden", id !== tabId);
+      let activePane = panes.get(tabId);
+      if (!activePane) return;
+      let savedPager = topPagerMap.get(tabId);
+      if (savedPager ? updateBrowseTopPager(savedPager.totalPages, savedPager.currentPage, savedPager.onPage) : topPagerContainer.innerHTML = "", !loadedPanes.has(tabId) || forceReload || tabId === "downloaded")
+        loadedPanes.add(tabId), paneLoadedAt.set(tabId, Date.now()), renderTabContent(activePane, tabId, 1);
+      else {
+        let lastLoaded = (_a2 = paneLoadedAt.get(tabId)) != null ? _a2 : 0;
+        Date.now() - lastLoaded > 9e4 && (tabId === "releases" || tabId === "added") && (paneLoadedAt.set(tabId, Date.now()), revalidateFeedHead(tabId).then((res) => {
+          res.hasNew && showFeedUpdateBanner(activePane, tabId, (h, t, p) => renderTabContent(h, t, p));
+        }));
+      }
+    };
+    wireSearchPanel(searchBox, (query2) => {
+      route.searchQuery = query2, switchTab("search", !0);
+    });
+    let currentTab = (_b = route.browseTab) != null ? _b : "releases";
     for (let tab of TABS) {
       let btn = document.createElement("button");
       btn.type = "button", btn.className = `win-button ds-subtab${tab.id === currentTab ? " active" : ""}`, btn.dataset.tabId = tab.id, btn.textContent = tab.label, btn.addEventListener("click", () => {
-        route.browseTab = tab.id;
-        for (let b of tabsRow.children) b.classList.remove("active");
-        btn.classList.add("active"), renderTabContent(content, tab.id, 1);
-      }), tabsRow.appendChild(btn);
+        switchTab(tab.id);
+      }), tabsLeft.appendChild(btn);
     }
-    let coverToggleBtn = document.createElement("button");
-    coverToggleBtn.type = "button", coverToggleBtn.id = "ds-cover-toggle", coverToggleBtn.className = "win-button ds-cover-toggle-btn", coverToggleBtn.title = "Toggle cover image loading (diagnostic)";
-    let updateCoverToggleLabel = () => {
-      coverToggleBtn.innerHTML = browseCovers.coversEnabled ? '<i class="bi bi-image"></i> Covers: ON' : '<i class="bi bi-image-slash"></i> Covers: OFF', coverToggleBtn.style.opacity = browseCovers.coversEnabled ? "1" : "0.5";
-    };
-    updateCoverToggleLabel(), coverToggleBtn.addEventListener("click", () => {
-      var _a2;
-      browseCovers.setCoversEnabled(!browseCovers.coversEnabled), updateCoverToggleLabel();
-      let activeTab = tabsRow.querySelector(".ds-subtab.active"), activeTabId = (_a2 = activeTab == null ? void 0 : activeTab.dataset.tabId) != null ? _a2 : currentTab;
-      renderTabContent(content, activeTabId, 1);
-    }), tabsRow.appendChild(coverToggleBtn), renderTabContent(content, currentTab, 1);
+    let checkUpdatesBtn = document.createElement("button");
+    checkUpdatesBtn.type = "button", checkUpdatesBtn.id = "ds-browse-check-updates-btn", checkUpdatesBtn.className = "win-button ds-btn-sm", checkUpdatesBtn.title = "Force check for updates online", checkUpdatesBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Check Updates', checkUpdatesBtn.addEventListener("click", async () => {
+      var _a2, _b2;
+      checkUpdatesBtn.disabled = !0;
+      let prevHtml = checkUpdatesBtn.innerHTML;
+      checkUpdatesBtn.innerHTML = '<i class="bi bi-arrow-clockwise ds-spin"></i> Checking...';
+      try {
+        let activeTab = tabsLeft.querySelector(".ds-subtab.active"), activeTabId = (_a2 = activeTab == null ? void 0 : activeTab.dataset.tabId) != null ? _a2 : currentTab, activePane = (_b2 = panes.get(activeTabId)) != null ? _b2 : content;
+        await renderTabContent(activePane, activeTabId, 1), checkUpdatesBtn.innerHTML = '<i class="bi bi-check2"></i> Updated', setTimeout(() => {
+          checkUpdatesBtn.innerHTML = prevHtml, checkUpdatesBtn.disabled = !1;
+        }, 1500);
+      } catch (e) {
+        checkUpdatesBtn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Error', setTimeout(() => {
+          checkUpdatesBtn.innerHTML = prevHtml, checkUpdatesBtn.disabled = !1;
+        }, 1500);
+      }
+    }), tabsRight.appendChild(checkUpdatesBtn);
+    let scrollBottomBtn = document.createElement("button");
+    scrollBottomBtn.type = "button", scrollBottomBtn.id = "ds-scroll-bottom-btn", scrollBottomBtn.className = "win-button ds-scroll-bottom-btn ds-btn-sm", scrollBottomBtn.title = "Scroll to bottom of list", scrollBottomBtn.innerHTML = '<i class="bi bi-arrow-down"></i> Bottom', scrollBottomBtn.addEventListener("click", () => {
+      let view = document.getElementById("ds-pane-browse") || document.getElementById("ds-view");
+      view && view.scrollTo({ top: view.scrollHeight, behavior: "smooth" });
+    }), tabsRight.appendChild(scrollBottomBtn), switchTab(currentTab);
   }
 
   // dynasty-scans/src/ui-series.ts
@@ -2381,9 +4016,7 @@
     load(container, permalink, !1);
   }
   async function load(container, permalink, force) {
-    container.innerHTML = "";
-    let loading = document.createElement("div");
-    loading.className = "ds-muted", loading.textContent = "Loading series\u2026", container.appendChild(loading);
+    container.innerHTML = "", container.appendChild(renderLoading());
     let series;
     try {
       series = await fetchSeries(permalink, force);
@@ -2495,7 +4128,7 @@
     let head = document.createElement("div");
     head.className = "ds-series-head", head.appendChild(coverEl(coverPath, series.name));
     let info = document.createElement("div");
-    info.style.cssText = "flex:1;min-width:0;";
+    info.className = "ds-fill";
     let name = document.createElement("div");
     name.style.cssText = "font-size:14px;font-weight:600;", name.textContent = decodeEntities(series.name);
     let typeLine = document.createElement("div");
@@ -2536,9 +4169,28 @@
     let statusRow = metaRow("Status / Format:", statusTags);
     statusRow && metaRows.appendChild(statusRow);
     let tagsRow = metaRow("Tags:", otherTags);
-    if (tagsRow && metaRows.appendChild(tagsRow), (authorRow || groupRow || doujinRow || pairingRow || characterRow || statusRow || tagsRow) && info.appendChild(metaRows), head.appendChild(info), container.appendChild(head), chapters.length === 0) {
-      let empty = document.createElement("div");
-      empty.className = "ds-muted", empty.textContent = "This series has no readable chapters here yet.", container.appendChild(empty);
+    if (tagsRow && metaRows.appendChild(tagsRow), (authorRow || groupRow || doujinRow || pairingRow || characterRow || statusRow || tagsRow) && info.appendChild(metaRows), head.appendChild(info), container.appendChild(head), series.taggables && series.taggables.length > 0) {
+      let taggablesGroup = document.createElement("div");
+      taggablesGroup.className = "group-box", taggablesGroup.style.cssText = "margin-top:10px;", taggablesGroup.innerHTML = `<div class="group-box-title"><i class="bi bi-collection"></i> Series &amp; Anthologies (${series.taggables.length})</div>`;
+      let taggablesGrid = document.createElement("div");
+      taggablesGrid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:6px;margin-top:4px;";
+      for (let tg of series.taggables) {
+        let card = document.createElement("div");
+        card.className = "ds-row", card.style.cssText = "padding:4px 6px;background:var(--sys-bg-active, #f5f5f5);border:1px solid var(--sys-border-light, #e0e0e0);border-radius:3px;cursor:pointer;align-items:center;gap:6px;", card.innerHTML = `<i class="bi bi-book" style="color:var(--sys-primary,#0078d4);"></i><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:500;">${decodeEntities(tg.name)}</span><span class="ds-muted" style="font-size:10px;">${tg.type}</span>`, card.addEventListener("click", () => {
+          navigate({
+            view: "series",
+            seriesPermalink: tg.permalink,
+            seriesName: tg.name
+          });
+        }), taggablesGrid.appendChild(card);
+      }
+      taggablesGroup.appendChild(taggablesGrid), container.appendChild(taggablesGroup);
+    }
+    if (chapters.length === 0) {
+      if (!series.taggables || series.taggables.length === 0) {
+        let empty = document.createElement("div");
+        empty.className = "ds-muted", empty.style.cssText = "margin-top:12px;", empty.textContent = "This entry has no chapters or series listed here.", container.appendChild(empty);
+      }
       return;
     }
     let sortOrder = "asc", chapterSection = document.createElement("div");
@@ -2583,10 +4235,10 @@
     }), renderChapters(), container.appendChild(chapterSection);
   }
   function chapterRow(ch, prog, cachedCount, chapterList, seriesPermalink, seriesName, isReadInHistory) {
-    let row = document.createElement("div"), isCompleted = (prog == null ? void 0 : prog.completed) === 1, isRead = isCompleted || isReadInHistory;
+    let row = document.createElement("div"), isCompleted = (prog == null ? void 0 : prog.completed) === 1, isRead = isCompleted || isReadInHistory, isFullyCached = cachedCount > 0 && (prog && prog.page_total > 0 ? cachedCount >= prog.page_total : !0);
     row.className = `ds-chapter-row${isRead ? " ds-chapter-read" : ""}`;
     let title = document.createElement("div");
-    title.className = "ds-chapter-title", title.textContent = decodeEntities(ch.title), row.appendChild(title);
+    title.className = "ds-chapter-title", title.style.cssText = "display:inline-flex;align-items:center;gap:4px;", title.innerHTML = `<span>${decodeEntities(ch.title)}</span>${isFullyCached ? '<i class="bi bi-cloud-check-fill ds-offline-icon" style="color:var(--sys-primary,#0078d4);font-size:11px;" title="Available Offline (Fully Cached)"></i>' : ""}`, row.appendChild(title);
     let badges = [];
     if (isCompleted ? badges.push("\u2713 Completed") : prog && prog.page_index > 0 ? badges.push(`page ${prog.page_index + 1}/${prog.page_total}`) : isReadInHistory && badges.push("\u2713 Read"), cachedCount > 0 && badges.push(`${cachedCount} cached`), ch.released_on && badges.push(ch.released_on), badges.length > 0) {
       let badge = document.createElement("div");
@@ -2640,7 +4292,7 @@
   init_db2();
 
   // dynasty-scans/src/reader/reader-queue.ts
-  var ReaderQueue = class {
+  var _ReaderQueue = class _ReaderQueue {
     constructor(c) {
       this.c = c;
       this.queue = [];
@@ -2673,7 +4325,7 @@
       }), this.pump());
     }
     pump() {
-      for (; this.inFlight.size < 1 && this.queue.length > 0; ) {
+      for (; this.inFlight.size < _ReaderQueue.MAX_CONCURRENT && this.queue.length > 0; ) {
         let idx = this.queue.shift();
         this.inFlight.has(idx) || (this.inFlight.add(idx), this.downloadPage(idx).finally(() => {
           this.inFlight.delete(idx), this.pump();
@@ -2703,6 +4355,8 @@
       }
     }
   };
+  _ReaderQueue.MAX_CONCURRENT = 3;
+  var ReaderQueue = _ReaderQueue;
 
   // dynasty-scans/src/reader/reader-viewport.ts
   var ReaderViewport = class {
@@ -2722,19 +4376,15 @@
       }, ro = new ResizeObserver(updateViewportHeight);
       ro.observe(viewport), c.onDispose(() => ro.disconnect()), window.setTimeout(updateViewportHeight, 0);
     }
-    /** Called once slots exist. Attaches scroll tracking, preloading, and wheel. */
-    wireAfterSlots() {
-      let c = this.c;
-      this.attachScrollTracking(), this.attachPreloader(), this.attachWheel();
-    }
     /** Jumps to a page: paged mode slides the strip; scroll mode scrolls into view.
      *  `instant` disables the smooth animation (used for the initial resume restore
      *  so the first page never flashes while scrolling from the top). */
-    slideTo(index, instant = !1) {
+    slideTo(index, instant = !1, scrollToBottom = !1) {
       let c = this.c;
-      if (c.isHorizontal)
-        c.scrollLock ? (c.strip.style.transition = "", c.strip.style.transform = `translateX(${-index * 100}%)`) : (c.strip.style.transition = "none", c.strip.offsetWidth, c.strip.style.transform = `translateX(${-index * 100}%)`);
-      else {
+      if (c.isHorizontal) {
+        let targetSlot = c.slots[index];
+        targetSlot && (scrollToBottom ? targetSlot.scrollTop = Math.max(0, targetSlot.scrollHeight - targetSlot.clientHeight) : targetSlot.scrollTop = 0, targetSlot.scrollLeft = 0), c.scrollLock ? (c.strip.style.transition = "", c.strip.style.transform = `translateX(${-index * 100}%)`) : (c.strip.style.transition = "none", c.strip.offsetWidth, c.strip.style.transform = `translateX(${-index * 100}%)`);
+      } else {
         c.isProgrammaticScroll = !0, c.programmaticScrollTimer !== null && clearTimeout(c.programmaticScrollTimer), c.programmaticScrollTimer = window.setTimeout(() => {
           c.isProgrammaticScroll = !1;
         }, 350);
@@ -2803,48 +4453,114 @@
     attachPreloader() {
       let c = this.c, observer = new IntersectionObserver(
         (entries) => {
+          if (c.isHorizontal) return;
+          let autoCache = isAutoCacheChapterEnabled(), prefetchCount = getPrefetchBuffer();
           for (let entry of entries)
             if (entry.isIntersecting) {
               let idx = Number(entry.target.dataset.index);
-              c.enqueue(idx), c.enqueue(idx + 1), c.enqueue(idx + 2);
+              if (c.enqueue(idx), autoCache)
+                c.enqueue(idx + 1), c.enqueue(idx + 2);
+              else
+                for (let offset = 1; offset <= prefetchCount; offset++)
+                  idx + offset < c.pages.length && c.enqueue(idx + offset);
             }
         },
-        { root: c.viewport, rootMargin: "400px 0px", threshold: 0 }
+        { root: c.viewport, rootMargin: "0px 0px", threshold: 0.05 }
       );
       c.slots.forEach((s) => observer.observe(s)), c.onDispose(() => observer.disconnect());
     }
+    /** Called once slots exist. Attaches scroll tracking, preloading, wheel, and drag panning. */
+    wireAfterSlots() {
+      this.attachScrollTracking(), this.attachPreloader(), this.attachWheel(), this.attachDragPanning();
+    }
+    attachDragPanning() {
+      let c = this.c, isDown = !1, startX = 0, startY = 0, scrollLeft = 0, scrollTop = 0, activeSlot = null, isViewportPan = !1, onMouseDown = (ev) => {
+        var _a, _b;
+        if (ev.button === 0 && !((_a = ev.target) != null && _a.closest("button, a, input, select, textarea")))
+          if (c.isHorizontal) {
+            let target = (_b = ev.target) == null ? void 0 : _b.closest(".ds-slot");
+            if (!target || target.scrollWidth <= target.clientWidth && target.scrollHeight <= target.clientHeight)
+              return;
+            isDown = !0, isViewportPan = !1, activeSlot = target, activeSlot.classList.add("ds-dragging"), startX = ev.pageX, startY = ev.pageY, scrollLeft = activeSlot.scrollLeft, scrollTop = activeSlot.scrollTop, ev.preventDefault();
+          } else {
+            let vp = c.viewport;
+            if (!vp || vp.scrollWidth <= vp.clientWidth && vp.scrollHeight <= vp.clientHeight)
+              return;
+            isDown = !0, isViewportPan = !0, c.viewport.classList.add("ds-dragging"), startX = ev.pageX, startY = ev.pageY, scrollLeft = vp.scrollLeft, scrollTop = vp.scrollTop, ev.preventDefault();
+          }
+      }, onMouseMove = (ev) => {
+        if (!isDown) return;
+        ev.preventDefault();
+        let dx = ev.pageX - startX, dy = ev.pageY - startY;
+        isViewportPan && c.viewport ? (c.viewport.scrollLeft = scrollLeft - dx, c.viewport.scrollTop = scrollTop - dy) : activeSlot && (activeSlot.scrollLeft = scrollLeft - dx, activeSlot.scrollTop = scrollTop - dy);
+      }, onMouseUp = () => {
+        isDown && (isDown = !1, activeSlot && (activeSlot.classList.remove("ds-dragging"), activeSlot = null), isViewportPan && c.viewport && (c.viewport.classList.remove("ds-dragging"), isViewportPan = !1));
+      };
+      c.viewport.addEventListener("mousedown", onMouseDown), window.addEventListener("mousemove", onMouseMove), window.addEventListener("mouseup", onMouseUp), c.onDispose(() => {
+        c.viewport.removeEventListener("mousedown", onMouseDown), window.removeEventListener("mousemove", onMouseMove), window.removeEventListener("mouseup", onMouseUp);
+      });
+    }
     attachWheel() {
-      let c = this.c, onWheel = (ev) => {
-        if (!c.scrollLock && !c.isHorizontal) return;
+      let c = this.c, momentumDir = null, momentumTimer = null, indicator = null, showIndicator = (type) => {
+        indicator || (indicator = document.createElement("div"), indicator.className = "ds-snap-indicator", c.viewport.appendChild(indicator)), indicator.className = `ds-snap-indicator ${type === "next" ? "bottom" : "top"} visible`, indicator.innerHTML = type === "next" ? '<i class="bi bi-chevron-double-down"></i> Scroll again for Next Page' : '<i class="bi bi-chevron-double-up"></i> Scroll again for Prev Page';
+      }, hideIndicator = () => {
+        indicator && indicator.classList.remove("visible"), momentumDir = null;
+      }, onWheel = (ev) => {
+        var _a;
+        let targetTag = (_a = ev.target) == null ? void 0 : _a.tagName;
+        if (targetTag === "INPUT" || targetTag === "TEXTAREA" || targetTag === "SELECT") return;
+        if (c.isHorizontal) {
+          let slot = c.slots[c.currentIndex];
+          if (slot && slot.scrollHeight > slot.clientHeight + 4) {
+            let maxScrollTop = slot.scrollHeight - slot.clientHeight, atTop = slot.scrollTop <= 2 && ev.deltaY < 0, atBottom = slot.scrollTop >= maxScrollTop - 2 && ev.deltaY > 0;
+            if (!atTop && !atBottom) {
+              ev.preventDefault(), slot.scrollTop = Math.max(0, Math.min(maxScrollTop, slot.scrollTop + ev.deltaY)), hideIndicator();
+              return;
+            }
+            ev.preventDefault();
+            let targetDir = atBottom ? "next" : "prev";
+            if (targetDir === "prev" && c.currentIndex <= 0 || targetDir === "next" && c.currentIndex >= c.pages.length - 1) {
+              hideIndicator();
+              return;
+            }
+            if (momentumDir !== targetDir) {
+              momentumDir = targetDir, showIndicator(targetDir), momentumTimer !== null && clearTimeout(momentumTimer), momentumTimer = window.setTimeout(hideIndicator, 1200);
+              return;
+            }
+            hideIndicator(), momentumTimer !== null && clearTimeout(momentumTimer), targetDir === "next" ? c.setPage(c.currentIndex + 1, !1, !1) : c.setPage(c.currentIndex - 1, !1, !0);
+            return;
+          }
+          hideIndicator(), ev.preventDefault();
+          let now2 = Date.now();
+          if (now2 - this.wheelDebounce < 180 || Math.abs(ev.deltaY) < 10 && Math.abs(ev.deltaX) < 10) return;
+          this.wheelDebounce = now2, (Math.abs(ev.deltaY) >= Math.abs(ev.deltaX) ? ev.deltaY : ev.deltaX) > 0 ? c.setPage(c.currentIndex + 1) : c.setPage(c.currentIndex - 1);
+          return;
+        }
+        if (hideIndicator(), !c.scrollLock) return;
         ev.preventDefault();
         let now = Date.now();
         if (now - this.wheelDebounce < 180 || Math.abs(ev.deltaY) < 10 && Math.abs(ev.deltaX) < 10) return;
         this.wheelDebounce = now;
-        let delta = Math.abs(ev.deltaY) >= Math.abs(ev.deltaX) ? ev.deltaY : ev.deltaX;
-        if (c.isHorizontal)
-          delta > 0 ? c.setPage(c.currentIndex + 1) : c.setPage(c.currentIndex - 1);
-        else {
-          let vpRect = c.viewport.getBoundingClientRect();
-          if (delta > 0) {
-            let targetIdx = c.currentIndex + 1;
-            for (let i = 0; i < c.slots.length; i++)
-              if (c.slots[i].getBoundingClientRect().top > vpRect.top + 20) {
-                targetIdx = i;
-                break;
-              }
-            c.setPage(Math.min(c.pages.length - 1, targetIdx));
-          } else {
-            let targetIdx = c.currentIndex - 1;
-            for (let i = c.slots.length - 1; i >= 0; i--)
-              if (c.slots[i].getBoundingClientRect().top < vpRect.top - 20) {
-                targetIdx = i;
-                break;
-              }
-            c.setPage(Math.max(0, targetIdx));
-          }
+        let delta = Math.abs(ev.deltaY) >= Math.abs(ev.deltaX) ? ev.deltaY : ev.deltaX, vpRect = c.viewport.getBoundingClientRect();
+        if (delta > 0) {
+          let targetIdx = c.currentIndex + 1;
+          for (let i = 0; i < c.slots.length; i++)
+            if (c.slots[i].getBoundingClientRect().top > vpRect.top + 20) {
+              targetIdx = i;
+              break;
+            }
+          c.setPage(Math.min(c.pages.length - 1, targetIdx));
+        } else {
+          let targetIdx = c.currentIndex - 1;
+          for (let i = c.slots.length - 1; i >= 0; i--)
+            if (c.slots[i].getBoundingClientRect().top < vpRect.top - 20) {
+              targetIdx = i;
+              break;
+            }
+          c.setPage(Math.max(0, targetIdx));
         }
       };
-      c.viewport.addEventListener("wheel", onWheel, { passive: !1 }), c.onDispose(() => c.viewport.removeEventListener("wheel", onWheel));
+      window.addEventListener("wheel", onWheel, { passive: !1 }), c.onDispose(() => window.removeEventListener("wheel", onWheel));
     }
   };
 
@@ -2889,7 +4605,24 @@
       let fullscreenBtn = document.createElement("button");
       fullscreenBtn.type = "button", fullscreenBtn.className = "win-button", fullscreenBtn.style.cssText = "font-size:11px;padding:2px 8px;", fullscreenBtn.title = "Toggle Fullscreen (F)", fullscreenBtn.innerHTML = '<i class="bi bi-arrows-fullscreen"></i> Fullscreen';
       let themeBtn = document.createElement("button");
-      themeBtn.type = "button", themeBtn.className = "win-button", themeBtn.style.cssText = "font-size:11px;padding:2px 8px;", themeBtn.title = "Toggle Light / Dark Theme (T)", c.prevChapterBtn = prevChapterBtn, c.nextChapterBtn = nextChapterBtn, c.prevPageBtn = prevPageBtn, c.nextPageBtn = nextPageBtn, c.positionLabel = positionLabel, c.progressFill = progressFill, c.scrollLockBtn = scrollLockBtn, c.modeBtn = modeBtn, c.fitSelect = fitSelect, c.fullscreenBtn = fullscreenBtn, c.themeBtn = themeBtn, nav.appendChild(prevChapterBtn), nav.appendChild(prevPageBtn), nav.appendChild(progressWrap), nav.appendChild(nextPageBtn), nav.appendChild(nextChapterBtn), nav.appendChild(scrollLockBtn), nav.appendChild(modeBtn), nav.appendChild(fitSelect), nav.appendChild(themeBtn), nav.appendChild(fullscreenBtn), c.readerContainer.appendChild(nav);
+      themeBtn.type = "button", themeBtn.className = "win-button", themeBtn.style.cssText = "font-size:11px;padding:2px 8px;", themeBtn.title = "Toggle Light / Dark Theme (T)";
+      let zoomOutBtn = document.createElement("button");
+      zoomOutBtn.type = "button", zoomOutBtn.className = "win-button", zoomOutBtn.style.cssText = "font-size:11px;padding:2px 7px;", zoomOutBtn.title = "Zoom Out (Ctrl - / -)", zoomOutBtn.innerHTML = '<i class="bi bi-dash-lg"></i>';
+      let zoomResetBtn = document.createElement("button");
+      zoomResetBtn.type = "button", zoomResetBtn.className = "win-button", zoomResetBtn.style.cssText = "font-size:11px;padding:2px 6px;min-width:44px;", zoomResetBtn.title = "Reset Zoom (Ctrl 0)", zoomResetBtn.textContent = "100%";
+      let zoomInBtn = document.createElement("button");
+      zoomInBtn.type = "button", zoomInBtn.className = "win-button", zoomInBtn.style.cssText = "font-size:11px;padding:2px 7px;", zoomInBtn.title = "Zoom In (Ctrl + / +)", zoomInBtn.innerHTML = '<i class="bi bi-plus-lg"></i>';
+      let updateZoomUI = () => {
+        let isFitActive = c.fitMode !== "original";
+        zoomResetBtn.textContent = `${Math.round(c.zoomScale * 100)}%`, c.readerContainer.style.setProperty("--ds-zoom-scale", String(c.zoomScale)), zoomOutBtn.disabled = isFitActive || c.zoomScale <= 0.25, zoomResetBtn.disabled = isFitActive, zoomInBtn.disabled = isFitActive || c.zoomScale >= 3, isFitActive ? (zoomOutBtn.title = "Zoom disabled when Fit mode is active (set to Original Size to zoom)", zoomResetBtn.title = "Zoom disabled when Fit mode is active", zoomInBtn.title = "Zoom disabled when Fit mode is active (set to Original Size to zoom)") : (zoomOutBtn.title = "Zoom Out (Ctrl - / -)", zoomResetBtn.title = "Reset Zoom (Ctrl 0)", zoomInBtn.title = "Zoom In (Ctrl + / +)");
+      };
+      zoomOutBtn.addEventListener("click", () => {
+        c.fitMode === "original" && (c.zoomScale = Math.max(0.25, Math.round((c.zoomScale - 0.1) * 10) / 10), updateZoomUI());
+      }), zoomResetBtn.addEventListener("click", () => {
+        c.fitMode === "original" && (c.zoomScale = 1, updateZoomUI());
+      }), zoomInBtn.addEventListener("click", () => {
+        c.fitMode === "original" && (c.zoomScale = Math.min(3, Math.round((c.zoomScale + 0.1) * 10) / 10), updateZoomUI());
+      }), c.prevChapterBtn = prevChapterBtn, c.nextChapterBtn = nextChapterBtn, c.prevPageBtn = prevPageBtn, c.nextPageBtn = nextPageBtn, c.positionLabel = positionLabel, c.progressFill = progressFill, c.scrollLockBtn = scrollLockBtn, c.modeBtn = modeBtn, c.fitSelect = fitSelect, c.fullscreenBtn = fullscreenBtn, c.themeBtn = themeBtn, nav.appendChild(prevChapterBtn), nav.appendChild(prevPageBtn), nav.appendChild(progressWrap), nav.appendChild(nextPageBtn), nav.appendChild(nextChapterBtn), nav.appendChild(scrollLockBtn), nav.appendChild(modeBtn), nav.appendChild(fitSelect), nav.appendChild(themeBtn), nav.appendChild(fullscreenBtn), nav.appendChild(zoomOutBtn), nav.appendChild(zoomResetBtn), nav.appendChild(zoomInBtn), c.readerContainer.appendChild(nav), updateZoomUI();
       let gotoChapter = (ch) => c.gotoChapter(ch);
       prevChapterBtn.addEventListener("click", () => {
         let curIdx = c.chapterList.findIndex((x) => x.permalink === c.permalink);
@@ -2902,7 +4635,7 @@
       }), modeBtn.addEventListener("click", () => {
         c.isHorizontal = !c.isHorizontal, localStorage.setItem("ds-reader-mode", c.isHorizontal ? "paged" : "scroll"), c.viewportImpl.applyLayoutMode(), this.updateScrollLockBtn();
       }), fitSelect.addEventListener("change", () => {
-        c.fitMode = fitSelect.value, localStorage.setItem("ds-reader-fit", c.fitMode), c.readerContainer.className = `fit-${c.fitMode}`;
+        c.readerContainer.classList.remove("fit-width", "fit-height", "fit-original"), c.fitMode = fitSelect.value, localStorage.setItem("ds-reader-fit", c.fitMode), c.readerContainer.classList.add(`fit-${c.fitMode}`), c.fitMode !== "original" && (c.zoomScale = 1), updateZoomUI();
       }), themeBtn.addEventListener("click", () => this.toggleTheme()), fullscreenBtn.addEventListener("click", () => this.setFullscreen(!c.isFullscreen)), this.applyTheme();
       let onFullscreenChange = () => {
         !document.fullscreenElement && c.isFullscreen ? this.setFullscreen(!1) : c.viewportImpl.resetToCurrentPage(!1);
@@ -2948,7 +4681,6 @@
   // dynasty-scans/src/reader/reader-shortcuts.ts
   var ReaderShortcuts = class {
     constructor(c) {
-      this.c = c;
       let onKeyDown = (ev) => {
         var _a;
         let tag = (_a = ev.target) == null ? void 0 : _a.tagName;
@@ -2972,6 +4704,7 @@
       this.chapterList = [];
       this.isHorizontal = !1;
       this.fitMode = "width";
+      this.zoomScale = 1;
       this.scrollLock = !1;
       this.currentIndex = 0;
       this.readerTheme = "light";
@@ -3019,7 +4752,7 @@
     }
     // Slot rendering ---------------------------------------------------------
     renderSlotImg(slot, absPath, pageNum) {
-      let PH11 = window.PluginHost;
+      let PH12 = window.PluginHost;
       slot.classList.remove("ds-slot-loading"), slot.innerHTML = "";
       let badge = document.createElement("div");
       badge.className = "ds-slot-page-badge", badge.textContent = `${pageNum} / ${this.pages.length}`, slot.appendChild(badge);
@@ -3027,27 +4760,26 @@
       img.className = "ds-page-img", img.alt = `Page ${pageNum}`, img.addEventListener("error", () => {
         let idx = Number(slot.dataset.index);
         this.cachedMap.delete(idx), !this.queue.isRetrying(idx) && (this.queue.markRetrying(idx), this.renderSlotState(slot, "spinner", "Re-downloading\u2026"), this.queue.enqueue(idx, !0));
-      }), img.src = PH11.convertFileSrc(absPath), slot.appendChild(img);
+      }), img.src = PH12.convertFileSrc(absPath), slot.appendChild(img);
     }
     renderSlotState(slot, kind, message) {
       slot.innerHTML = "";
       let idx = Number(slot.dataset.index), badge = document.createElement("div");
       badge.className = "ds-slot-page-badge", badge.textContent = `${idx + 1} / ${this.pages.length}`, slot.appendChild(badge);
-      let state3 = document.createElement("div");
-      state3.className = `ds-slot-state${kind === "error" ? " ds-slot-error" : ""}`, kind === "spinner" ? state3.innerHTML = '<i class="bi bi-cloud-arrow-down" style="font-size:20px;color:var(--sys-primary,#0078d4);"></i><div class="ds-slot-pulse-wrap"><div class="ds-slot-pulse-bar"></div></div>' : kind === "offline" ? state3.innerHTML = '<i class="bi bi-wifi-off" style="font-size:20px;"></i>' : state3.innerHTML = '<i class="bi bi-exclamation-triangle" style="font-size:20px;"></i>';
+      let state2 = document.createElement("div");
+      state2.className = `ds-slot-state${kind === "error" ? " ds-slot-error" : ""}`, kind === "spinner" ? state2.innerHTML = '<i class="bi bi-cloud-arrow-down" style="font-size:20px;color:var(--sys-primary,#0078d4);"></i><div class="ds-slot-pulse-wrap"><div class="ds-slot-pulse-bar"></div></div>' : kind === "offline" ? state2.innerHTML = '<i class="bi bi-wifi-off" style="font-size:20px;"></i>' : kind === "idle" ? state2.innerHTML = '<i class="bi bi-book" style="font-size:20px;color:var(--sys-text-muted,#888);"></i>' : state2.innerHTML = '<i class="bi bi-exclamation-triangle" style="font-size:20px;"></i>';
       let text = document.createElement("span");
       if (kind === "spinner") {
         let pct = this.pages.length > 0 ? Math.round(this.cachedCount / this.pages.length * 100) : 0;
         text.textContent = `Downloading page ${idx + 1} of ${this.pages.length} (${this.cachedCount}/${this.pages.length} cached \xB7 ${pct}%)`;
-      } else
-        text.textContent = message;
-      if (state3.appendChild(text), kind === "error") {
+      } else kind === "idle" ? text.textContent = `Page ${idx + 1} of ${this.pages.length} \xB7 Waiting to read\u2026` : text.textContent = message;
+      if (state2.appendChild(text), kind === "error") {
         let retry = document.createElement("button");
         retry.type = "button", retry.className = "win-button", retry.style.cssText = "font-size:10px;padding:1px 8px;", retry.textContent = "Retry", retry.addEventListener("click", () => {
           this.queue.clearFailed(idx), this.renderSlotState(slot, "spinner", "Downloading\u2026"), this.queue.enqueue(idx);
-        }), state3.appendChild(retry);
+        }), state2.appendChild(retry);
       }
-      slot.appendChild(state3);
+      slot.appendChild(state2);
     }
     updateCacheCount() {
       this.cachedCount = this.cachedMap.size, this.updateProgressText();
@@ -3064,6 +4796,10 @@
     }
     // Queue access ------------------------------------------------------------
     enqueue(index, priority = !1) {
+      if (index >= 0 && index < this.pages.length) {
+        let slot = this.slots[index];
+        slot && !this.cachedMap.has(index) && !this.isPageFailed(index) && slot.querySelector(".bi-book") && this.renderSlotState(slot, "spinner", "Downloading\u2026");
+      }
       this.queue.enqueue(index, priority);
     }
     isPageFailed(index) {
@@ -3096,8 +4832,19 @@
         }
       }
     }
-    setPage(index, instant = !1) {
-      index < 0 || index >= this.pages.length || (this.currentIndex = index, this.atEnd = this.currentIndex >= this.pages.length - 1, this.updateProgressText(), this.schedulePersist(), this.atEnd && this.persistNow(), this.enqueue(this.currentIndex), this.enqueue(this.currentIndex + 1), this.enqueue(this.currentIndex + 2), this.viewportImpl.slideTo(index, instant));
+    setPage(index, instant = !1, scrollToBottom = !1) {
+      if (!(index < 0 || index >= this.pages.length)) {
+        if (this.currentIndex = index, this.atEnd = this.currentIndex >= this.pages.length - 1, this.updateProgressText(), this.schedulePersist(), this.atEnd && this.persistNow(), this.enqueue(this.currentIndex), isAutoCacheChapterEnabled())
+          this.enqueue(this.currentIndex + 1), this.enqueue(this.currentIndex + 2);
+        else {
+          let prefetchCount = getPrefetchBuffer();
+          for (let offset = 1; offset <= prefetchCount; offset++) {
+            let nextIdx = this.currentIndex + offset;
+            nextIdx < this.pages.length && !this.cachedMap.has(nextIdx) && this.enqueue(nextIdx);
+          }
+        }
+        this.viewportImpl.slideTo(index, instant, scrollToBottom);
+      }
     }
     /**
      * Reveals the strip once the resume restore has landed. In paged mode the
@@ -3182,7 +4929,7 @@
     }
     // Main bootstrap -----------------------------------------------------------
     async init() {
-      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
       let route = this.route, container = this.container;
       this.permalink = (_a = route.chapterPermalink) != null ? _a : "";
       let chapter;
@@ -3198,8 +4945,8 @@
       }
       if (this.disposed) return;
       let seriesTag = ((_b = chapter.tags) != null ? _b : []).find((t) => t.type === "Series");
-      this.seriesPermalink = (_d = (_c = route.seriesPermalink) != null ? _c : seriesTag == null ? void 0 : seriesTag.permalink) != null ? _d : null, this.seriesName = (_f = (_e = route.seriesName) != null ? _e : seriesTag == null ? void 0 : seriesTag.name) != null ? _f : chapter.title, this.chapterTitle = (_g = route.chapterTitle) != null ? _g : chapter.title, this.chapterList = (_h = route.chapterList) != null ? _h : [], this.pages = (_i = chapter.pages) != null ? _i : [];
-      let startPage = (_j = route.startPage) != null ? _j : 0;
+      this.seriesPermalink = (_d = (_c = seriesTag == null ? void 0 : seriesTag.permalink) != null ? _c : route.seriesPermalink) != null ? _d : null, this.seriesName = (_f = (_e = seriesTag == null ? void 0 : seriesTag.name) != null ? _e : route.seriesName) != null ? _f : chapter.title, this.chapterTitle = chapter.title || route.chapterTitle || "Chapter", this.chapterList = (_g = route.chapterList) != null ? _g : [], this.pages = (_h = chapter.pages) != null ? _h : [];
+      let startPage = (_i = route.startPage) != null ? _i : 0;
       if (startPage <= 0)
         try {
           let prog = await getReadingProgress(this.permalink);
@@ -3220,7 +4967,7 @@
           t.title && t.permalink && cl.push({ title: t.title, permalink: t.permalink, released_on: t.released_on });
         cl.length > 0 && (this.chapterList = cl, this.updateChapterNav());
       }), this.isHorizontal = localStorage.getItem("ds-reader-mode") === "paged", this.fitMode = localStorage.getItem("ds-reader-fit") || "width", this.scrollLock = localStorage.getItem("ds-reader-scroll-lock") === "1", this.readerTheme = localStorage.getItem("ds-reader-theme") || "light", this.readerContainer = document.createElement("div"), this.readerContainer.id = "ds-reader-container", this.readerContainer.className = `fit-${this.fitMode}`, container.appendChild(this.readerContainer), this.toolbarImpl = new ReaderToolbar(this), this.viewportImpl = new ReaderViewport(this), this.queue = new ReaderQueue(this), this.shortcutsImpl = new ReaderShortcuts(this);
-      let cachedRows;
+      let cachedRows = [];
       try {
         cachedRows = await getCachedPages(this.permalink);
       } catch (err) {
@@ -3231,18 +4978,28 @@
       for (let row of cachedRows)
         row.page_index >= 0 && row.page_index < this.pages.length && row.file_path && this.cachedMap.set(row.page_index, row.file_path);
       this.cachedCount = this.cachedMap.size;
+      let autoCacheAll = isAutoCacheChapterEnabled();
       for (let i = 0; i < this.pages.length; i++) {
         let slot = document.createElement("div");
         slot.className = "ds-slot", slot.dataset.index = String(i);
         let absPath = this.cachedMap.get(i);
-        absPath ? this.renderSlotImg(slot, absPath, i + 1) : isOnline() ? (this.renderSlotState(slot, "spinner", "Queued for download\u2026"), this.enqueue(i)) : this.renderSlotState(slot, "offline", "Offline \u2014 not downloaded"), this.strip.appendChild(slot), this.slots.push(slot);
+        absPath ? this.renderSlotImg(slot, absPath, i + 1) : isOnline() ? autoCacheAll ? (this.renderSlotState(slot, "spinner", "Queued for download\u2026"), this.enqueue(i)) : this.renderSlotState(slot, "idle", "Waiting to read\u2026") : this.renderSlotState(slot, "offline", "Offline \u2014 not downloaded"), this.strip.appendChild(slot), this.slots.push(slot);
       }
-      this.cachedMap.has(this.currentIndex) || this.enqueue(this.currentIndex, !0), this.cachedMap.has(this.currentIndex + 1) || this.enqueue(this.currentIndex + 1, !0), this.cachedMap.has(this.currentIndex + 2) || this.enqueue(this.currentIndex + 2, !0), startPage > 0 && this.readerContainer.classList.add("ds-restoring"), this.toolbarImpl.wireAfterSlots(), this.viewportImpl.wireAfterSlots(), this.updateProgressText(), this.standardizeCachePaths();
+      if (this.cachedMap.has(this.currentIndex) || this.enqueue(this.currentIndex, !0), autoCacheAll)
+        this.cachedMap.has(this.currentIndex + 1) || this.enqueue(this.currentIndex + 1, !0), this.cachedMap.has(this.currentIndex + 2) || this.enqueue(this.currentIndex + 2, !0);
+      else {
+        let prefetchCount = getPrefetchBuffer();
+        for (let offset = 1; offset <= prefetchCount; offset++) {
+          let nextIdx = this.currentIndex + offset;
+          nextIdx < this.pages.length && !this.cachedMap.has(nextIdx) && this.enqueue(nextIdx, !0);
+        }
+      }
+      startPage > 0 && this.readerContainer.classList.add("ds-restoring"), this.toolbarImpl.wireAfterSlots(), this.viewportImpl.wireAfterSlots(), this.updateProgressText(), this.standardizeCachePaths();
       try {
         await addHistory({
           chapterPermalink: this.permalink,
-          seriesPermalink: (_k = this.seriesPermalink) != null ? _k : "",
-          seriesName: (_l = this.seriesName) != null ? _l : "",
+          seriesPermalink: (_j = this.seriesPermalink) != null ? _j : "",
+          seriesName: (_k = this.seriesName) != null ? _k : "",
           chapterTitle: this.chapterTitle
         });
       } catch (err) {
@@ -3290,6 +5047,18 @@
             !this.cachedMap.has(i) && !this.isPageFailed(i) && this.enqueue(i);
           this.setBanner("Caching chapter\u2026");
         }), host.appendChild(cacheBtn);
+        let copyBtn = document.createElement("button");
+        copyBtn.type = "button", copyBtn.className = "win-button", copyBtn.title = "Copy chapter link to clipboard", copyBtn.innerHTML = '<i class="bi bi-link-45deg"></i>', copyBtn.addEventListener("click", async () => {
+          try {
+            let url = `https://dynasty-scans.com/chapters/${this.permalink}`;
+            await navigator.clipboard.writeText(url), copyBtn.innerHTML = '<i class="bi bi-check-lg"></i>', this.setBanner("Copied chapter link to clipboard"), window.setTimeout(() => {
+              copyBtn.isConnected && (copyBtn.innerHTML = '<i class="bi bi-link-45deg"></i>');
+            }, 2e3);
+          } catch (err) {
+            let msg = err instanceof Error ? err.message : String(err);
+            this.setBanner(`Copy failed: ${msg}`);
+          }
+        }), host.appendChild(copyBtn);
         let openBtn = document.createElement("button");
         openBtn.type = "button", openBtn.className = "win-button", openBtn.title = "Open this chapter in your browser", openBtn.innerHTML = '<i class="bi bi-box-arrow-up-right"></i>', openBtn.addEventListener("click", () => {
           openExternal(`https://dynasty-scans.com/chapters/${this.permalink}`);
@@ -3297,9 +5066,7 @@
       }), startPage > 0 && (this.setPage(startPage, !0), this.revealAfterRestore());
     }
     retry() {
-      this.dispose(), this.container.innerHTML = "";
-      let loading = document.createElement("div");
-      loading.className = "ds-muted", loading.textContent = "Loading chapter\u2026", this.container.appendChild(loading), new _ReaderController(this.route, this.container).init();
+      this.dispose(), this.container.innerHTML = "", this.container.appendChild(renderLoading()), new _ReaderController(this.route, this.container).init();
     }
     dispose() {
       this.disposed = !0;
@@ -3311,8 +5078,7 @@
       setBanner("Missing chapter permalink.");
       return;
     }
-    let loading = document.createElement("div");
-    loading.className = "ds-muted", loading.textContent = "Loading chapter\u2026", container.appendChild(loading);
+    container.appendChild(renderLoading());
     let ctrl = new ReaderController(route, container);
     return ctrl.init(), () => ctrl.dispose();
   }
@@ -3325,9 +5091,7 @@
     let root = document.createElement("div");
     root.id = "ds-cache-view-container", root.style.cssText = "display:flex;flex-direction:column;gap:12px;padding:8px 4px;width:100%;box-sizing:border-box;", container.appendChild(root);
     let loadView = async () => {
-      root.innerHTML = "";
-      let loading = document.createElement("div");
-      loading.className = "ds-muted", loading.style.cssText = "padding:20px;text-align:center;", loading.textContent = "Calculating storage footprint and cache records\u2026", root.appendChild(loading);
+      root.innerHTML = "", root.appendChild(renderLoading());
       try {
         let [stats, groups] = await Promise.all([getCacheOverviewStats(), getCachedSeriesGroups()]);
         root.innerHTML = "", setActions((host) => {
@@ -3392,7 +5156,7 @@
           let filterInput = document.createElement("input");
           filterInput.type = "text", filterInput.className = "win-textbox", filterInput.placeholder = "Filter cached works by name or permalink...", filterInput.style.cssText = "flex:1;min-width:200px;font-size:11px;padding:3px 6px;";
           let sortWrap = document.createElement("div");
-          sortWrap.style.cssText = "display:flex;align-items:center;gap:6px;";
+          sortWrap.className = "ds-flex-row";
           let sortLabel = document.createElement("span");
           sortLabel.className = "ds-item-meta", sortLabel.style.cssText = "font-size:11px;white-space:nowrap;", sortLabel.textContent = "Sort by:";
           let sortSelect = document.createElement("select");
@@ -3461,7 +5225,7 @@
                 ph.innerHTML = '<i class="bi bi-book"></i>', row.appendChild(ph);
               }
               let info = document.createElement("div");
-              info.style.cssText = "flex:1;min-width:0;";
+              info.className = "ds-fill";
               let name = document.createElement("div");
               name.style.cssText = "font-size:12px;font-weight:600;cursor:pointer;", name.textContent = decodeEntities(item.seriesName), name.addEventListener("click", () => {
                 item.isStandalone ? navigate({
@@ -3515,6 +5279,7 @@
   min-height: 0;
   height: 100%;
   overflow: hidden;
+  transform-origin: top left;
 }
 #ds-topbar {
   display: flex;
@@ -3527,9 +5292,53 @@
   z-index: 10;
 }
 .ds-nav-tab.active {
-  font-weight: bold;
   background: var(--sys-hover-bg, #e5e5e5);
   border-color: var(--sys-border-dark, #999);
+}
+.ds-session-tab {
+  font-weight: 500;
+  border-radius: 2px !important;
+}
+.ds-session-tab.active {
+  background: var(--sys-highlight-bg, #0078d7) !important;
+  color: var(--sys-highlight-text, #ffffff) !important;
+  border-color: #005499 !important;
+  font-weight: 500 !important;
+}
+.ds-segmented-switch {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--sys-button-border, #707070);
+  background: var(--sys-button-bg, #f0f0f0);
+  border-radius: 2px;
+  overflow: hidden;
+  height: 24px;
+}
+.ds-segmented-btn {
+  border: none !important;
+  background: transparent;
+  color: var(--sys-control-text, #000);
+  padding: 0 10px;
+  height: 100%;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  user-select: none;
+  border-radius: 0 !important;
+}
+.ds-segmented-btn:hover {
+  background: var(--sys-button-hover, #e5f1fb);
+}
+.ds-segmented-btn.active {
+  background: var(--sys-highlight-bg, #0078d7);
+  color: var(--sys-highlight-text, #ffffff) !important;
+}
+.ds-segmented-btn + .ds-segmented-btn {
+  border-left: 1px solid var(--sys-border-dark, #b0b0b0) !important;
 }
 #ds-title {
   font-size: 13px;
@@ -3563,19 +5372,45 @@
 #ds-view {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+#ds-pane-browse {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 8px;
   display: flex;
   flex-direction: column;
 }
-#ds-view:has(#ds-reader-container) {
+#ds-pane-library {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+#ds-pane-dynamic {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px;
+}
+#ds-pane-dynamic:has(#ds-reader-container) {
   padding: 0 !important;
   overflow: hidden !important;
-}
-#ds-view:has(#ds-library-container) {
-  overflow: hidden !important;
-  height: 100%;
+  height: 100% !important;
 }
 
 /* Generic content helpers */
@@ -3591,15 +5426,33 @@
 }
 .ds-subtabs {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ds-subtabs-left {
+  display: flex;
   gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ds-subtabs-right {
+  display: flex;
+  gap: 6px;
+  align-items: center;
   flex-wrap: wrap;
 }
 .ds-subtab {
   font-size: 11px;
   padding: 2px 8px;
+  font-weight: 500;
 }
 .ds-subtab.active {
-  font-weight: 600;
+  background: var(--sys-highlight-bg, #0078d7) !important;
+  color: var(--sys-highlight-text, #ffffff) !important;
+  border-color: #005499 !important;
+  font-weight: 500 !important;
 }
 .ds-tagline {
   display: flex;
@@ -3744,6 +5597,72 @@
 .ds-chapter-badge {
   font-size: 10px;
   color: #666;
+  flex-shrink: 0;
+}
+
+/* Modal Dialog System (Native Desktop Style) */
+.ds-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal, 99999);
+  padding: 20px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.ds-modal-window {
+  background: var(--sys-control-bg, #ececec);
+  border: 1px solid var(--sys-border-dark, #707070);
+  border-radius: 3px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 10px;
+  max-width: 92vw;
+  max-height: calc(100vh - 40px);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.ds-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--sys-border-dark, #b0b0b0);
+  padding-bottom: 6px;
+  flex-shrink: 0;
+}
+.ds-modal-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--sys-window-text, #000);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ds-modal-close {
+  font-size: 10px;
+  padding: 2px 6px;
+  min-width: 22px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ds-modal-body {
+  padding: 4px 2px 4px 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ds-modal-footer {
+  border-top: 1px solid var(--sys-border-light, #ffffff);
+  padding-top: 8px;
   flex-shrink: 0;
 }`;
 
@@ -3919,13 +5838,19 @@
   border: 1px solid #feefc3;
 }
 .ds-etag-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-family: monospace;
   font-size: 10px;
   background: var(--sys-window-bg, #fff);
   border: 1px solid var(--sys-border-light, #ccc);
-  padding: 1px 5px;
+  padding: 2px 5px;
   border-radius: 2px;
   color: var(--sys-text-muted, #777);
+}
+.ds-etag-hash {
+  font-family: monospace;
 }
 .ds-status-refresh-btn {
   font-size: 10px;
@@ -3937,7 +5862,12 @@
 .ds-feed-status-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ds-feed-status-pager-wrap {
+  display: inline-flex;
+  align-items: center;
 }
 .ds-scroll-top-btn {
   font-size: 10px;
@@ -3951,8 +5881,8 @@
   color: var(--sys-window-text, #333);
 }
 .ds-spin {
-  animation: ds-spin-anim 0.8s linear infinite;
   display: inline-block;
+  animation: ds-spin-anim 0.8s linear infinite;
 }
 @keyframes ds-spin-anim {
   from { transform: rotate(0deg); }
@@ -4248,13 +6178,26 @@
   align-items: center;
   padding: 10px;
   background: #eaeaea;
+  user-select: none;
+}
+#ds-reader-viewport.ds-dragging {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+#ds-reader-viewport.ds-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+.fit-original #ds-reader-viewport {
+  cursor: grab;
 }
 #ds-reader-viewport.horizontal {
+  cursor: default;
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  overflow-y: hidden;
-  overflow-x: auto;
+  overflow: hidden !important;
+  padding: 0 !important;
 }
 #ds-reader-strip {
   display: flex;
@@ -4293,6 +6236,40 @@
 .ds-page-img {
   display: block;
   box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.ds-snap-indicator {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 14px;
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.ds-snap-indicator.bottom {
+  bottom: 24px;
+  transform: translate(-50%, 6px);
+}
+.ds-snap-indicator.top {
+  top: 24px;
+  transform: translate(-50%, -6px);
+}
+.ds-snap-indicator.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 .ds-slot-loading {
   min-height: 200px;
@@ -4322,9 +6299,10 @@
   justify-content: center;
 }
 .fit-width .ds-page-img {
-  width: 100%;
-  max-width: 100%;
-  height: auto;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
   object-fit: contain;
 }
 .fit-height #ds-reader-viewport {
@@ -4349,16 +6327,18 @@
   flex-shrink: 0;
 }
 .fit-height .ds-page-img {
-  max-height: 100%;
-  max-width: 100%;
-  height: auto;
-  width: auto;
+  max-height: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  width: auto !important;
   object-fit: contain;
 }
 .fit-original .ds-page-img {
-  width: auto;
-  height: auto;
-  max-width: none;
+  zoom: var(--ds-zoom-scale, 1);
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
 }
 .fit-original .ds-slot {
   width: auto;
@@ -4385,16 +6365,40 @@
   height: 100%;
   max-height: 100%;
   display: flex !important;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   padding: 12px;
   box-sizing: border-box;
+  overflow: auto;
+  user-select: none;
+}
+#ds-reader-viewport.horizontal .ds-slot.ds-draggable {
+  cursor: grab;
+}
+#ds-reader-viewport.horizontal .ds-slot.ds-dragging {
+  cursor: grabbing;
 }
 #ds-reader-viewport.horizontal .ds-page-img {
+  margin: auto;
   max-height: 100%;
   max-width: 100%;
   width: auto;
   height: auto;
+  object-fit: contain;
+  pointer-events: none;
+}
+.fit-width #ds-reader-viewport.horizontal .ds-page-img {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  object-fit: contain;
+}
+.fit-height #ds-reader-viewport.horizontal .ds-page-img {
+  height: 100% !important;
+  max-height: 100% !important;
+  width: auto !important;
+  max-width: 100% !important;
   object-fit: contain;
 }
 
@@ -4446,9 +6450,446 @@
   color: #333;
 }`;
 
+  // dynasty-scans/src/styles/curator-ui-base.css
+  var curator_ui_base_default = `/*
+ * curator-ui-base.css \u2014 hand-extracted subset of the Curator dashboard design
+ * system that the dynasty-scans plugin actually renders.
+ *
+ * Owned by this standalone app (stays inside dynasty-scans-reader/ when it
+ * moves to its own repo). When Curator's design system changes in a relevant
+ * way, a targeted manual port is made.
+ *
+ * Extracted from:
+ *   base.css        \u2014 :root vars, reset, scrollbars, .hidden, .skeleton-*
+ *   components.css  \u2014 .win-button (+ .primary), .input-field
+ *   layout.css      \u2014 .group-box, .group-box-title
+ *   tags.css        \u2014 .tag-pill taxonomy classes
+ */
+
+/* ------------------------------------------------------------------ */
+/* base.css                                                           */
+/* ------------------------------------------------------------------ */
+:root {
+  --sys-control-bg: #ececec;
+  --sys-control-text: #000000;
+  --sys-window-bg: #ffffff;
+  --sys-window-text: #000000;
+  --sys-border-light: #ffffff;
+  --sys-border-dark: #b0b0b0;
+  --sys-border-focus: #0078d7;
+  --sys-highlight-bg: #0078d7;
+  --sys-highlight-text: #ffffff;
+  --sys-button-bg: #f0f0f0;
+  --sys-button-border: #707070;
+  --sys-button-hover: #e5f1fb;
+  --sys-button-active: #cce4f7;
+  --sys-status-bg: #f3f3f3;
+  --sys-status-text: #333333;
+  --sys-menu-bg: #f9f9f9;
+  --sys-menu-border: #d0d0d0;
+  --sys-text-subtle: #555555;
+  --sys-primary: #0078d4;
+  --z-dropdown: 100;
+  --z-modal: 9999;
+  --z-viewer: 10000;
+  --z-tooltip: 99999;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Tahoma, Arial, sans-serif;
+  font-size: 12px;
+}
+
+body {
+  background-color: var(--sys-control-bg);
+  color: var(--sys-control-text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+::-webkit-scrollbar-track {
+  background: #f0f0f0;
+  border: 1px solid #dcdcdc;
+}
+::-webkit-scrollbar-thumb {
+  background: #cdcdcd;
+  border: 3px solid #f0f0f0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a6a6a6;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.skeleton,
+.skeleton-pulse {
+  background: linear-gradient(
+    90deg,
+    var(--sys-control-bg, #e0e0e0) 25%,
+    var(--sys-window-bg, #f0f0f0) 50%,
+    var(--sys-control-bg, #e0e0e0) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+.skeleton-pulse {
+  border-radius: 3px;
+}
+.skeleton-card {
+  background-color: var(--sys-control-bg);
+  border: 1px solid var(--sys-border-dark);
+}
+.skeleton-text {
+  border-radius: 2px;
+}
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* components.css \u2014 Bootstrap Icons uniform vertical alignment        */
+/* ------------------------------------------------------------------ */
+/* Bootstrap icon fonts carry internal font metrics that add phantom
+   space above each glyph, so raw <i class="bi"> render slightly high
+   in buttons and rows (vertical-align on ::before is ignored inside
+   flex containers). Making every icon its own centered flex box keeps
+   the glyph dead-center regardless of container; the -0.125em baseline
+   nudge (twbs/icons PR #701) aligns icons sitting inline with text. */
+.bi {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  /* vertical-align: -0.125em; */
+}
+
+/* ------------------------------------------------------------------ */
+/* components.css \u2014 .win-button (+ .primary), .input-field            */
+/* ------------------------------------------------------------------ */
+.win-button {
+  background-color: var(--sys-button-bg);
+  color: var(--sys-control-text);
+  border: 1px solid var(--sys-button-border);
+  padding: 4px 12px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  user-select: none;
+  line-height: 1;
+}
+.win-button i {
+  display: inline-block;
+  vertical-align: unset;
+}
+.win-button:hover {
+  background-color: var(--sys-button-hover);
+  border-color: #3b78d7;
+}
+.win-button:active {
+  background-color: var(--sys-button-active);
+  border-color: #005499;
+}
+.win-button:disabled {
+  background-color: #e1e1e1;
+  color: #838383;
+  border-color: #adadad;
+  cursor: not-allowed;
+}
+.win-button.primary {
+  background-color: var(--sys-highlight-bg);
+  color: var(--sys-highlight-text);
+  border-color: #005499;
+}
+.win-button.primary:hover {
+  background-color: #1a86d9;
+  border-color: #004578;
+}
+.win-button.primary:active {
+  background-color: #005499;
+  border-color: #003f7f;
+}
+
+.input-field {
+  background-color: var(--sys-window-bg);
+  color: var(--sys-window-text);
+  border: 1px solid #7a7a7a;
+  padding: 0 8px;
+  height: 24px;
+  line-height: 24px;
+  outline: none;
+  font-size: 12px;
+}
+.input-field:focus {
+  border-color: var(--sys-border-focus);
+}
+
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.input-field.has-clear {
+  padding-right: 22px;
+  min-width: 0;
+  flex: 1;
+  width: 100%;
+}
+.input-clear-btn {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+  font-size: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 2px;
+}
+.input-clear-btn:hover {
+  background-color: #d0d0d0;
+  color: #333;
+}
+.input-clear-btn:active {
+  background-color: #b0b0b0;
+}
+.input-wrapper.has-value .input-clear-btn {
+  display: inline-flex;
+}
+
+/* ------------------------------------------------------------------ */
+/* layout.css \u2014 .group-box / .group-box-title                         */
+/* ------------------------------------------------------------------ */
+.group-box {
+  border: 1px solid var(--sys-border-dark);
+  border-radius: 3px;
+  padding: 12px;
+  position: relative;
+  background-color: var(--sys-control-bg);
+  margin-top: 8px;
+}
+.group-box-title {
+  position: absolute;
+  top: -9px;
+  left: 10px;
+  background-color: var(--sys-control-bg);
+  padding: 0 6px;
+  font-weight: 600;
+  color: #333333;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.group-box-collapse-btn {
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  padding: 0 4px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  color: var(--sys-button-border, #707070);
+  font-size: 10px;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.group-box-collapse-btn:hover {
+  background-color: var(--sys-button-hover, #e5f1fb);
+  border-color: var(--sys-border-dark, #b0b0b0);
+  color: var(--sys-border-focus, #0078d7);
+}
+.group-box-collapse-btn:active {
+  background-color: var(--sys-button-active, #cce4f7);
+  border-color: var(--sys-border-focus, #0078d7);
+}
+.group-box-collapse-btn i {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+.group-box.collapsed .group-box-collapse-btn i {
+  transform: rotate(-90deg);
+}
+.group-box.collapsed .group-box-body {
+  display: none !important;
+}
+.group-box.collapsed {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.group-box-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ------------------------------------------------------------------ */
+/* tags.css \u2014 .tag-pill taxonomy classes                              */
+/* ------------------------------------------------------------------ */
+.tag-pill {
+  font-size: 11px;
+  padding: 1px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 2px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 220px;
+}
+.tag-pill.tag-user {
+  background-color: #fff3cd;
+  border: 1px solid #ffeeba;
+  color: #856404;
+  font-weight: 500;
+}
+.tag-pill.tag-character {
+  background-color: #d1ecf1;
+  border: 1px solid #bee5eb;
+  color: #0c5460;
+}
+.tag-pill.tag-copyright {
+  background-color: #ebdcf9;
+  border: 1px solid #dcbdf5;
+  color: #511c74;
+}
+.tag-pill.tag-meta {
+  background-color: #e2e3e5;
+  border: 1px solid #d6d8db;
+  color: #383d41;
+}
+.tag-pill.tag-artist {
+  background-color: #fff0e6;
+  border: 1px solid #ffd9c2;
+  color: #7c2d12;
+}
+.tag-pill.tag-rank-3 {
+  background-color: #e7f0f7;
+  border: 1px solid #cfe1ee;
+  color: #33515f;
+}
+
+/* \u2500\u2500 Touhou Hakurei Yin-Yang Loading Screen \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+.ds-loading-screen {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 16px;
+  min-height: 120px;
+  width: 100%;
+  box-sizing: border-box;
+  gap: 8px;
+  user-select: none;
+}
+.ds-yinyang-spinner {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  animation: ds-yinyang-rotate 1.2s linear infinite;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+}
+@keyframes ds-yinyang-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ds-loading-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--sys-window-text, #333333);
+  letter-spacing: 0.2px;
+}
+
+/* \u2500\u2500 Semantic utility classes \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+   Extraction targets for the inline-style sweep (\xA74.5): repeated static
+   styling recipes move out of JS and into these classes. Anything genuinely
+   dynamic (reader transforms, zoom var, drag panning) stays in JS. */
+.ds-flex-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ds-flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ds-fill {
+  flex: 1;
+  min-width: 0;
+}
+.ds-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-btn-sm {
+  font-size: 11px;
+  padding: 2px 7px;
+}
+.ds-muted-xs {
+  font-size: 10px;
+  color: #666;
+}
+.ds-hidden {
+  display: none !important;
+}
+.ds-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.ds-danger {
+  background-color: #d13438;
+  border-color: #a80000;
+  color: #ffffff;
+}
+.ds-clickable {
+  cursor: pointer;
+}
+`;
+
   // dynasty-scans/src/index.ts
-  var PLUGIN_STYLES = [styles_default, library_default, browse_default, cache_default, reader_default], PH10 = window.PluginHost;
-  PH10 ? (registerRenderer("library", renderLibrary), registerRenderer("browse", renderBrowse), registerRenderer("series", renderSeries), registerRenderer("reader", renderReader), registerRenderer("cache", renderCache), injectStyles(), PH10.registerTab(TAB_ID, "Dynasty Scans", "bi bi-book", renderTab), console.log("dynasty-scans: registered tab and renderers.")) : console.error("dynasty-scans: PluginHost not available; aborting.");
+  var PLUGIN_STYLES = [curator_ui_base_default, styles_default, library_default, browse_default, cache_default, reader_default], PH11 = window.PluginHost;
+  PH11 ? (registerRenderer("library", renderLibrary), registerRenderer("browse", renderBrowse), registerRenderer("series", renderSeries), registerRenderer("reader", renderReader), registerRenderer("cache", renderCache), injectStyles(), PH11.registerTab(TAB_ID, "Dynasty Scans", "bi bi-book", renderTab)) : console.error("dynasty-scans: PluginHost not available; aborting.");
   function injectStyles() {
     if (document.getElementById("ds-style")) return;
     let style = document.createElement("style");
@@ -4457,14 +6898,18 @@
   }
   function renderTab() {
     let container = document.createElement("div");
-    container.id = "ds-root", container.innerHTML = '<div id="ds-topbar">  <div id="ds-nav-tabs" style="display:flex;align-items:center;gap:4px;">    <button type="button" class="win-button ds-nav-tab" id="ds-tab-browse">      <i class="bi bi-compass"></i> Browse &amp; Recent    </button>    <button type="button" class="win-button ds-nav-tab" id="ds-tab-library">      <i class="bi bi-collection"></i> Library    </button>    <div id="ds-session-tab-wrap" style="display:none;margin-left:4px;"></div>  </div>  <span id="ds-title" style="margin-left:8px;"></span>  <div id="ds-banner"></div>  <div id="ds-actions"></div></div><div id="ds-view"></div>';
+    container.id = "ds-root", container.style.setProperty("zoom", String(getSavedUiScale())), container.innerHTML = '<div id="ds-topbar">  <div class="ds-flex-row" id="ds-nav-tabs">    <div class="ds-segmented-switch" id="ds-view-switch">      <button type="button" class="ds-segmented-btn" id="ds-tab-browse" title="Browse &amp; Recent">        <i class="bi bi-compass"></i> Browse &amp; Recent      </button>      <button type="button" class="ds-segmented-btn" id="ds-tab-library" title="Library">        <i class="bi bi-collection"></i> Library      </button>    </div>    <div id="ds-session-tab-wrap" style="display:none;margin-left:2px;"></div>  </div>  <span id="ds-title" style="margin-left:8px;"></span>  <div id="ds-banner"></div>  <div id="ds-actions"></div>  <button type="button" class="win-button ds-btn-sm" id="ds-settings-btn" title="Settings (UI Scale &amp; Preferences)" style="margin-left:2px;">    <i class="bi bi-gear-fill"></i>  </button></div><div id="ds-view"></div>';
     let libBtn = container.querySelector("#ds-tab-library");
     libBtn == null || libBtn.addEventListener("click", () => {
       navigate({ view: "library" });
     });
     let browseBtn = container.querySelector("#ds-tab-browse");
-    return browseBtn == null || browseBtn.addEventListener("click", () => {
+    browseBtn == null || browseBtn.addEventListener("click", () => {
       navigate({ view: "browse" });
+    });
+    let settingsBtn = container.querySelector("#ds-settings-btn");
+    return settingsBtn == null || settingsBtn.addEventListener("click", () => {
+      openSettingsModal();
     }), setTimeout(() => {
       loadPluginView();
     }, 0), container;

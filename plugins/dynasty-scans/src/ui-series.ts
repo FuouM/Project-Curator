@@ -6,7 +6,6 @@
 
 import { Route, ChapterRef, decodeEntities, navigate, setActions, setBanner } from "./state";
 import {
-  ChapterCacheCount,
   SeriesProgressRow,
   followSeries,
   getCachedPageCounts,
@@ -18,6 +17,7 @@ import {
 import { Series, SeriesTag, fetchSeries, getSeriesCover, openExternal } from "./api";
 import { renderTagPill } from "./components/tag-pill";
 import { renderCoverImage } from "./components/cover";
+import { renderLoading } from "./components/loading";
 
 interface ChapterMeta extends ChapterRef {
   volumeHeader?: string;
@@ -35,10 +35,7 @@ export function renderSeries(container: HTMLElement, route: Route): void {
 
 async function load(container: HTMLElement, permalink: string, force: boolean): Promise<void> {
   container.innerHTML = "";
-  const loading = document.createElement("div");
-  loading.className = "ds-muted";
-  loading.textContent = "Loading series…";
-  container.appendChild(loading);
+  container.appendChild(renderLoading());
 
   let series: Series;
   try {
@@ -224,7 +221,7 @@ function buildBody(
   head.appendChild(coverEl(coverPath, series.name));
 
   const info = document.createElement("div");
-  info.style.cssText = "flex:1;min-width:0;";
+  info.className = "ds-fill";
   const name = document.createElement("div");
   name.style.cssText = "font-size:14px;font-weight:600;";
   name.textContent = decodeEntities(series.name);
@@ -349,11 +346,43 @@ function buildBody(
   head.appendChild(info);
   container.appendChild(head);
 
+  if (series.taggables && series.taggables.length > 0) {
+    const taggablesGroup = document.createElement("div");
+    taggablesGroup.className = "group-box";
+    taggablesGroup.style.cssText = "margin-top:10px;";
+    taggablesGroup.innerHTML = `<div class="group-box-title"><i class="bi bi-collection"></i> Series &amp; Anthologies (${series.taggables.length})</div>`;
+
+    const taggablesGrid = document.createElement("div");
+    taggablesGrid.style.cssText =
+      "display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:6px;margin-top:4px;";
+
+    for (const tg of series.taggables) {
+      const card = document.createElement("div");
+      card.className = "ds-row";
+      card.style.cssText =
+        "padding:4px 6px;background:var(--sys-bg-active, #f5f5f5);border:1px solid var(--sys-border-light, #e0e0e0);border-radius:3px;cursor:pointer;align-items:center;gap:6px;";
+      card.innerHTML = `<i class="bi bi-book" style="color:var(--sys-primary,#0078d4);"></i><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:500;">${decodeEntities(tg.name)}</span><span class="ds-muted" style="font-size:10px;">${tg.type}</span>`;
+      card.addEventListener("click", () => {
+        navigate({
+          view: "series",
+          seriesPermalink: tg.permalink,
+          seriesName: tg.name,
+        });
+      });
+      taggablesGrid.appendChild(card);
+    }
+    taggablesGroup.appendChild(taggablesGrid);
+    container.appendChild(taggablesGroup);
+  }
+
   if (chapters.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "ds-muted";
-    empty.textContent = "This series has no readable chapters here yet.";
-    container.appendChild(empty);
+    if (!series.taggables || series.taggables.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "ds-muted";
+      empty.style.cssText = "margin-top:12px;";
+      empty.textContent = "This entry has no chapters or series listed here.";
+      container.appendChild(empty);
+    }
     return;
   }
 
@@ -444,11 +473,18 @@ function chapterRow(
   const row = document.createElement("div");
   const isCompleted = prog?.completed === 1;
   const isRead = isCompleted || isReadInHistory;
+  const isFullyCached =
+    cachedCount > 0 && (prog && prog.page_total > 0 ? cachedCount >= prog.page_total : true);
   row.className = `ds-chapter-row${isRead ? " ds-chapter-read" : ""}`;
 
   const title = document.createElement("div");
   title.className = "ds-chapter-title";
-  title.textContent = decodeEntities(ch.title);
+  title.style.cssText = "display:inline-flex;align-items:center;gap:4px;";
+  title.innerHTML = `<span>${decodeEntities(ch.title)}</span>${
+    isFullyCached
+      ? '<i class="bi bi-cloud-check-fill ds-offline-icon" style="color:var(--sys-primary,#0078d4);font-size:11px;" title="Available Offline (Fully Cached)"></i>'
+      : ""
+  }`;
   row.appendChild(title);
 
   const badges: string[] = [];

@@ -37,6 +37,13 @@ export interface SeriesTaggings {
   tags?: SeriesTag[];
 }
 
+export interface SeriesTaggable {
+  type: string;
+  name: string;
+  permalink: string;
+  cover?: string | null;
+}
+
 export interface Series {
   name: string;
   type: string;
@@ -47,6 +54,7 @@ export interface Series {
   description: string | null;
   aliases: string[];
   taggings: SeriesTaggings[];
+  taggables?: SeriesTaggable[];
 }
 
 export interface FeedChapter {
@@ -99,11 +107,6 @@ export interface HttpResponseText {
   etag?: string;
 }
 
-export interface DirStatResult {
-  totalBytes: number;
-  fileCount: number;
-}
-
 export interface FeedRevalidationResult {
   data: Feed;
   isStale: boolean;
@@ -123,4 +126,50 @@ export interface RevalidateOnlineResult {
 export interface ParsedDynastyUrl {
   kind: "series" | "chapter";
   permalink: string;
+}
+
+export type SearchClass =
+  | "Chapter"
+  | "Anthology"
+  | "Doujin"
+  | "Issue"
+  | "Series"
+  | "Author"
+  | "Scanlator"
+  | "General"
+  | "Pairing";
+
+export type SearchSort = "" | "name" | "created_at" | "released_on";
+
+export interface SearchParams {
+  q?: string;
+  classes?: SearchClass[];
+  withTags?: string[];
+  withoutTags?: string[];
+  sort?: SearchSort;
+  page?: number;
+}
+
+export interface SearchResultItem {
+  kind: "chapter" | "series" | "anthology" | "doujin" | "issue" | "author" | "scanlator" | "tag" | "pairing";
+  title: string;
+  permalink: string;
+  author?: {
+    name: string;
+    permalink: string;
+  };
+  doujin?: {
+    name: string;
+    permalink: string;
+  };
+  releasedOn?: string;
+  tags: ChapterTag[];
+}
+
+export interface SearchResultPage {
+  items: SearchResultItem[];
+  currentPage: number;
+  totalPages: number;
+  totalEstimated?: number;
+  query: string;
 }
